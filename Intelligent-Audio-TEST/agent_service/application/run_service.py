@@ -9,9 +9,10 @@ import logging
 import uuid
 from typing import Dict, Iterable, Optional, Tuple
 
+from agent_service.application.approval_service import ApprovalService
 from agent_service.application.cancel_registry import CancelRegistry
 from agent_service.application.skill_registry import SkillRegistry
-from agent_service.domain.enums import EventType, RunStatus
+from agent_service.domain.enums import ApprovalDecision, EventType, RunStatus
 from agent_service.domain.exceptions import (
     InvalidRunTransition, RunNotFound, SessionNotFound, SkillNotAvailable,
 )
@@ -33,7 +34,8 @@ class RunService:
                  cancel_registry: CancelRegistry, *,
                  budget_defaults: Dict[str, int],
                  default_model: str = '',
-                 skills: Optional[SkillRegistry] = None):
+                 skills: Optional[SkillRegistry] = None,
+                 approvals: Optional[ApprovalService] = None):
         self._sessions = sessions
         self._runs = runs
         self._events = events
@@ -42,6 +44,7 @@ class RunService:
         self._budget_defaults = dict(budget_defaults)
         self._default_model = default_model
         self._skills = skills
+        self._approvals = approvals
 
     # ------------------------------------------------------------ sessions
 
@@ -144,6 +147,9 @@ class RunService:
             run.id, {run.status}, RunStatus.CANCELLED,
             finished_at=utcnow(), error=None)
         if hit:
+            # §9.2-4：已完成的写不回滚，未决提案作废（后续步骤不再执行）
+            if self._approvals is not None:
+                self._approvals.cancel_pending(run.id, owner_id)
             self._events.append(run.id, EventType.RUN_FINISHED, {
                 'status': RunStatus.CANCELLED.value,
                 'reason': 'user_cancelled',
@@ -154,9 +160,24 @@ class RunService:
 
     def list_approvals(self, run_id: str, *, owner_id: int,
                        tenant_id: str) -> list:
-        """M0 占位：审批表由 M2 建立，恒返回空列表（仍校验 run 归属）。"""
+        """本 run 的审批单（待审批 + 已决历史；归属校验与 GET /runs 一致）。"""
         self.get_run(run_id, owner_id=owner_id, tenant_id=tenant_id)
-        return []
+        if self._approvals is None:
+            return []
+        return [_serialize_approval(item)
+                for item in self._approvals.list_for_run(run_id)]
+
+    def decide_approval(self, approval_id: str, *, owner_id: int,
+                        tenant_id: str, decision: ApprovalDecision,
+                        permissions: Iterable[str] = ()
+                        ) -> Tuple[object, AgentRun]:
+        """审批决议：只有 run 归属者本人能决策（越权一律 404）。"""
+        if self._approvals is None:
+            raise RuntimeError('审批服务未装配')
+        approval, run = self._approvals.decide(
+            approval_id, owner_id=owner_id, tenant_id=tenant_id,
+            decision=decision, permissions=tuple(permissions or ()))
+        return _serialize_approval(approval), run
 
     # ------------------------------------------------------------ internals
 
@@ -186,3 +207,23 @@ class RunService:
 
 __all__ = ['RunService', 'InvalidRunTransition', 'RunNotFound',
            'SessionNotFound', 'SkillNotAvailable']
+
+
+def _iso(value) -> Optional[str]:
+    return value.isoformat() if value else None
+
+
+def _serialize_approval(approval) -> dict:
+    """审批单的对外结构（与 §10 字段 + 前端 AgentApprovalDto 一致）。"""
+    return {
+        'id': approval.id,
+        'run_id': approval.run_id,
+        'tool_call_id': approval.tool_call_id,
+        'status': approval.status.value,
+        'proposal': approval.proposal or {},
+        'diff': approval.diff,
+        'expires_at': _iso(approval.expires_at),
+        'decided_by': approval.decided_by,
+        'decided_at': _iso(approval.decided_at),
+        'created_at': _iso(approval.created_at),
+    }

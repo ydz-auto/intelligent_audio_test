@@ -9,7 +9,8 @@
 | GET  | /api/v1/agent/runs/{id} | run 快照 |
 | GET  | /api/v1/agent/runs/{id}/events?cursor= | SSE，支持 Last-Event-ID |
 | POST | /api/v1/agent/runs/{id}/cancel | 取消 |
-| GET  | /api/v1/agent/runs/{id}/approvals | 待审批提案（M0 空列表）|
+| GET  | /api/v1/agent/runs/{id}/approvals | 本 run 的审批单（待审批 + 已决）|
+| POST | /api/v1/agent/approvals/{id}/decision | 批准 / 拒绝写操作提案 |
 | GET  | /api/v1/agent/runs/{id}/context-snapshots | 上下文压缩快照（调试模式可回放）|
 | GET  | /api/v1/agent/skills | 当前用户可见 Skill（§4.2 规则 7）|
 """
@@ -17,15 +18,20 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, Query, Request, Response
+from fastapi import (
+    APIRouter, Depends, Header, HTTPException, Query, Request, Response,
+)
 from fastapi.responses import StreamingResponse
 
 from agent_service.config.config import Config
+from agent_service.domain.enums import ApprovalDecision
+from agent_service.domain.exceptions import ApprovalExpired
 from agent_service.domain.model.entities import AgentRun, AgentSession
 from agent_service.interfaces.api.dependencies import (
     Identity, get_container, get_identity,
 )
 from agent_service.interfaces.api.schemas import (
+    ApprovalDecisionRequest, ApprovalDecisionResponse, ApprovalResponse,
     CreateRunRequest, CreateRunResponse, CreateSessionRequest, RunResponse,
     SessionDetailResponse, SessionResponse, SkillResponse,
 )
@@ -190,6 +196,46 @@ def list_approvals(run_id: str, request: Request,
     items = container.run_service.list_approvals(
         run_id, owner_id=identity.user_id, tenant_id=identity.tenant_id)
     return {'items': items}
+
+
+@router.post('/approvals/{approval_id}/decision',
+             response_model=ApprovalDecisionResponse)
+def decide_approval(approval_id: str, payload: ApprovalDecisionRequest,
+                    request: Request,
+                    identity: Identity = Depends(get_identity)):
+    """批准 / 拒绝一条写操作提案（§9.4）。
+
+    - 只有 run 归属者本人能决策（越权 404，不泄漏存在性）；
+    - 并发审批只有一个请求生效，另一个 409；
+    - 过期单 409 且不执行，同时唤醒 run 把「过期」结果回灌模型；
+    - 决策本身不执行写操作：执行由 Loop 在恢复时按「实时权限 + 幂等键」
+      完成（执行前重新校验权限与实时状态）。
+    """
+    container = get_container(request)
+    try:
+        decision = ApprovalDecision(payload.decision.strip().upper())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f'不支持的审批决议：{payload.decision}'
+                   '（只能是 APPROVE / REJECT）')
+    try:
+        approval, run = container.run_service.decide_approval(
+            approval_id, owner_id=identity.user_id,
+            tenant_id=identity.tenant_id, decision=decision,
+            permissions=identity.permissions)
+    except ApprovalExpired as exc:
+        # 过期单不执行；让 run 继续，把「审批过期」作为工具结果回灌模型
+        container.executor.submit(exc.run_id)
+        raise
+    # 审批后由 Loop 执行写操作，回源需要用户 Authorization：决策请求同样经
+    # 网关鉴权，这里刷新 run 级凭据（只在进程内按 run 暂存，不落库）。
+    container.credentials.put(run.id, request.headers.get('Authorization'))
+    # 审批通过 / 拒绝都唤醒 run：结算本批写调用后继续（或收口）
+    container.executor.submit(run.id)
+    return ApprovalDecisionResponse(
+        approval=ApprovalResponse(**approval),
+        run_status=run.status.value)
 
 
 @router.get('/runs/{run_id}/context-snapshots')

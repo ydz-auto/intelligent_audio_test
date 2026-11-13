@@ -10,10 +10,10 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from agent_service.domain.enums import RunStatus
+from agent_service.domain.enums import ApprovalStatus, RunStatus
 from agent_service.domain.model.entities import (
-    AgentArtifact, AgentContextSnapshot, AgentLlmProvider, AgentRun,
-    AgentRunEvent, AgentSession, AgentStep, AgentToolCall,
+    AgentApproval, AgentArtifact, AgentContextSnapshot, AgentLlmProvider,
+    AgentRun, AgentRunEvent, AgentSession, AgentStep, AgentToolCall,
 )
 
 
@@ -144,6 +144,54 @@ class ToolCallRepository(ABC):
 
     @abstractmethod
     def list_running(self, run_id: str) -> List[AgentToolCall]: ...
+
+    @abstractmethod
+    def claim(self, run_id: str, tool_call_id: str,
+              from_statuses: Sequence, target) -> bool:
+        """条件迁移工具调用状态（并发下只有一个执行者能抢到）。
+
+        返回是否命中；用于审批通过后「只执行一次」的 DB 级互斥。
+        """
+
+
+class ApprovalRepository(ABC):
+    """写调用审批单仓储（§10 agent_approval，INT-2466）。
+
+    决策 / 过期一律走条件更新（``WHERE status='PENDING'``），把并发审批的
+    唯一性交给数据库，不依赖进程内锁。
+    """
+
+    @abstractmethod
+    def add(self, approval: AgentApproval) -> AgentApproval:
+        """插入审批单；(run_id, tool_call_id) 已存在时返回已有行（幂等）。"""
+
+    @abstractmethod
+    def get(self, approval_id: str) -> Optional[AgentApproval]: ...
+
+    @abstractmethod
+    def find_for_tool_call(self, run_id: str,
+                           tool_call_id: str) -> Optional[AgentApproval]: ...
+
+    @abstractmethod
+    def list_by_run(self, run_id: str) -> List[AgentApproval]: ...
+
+    @abstractmethod
+    def list_open_by_run(self, run_id: str) -> List[AgentApproval]: ...
+
+    @abstractmethod
+    def decide(self, approval_id: str, target: ApprovalStatus, *,
+               decided_by: int, decided_at: datetime,
+               permissions: Sequence[str],
+               now: datetime) -> bool:
+        """PENDING → target；已过期（expires_at ≤ now）时不算命中。"""
+
+    @abstractmethod
+    def expire(self, approval_id: str, now: datetime) -> bool:
+        """PENDING 且已过期 → EXPIRED；返回是否命中。"""
+
+    @abstractmethod
+    def list_due(self, now: datetime, limit: int) -> List[AgentApproval]:
+        """所有已过期的 PENDING 审批单（启动 / 恢复时的兜底扫描）。"""
 
 
 class ArtifactRepository(ABC):

@@ -11,10 +11,12 @@
    约束（细节交 ``memory_search``）；
 4. **管理端**：只读元数据 + break-glass 读取（带权限校验与审计）。
 
-审批边界（临时）：M2 的审批服务 INT-2466 未合入，这里用 2453 预留的
-「提案 + 待审批」占位——``memory_write`` 只生成提案不落盘，审批动作经由
-本服务的 ``approve`` / ``reject``（REST 见 ``/api/v1/agent/memory/proposals``）。
-INT-2466 合入后由审批服务接管，``MemoryWriteProposal`` 结构不变。
+审批边界：``memory_write`` 的正文**不入库**（§8.6 / §10 审计不落正文），
+因此不并入 INT-2466 的 ``agent_approval`` 通用审批表（那张表要求 proposal
+落库）；它继续使用文件式提案：``propose_write`` 只生成提案不落盘，审批
+动作经由本服务的 ``approve`` / ``reject``（REST 见
+``/api/v1/agent/memory/proposals``）。业务写工具的通用审批链见
+``application/approval_service.py``。
 """
 import hashlib
 import json

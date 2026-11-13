@@ -9,6 +9,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+from agent_service.application.approval_service import (
+    ApprovalService, ApprovalSettings,
+)
 from agent_service.application.cancel_registry import CancelRegistry
 from agent_service.application.context_assembler import (
     CompactionSettings, ContextAssembler,
@@ -60,9 +63,9 @@ from agent_service.infrastructure.memory import (
 )
 from agent_service.infrastructure.memory.paths import AUDIT_DIR
 from agent_service.infrastructure.persistence.repositories import (
-    SqlArtifactRepository, SqlContextSnapshotRepository, SqlEventRepository,
-    SqlLlmProviderRepository, SqlRunRepository, SqlSessionRepository,
-    SqlStepRepository, SqlToolCallRepository,
+    SqlApprovalRepository, SqlArtifactRepository, SqlContextSnapshotRepository,
+    SqlEventRepository, SqlLlmProviderRepository, SqlRunRepository,
+    SqlSessionRepository, SqlStepRepository, SqlToolCallRepository,
 )
 from agent_service.infrastructure.skill.fs_skill_repository import (
     FsSkillRepository,
@@ -96,6 +99,7 @@ class AgentContainer:
     budget_policy: Optional[ContextBudgetPolicy] = None
     compaction_settings: Optional[CompactionSettings] = None
     memory_service: Optional[MemoryService] = None
+    approval_service: Optional[ApprovalService] = None
     repositories: dict = field(default_factory=dict)
 
     def shutdown(self) -> None:
@@ -280,6 +284,7 @@ def build_container(session_factory,
     events = SqlEventRepository(session_factory)
     steps = SqlStepRepository(session_factory)
     tool_calls = SqlToolCallRepository(session_factory)
+    approvals = SqlApprovalRepository(session_factory)
     artifacts = SqlArtifactRepository(session_factory)
     snapshots = SqlContextSnapshotRepository(session_factory)
     provider_repository = SqlLlmProviderRepository(session_factory)
@@ -310,6 +315,15 @@ def build_container(session_factory,
         memory=memory,
     )
     skills = skill_registry or build_skill_registry(gateway, skills_root)
+    # INT-2466：写审批服务（提案 / 决策 / 过期 / 执行前复核）与 Loop 共用
+    # 同一份工具网关与仓储；run 归属校验在服务内部完成。
+    approval_service = ApprovalService(
+        approvals=approvals, events=events, runs=runs,
+        tool_gateway=gateway,
+        settings=ApprovalSettings(
+            ttl_seconds=Config.APPROVAL_TTL_SECONDS,
+            expiry_scan_limit=Config.APPROVAL_EXPIRY_SCAN_LIMIT),
+    )
     sandbox_executor = sandbox or build_sandbox_tool_executor(skills)
 
     compaction = compaction_settings or CompactionSettings(
@@ -370,6 +384,7 @@ def build_container(session_factory,
         provider_resolver=registry,
         tool_gateway=gateway, side_effects=side_effects, wakeup=wakeup,
         cancel_registry=cancel_registry, settings=settings,
+        approvals=approval_service,
         sandbox=sandbox_executor,
     )
     run_service = RunService(
@@ -377,6 +392,7 @@ def build_container(session_factory,
         budget_defaults=dict(budgets),
         default_model='',
         skills=skills,
+        approvals=approval_service,
     )
     event_stream = EventStreamService(
         events, runs, wakeup, page_size=Config.EVENT_PAGE_SIZE,
@@ -405,9 +421,11 @@ def build_container(session_factory,
         sandbox=sandbox_executor,
         budget_policy=budget_policy, compaction_settings=compaction,
         memory_service=memory,
+        approval_service=approval_service,
         repositories={
             'sessions': sessions, 'runs': runs, 'events': events,
             'steps': steps, 'tool_calls': tool_calls,
+            'approvals': approvals,
             'artifacts': artifacts, 'snapshots': snapshots,
             'providers': provider_repository,
         },

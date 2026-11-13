@@ -93,6 +93,7 @@ def test_tool_calls_are_fed_back_by_tool_call_id(tmp_path):
 
 
 def test_write_tool_is_denied_in_m0(tmp_path):
+    """M2（INT-2466）：写调用不再直接拒绝，而是生成待审批提案并暂停 run。"""
     call = ToolCallRequest(tool_call_id='w1', name='task_run', arguments={})
     llm = FakeLlm([tool_turn([call]), text_turn('写操作被拒绝')])
     gateway = FakeToolGateway(tools=[write_tool('task_run')])
@@ -101,10 +102,16 @@ def test_write_tool_is_denied_in_m0(tmp_path):
     session = new_session(container)
     run = _submit(container, session)
 
+    # 无副作用：写工具没有被执行，run 停在等待审批
     assert gateway.executed == []
     call_row = container.repositories['tool_calls'].find(run.id, 'w1')
-    assert call_row.status is ToolCallStatus.DENIED
+    assert call_row.status is ToolCallStatus.WAITING_APPROVAL
     assert call_row.permission_decision == 'approval_required'
+    assert call_row.result_code == 'APPROVAL_REQUIRED'
+    assert container.repositories['runs'].get(run.id).status is \
+        RunStatus.WAITING_APPROVAL
+    approvals = container.repositories['approvals'].list_by_run(run.id)
+    assert len(approvals) == 1 and approvals[0].status.value == 'PENDING'
     container.shutdown()
 
 

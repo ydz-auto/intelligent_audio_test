@@ -25,8 +25,10 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from agent_service.application.approval_expiry import ApprovalExpiryScanner
 from agent_service.config.config import Config
 from agent_service.domain.exceptions import (
+    ApprovalConflict, ApprovalExpired, ApprovalNotFound,
     CredentialDecryptError, CredentialKeyUnavailable,
     InvalidContextWindow, InvalidProviderConfiguration,
     InvalidRunTransition, ProviderNotFound, RunNotFound, SessionNotFound,
@@ -158,6 +160,25 @@ def _register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(status_code=400,
                             content={'detail': 'Skill 不可用'})
 
+    @app.exception_handler(ApprovalNotFound)
+    async def _approval_not_found(_request: Request, _exc: ApprovalNotFound):
+        # 不存在 / 非本人 run 的审批单统一 404（不泄漏存在性）
+        return JSONResponse(status_code=404, content={'detail': 'not found'})
+
+    @app.exception_handler(ApprovalConflict)
+    async def _approval_conflict(_request: Request, exc: ApprovalConflict):
+        return JSONResponse(
+            status_code=409,
+            content={'detail': '审批单已被处理或 run 已收口',
+                     'code': exc.code})
+
+    @app.exception_handler(ApprovalExpired)
+    async def _approval_expired(_request: Request, exc: ApprovalExpired):
+        return JSONResponse(
+            status_code=409,
+            content={'detail': '审批单已过期，写操作未执行',
+                     'code': exc.code})
+
 
 def create_app(container=None) -> FastAPI:
     """创建应用。``container`` 仅测试传入；生产为 None 时自建组合根。"""
@@ -177,6 +198,18 @@ def create_app(container=None) -> FastAPI:
             app.state.container = container
 
         container_obj = app.state.container
+        # INT-2466：启动时先把到点的待审批单判过期（幂等）；审批过期与
+        # 「是否恢复投递」无关，关闭态同样收敛，避免列表长期停在 PENDING。
+        approval_service = getattr(container_obj, 'approval_service', None)
+        expiry_scanner = None
+        if approval_service is not None:
+            try:
+                expired_runs = approval_service.expire_due()
+                if expired_runs:
+                    logger.info('启动过期扫描：%d 个 run 的待审批单转 EXPIRED',
+                                len(expired_runs))
+            except Exception:  # noqa: BLE001 - 过期扫描失败不阻断启动
+                logger.exception('审批过期扫描失败')
         # INT-2529：总开关关闭态不产生任何后台 run —— 恢复投递同样门控在
         # AGENT_ENABLED 之下；网关入口的 require_agent_enabled 仍是唯一入口门，
         # 这里只是同一条开关在「重启自启」这一侧的落实，不新增第二个开关名。
@@ -192,11 +225,22 @@ def create_app(container=None) -> FastAPI:
                     logger.info('重启恢复：重新投递 %d 个 run', len(resumable))
             except Exception:  # noqa: BLE001 - 恢复失败不阻断服务启动
                 logger.exception('重启恢复失败')
+        # INT-2466：运行期过期扫描 —— TTL 到点且无人决策时，结算后提交 run，
+        # 让 Loop 把 APPROVAL_EXPIRED 回灌模型并继续收口（不依赖重启）。
+        # 与恢复投递同一条开关：关闭态不产生任何后台 run。
+        if approval_service is not None and Config.AGENT_ENABLED:
+            expiry_scanner = ApprovalExpiryScanner(
+                approvals=approval_service,
+                wake_run=container_obj.executor.submit,
+                interval_seconds=Config.APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS)
+            expiry_scanner.start()
         logger.info('agent_service started on port %s', Config.PORT)
         try:
             yield
         finally:
             logger.info('agent_service shutting down')
+            if expiry_scanner is not None:
+                expiry_scanner.stop()
             try:
                 container_obj.shutdown()
             except Exception:  # noqa: BLE001

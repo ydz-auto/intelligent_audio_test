@@ -102,7 +102,7 @@ def test_tool_search_discovered_mcp_tool_executes(tmp_path):
 
 
 def test_mcp_write_tool_still_blocked_by_m0_gate(tmp_path):
-    """MCP POST（task_create）风险=WRITE，仍被 M0 只读门禁拒绝，不回源。"""
+    """MCP POST（task_create）风险=WRITE：M2 起只生成提案，审批前不回源。"""
     llm = FakeLlm([
         tool_turn([ToolCallRequest(
             'c2', 'task_create', {'body': {'name': '接线测试_任务'}})]),
@@ -115,9 +115,11 @@ def test_mcp_write_tool_still_blocked_by_m0_gate(tmp_path):
 
     assert rest.calls == []                    # 写操作没有回源
     record = container.repositories['tool_calls'].find(run.id, 'c2')
-    assert record.status is ToolCallStatus.DENIED
+    assert record.status is ToolCallStatus.WAITING_APPROVAL
     assert record.result_code == 'APPROVAL_REQUIRED'
     assert record.risk is ToolRisk.WRITE
+    assert container.repositories['runs'].get(run.id).status.value == \
+        'WAITING_APPROVAL'
 
 
 # ---------------------------------------------------------------- fail-closed

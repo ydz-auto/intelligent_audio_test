@@ -76,6 +76,27 @@ class BudgetExceeded(AgentDomainError):
         super().__init__(f'预算超限: {kind}')
 
 
+class ApprovalNotFound(AgentDomainError):
+    """审批单不存在，或所属 run 不属于当前用户/租户（对外统一 404）。"""
+
+
+class ApprovalConflict(AgentDomainError):
+    """审批单已被其它请求处理（并发审批 / 已决），本次决策不生效。"""
+
+    code = 'APPROVAL_ALREADY_DECIDED'
+
+
+class ApprovalExpired(AgentDomainError):
+    """审批单已过期：不执行，也不允许再决策。"""
+
+    code = 'APPROVAL_EXPIRED'
+
+    def __init__(self, approval_id: str, run_id: str):
+        self.approval_id = approval_id
+        self.run_id = run_id
+        super().__init__(f'审批单已过期: {approval_id}')
+
+
 class SkillNotAvailable(AgentDomainError):
     """Skill 未注册，或当前用户权限不满足（§4.2 规则 7）。"""
 

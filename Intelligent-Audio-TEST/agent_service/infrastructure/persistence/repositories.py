@@ -16,19 +16,20 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from agent_service.domain.enums import (
-    CompactionLevel, ContextWindowSource, EventType, LlmProtocol,
+    ApprovalStatus, CompactionLevel, ContextWindowSource, EventType, LlmProtocol,
     ProviderStatus, RunStatus, StepStatus, ToolCallStatus, ToolRisk,
 )
 from agent_service.domain.model.entities import (
-    AgentArtifact, AgentContextSnapshot, AgentLlmProvider, AgentRun,
-    AgentRunEvent, AgentSession, AgentStep, AgentToolCall,
+    AgentApproval, AgentArtifact, AgentContextSnapshot, AgentLlmProvider,
+    AgentRun, AgentRunEvent, AgentSession, AgentStep, AgentToolCall,
 )
 from agent_service.domain.repositories import (
-    ArtifactRepository, ContextSnapshotRepository, EventRepository,
-    LlmProviderRepository, RunRepository, SessionRepository, StepRepository,
-    ToolCallRepository,
+    ApprovalRepository, ArtifactRepository, ContextSnapshotRepository,
+    EventRepository, LlmProviderRepository, RunRepository, SessionRepository,
+    StepRepository, ToolCallRepository,
 )
 from agent_service.infrastructure.persistence.models.agent_models import (
+    AgentApproval as AgentApprovalPO,
     AgentArtifact as AgentArtifactPO,
     AgentContextSnapshot as AgentContextSnapshotPO,
     AgentLlmProvider as AgentLlmProviderPO,
@@ -111,6 +112,20 @@ def _to_tool_call(row: AgentToolCallPO) -> AgentToolCall:
         latency_ms=row.latency_ms, permission_decision=row.permission_decision,
         result_code=row.result_code,
         error=row.error, idempotency_key=row.idempotency_key,
+        created_at=row.created_at, updated_at=row.updated_at,
+    )
+
+
+def _to_approval(row: AgentApprovalPO) -> AgentApproval:
+    return AgentApproval(
+        id=row.id, run_id=row.run_id, tool_call_id=row.tool_call_id,
+        status=ApprovalStatus(row.status), proposal=row.proposal or {},
+        diff=row.diff if isinstance(row.diff, dict) else None,
+        expires_at=row.expires_at, decided_by=row.decided_by,
+        decided_at=row.decided_at,
+        decision_permissions=(
+            list(row.decision_permissions)
+            if isinstance(row.decision_permissions, list) else None),
         created_at=row.created_at, updated_at=row.updated_at,
     )
 
@@ -655,6 +670,154 @@ class SqlToolCallRepository(_BaseRepo, ToolCallRepository):
                 AgentToolCallPO.status == ToolCallStatus.RUNNING.value,
             ).order_by(AgentToolCallPO.created_at.asc()).all()
             return [_to_tool_call(r) for r in rows]
+        finally:
+            db.close()
+
+    def claim(self, run_id: str, tool_call_id: str,
+              from_statuses: Sequence, target) -> bool:
+        """条件迁移状态：并发审批 / 重复投递下只有一个执行者能抢到。"""
+        allowed = [_enum_value(status) for status in from_statuses]
+        db = self._session()
+        try:
+            hit = db.query(AgentToolCallPO).filter(
+                AgentToolCallPO.run_id == run_id,
+                AgentToolCallPO.tool_call_id == tool_call_id,
+                AgentToolCallPO.status.in_(allowed),
+            ).update({'status': _enum_value(target), 'updated_at': utcnow()},
+                     synchronize_session=False)
+            db.commit()
+            return bool(hit)
+        finally:
+            db.close()
+
+
+# ---------------------------------------------------------------- approvals
+
+class SqlApprovalRepository(_BaseRepo, ApprovalRepository):
+    """写调用审批单仓储（INT-2466）：决策 / 过期的互斥交给条件更新。"""
+
+    def add(self, approval: AgentApproval) -> AgentApproval:
+        db = self._session()
+        try:
+            row = AgentApprovalPO(
+                id=approval.id, run_id=approval.run_id,
+                tool_call_id=approval.tool_call_id,
+                proposal=approval.proposal or {},
+                diff=approval.diff, status=approval.status.value,
+                expires_at=approval.expires_at,
+                decided_by=approval.decided_by,
+                decided_at=approval.decided_at,
+                decision_permissions=approval.decision_permissions,
+                created_at=approval.created_at or utcnow(),
+                updated_at=approval.updated_at or utcnow(),
+            )
+            db.add(row)
+            db.commit()
+            return _to_approval(row)
+        except IntegrityError:
+            # 并发 / 重复提案：同一 tool call 只保留一张单，复用已有行
+            db.rollback()
+            existing = self.find_for_tool_call(
+                approval.run_id, approval.tool_call_id)
+            if existing is None:
+                raise
+            logger.debug('审批单已存在，复用 tool_call_id=%s',
+                         approval.tool_call_id)
+            return existing
+        finally:
+            db.close()
+
+    def get(self, approval_id: str) -> Optional[AgentApproval]:
+        db = self._session()
+        try:
+            row = db.get(AgentApprovalPO, approval_id)
+            return _to_approval(row) if row else None
+        finally:
+            db.close()
+
+    def find_for_tool_call(self, run_id: str,
+                           tool_call_id: str) -> Optional[AgentApproval]:
+        db = self._session()
+        try:
+            row = db.query(AgentApprovalPO).filter(
+                AgentApprovalPO.run_id == run_id,
+                AgentApprovalPO.tool_call_id == tool_call_id,
+            ).one_or_none()
+            return _to_approval(row) if row else None
+        finally:
+            db.close()
+
+    def list_by_run(self, run_id: str) -> List[AgentApproval]:
+        db = self._session()
+        try:
+            rows = db.query(AgentApprovalPO).filter(
+                AgentApprovalPO.run_id == run_id,
+            ).order_by(AgentApprovalPO.created_at.asc()).all()
+            return [_to_approval(r) for r in rows]
+        finally:
+            db.close()
+
+    def list_open_by_run(self, run_id: str) -> List[AgentApproval]:
+        db = self._session()
+        try:
+            rows = db.query(AgentApprovalPO).filter(
+                AgentApprovalPO.run_id == run_id,
+                AgentApprovalPO.status == ApprovalStatus.PENDING.value,
+            ).order_by(AgentApprovalPO.created_at.asc()).all()
+            return [_to_approval(r) for r in rows]
+        finally:
+            db.close()
+
+    def decide(self, approval_id: str, target: ApprovalStatus, *,
+               decided_by: int, decided_at: datetime,
+               permissions: Sequence[str], now: datetime) -> bool:
+        db = self._session()
+        try:
+            query = db.query(AgentApprovalPO).filter(
+                AgentApprovalPO.id == approval_id,
+                AgentApprovalPO.status == ApprovalStatus.PENDING.value,
+            )
+            # 过期判定与决策同一条 UPDATE：并发下不会出现「刚过期却被批准」
+            query = query.filter(
+                (AgentApprovalPO.expires_at.is_(None))
+                | (AgentApprovalPO.expires_at > now))
+            hit = query.update({
+                'status': target.value,
+                'decided_by': decided_by,
+                'decided_at': decided_at,
+                'decision_permissions': list(permissions or ()),
+                'updated_at': decided_at,
+            }, synchronize_session=False)
+            db.commit()
+            return bool(hit)
+        finally:
+            db.close()
+
+    def expire(self, approval_id: str, now: datetime) -> bool:
+        db = self._session()
+        try:
+            hit = db.query(AgentApprovalPO).filter(
+                AgentApprovalPO.id == approval_id,
+                AgentApprovalPO.status == ApprovalStatus.PENDING.value,
+                AgentApprovalPO.expires_at.isnot(None),
+                AgentApprovalPO.expires_at <= now,
+            ).update({'status': ApprovalStatus.EXPIRED.value,
+                      'updated_at': now}, synchronize_session=False)
+            db.commit()
+            return bool(hit)
+        finally:
+            db.close()
+
+    def list_due(self, now: datetime, limit: int) -> List[AgentApproval]:
+        db = self._session()
+        try:
+            rows = db.query(AgentApprovalPO).filter(
+                AgentApprovalPO.status == ApprovalStatus.PENDING.value,
+                AgentApprovalPO.expires_at.isnot(None),
+                AgentApprovalPO.expires_at <= now,
+            ).order_by(AgentApprovalPO.expires_at.asc()).limit(
+                max(1, int(limit))).all()
+            return [_to_approval(r) for r in rows]
         finally:
             db.close()
 

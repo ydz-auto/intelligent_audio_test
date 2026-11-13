@@ -35,6 +35,7 @@ _BUDGET_DEFAULTS = _DEFAULTS.get('budget', {})
 _CONTEXT_DEFAULTS = _DEFAULTS.get('context', {})
 _STREAM_DEFAULTS = _DEFAULTS.get('event_stream', {})
 _SKILL_DEFAULTS = _DEFAULTS.get('skills', {})
+_APPROVAL_DEFAULTS = _DEFAULTS.get('approval', {})
 
 
 class Config(BaseConfig):
@@ -196,6 +197,19 @@ class Config(BaseConfig):
     # run 级 Authorization 暂存 TTL（只在 run 执行窗口内需要，不落库）
     TOOL_CREDENTIAL_TTL_SECONDS = _get_int(
         'AGENT_TOOL_CREDENTIAL_TTL_SECONDS', 3600)
+
+    # ===== 写操作审批（INT-2466，§9.4）=====
+    # 提案过期时间（秒）：到点即不可执行，决策返回 409；配置化，不硬编码。
+    APPROVAL_TTL_SECONDS = _get_int(
+        'AGENT_APPROVAL_TTL_SECONDS', int(_APPROVAL_DEFAULTS.get('ttl_seconds', 900)))
+    # 启动过期扫描单次上限（避免一次拉全表）
+    APPROVAL_EXPIRY_SCAN_LIMIT = _get_int(
+        'AGENT_APPROVAL_EXPIRY_SCAN_LIMIT',
+        int(_APPROVAL_DEFAULTS.get('expiry_scan_limit', 200)))
+    # 运行期过期扫描间隔（秒）：到点单结算后提交 run，不依赖重启
+    APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS = _get_float(
+        'AGENT_APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS',
+        float(_APPROVAL_DEFAULTS.get('expiry_scan_interval_seconds', 30)))
 
     # ===== 总开关（INT-2529，与网关同源）=====
     # 只用于启动期恢复投递门控：关闭态不产生任何后台 run（网关入口门控不变，
@@ -392,6 +406,13 @@ class Config(BaseConfig):
             raise ValueError('AGENT_MEMORY_INJECT_MAX_TOKENS 必须为正数')
         if cls.MEMORY_RG_TIMEOUT_SECONDS <= 0:
             raise ValueError('AGENT_MEMORY_RG_TIMEOUT_SECONDS 必须为正数')
+        if cls.APPROVAL_TTL_SECONDS <= 0:
+            raise ValueError('AGENT_APPROVAL_TTL_SECONDS 必须为正数')
+        if cls.APPROVAL_EXPIRY_SCAN_LIMIT <= 0:
+            raise ValueError('AGENT_APPROVAL_EXPIRY_SCAN_LIMIT 必须为正数')
+        if cls.APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS <= 0:
+            raise ValueError(
+                'AGENT_APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS 必须为正数')
         if not Path(cls.MEMORY_SENSITIVE_RULES_PATH).is_file():
             raise ValueError(
                 f'敏感信息规则文件不存在：{cls.MEMORY_SENSITIVE_RULES_PATH}')

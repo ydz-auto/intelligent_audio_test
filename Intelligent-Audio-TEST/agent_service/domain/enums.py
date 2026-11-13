@@ -129,13 +129,43 @@ class StepStatus(str, Enum):
 
 
 class ToolCallStatus(str, Enum):
-    """agent_tool_call 状态。"""
+    """agent_tool_call 状态。
+
+    ``WAITING_APPROVAL``（INT-2466）：写调用已生成提案，等待人工审批；
+    既非执行中、也非失败，恢复时按审批表状态继续处置。
+    """
 
     PENDING = 'PENDING'
     RUNNING = 'RUNNING'
+    WAITING_APPROVAL = 'WAITING_APPROVAL'
     COMPLETED = 'COMPLETED'
     FAILED = 'FAILED'
     DENIED = 'DENIED'
+
+
+class ApprovalStatus(str, Enum):
+    """``agent_approval.status``（§10；前端契约只认这四个取值）。
+
+    ``REJECTED`` 同时承载「拒绝」与「随 run 取消作废」：两者都不执行、
+    都由 ``decided_by`` / ``decided_at`` 留痕，不另造前端不认识的取值。
+    """
+
+    PENDING = 'PENDING'
+    APPROVED = 'APPROVED'
+    REJECTED = 'REJECTED'
+    EXPIRED = 'EXPIRED'
+
+
+class ApprovalDecision(str, Enum):
+    """审批决议（POST /api/v1/agent/approvals/{id}/decision 的请求取值）。"""
+
+    APPROVE = 'APPROVE'
+    REJECT = 'REJECT'
+
+    @property
+    def target(self) -> ApprovalStatus:
+        return (ApprovalStatus.APPROVED if self is ApprovalDecision.APPROVE
+                else ApprovalStatus.REJECTED)
 
 
 class LlmMessageRole(str, Enum):
@@ -201,7 +231,7 @@ class MemorySection(str, Enum):
 
 
 class MemoryWriteStatus(str, Enum):
-    """审批占位提案状态。M2（INT-2466）接入后由审批服务接管。"""
+    """记忆文件式提案状态（INT-2490；正文不入库，故不并入 agent_approval）。"""
 
     PENDING = 'PENDING'
     APPROVED = 'APPROVED'

@@ -16,6 +16,9 @@ testcase_query / task_query / task_diagnose / log_diagnose / dashboard_query，
 5. 本地工具：``memory_search`` / ``memory_write``（INT-2490）走文件式长期记忆，
    身份由调用上下文给定、不经模型传路径；写操作只生成待审批提案；
    其余预留工具（ui_tree / ui_action / api_spec 等）返回 ``TOOL_NOT_ENABLED``；
+   写路径（INT-2466）：WRITE / DESTRUCTIVE 只有在 ``context.approval``
+   （服务端按 ``agent_approval`` 构造的已审批凭据）存在时才执行；提案本身
+   由 Loop 的审批服务落地，网关不自行放行写操作；
 6. 长尾 MCP 工具（tool_search 命中后直接调用）同样在此做权限与 Schema 校验；
 7. 本地只读聚合（``task_diagnose`` / ``log_diagnose`` 的 diagnose 动作）：
    用同一份 MCP 定义组合多个只读接口，纯函数汇总在
@@ -47,6 +50,7 @@ from agent_service.domain.ports.tool_registry import (
     RunCredentialPort, ToolRegistryPort, ToolTransportPort,
 )
 from shared.agent_tools import testcase_tools as case_tools
+from shared.agent_tools.intent_tools import redact_for_audit
 from shared.models.common_enums import ReportType
 
 logger = logging.getLogger(__name__)
@@ -243,12 +247,52 @@ class SharedToolGateway(ToolGateway):
         return tuple(t for t in self.all_tools() if t.name in wanted)
 
     def proposal_capable(self, name: str) -> bool:
-        """写工具是否支持「提案 → 审批 → 落盘」（当前仅 memory_write）。
+        """工具是否自带提案原语（当前仅 memory_write，INT-2490）。
 
-        审批链（M2 / INT-2466）未合入时，记忆写入用 2453 预留的提案占位：
-        工具调用会生成待审批提案，但审批前不产生任何文件副作用。
+        返回 ``True`` 的工具由网关原地生成「待审批提案」（文件式，审批前
+        不产生副作用），Loop 不为其建 ``agent_approval``；其余 WRITE /
+        DESTRUCTIVE 工具走 INT-2466 的通用审批表。
         """
         return name == 'memory_write' and self._memory is not None
+
+    def required_permissions(self, name: str,
+                             arguments: Optional[Dict[str, Any]] = None
+                             ) -> Optional[Sequence[str]]:
+        """写调用所需权限（按 action 收窄）；未注册返回 ``None``。
+
+        提案阶段与审批后执行阶段都调它：前者防止无权用户生成提案，后者
+        重新校验「审批后权限是否还在」（§9.4）。
+        """
+        return self._bridge.permissions_for(name, arguments)
+
+    def validate_call(self, name: str,
+                      arguments: Optional[Dict[str, Any]]) -> Optional[str]:
+        """执行前实时校验注册状态与参数 Schema（审批期间注册表可能变化）。"""
+        required = self._bridge.permissions_for(name, arguments)
+        if required is None:
+            return f'工具不存在：{name}'
+        if self.risk_of(name) is None:
+            return f'工具不存在：{name}'
+        return self._bridge.validate(name, arguments or {})
+
+    def proposal_diff(self, name: str,
+                      arguments: Optional[Dict[str, Any]]
+                      ) -> Optional[Dict[str, Any]]:
+        """REST 写工具的请求预览：方法 + 路径 + 脱敏参数（审批人可见）。
+
+        具体域写工具（M2 各域卡）可覆盖成字段级 diff；这里至少让审批人看到
+        「这条提案会发什么请求」，而不是只有一个工具名。
+        """
+        tool, merged, error = self._bridge.resolve_rest(
+            name, dict(arguments or {}))
+        if error or tool is None:
+            return None
+        return {
+            'kind': 'rest_request',
+            'method': tool.get('method'),
+            'path': tool.get('path'),
+            'arguments': redact_for_audit(name, merged),
+        }
 
     def risk_of(self, name: str) -> Optional[ToolRisk]:
         """工具风险（意图工具 + tool_search 命中的长尾 MCP 工具）。
@@ -289,16 +333,17 @@ class SharedToolGateway(ToolGateway):
         if name in MEMORY_TOOLS:
             return self._run_memory_tool(call, name, arguments, context)
 
-        # M0 只读：写 / 破坏性工具在网关层也拒绝（Loop 层已先行拦截，
-        # 这里再做一次防御，避免绕过 Loop 直接调用时执行写操作）。
+        # 写 / 破坏性工具：只有携带「已审批」凭据（服务端按 agent_approval
+        # 构造，模型无法伪造）才允许产生副作用。Loop 在提案阶段不会调用本方法；
+        # 这里再做一次防御，避免绕过审批直接 execute。
         # 两份注册表都查不到（None）按未知工具拒绝，不降级成 READ。
         risk = self.risk_of(name)
         if risk is None:
             return self._fail(call, UNKNOWN_TOOL, f'工具不存在：{name}')
-        if risk is not ToolRisk.READ:
+        if risk is not ToolRisk.READ and context.approval is None:
             return self._fail(
                 call, 'APPROVAL_REQUIRED',
-                '写操作需要审批，M0 未启用审批执行。')
+                '写操作需要审批，未携带审批凭据不执行。')
 
         # 本地工具（不访问 REST 或自行组合只读 REST）
         if name == 'tool_search':

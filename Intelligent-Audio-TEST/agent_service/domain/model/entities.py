@@ -9,8 +9,9 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from agent_service.domain.enums import (
-    CompactionLevel, ContextWindowSource, EventType, LlmProtocol, ProviderStatus,
-    RunStatus, StepStatus, ToolCallStatus, ToolRisk,
+    ApprovalStatus, CompactionLevel, ContextWindowSource, EventType,
+    LlmProtocol, ProviderStatus, RunStatus, StepStatus, ToolCallStatus,
+    ToolRisk,
 )
 
 
@@ -86,6 +87,30 @@ class AgentToolCall:
     result_code: Optional[str] = None
     error: Optional[str] = None
     idempotency_key: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+@dataclass
+class AgentApproval:
+    """写调用审批单（§10 agent_approval，INT-2466）。
+
+    一条提案对应一次 tool call（``(run_id, tool_call_id)`` 唯一）。审批前
+    不产生任何副作用；``decision_permissions`` 是审批人**决策时**的实时权限
+    快照 —— 执行前用它重新校验权限（审批后权限被收回 → 执行失败），因此不
+    再回读「发起 run 时」的旧权限。
+    """
+
+    id: str
+    run_id: str
+    tool_call_id: str
+    status: ApprovalStatus
+    proposal: Dict[str, Any]
+    diff: Optional[Dict[str, Any]] = None
+    expires_at: Optional[datetime] = None
+    decided_by: Optional[int] = None
+    decided_at: Optional[datetime] = None
+    decision_permissions: Optional[List[str]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
