@@ -7,11 +7,13 @@
 本卡（M0）实现 3 个业务意图工具 + ``tool_search``，M1 音频域卡（INT-2458）
 追加 ``audio_query``，评估域卡（INT-2462）追加 ``evaluation_query``，
 算法域卡（INT-2464）追加 ``algorithm_query``，设备 / SPL 域卡（INT-2459）
-追加 ``device_query``（SPL 只读是该工具的子集，见 ``device_tools``）：
+追加 ``device_query``（SPL 只读是该工具的子集，见 ``device_tools``），
+报告域卡（INT-2463）扩全 ``report_query`` 并启用 ``report_compare``：
 
 - ``platform_contract``：平台口径（服务 / 接口前缀 / 枚举 / 权限码 / 工具 Schema）；
 - ``task_query``：任务只读子集（映射 MCP ``task_*`` 只读工具）；
 - ``report_query``：报告只读子集（映射 MCP ``report_*`` 只读工具）；
+- ``report_compare``：多报告 / 二次对比与趋势（只读；本地组合，不生成平台报告）；
 - ``audio_query``：音频只读子集（映射 MCP ``audio_*`` 只读工具）；
 - ``evaluation_query``：评估维度 / 分类只读子集（映射 MCP ``evaluation_*`` 只读工具）；
 - ``algorithm_query``：算法定义 / 参数 / 映射 / 表单 Schema 只读子集（映射 MCP ``algorithm_*`` 只读工具）；
@@ -24,7 +26,8 @@ M1 各域卡按域启用自己的只读意图工具（已完成：``audio_query`
 ``device_query`` INT-2459 —— 含 SPL 只读子集、
 ``testcase_query`` / ``testcase_generate`` INT-2460、
 ``task_query`` / ``task_diagnose`` / ``log_diagnose`` / ``dashboard_query``
-INT-2461）；每个域工具 = 动作 → MCP 只读工具的映射，REST 路径 / 查询参数
+INT-2461、``report_query`` / ``report_compare`` INT-2463）；
+每个域工具 = 动作 → MCP 只读工具的映射，REST 路径 / 查询参数
 仍由 ``mcp_registry`` 的共享构造器决定，不复制 Schema。
 用例域少量只读路由（统计 / 轮次参考参数 / 导出作业状态 / 刷新状态）不在
 外部 MCP 表里，映射到 ``testcase_tools.TESTCASE_READ_TOOLS``（同形工具项）。
@@ -32,6 +35,13 @@ INT-2461）；每个域工具 = 动作 → MCP 只读工具的映射，REST 路�
 ``task_diagnose`` / ``log_diagnose.diagnose`` 是本地只读聚合：由 ToolGateway
 用同一份 MCP 定义组合多个只读接口，纯函数汇总在
 ``shared/agent_tools/diagnostics.py``，输出带来源 ID，不估算数值。
+
+``report_compare`` 是唯一的**本地组合**域工具（``kind='local'``，与
+``tool_search`` / ``platform_contract`` 同层）：平台的对接口径
+（``POST /reports/compare`` / ``POST /reports/secondary-compare``）会**落库生成
+新报告**，属写操作，不能作为只读工具暴露；本工具改为按报告 ID 逐个读
+``GET /reports/{id}`` 的权威字段并排列出，对比结论由模型基于返回原文叙述，
+数值不重算、不落报告（大结果由上下文压缩落 ``context_tool_result`` artifact）。
 
 其余意图工具在本注册表**预留名称与 Schema**（``enabled=False``），调用返回
 ``TOOL_NOT_ENABLED``；实现分别归 M1 / M2 各域卡。预留名称进入 Skill
@@ -184,18 +194,84 @@ DASHBOARD_QUERY_PARAMS: Dict[str, Tuple[str, ...]] = {
     'summary': (),
 }
 
-# 报告只读动作 → MCP 工具名
+# 报告只读动作 → MCP 工具名（INT-2463 扩全字段）
+#
+# 覆盖卡面「三类报告事实 / 指标 / 用例 / 统计 / 进度 / 页签计数」：
+# list / detail / by_task 取报告事实与指标矩阵，cases / cases_search 取用例与
+# 异常下钻，case_averages 取用例级指标均值，statistics 取维度统计，
+# tab_counts 取页签计数，progress 取生成进度。
+#
+# 刻意不放进来：
+# - ``report_statistics_trend``：趋势按方案 §4.3 / §6.1 归 ``report_compare``
+#   的 ``trend`` 动作（同一个 MCP 工具不挂两个意图动作，避免双口径）；
+# - ``report_statistics_report`` / ``report_export_get`` / ``report_export``：
+#   返回二进制文件流（csv/excel/pdf/html），工具层只承载 JSON，二进制通道
+#   由产品页下载（mcp_registry 顶部的「非 JSON 文本通道」边界）；
+# - ``report_cases_logs`` / ``logs/download``：用例日志下载同上；
+# - ``report_compare`` / ``report_secondary_compare``：POST 会落库生成新报告，
+#   属写操作，Agent 侧改走只读组合工具 ``report_compare``（见下方注释）。
 REPORT_QUERY_ACTIONS: Dict[str, str] = {
     'list': 'report_list',
     'detail': 'report_get',
     'by_task': 'report_by_task',
     'tab_counts': 'report_tab_counts',
     'statistics': 'report_statistics',
-    'statistics_trend': 'report_statistics_trend',
     'progress': 'report_progress',
     'cases': 'report_cases',
+    'cases_search': 'report_cases_search',
     'case_averages': 'report_case_averages',
 }
+
+# 报告只读动作的可用参数（动作独立口径）。
+# 动作不支持的参数在工具层直接报错：网关查询 Schema 基类 ``extra='ignore'``，
+# 传错参数会被**静默丢弃**并返回全量，模型会把「全量」当成「过滤结果」
+# （INT-2529 / INT-2524 同型教训）。
+#
+# 参数名逐字对齐网关查询 Schema（api_gateway/schemas/report.py）：
+# - ``ReportListQuery``：page / per_page / keyword / report_type（别名 type）/
+#   status / task_id / algorithm_type / start_time / end_time / favorite /
+#   deleted；``sort_by`` / ``order`` 网关不往 gRPC 传，故不暴露；
+# - ``ReportCaseListQuery``：page / per_page / keyword / category；
+#   **``tags`` 不暴露**——网关按查询串取到的是字符串，pydantic 要求 List[str]，
+#   带 tags 恒 400（实测），带标签过滤请走 ``cases_search``（JSON body）；
+# - ``ReportStatisticsQuery``：dimension / start_time / end_time / algorithm_type；
+# - ``ReportSearchCasesRequest`` / ``GetCaseAveragesRequest``：POST body，
+#   字段名与 REST 逐字一致。
+REPORT_QUERY_PARAMS: Dict[str, Tuple[str, ...]] = {
+    'list': ('page', 'per_page', 'keyword', 'report_type', 'status', 'task_id',
+             'algorithm_type', 'start_time', 'end_time', 'favorite', 'deleted'),
+    'detail': (),
+    'by_task': (),
+    'tab_counts': ('keyword', 'favorite', 'deleted'),
+    'statistics': ('dimension', 'start_time', 'end_time', 'algorithm_type'),
+    'progress': (),
+    'cases': ('report_id', 'page', 'per_page', 'keyword', 'category'),
+    'cases_search': ('report_id', 'keyword', 'category', 'categories', 'tags',
+                     'include_untagged', 'metrics', 'sort_by', 'sort_metric',
+                     'sort_resource', 'sort_order', 'page', 'per_page'),
+    'case_averages': ('report_id', 'task_id', 'category', 'categories', 'tags',
+                      'include_untagged'),
+}
+
+# 分页边界：网关对 page=0 与超大 per_page **不报错**（实测 page=0 返回首页、
+# per_page=1000 一次返回全量），放过去会让模型用一次调用拉全表。
+REPORT_PAGE_MIN = 1
+REPORT_PER_PAGE_MAX = 200
+
+# 报告对比的只读动作（INT-2463，本地组合实现，见模块 docstring）
+# - ``compare``：按报告 ID 逐个读权威字段并排（任意报告类型）；
+# - ``secondary_compare``：二次对比，源报告必须是平台已有的对比 / 二次对比报告；
+# - ``trend``：统计趋势序列（映射 MCP ``report_statistics_trend``，GET 只读）。
+REPORT_COMPARE_ACTIONS: Tuple[str, ...] = (
+    'compare', 'secondary_compare', 'trend')
+
+REPORT_COMPARE_TREND_PARAMS: Tuple[str, ...] = (
+    'trend_type', 'metric', 'start_time', 'end_time')
+
+# 一次并排的报告数量上限：平台对比报告按 2~N 个任务聚合，这里取 10 作为
+# 单次上下文可承载的上限，超过请分批（多轮对比结果由 artifact 承载）。
+REPORT_COMPARE_MAX_REPORTS = 10
+REPORT_COMPARE_MIN_REPORTS = 2
 
 # 音频只读动作 → MCP 工具名（映射 MCP audio_* 只读子集，INT-2458）
 #
@@ -327,7 +403,10 @@ ACTION_REQUIRED: Dict[str, Dict[str, Tuple[str, ...]]] = {
         'by_task': ('task_id',),
         'progress': ('report_id',),
         'cases': ('report_id',),
-        'case_averages': ('report_id',),
+        'cases_search': ('report_id',),
+        # case_averages 是「report_id 或 task_id 二选一」，由
+        # ``_normalize_report_query_arguments`` 做 one-of 校验：
+        # 单列 report_id 会把「按任务查均值」误判为缺参。
     },
     # 参数名与目标 REST 逐字一致（ids / md5_list 直接作为请求体字段）：
     # 不在这里做改名映射，避免意图层与 REST 出现两套字段口径。
@@ -502,16 +581,60 @@ INTENT_TOOLS: List[IntentTool] = [
         kind='intent_rest'),
     IntentTool(
         name='report_query',
-        description=('报告只读查询：列表、详情、按任务查、标签计数、统计 / 趋势、'
-                     '生成进度、用例明细 / 平均值。字段口径与 REST /api/v1/reports 一致。'),
+        description=('报告只读查询：列表（类型 / 状态 / 任务 / 算法 / 时间 / 收藏 / '
+                     '回收站过滤）、详情（指标矩阵、设备 / API 统计、用例分类统计）、'
+                     '按任务查、页签计数、维度统计、生成进度、用例列表 / 用例搜索、'
+                     '用例指标均值。字段口径与 REST /api/v1/reports 一致，'
+                     '数值一律取接口返回值，不重新计算、不四舍五入。'),
         parameters=_schema({
             'action': _prop('string', '查询动作', required=True,
                             enum=list(REPORT_QUERY_ACTIONS)),
-            'report_id': _prop('integer', '报告 ID（detail / progress / cases / case_averages 必填）'),
-            'task_id': _prop('integer', '任务 ID（by_task 必填）'),
-            'keyword': _prop('string', '关键词过滤（list / tab_counts / statistics）'),
-            'page': _prop('integer', '页码（list）'),
-            'per_page': _prop('integer', '每页条数（list）'),
+            'report_id': _prop('integer', '报告 ID（detail / progress / cases / '
+                                          'cases_search 必填；case_averages 需与 '
+                                          'task_id 二选一）'),
+            'task_id': _prop('integer', '任务 ID（by_task 必填；case_averages 需与 '
+                                        'report_id 二选一；list 可按任务过滤）'),
+            'keyword': _prop('string', '关键词过滤（list / tab_counts / cases / '
+                                       'cases_search）'),
+            'report_type': _prop('string', '报告类型过滤（list）',
+                                 enum=list(platform_contract_catalog.REPORT_TYPE_VALUES)),
+            'status': _prop('string', '发布状态过滤（list），只表达 draft / published；'
+                                      '生成进度看 progress 动作',
+                            enum=list(platform_contract_catalog.REPORT_STATUS_VALUES)),
+            'algorithm_type': _prop('string', '算法类型过滤（list / statistics）'),
+            'start_time': _prop('string', '起始时间过滤（list / statistics，如 '
+                                          '2026-10-01 或 ISO 8601）'),
+            'end_time': _prop('string', '结束时间过滤（list / statistics，如 '
+                                        '2026-11-30 或 ISO 8601）'),
+            'favorite': _prop('boolean', '仅当前用户收藏（list / tab_counts）'),
+            'deleted': _prop('boolean', '仅回收站软删除项（list / tab_counts）'),
+            'dimension': _prop('string', '统计维度（statistics）',
+                               enum=list(platform_contract_catalog.REPORT_STATISTICS_DIMENSIONS)),
+            'page': _prop('integer', '页码，从 1 开始（list / cases / cases_search）'),
+            'per_page': _prop('integer', f'每页条数，最大 {REPORT_PER_PAGE_MAX}'
+                                         '（list / cases / cases_search）'),
+            'category': _prop('string', '用例分类过滤（cases / cases_search / '
+                                        'case_averages；单分类）'),
+            'categories': _prop('array', '用例分类多选过滤（cases_search / '
+                                         'case_averages，与 category 并存时按 IN 过滤）',
+                                items={'type': 'string'}),
+            'tags': _prop('array', '标签过滤（cases_search / case_averages）；'
+                                   'GET cases 不支持 tags（网关按字符串校验会 400）',
+                          items={'type': 'string'}),
+            'include_untagged': _prop('boolean', '未打标签用例口径（cases_search / '
+                                                 'case_averages）：与 tags 同用时取'
+                                                 '「命中标签 + 未打标签」并集，单独使用时'
+                                                 '等于「只看未打标签用例」'),
+            'metrics': _prop('array', '按指标名筛选用例（cases_search，用例 metrics 中'
+                                      '包含该指标名）', items={'type': 'string'}),
+            'sort_by': _prop('string', '用例排序字段（cases_search）',
+                             enum=['name', 'category', 'createdat', 'metric']),
+            'sort_metric': _prop('string', '按指标排序时的指标名（cases_search，'
+                                           'sort_by=metric 时用）'),
+            'sort_resource': _prop('string', '按指标排序时限定资源（cases_search，'
+                                             '设备 / API 名，缺省聚合所有资源）'),
+            'sort_order': _prop('string', '排序方向（cases_search）',
+                                enum=['asc', 'desc']),
         }, required=('action',)),
         risk='READ', permissions=('report:read',), enabled=True, kind='intent_rest'),
     IntentTool(
@@ -891,14 +1014,26 @@ INTENT_TOOLS: List[IntentTool] = [
         }, required=('action',)),
         risk='WRITE', permissions=('report:create',), enabled=False, kind='reserved'),
     IntentTool(
-        name='report_compare', description='多报告 / 二次对比、趋势（只读）。',
+        name='report_compare',
+        description=('报告对比（只读）：多报告并排取数（指标矩阵 / 设备与 API 统计 / '
+                     '用例分类统计）、二次对比（源报告须为已有对比报告）、'
+                     '统计趋势序列。逐报告返回接口原文数值，不做二次计算、'
+                     '不生成平台对比报告（生成对比报告是写操作，M2 走审批）。'),
         parameters=_schema({
-            'action': _prop('string', '动作', required=True,
-                            enum=['compare', 'secondary_compare', 'trend']),
-            'report_ids': _prop('array', '报告 ID 列表', items={'type': 'integer'}),
-            'body': _prop('object', '对比参数'),
+            'action': _prop('string', '对比动作', required=True,
+                            enum=list(REPORT_COMPARE_ACTIONS)),
+            'report_ids': _prop('array', f'参与并排的报告 ID（compare / '
+                                         f'secondary_compare 必填，'
+                                         f'{REPORT_COMPARE_MIN_REPORTS}~'
+                                         f'{REPORT_COMPARE_MAX_REPORTS} 个）',
+                                items={'type': 'integer'}),
+            'trend_type': _prop('string', '趋势类型（trend，缺省 time）',
+                                enum=list(platform_contract_catalog.REPORT_TREND_TYPES)),
+            'metric': _prop('string', '趋势指标过滤（trend，取值以接口返回为准）'),
+            'start_time': _prop('string', '趋势起始时间（trend）'),
+            'end_time': _prop('string', '趋势结束时间（trend）'),
         }, required=('action',)),
-        risk='READ', permissions=('report:compare',), enabled=False, kind='reserved'),
+        risk='READ', permissions=('report:compare',), enabled=True, kind='local'),
     IntentTool(
         name='report_export', description='导出 PDF / PPTX / HTML / MD（写）。',
         parameters=_schema({
@@ -937,21 +1072,29 @@ AGENT_UNEXPOSED_MCP_TOOLS: Dict[str, str] = {
 }
 
 # tool_search 索引：205 个 MCP 工具 + 意图工具（含 5 个预留名称）。
-# MCP 与意图工具存在同名项（report_compare / report_export）：保留 MCP 条目
-# （可直接调用），同名意图条目不再重复进索引，避免同一 name 出现两次。
+# MCP 与意图工具存在同名项（report_compare / report_export）：
+# - 已启用的意图工具优先 —— 否则索引里留下的是 MCP 那条 1:1 写接口
+#   （``POST /reports/compare`` 会落库生成报告，risk=WRITE、Schema 是 body 包），
+#   模型按它调用会撞上意图 Schema 的 INVALID_ARGUMENTS，且语义上是写操作
+#   （INT-2463：Agent 侧 report_compare 是只读组合工具）；
+# - 未启用的意图工具（如 report_export）仍保留 MCP 条目（可直接调用）。
 # 宿主语境工具（AGENT_UNEXPOSED_MCP_TOOLS）不计入索引。
 _MCP_NAMES = frozenset(t['name'] for t in MCP_TOOLS)
+_ENABLED_INTENT_NAMES = frozenset(t.name for t in INTENT_TOOLS if t.enabled)
 
 TOOL_INDEX: List[dict] = [
     {'name': t['name'], 'description': t['description'],
      'inputSchema': t['inputSchema'], 'permissions': list(t['permissions']),
      'risk': 'READ' if t['method'] == 'GET' else 'WRITE', 'kind': 'mcp'}
-    for t in MCP_TOOLS if t['name'] not in AGENT_UNEXPOSED_MCP_TOOLS
+    for t in MCP_TOOLS
+    if t['name'] not in AGENT_UNEXPOSED_MCP_TOOLS
+    and t['name'] not in _ENABLED_INTENT_NAMES
 ] + [
     {'name': t.name, 'description': t.description,
      'inputSchema': t.parameters, 'permissions': list(t.permissions),
      'risk': t.risk, 'kind': t.kind, 'enabled': t.enabled}
-    for t in INTENT_TOOLS if t.name not in _MCP_NAMES
+    for t in INTENT_TOOLS
+    if t.name not in _MCP_NAMES or t.name in _ENABLED_INTENT_NAMES
 ]
 
 TOOL_INDEX_BY_NAME: Dict[str, dict] = {t['name']: t for t in TOOL_INDEX}
@@ -1083,6 +1226,12 @@ def permissions_for(name: str,
         if by_action is not None:
             return by_action
     return tuple(tool.permissions)
+
+
+# 本地实现的意图工具（不映射 REST）：tool_search / platform_contract 在网关
+# 内部完成；report_compare 由 ToolGateway 组合只读 REST（见模块 docstring）。
+LOCAL_INTENT_TOOL_NAMES = frozenset(
+    {'tool_search', 'platform_contract', 'report_compare'})
 
 
 def risk_of(name: str) -> Optional[str]:
@@ -1285,20 +1434,119 @@ def _normalize_log_diagnose_arguments(action: str,
     return _normalize_action_arguments('log_diagnose', action, merged)
 
 
+def _check_page_bounds(action: str, merged: Dict[str, Any]) -> Optional[str]:
+    """分页边界：网关对 page<1 / 超大 per_page 不报错，工具层必须拦。"""
+    page = merged.get('page')
+    if page is not None:
+        if isinstance(page, bool) or not isinstance(page, int) or page < REPORT_PAGE_MIN:
+            return (f'参数 page 必须是 ≥{REPORT_PAGE_MIN} 的整数'
+                    f'（action={action} 收到 {page!r}）')
+    per_page = merged.get('per_page')
+    if per_page is not None:
+        if isinstance(per_page, bool) or not isinstance(per_page, int) or per_page < 1:
+            return f'参数 per_page 必须是正整数（action={action} 收到 {per_page!r}）'
+        if per_page > REPORT_PER_PAGE_MAX:
+            return (f'参数 per_page 上限 {REPORT_PER_PAGE_MAX}'
+                    f'（action={action} 收到 {per_page}）；需要更多请分页取')
+    return None
+
+
+def _normalize_report_query_arguments(action: str,
+                                     merged: Dict[str, Any]) -> Optional[str]:
+    """按动作校验 / 归一 report_query 参数，返回错误文本或 None。
+
+    - 动作不支持的参数直接拒绝（网关查询 Schema ``extra='ignore'``，传错参数
+      会被静默丢弃并返回全量）；
+    - ``page`` / ``per_page`` 有边界（网关不校验）；
+    - ``case_averages`` 的 ``report_id`` / ``task_id`` 二选一。
+    """
+    allowed = set(REPORT_QUERY_PARAMS.get(action, ()))
+    allowed |= set(required_for_action('report_query', action))
+    unknown = sorted(name for name in merged
+                     if name not in allowed and merged[name] is not None)
+    if unknown:
+        return f'action={action} 不支持参数：{"、".join(unknown)}'
+
+    bounds_error = _check_page_bounds(action, merged)
+    if bounds_error:
+        return bounds_error
+
+    if action == 'case_averages':
+        if merged.get('report_id') is None and merged.get('task_id') is None:
+            return ('action=case_averages 需要 report_id 或 task_id 之一'
+                    '（接口按报告或任务聚合用例指标均值）')
+        if merged.get('report_id') is not None and merged.get('task_id') is not None:
+            return ('action=case_averages 的 report_id 与 task_id 只能二选一；'
+                    '按报告聚合会从对比矩阵解析源任务集合，同时传任务口径会产生歧义')
+    return None
+
+
+def validate_report_compare(action: str,
+                            arguments: Dict[str, Any]) -> Optional[str]:
+    """校验 report_compare 的动作 / 参数组合，返回错误文本或 None。
+
+    compare / secondary_compare：
+    - ``report_ids`` 必填、元素为非零整数、去重后 2~10 个（平台对比至少 2 份）；
+    - 其余参数只允许 trend 的三个时间 / 类型参数，传别的一律拒绝。
+    trend：只允许 ``trend_type`` / ``metric`` / ``start_time`` / ``end_time``。
+    """
+    if action not in REPORT_COMPARE_ACTIONS:
+        return f'action 取值必须是 {"/".join(REPORT_COMPARE_ACTIONS)} 之一'
+
+    if action == 'trend':
+        unknown = sorted(name for name in arguments
+                         if name != 'action'
+                         and name not in REPORT_COMPARE_TREND_PARAMS
+                         and arguments[name] is not None)
+        if unknown:
+            return f'action=trend 不支持参数：{"、".join(unknown)}'
+        return None
+
+    unknown = sorted(name for name in arguments
+                     if name != 'action' and name != 'report_ids'
+                     and arguments[name] is not None)
+    if unknown:
+        return f'action={action} 不支持参数：{"、".join(unknown)}'
+
+    raw_ids = arguments.get('report_ids')
+    if not raw_ids:
+        return f'action={action} 缺少必填参数：report_ids'
+    if not isinstance(raw_ids, list):
+        return '参数 report_ids 必须是整数数组'
+    ids: List[int] = []
+    for value in raw_ids:
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            return f'参数 report_ids 只能包含正整数报告 ID（收到 {value!r}）'
+        if value in ids:
+            return f'参数 report_ids 含重复报告 ID：{value}'
+        ids.append(value)
+    if len(ids) < REPORT_COMPARE_MIN_REPORTS:
+        return (f'action={action} 至少需要 {REPORT_COMPARE_MIN_REPORTS} 个报告，'
+                f'当前 {len(ids)} 个')
+    if len(ids) > REPORT_COMPARE_MAX_REPORTS:
+        return (f'action={action} 单次最多 {REPORT_COMPARE_MAX_REPORTS} 个报告，'
+                f'当前 {len(ids)} 个；请分批对比')
+    return None
+
+
 def resolve_rest_call(name: str, arguments: Dict[str, Any]
                       ) -> Tuple[Optional[dict], Optional[dict], Optional[str]]:
     """把意图工具 / 长尾 MCP 工具解析为 ``(MCP 工具, 合并参数, 错误文本)``。
 
-    - ``task_query`` / ``report_query`` / ``evaluation_query``：按 ``action``
-      映射到对应 MCP 只读工具，去掉 ``action`` 后其余参数原样透传（路径 /
-      查询 / body 由共享构造器决定）；
+    - ``task_query`` / ``report_query`` / ``evaluation_query`` / ``audio_query`` /
+      ``algorithm_query``：按 ``action`` 映射到对应 MCP 只读工具，去掉 ``action``
+      后其余参数原样透传（路径 / 查询 / body 由共享构造器决定）；
     - ``device_query``：设备动作映射 MCP ``device_*`` GET 工具，SPL 动作映射
       ``device_tools`` 的 Agent 专用只读目标（该域没有对外 MCP 工具）；
     - 其他 MCP 工具名（tool_search 命中后直接调用）：原样透传参数；
+    - 本地实现的工具（``LOCAL_INTENT_TOOL_NAMES``，含 ``report_compare``）不走
+      REST 映射：返回错误文本，避免同名 MCP 的写接口被当成本地只读工具执行；
     - 未知名称或动作非法：返回错误文本，由 ToolGateway 收敛为普通失败结果。
     """
     if name == 'device_query':
         return device_tools.resolve_call(arguments or {})
+    if name in LOCAL_INTENT_TOOL_NAMES:
+        return None, None, f'工具 {name} 由本地实现，不映射 REST 接口'
     mapping = _REST_ACTION_MAP.get(name)
     if mapping is not None:
         action = arguments.get('action')
@@ -1344,6 +1592,10 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
                 return None, None, normalize_error
         if name == 'dashboard_query':
             normalize_error = _normalize_action_arguments(name, action, merged)
+            if normalize_error:
+                return None, None, normalize_error
+        if name == 'report_query':
+            normalize_error = _normalize_report_query_arguments(action, merged)
             if normalize_error:
                 return None, None, normalize_error
         return mcp, merged, None
@@ -1401,16 +1653,19 @@ __all__ = [
     'AUDIO_QUERY_ACTIONS', 'CONDITIONAL_REQUIRED', 'DASHBOARD_QUERY_ACTIONS',
     'DASHBOARD_QUERY_PARAMS', 'ENABLED_TOOLS', 'EVALUATION_QUERY_ACTIONS',
     'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool',
-    'LOCAL_TOOL_NAMES', 'LOG_DIAGNOSE_ACTIONS', 'LOG_DIAGNOSE_ALL_ACTIONS',
-    'LOG_DIAGNOSE_DEFAULT_MAX_ROWS', 'LOG_DIAGNOSE_LOCAL_ACTIONS',
-    'LOG_DIAGNOSE_MAX_ROWS', 'LOG_DIAGNOSE_PARAMS',
-    'LOG_DIAGNOSE_STATS_UNSUPPORTED_PARAMS', 'MCP_TOOLS',
-    'REPORT_QUERY_ACTIONS', 'TASK_DOMAIN_STATS_GRANULARITIES',
+    'LOCAL_INTENT_TOOL_NAMES', 'LOCAL_TOOL_NAMES', 'LOG_DIAGNOSE_ACTIONS',
+    'LOG_DIAGNOSE_ALL_ACTIONS', 'LOG_DIAGNOSE_DEFAULT_MAX_ROWS',
+    'LOG_DIAGNOSE_LOCAL_ACTIONS', 'LOG_DIAGNOSE_MAX_ROWS',
+    'LOG_DIAGNOSE_PARAMS', 'LOG_DIAGNOSE_STATS_UNSUPPORTED_PARAMS', 'MCP_TOOLS',
+    'REPORT_COMPARE_ACTIONS', 'REPORT_COMPARE_MAX_REPORTS',
+    'REPORT_COMPARE_MIN_REPORTS', 'REPORT_PAGE_MIN', 'REPORT_PER_PAGE_MAX',
+    'REPORT_QUERY_ACTIONS', 'REPORT_QUERY_PARAMS',
+    'TASK_DOMAIN_STATS_GRANULARITIES',
     'TASK_QUERY_ACTIONS', 'TASK_QUERY_PARAMS', 'TESTCASE_QUERY_ACTIONS',
     'TESTCASE_QUERY_PARAMS', 'TESTCASE_VISIBILITY_VALUES', 'TOOL_INDEX',
     'TOOL_INDEX_BY_NAME', 'action_params', 'conditional_required',
     'permissions_for',
     'platform_contract',
     'required_for_action', 'resolve_rest_call', 'risk_of', 'tool_search',
-    'validate_arguments',
+    'validate_arguments', 'validate_report_compare',
 ]

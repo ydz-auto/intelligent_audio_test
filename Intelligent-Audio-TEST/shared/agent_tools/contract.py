@@ -90,6 +90,21 @@ ALGORITHM_STATUS_VALUES: Tuple[str, ...] = ('online', 'offline', 'draft')
 ALGORITHM_PARAM_TYPE_VALUES: Tuple[str, ...] = ('device', 'api')
 ALGORITHM_MAPPING_SOURCE_VALUES: Tuple[str, ...] = ('device', 'api')
 
+# 报告域接口取值（INT-2463）。事实源：
+# - 类型 / 发布态：`shared.models.common_enums.ReportType` / `ReportStatus`
+#   （网关列表过滤、tab 计数、报告详情都按这套值返回；`report_service/domain/
+#   entities/report.py` 的 standard/detailed 是历史词表，不进接口）；
+# - 统计维度 / 趋势类型：网关 `ReportStatisticsQuery.dimension` /
+#   `ReportStatisticsTrendQuery.trend_type`，服务端对越界值直接 400 并回列可选值。
+REPORT_TYPE_VALUES: Tuple[str, ...] = tuple(v.value for v in ReportType)
+REPORT_STATUS_VALUES: Tuple[str, ...] = tuple(v.value for v in ReportStatus)
+REPORT_STATISTICS_DIMENSIONS: Tuple[str, ...] = (
+    'time', 'device_type', 'evaluation_metric')
+REPORT_TREND_TYPES: Tuple[str, ...] = ('time', 'dimension')
+# 二次对比的源报告类型：平台只允许对「对比 / 二次对比」报告再做二次对比。
+REPORT_COMPARABLE_TYPES: Tuple[str, ...] = (
+    ReportType.COMPARISON.value, ReportType.SECONDARY_COMPARISON.value)
+
 # 枚举速查：值取「接口里的值」（小写），来源标注在 source
 ENUMS: List[Dict[str, Any]] = [
     {'name': 'task_status', 'label': '任务状态',
@@ -126,6 +141,12 @@ ENUMS: List[Dict[str, Any]] = [
     {'name': 'algorithm_mapping_source', 'label': '参数映射源类型',
      'values': list(ALGORITHM_MAPPING_SOURCE_VALUES),
      'source': 'api_gateway AlgorithmMappingListQuery.source_type'},
+    {'name': 'report_statistics_dimension', 'label': '报告统计维度',
+     'values': list(REPORT_STATISTICS_DIMENSIONS),
+     'source': 'api_gateway ReportStatisticsQuery.dimension'},
+    {'name': 'report_trend_type', 'label': '报告趋势类型',
+     'values': list(REPORT_TREND_TYPES),
+     'source': 'api_gateway ReportStatisticsTrendQuery.trend_type'},
 ]
 
 NAMING_RULES: List[str] = [
@@ -198,5 +219,7 @@ def lookup(query: str = '', section: str = 'all') -> Dict[str, Any]:
 __all__ = [
     'ALGORITHM_MAPPING_SOURCE_VALUES', 'ALGORITHM_PARAM_TYPE_VALUES',
     'ALGORITHM_STATUS_VALUES', 'CONVENTIONS', 'ENDPOINT_PREFIXES', 'ENUMS',
-    'NAMING_RULES', 'SERVICES', 'lookup',
+    'NAMING_RULES', 'REPORT_COMPARABLE_TYPES', 'REPORT_STATISTICS_DIMENSIONS',
+    'REPORT_STATUS_VALUES', 'REPORT_TREND_TYPES', 'REPORT_TYPE_VALUES',
+    'SERVICES', 'lookup',
 ]

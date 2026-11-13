@@ -194,12 +194,14 @@ def test_spl_actions_are_agent_only_readonly_targets():
         assert target['path'].startswith('/api/v1/'), action
         assert target['permissions'] in (['spl:read'], ['digital_spl:read']), \
             action
-        # 不进外部 MCP tools/list（205 项冻结），只能由 device_query 调用
+        # 不进外部 MCP tools/list（INT-2461 后为 207 项），只能由 device_query 调用
         assert mcp_registry.get_tool(target['name']) is None, target['name']
 
 
 def test_external_mcp_surface_is_unchanged():
-    assert len(mcp_registry.TOOLS) == 205
+    # INT-2453 谱的 205 项 + INT-2461 追加的 2 个首页只读工具（home_stats_details /
+    # home_stats_summary），与 tests/unit/test_int2453_agent_tools.MCP_TOOL_COUNT 同口径
+    assert len(mcp_registry.TOOLS) == 207
     mcp_names = {tool['name'] for tool in mcp_registry.TOOLS}
     for target in device_tools.DEVICE_SPL_TARGETS.values():
         assert target['name'] not in mcp_names
