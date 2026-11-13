@@ -97,6 +97,23 @@ class ApprovalExpired(AgentDomainError):
         super().__init__(f'审批单已过期: {approval_id}')
 
 
+class ApprovalConfirmationRequired(AgentDomainError):
+    """破坏性操作（DESTRUCTIVE）必须二次确认（INT-2467）。
+
+    批准请求除 ``APPROVE`` 外还要显式 ``confirm=true``：单次审批不足以放行
+    重启 / 关机 / 安装 / 卸载 / 批量设备控制这类不可回滚动作。拒绝不需要。
+    """
+
+    code = 'APPROVAL_CONFIRMATION_REQUIRED'
+
+    def __init__(self, approval_id: str, tool: str = ''):
+        self.approval_id = approval_id
+        self.tool = tool or ''
+        super().__init__(
+            f'破坏性操作需要二次确认（approval_id={approval_id}'
+            f'{", tool=" + tool if tool else ""}）')
+
+
 class SkillNotAvailable(AgentDomainError):
     """Skill 未注册，或当前用户权限不满足（§4.2 规则 7）。"""
 

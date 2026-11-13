@@ -208,6 +208,8 @@ def decide_approval(approval_id: str, payload: ApprovalDecisionRequest,
     - 只有 run 归属者本人能决策（越权 404，不泄漏存在性）；
     - 并发审批只有一个请求生效，另一个 409；
     - 过期单 409 且不执行，同时唤醒 run 把「过期」结果回灌模型；
+    - 破坏性操作（DESTRUCTIVE）批准必须带 ``confirm=true``（二次确认），
+      缺省 400 且不落决策（INT-2467）；
     - 决策本身不执行写操作：执行由 Loop 在恢复时按「实时权限 + 幂等键」
       完成（执行前重新校验权限与实时状态）。
     """
@@ -223,7 +225,7 @@ def decide_approval(approval_id: str, payload: ApprovalDecisionRequest,
         approval, run = container.run_service.decide_approval(
             approval_id, owner_id=identity.user_id,
             tenant_id=identity.tenant_id, decision=decision,
-            permissions=identity.permissions)
+            permissions=identity.permissions, confirm=payload.confirm)
     except ApprovalExpired as exc:
         # 过期单不执行；让 run 继续，把「审批过期」作为工具结果回灌模型
         container.executor.submit(exc.run_id)

@@ -19,7 +19,8 @@ from fastapi.testclient import TestClient
 from agent_service.app import create_app
 from agent_service.domain.model.entities import ToolCallRequest
 from tests.agent_write.helpers import (
-    FakeLlm, FakeToolGateway, make_container, text_turn, tool_turn, write_tool,
+    FakeLlm, FakeToolGateway, destructive_tool, make_container, text_turn,
+    tool_turn, write_tool,
 )
 
 OWNER = {'X-User-Id': '7', 'X-Tenant-Id': 't1',
@@ -58,6 +59,41 @@ def _approval_id(client, run_id, headers=OWNER):
     items = listing.json()['items']
     assert len(items) == 1
     return items[0]
+
+
+def _destructive_client(tmp_path, *, name='approval_destructive.db'):
+    call = ToolCallRequest(tool_call_id='c1', name='device_control',
+                           arguments={'action': 'reboot', 'device_id': 10})
+    llm = FakeLlm([tool_turn([call]), text_turn('已完成')])
+    gateway = FakeToolGateway(tools=[destructive_tool('device_control')])
+    container, _engine, _sf = make_container(tmp_path, llm, gateway,
+                                             name=name)
+    return TestClient(create_app(container=container)), container
+
+
+def test_destructive_approval_requires_confirm_via_api(tmp_path):
+    """INT-2467：破坏性操作批准必须二次确认（缺 confirm 400 且不落决策）。"""
+    admin = {'X-User-Id': '7', 'X-Tenant-Id': 't1',
+             'X-User-Permissions': '*'}
+    client, container = _destructive_client(tmp_path)
+    with client:
+        run_id = _create_waiting_run(client, headers=admin)
+        item = _approval_id(client, run_id, headers=admin)
+        assert item['proposal']['risk'] == 'DESTRUCTIVE'
+
+        missing = client.post(
+            f"/api/v1/agent/approvals/{item['id']}/decision",
+            json={'decision': 'APPROVE'}, headers=admin)
+        assert missing.status_code == 400, missing.text
+        assert missing.json()['code'] == 'APPROVAL_CONFIRMATION_REQUIRED'
+        still = _approval_id(client, run_id, headers=admin)
+        assert still['status'] == 'PENDING'
+
+        rejected = client.post(
+            f"/api/v1/agent/approvals/{item['id']}/decision",
+            json={'decision': 'REJECT'}, headers=admin)
+        assert rejected.status_code == 200, rejected.text
+        assert rejected.json()['approval']['status'] == 'REJECTED'
 
 
 def test_list_and_approve_via_api(tmp_path):

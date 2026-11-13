@@ -428,6 +428,35 @@ run 级预算、阈值、超时、并发数写入配置（环境变量 + `config
 > 6. **P3 收口**（INT-2547 八条 + 本次新增）见 §16「已登记残留」；其中代码注释 / Skill
 >    文案类不改本方案的对外口径。
 
+> **实现演进裁定（INT-2467，2026-11-14）**：M2 第一批域写工具落地，工具总数与风险
+> 等级仍与 §6.1 表 31 项逐项一致。
+>
+> 1. **启用集合 21 个**：M1 的 16 个 + `audio_import` / `audio_annotate` /
+>    `device_control`（`DESTRUCTIVE`）/ `spl_calibrate` / `driver_propose`；其余
+>    10 个 `enabled=false`（`testcase_write` / `tag_group_manage` /
+>    `evaluation_manage` / `algorithm_manage` / `task_run` / `report_generate` /
+>    `report_export` 与预留的 `ui_tree` / `ui_action` / `api_spec`）。
+> 2. **写路径一律先提案后审批**：域写工具的动作 → 目标 REST 由
+>    `shared/agent_tools/audio_tools.py` / `device_tools.py` 解析，执行走 INT-2466
+>    的 `agent_approval`（提案 / 决策 / 幂等 / 审计），网关无审批凭据不执行。
+> 3. **`device_control` 二次确认**：破坏性工具批准必须同时带 `confirm=true`
+>    （决策接口 400 + `APPROVAL_CONFIRMATION_REQUIRED`），提案 `diff` 里带
+>    `second_confirmation` 供审批端渲染；拒绝不需要确认。
+> 4. **`driver_propose` 权限**：RBAC 仍无独立驱动码（INT-2501 待规格），INT-2467
+>    改用 `device:update` 作为持有者判定（驱动属于设备接入能力；工具只产提案，
+>    发布默认关闭）。若需求规划师后续定出专用码，只改工具声明的 `permissions`。
+> 5. **`driver_propose` 实现**：本地工具（不映射 REST）。确定性模板生成
+>    `AppDriver` / `ApiVendorAdapter` + `capabilities.json` + `manifest.json` +
+>    `tests/`，宿主侧做 AST / JSON / 契约静态检查（不执行生成代码），再由
+>    `SandboxRunner.run_untrusted_code` 在 T2 跑 导入/编译、单测、mock 厂商契约
+>    （仅含 API 适配器时）、注册表 resolve。运行时不可用即
+>    `T2_RUNTIME_UNAVAILABLE`（不降级）；静态检查或 T2 失败 → `publishable=false`。
+>    发布是内部步骤：需 `AGENT_DRIVER_PUBLISH_ENABLED=true` + 已批准的独立审批单，
+>    本期无注册表写入通道（只保留守卫）。
+> 6. **SPL 写目标**：物理域 / 数字域没有对外 MCP 工具（§6.2 冻结 207 项），以
+>    Agent 专用 REST 目标声明在 `device_tools.SPL_CALIBRATE_TARGETS`，只经
+>    `spl_calibrate` 暴露；权限按动作收窄到 `spl:*` / `digital_spl:*`。
+
 ### 6.2 外部 MCP
 
 - 保持 `POST /api/v1/mcp` 的 1:1 工具语义不变：工具名 / 路径 / 权限声明逐项一致。
@@ -968,7 +997,7 @@ tests/agent_eval/coverage/       # M1 汇总评测：清单一致性 / 长尾 / 
 | # | 残留 | 位置 | 处置 |
 |---|---|---|---|
 | R1 | 代码注释仍写「205 个 MCP 工具」 | `shared/agent_tools/__init__.py:4`、`device_tools.py:9`、`intent_tools.py:20/:1074`、`search.py:4`、`testcase_tools.py:11` | 属索引视图口径（§6.1 裁定 4），对外仍以 §6.2 的 207 为准；注释随 M2 统一改 |
-| R2 | `driver-proposal` Skill 称调用 `driver_propose` 返回 `TOOL_NOT_ENABLED` | `skills/driver-proposal/SKILL.md:47,100` | 实际先 `PERMISSION_DENIED`（无 RBAC 码），只有 `*` 通配到 `TOOL_NOT_ENABLED`；文案随 M2 修 |
+| R2 | ~~`driver-proposal` Skill 称调用 `driver_propose` 返回 `TOOL_NOT_ENABLED`~~ | `skills/driver-proposal/SKILL.md` | **已修（INT-2467）**：Skill 改为「审批前返回 `APPROVAL_REQUIRED`」，工具已启用 |
 | R3 | `tag-group` Skill 称 `group_list` 可分页 | `skills/tag-group/SKILL.md:55,63` | `group_list` 的 MCP Schema 无 `page` / `per_page`，按 Schema 调用；文案随 M2 修 |
 | R4 | `testcase_generate` 只声明 `testcase:read`，实际还依赖 audio / algorithm / evaluation / playback / group 只读权限 | `shared/agent_tools/intent_tools.py:756` | 工具描述补依赖权限（M2） |
 | R5 | 工具层聚合上限是代码常量 | `intent_tools.py:273`、`testcase_tools.py:119`、`diagnostics.py:27-30` | 见 §5.3；配置化（M2） |

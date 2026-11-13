@@ -6,9 +6,10 @@
 1. ``ENDPOINT_PREFIXES`` 只列网关真实注册的前缀，不再返回不存在的
    ``/api/v1/trash``；回收站按「各实体路由下的 restore / purge 动作」表述。
 2. 意图工具声明的权限码必须出自 RBAC 事实源（``seed_rbac.PERMISSIONS``）
-   或同能力 MCP 工具实际使用的码；M0 暂未定码的 1 项（driver_propose）
-   固定为「待规格」白名单，防止它被静默启用。记忆工具（INT-2490）只要求
-   登录：记忆域没有 RBAC 权限码，隔离由服务端按身份构造路径 + 审批保证。
+   或同能力 MCP 工具实际使用的码；M0 暂未定码的 driver_propose 在 INT-2467
+   启用时改用 ``device:update``（驱动属于设备接入能力，发布仍走单独审批），
+   「待规格」白名单随之清空。记忆工具（INT-2490）只要求登录：记忆域没有
+   RBAC 权限码，隔离由服务端按身份构造路径 + 审批保证。
 """
 import ast
 import os
@@ -25,11 +26,12 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
 
 # 「待规格」白名单：RBAC 里确实还没有对应权限码，等需求规划师定码（INT-2501）
 # INT-2490：memory_write 改为只要求登录（permissions 为空），从名单移出。
-_PENDING_PERMISSION_SPEC = {'driver_propose'}
+_PENDING_PERMISSION_SPEC = set()
 
 # 本卡按 RBAC / MCP 事实源改正的 7 个预留工具
 _EXPECTED_PERMISSIONS = {
     'audio_import': {'audio:upload'},
+    'audio_annotate': {'audio:update'},
     'tag_group_manage': {'tag:create', 'tag:update', 'tag:delete',
                          'group:create', 'group:update', 'group:delete'},
     'evaluation_manage': {'evaluation:dim_manage',
@@ -38,7 +40,12 @@ _EXPECTED_PERMISSIONS = {
     'algorithm_manage': {'algorithm:definition_manage',
                          'algorithm:param_manage',
                          'algorithm:group_manage'},
-    'spl_calibrate': {'spl:create', 'spl:update', 'spl:test_tone'},
+    'device_control': {'device:control'},
+    # 物理域 + 数字域按动作收窄（INT-2467）：工具级声明是并集
+    'spl_calibrate': {'spl:create', 'spl:update', 'spl:delete',
+                      'spl:test_tone', 'digital_spl:create',
+                      'digital_spl:update', 'digital_spl:delete'},
+    'driver_propose': {'device:update'},
     'report_export': {'report:read'},
     'dashboard_query': {'home:read'},
 }
@@ -127,9 +134,12 @@ def test_pending_permission_spec_is_exactly_the_known_tools():
 
 def test_fixed_tools_use_fact_source_permission_codes():
     rbac = _rbac_codes()
-    # INT-2461 启用了 dashboard_query（首页只读）；INT-2469 启用 evaluation_manage
-    # （M2 写工具，权限码补上可见性分享 evaluation:share）
-    enabled_later = {'dashboard_query', 'evaluation_manage'}
+    # INT-2461 启用 dashboard_query（首页只读）；INT-2469 启用 evaluation_manage
+    # （M2 写工具，权限码补上可见性分享 evaluation:share）；INT-2467 启用
+    # 音频 / 设备 / SPL 写与驱动提案
+    enabled_later = {'dashboard_query', 'evaluation_manage', 'audio_import',
+                     'audio_annotate', 'device_control', 'spl_calibrate',
+                     'driver_propose'}
     for name, expected in _EXPECTED_PERMISSIONS.items():
         tool = intent_tools.INTENT_TOOL_BY_NAME[name]
         assert set(tool.permissions) == expected, name

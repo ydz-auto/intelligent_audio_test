@@ -47,9 +47,18 @@ M1_SKILLS = frozenset({
 })
 MCP_TOTAL = 207
 
+#: INT-2467（M2）：各 Skill 携带的**本域写工具**；其余 allowed-tools 仍须只读。
+SKILL_WRITE_TOOLS = {
+    'audio-import': {'audio_import', 'audio_annotate'},
+    'device-operations': {'device_control'},
+    'spl-calibration': {'spl_calibrate'},
+    'driver-proposal': {'driver_propose'},
+}
 # M2 起写意图工具开始按域进入 Skill allowed-tools：只有本集合里的写工具可以被
 # Skill 声明（新增写工具必须同时在这里登记，避免「悄悄把写工具塞进 Skill」）。
-M2_WRITE_SKILL_TOOLS = frozenset({'evaluation_manage'})
+# 单一事实源 = 按域归属表 ∪ 非域归属的写工具（INT-2469 评估写）。
+M2_WRITE_SKILL_TOOLS = frozenset({'evaluation_manage'}) | frozenset(
+    name for tools in SKILL_WRITE_TOOLS.values() for name in tools)
 
 
 def _load_contract():
@@ -104,13 +113,17 @@ def test_skills_allowed_tools_stay_inside_the_31_names():
         assert set(allowed) <= set(SPEC_NAMES), (
             f'{skill.name} 引用了未注册工具 '
             f'{set(allowed) - set(SPEC_NAMES)}')
+        write_tools = SKILL_WRITE_TOOLS.get(skill.name, set())
         for name in allowed:
             tool = intent_tools.INTENT_TOOL_BY_NAME[name]
             assert tool.enabled is True, f'{skill.name} 引用未启用工具 {name}'
-            if tool.risk != 'READ':
-                assert name in M2_WRITE_SKILL_TOOLS, (
-                    f'{skill.name} 引用了未登记的写工具 {name}；'
-                    '写工具进 Skill 必须在 M2_WRITE_SKILL_TOOLS 显式登记')
+            if name in write_tools:
+                # 写路径一律先提案后审批；Skill 只允许带本域写工具
+                assert tool.risk in ('WRITE', 'DESTRUCTIVE'), name
+            else:
+                assert tool.risk == 'READ', (
+                    f'{skill.name} 引用了非本域写工具 {name}；'
+                    '写工具只允许出现在携带它的本域 Skill 里')
     assert M1_SKILLS <= seen_skills, f'缺少 M1 Skill：{M1_SKILLS - seen_skills}'
     assert 'platform-reference' in seen_skills
 
@@ -131,6 +144,9 @@ def test_enabled_read_tools_are_declared_or_documented():
     declared = set()
     for skill in registry.skills:
         declared |= set(skill.meta.allowed_tools)
+    enabled_read = {tool.name for tool in intent_tools.INTENT_TOOLS
+                    if tool.enabled and tool.risk == 'READ'
+                    and tool.name not in intent_tools.ALWAYS_AVAILABLE_TOOLS}
     enabled_read = {tool.name for tool in intent_tools.INTENT_TOOLS
                     if tool.enabled and tool.risk == 'READ'
                     and tool.name not in intent_tools.ALWAYS_AVAILABLE_TOOLS}

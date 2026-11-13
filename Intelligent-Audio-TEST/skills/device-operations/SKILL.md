@@ -1,21 +1,23 @@
 ---
 name: device-operations
 description: >-
-  被测设备运维口径速查：设备列表与详情、设备分组、在线状态与状态历史（含健康检查
-  事件）、告警与告警规则、可用序列号、驱动关键词，以及连接 / 重启 / 扫描 / 安装等
-  写动作的口径与前置条件（M1 只解释不执行）。
+  被测设备运维：设备列表与详情、设备分组、在线状态与状态历史（含健康检查事件）、
+  告警与告警规则、可用序列号、驱动关键词，以及连接 / 断开 / 重启 / 关机 / 扫描 /
+  安装 / 卸载 / 批量控制（写操作走审批 + 二次确认）。
   触发词：设备列表、设备详情、设备分组、设备状态、状态历史、设备告警、告警规则、
   可用序列号、序列号列表、驱动关键词、设备实验室、设备在线、设备离线、设备占用、
   连接设备、重启设备、设备扫描、安装应用、卸载应用、健康检查状态。
   不适用：SPL 映射 / 校准 / 测试音（spl-calibration 负责）；设备驱动代码生成提案
   （driver-proposal 负责）；用例、任务、报告、音频等其它域。
-version: 1.0.0
+version: 1.1.0
 owner: device-team
 allowed-tools:
   - device_query
+  - device_control
   - tool_search
 permissions:
   - device:read
+  - device:control
 budgets:
   maxToolCalls: 30
   maxTokens: 50000
@@ -23,9 +25,9 @@ budgets:
 
 # device-operations
 
-被测设备（`/api/v1/test-devices`）的只读解释入口。本 Skill 只回答「设备现在是什么
-状态、怎么配的、要操作之前需要满足什么条件」，**不执行任何写动作**，也不编造在线
-状态或健康结论。
+被测设备（`/api/v1/test-devices`）的运维入口：回答「设备现在是什么状态、怎么配的、
+要操作之前需要满足什么条件」，并执行设备控制写操作（先提案、后审批、再执行，
+破坏性动作还要二次确认）。不编造在线状态或健康结论。
 
 ## 何时用
 
@@ -34,7 +36,7 @@ budgets:
 - 查设备在线状态、状态历史、最近一次健康检查事件；
 - 查告警与告警规则（指标、阈值、级别、启用状态）；
 - 查可用设备序列号、已注册驱动关键词；
-- 解释连接 / 断开 / 重启 / 扫描 / 安装 / 卸载的前置条件与风险（只解释）。
+- 执行连接 / 断开 / 重启 / 关机 / 扫描 / 安装 / 卸载 / 批量控制（需审批）。
 
 ## 何时不用
 
@@ -129,22 +131,52 @@ budgets:
   `critical`；指标 `offline_duration` / `health_check_failures` / `cpu` / `memory` /
   `battery`。
 
-## 写动作口径（M1 只解释，不执行）
+## 写操作（`device_control`，需审批 + 二次确认）
 
-以下动作都需要 `device:control`，属破坏性写；M1 调用会得到
-`APPROVAL_REQUIRED` 或未启用语义，**不代表平台没有该能力**。只解释前置条件：
+工具：`device_control`，风险级别 `DESTRUCTIVE`，权限 `device:control`。
 
-- **连接 / 断开**：设备需已登记；远程设备要网络可达，USB 设备要已插入。连接会
-  改动设备状态并写 `operation` 事件；
-- **重启 / 关机**：会中断设备上正在执行的任务；执行中的任务先停止再操作；
-- **扫描**：走驱动层实时扫描（ADB / HDC），结果与 `serials` 同源，不新增设备；
-- **安装 / 卸载应用**：需要安装包路径 / 包名；会改动被测应用版本，影响任务基线；
-- **批量操作**：按 `device_ids` 逐台执行，单台失败不回滚已成功项。
+| action | 目标接口 | 必填参数 |
+|---|---|---|
+| `connect` / `disconnect` | `POST /api/v1/test-devices/{device_id}/connect|disconnect` | `device_id` |
+| `reboot` / `shutdown` | `POST /api/v1/test-devices/{device_id}/reboot|shutdown` | `device_id` |
+| `install` | `POST /api/v1/test-devices/{device_id}/install-app` | `device_id` + `params.file_path` |
+| `uninstall` | `POST /api/v1/test-devices/{device_id}/uninstall-app` | `device_id` + `params.package_name` |
+| `scan` | `POST /api/v1/test-devices/scan` | —（不接受 `device_id` / `params`） |
+| `batch` | `POST /api/v1/test-devices/batch` | `operation` + `device_ids`（可选 `params` / `idempotency_key`） |
+
+`batch.operation` 取值与单设备动作一致：`connect` / `disconnect` / `reboot` /
+`shutdown` / `install_app` / `uninstall_app`（`health_check` 是只读探测，不放在
+破坏性批量里）。
+
+### 何时需要审批
+
+- **每一个**动作都需要审批：调用返回 `APPROVAL_REQUIRED` 与 `approval_id`，
+  此时**设备尚未被操作**；明确告诉用户「已生成待审批提案」，不要说「已重启 / 已连接」。
+- 无 `device:control` 时提案都不会生成（直接拒绝）；提案里带目标设备 ID、
+  动作与参数，审批人先看清再决定。
+
+### 破坏性操作二次确认
+
+- `device_control` 是 `DESTRUCTIVE`：审批人**批准时必须二次确认**（决策请求带
+  `confirm=true`），只发一次 `APPROVE` 会被拒绝并提示需要确认；拒绝不需要确认。
+- 不可回滚的动作尤其要说清影响：重启 / 关机中断在跑的任务；安装 / 卸载改变被测
+  App 版本、会让任务基线与历史结果不可比；批量操作逐台执行，**单台失败不回滚已成功项**。
+- 操作前先查占用：`occupied_status=occupied` 的设备可能正被任务占用
+  （`occupied_task_id`），先让用户确认是否要先停任务。
+
+### 回滚与失败处置
+
+- 连接 / 断开可反向操作回滚；重启 / 关机只能在设备恢复后继续，**无法撤销中断**。
+- 安装后可重新安装上一版安装包；卸载后需重新安装才能恢复，版本与数据不保证还原。
+- 批量操作返回逐台结果（`results[]`）：如实转述成功 / 失败台数与失败原因，
+  不要汇总成「全部成功」，也不要用重试掩盖失败（重试需另发起一次提案）。
+- 执行失败（设备离线 / 序列号不在线 / 安装包不存在）按接口原文说明，
+  不要声称「已回滚」——平台没有自动回滚。
 
 ## 健康检查
 
 - 主动健康检查是 `POST /api/v1/test-devices/health-check`，权限 `device:control`，
-  属维护动作（会实时外呼并写状态事件），**M1 不开放为只读动作**；
+  属维护动作（会实时外呼并写状态事件），**不开放为只读动作**；
 - 只读可见的是 `status`（当前状态快照）与 `status_history`（历史事件，含
   `health_check`）；
 - 不要把 `status=online` 说成「健康检查通过」，也不要把历史失败事件说成
@@ -173,8 +205,8 @@ budgets:
 7. **`serials` 是实时扫描**，可能为空、可能较慢；它不改设备状态，但也不要频繁轮询。
 8. **SPL 映射里的 `device_id` 是播放设备 ID**，不是被测设备 ID；查 SPL 请转
    `spl-calibration`，不要用这里的设备 ID 去套。
-9. **M1 写操作不可执行**：连接 / 重启 / 扫描 / 安装会得到审批或未启用语义，不要
-   把拒绝当成「平台不支持设备控制」。
+9. **写操作先审批**：`device_control` 返回 `APPROVAL_REQUIRED` 只代表提案已生成；
+   `DESTRUCTIVE` 提案批准还要二次确认（`confirm=true`），一次点击不会执行。
 10. **字段名用服务端 snake_case**：回答用户时保持原字段名，不要转 camelCase。
 
 ## 验收
@@ -185,5 +217,7 @@ budgets:
 - [ ] 当前状态用 `status` / `detail` 回答，历史健康检查失败事件没有被说成当前离线；
 - [ ] 占用态（`occupied_status` / `occupied_task_id`）在描述可用性时明确写出；
 - [ ] 告警 / 规则的级别、状态、指标用的是接口原值（info / warning / critical 等）；
-- [ ] 涉及连接 / 重启 / 扫描 / 安装时，说明 M1 只读与审批边界，没有臆造接口；
+- [ ] 涉及连接 / 重启 / 扫描 / 安装时，说明「已生成待审批提案」与二次确认，
+      没有把审批前当成已执行；
+- [ ] 批量操作按 `results[]` 如实报成功 / 失败台数，没有汇总成全部成功；
 - [ ] 字段名与服务端 snake_case 一致，缺失字段没有补默认值。

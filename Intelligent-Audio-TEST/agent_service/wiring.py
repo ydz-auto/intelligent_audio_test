@@ -16,6 +16,9 @@ from agent_service.application.cancel_registry import CancelRegistry
 from agent_service.application.context_assembler import (
     CompactionSettings, ContextAssembler,
 )
+from agent_service.application.driver_proposal_service import (
+    DriverProposalService, DriverProposalSettings,
+)
 from agent_service.application.event_stream import EventStreamService
 from agent_service.application.memory_service import (
     MemoryService, MemoryServiceSettings,
@@ -67,6 +70,8 @@ from agent_service.infrastructure.persistence.repositories import (
     SqlEventRepository, SqlLlmProviderRepository, SqlRunRepository,
     SqlSessionRepository, SqlStepRepository, SqlToolCallRepository,
 )
+from agent_service.infrastructure.sandbox.policy import load_t2_policy
+from agent_service.infrastructure.sandbox.t2_runner import build_t2_executor
 from agent_service.infrastructure.skill.fs_skill_repository import (
     FsSkillRepository,
 )
@@ -249,6 +254,27 @@ def build_sandbox_tool_executor(        skills: Optional[SkillRegistry] = None,
     return SandboxScriptDispatcher(sandbox_runner, locate, **options)
 
 
+def build_driver_proposal_runner() -> Optional[SandboxRunner]:
+    """装配 T2 沙箱执行器（驱动提案验证用；INT-2467）。
+
+    与 T1 同一组合口径：``runner_http`` 只发 HTTP、``host_cli`` 供宿主 runner。
+    运行时装不上就返回 ``None`` —— 提案服务按 ``T2_RUNTIME_UNAVAILABLE`` 显式
+    失败，绝不降级到 T1 执行模型生成的代码（方案 §7）。
+    """
+    try:
+        policy = load_t2_policy()
+        executor = build_t2_executor(policy)
+        return SandboxRunner(
+            untrusted_executor=executor,
+            work_root=(Path(Config.SANDBOX_WORK_ROOT)
+                       if Config.SANDBOX_WORK_ROOT else None),
+            t2_options=policy.to_runner_options(),
+        )
+    except (SandboxConfigurationError, ValueError) as exc:
+        logger.warning('T2 沙箱执行器未就绪（driver_propose 将显式失败）：%s', exc)
+        return None
+
+
 def build_container(session_factory,
                     provider_resolver: Optional[LlmProviderResolver] = None,
                     tool_gateway: Optional[ToolGateway] = None,
@@ -306,6 +332,12 @@ def build_container(session_factory,
     side_effects = ReadOnlySideEffectChecker()
     tool_credentials = RunCredentialRegistry(Config.TOOL_CREDENTIAL_TTL_SECONDS)
     memory = memory_service or build_memory_service()
+    driver_proposals = DriverProposalService(
+        sandbox_runner=build_driver_proposal_runner(),
+        settings=DriverProposalSettings(
+            publish_enabled=Config.DRIVER_PUBLISH_ENABLED,
+            max_result_chars=Config.DRIVER_PROPOSAL_MAX_RESULT_CHARS,
+            max_diff_chars=Config.DRIVER_PROPOSAL_MAX_DIFF_CHARS))
     gateway = tool_gateway or SharedToolGateway(
         bridge=SharedToolRegistryBridge(),
         rest=RestToolClient(
@@ -313,6 +345,7 @@ def build_container(session_factory,
             timeout_seconds=Config.TOOL_HTTP_TIMEOUT_SECONDS),
         credentials=tool_credentials,
         memory=memory,
+        driver_proposals=driver_proposals,
     )
     skills = skill_registry or build_skill_registry(gateway, skills_root)
     # INT-2466：写审批服务（提案 / 决策 / 过期 / 执行前复核）与 Loop 共用

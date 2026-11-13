@@ -71,12 +71,25 @@ def test_write_call_creates_pending_approval_without_side_effect(tmp_path):
 
 
 def test_destructive_tool_also_requires_single_approval(tmp_path):
+    """DESTRUCTIVE：先提案（不执行）；批准时还要二次确认（INT-2467）。"""
+    from agent_service.domain.exceptions import ApprovalConfirmationRequired
+
     container, _llm, gateway, run = _write_scenario(
         tmp_path, tool=destructive_tool('device_control'),
         args={'device_id': 3, 'action': 'reboot'})
     approval = pending_approval(container, run.id)
     assert approval.proposal['risk'] == 'DESTRUCTIVE'
     assert gateway.executed == []
+    # 只发 APPROVE、不带 confirm → 决策被拒，仍未执行
+    with pytest.raises(ApprovalConfirmationRequired):
+        decide(container, approval.id, 'APPROVE',
+               permissions=('device:control',))
+    assert gateway.executed == []
+    # 二次确认后才执行
+    decide(container, approval.id, 'APPROVE',
+           permissions=('device:control',), confirm=True)
+    container.executor.submit(run.id)
+    assert [item[0] for item in gateway.executed] == ['c1']
 
 
 def test_proposal_is_idempotent_and_reuses_single_row(tmp_path):

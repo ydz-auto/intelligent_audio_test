@@ -28,7 +28,8 @@ from fastapi.responses import JSONResponse
 from agent_service.application.approval_expiry import ApprovalExpiryScanner
 from agent_service.config.config import Config
 from agent_service.domain.exceptions import (
-    ApprovalConflict, ApprovalExpired, ApprovalNotFound,
+    ApprovalConflict, ApprovalConfirmationRequired, ApprovalExpired,
+    ApprovalNotFound,
     CredentialDecryptError, CredentialKeyUnavailable,
     InvalidContextWindow, InvalidProviderConfiguration,
     InvalidRunTransition, ProviderNotFound, RunNotFound, SessionNotFound,
@@ -178,6 +179,15 @@ def _register_error_handlers(app: FastAPI) -> None:
             status_code=409,
             content={'detail': '审批单已过期，写操作未执行',
                      'code': exc.code})
+
+    @app.exception_handler(ApprovalConfirmationRequired)
+    async def _approval_confirmation_required(
+            _request: Request, exc: ApprovalConfirmationRequired):
+        # 破坏性操作二次确认（INT-2467）：决策未落库，重发时带 confirm=true
+        return JSONResponse(
+            status_code=400,
+            content={'detail': '破坏性操作需要二次确认：请带 confirm=true 重新批准',
+                     'code': exc.code, 'tool': exc.tool})
 
 
 def create_app(container=None) -> FastAPI:

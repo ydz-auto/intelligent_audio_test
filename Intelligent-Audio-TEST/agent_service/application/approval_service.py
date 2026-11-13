@@ -27,7 +27,8 @@ from agent_service.domain.enums import (
     ApprovalDecision, ApprovalStatus, EventType, ToolRisk,
 )
 from agent_service.domain.exceptions import (
-    ApprovalConflict, ApprovalExpired, ApprovalNotFound,
+    ApprovalConflict, ApprovalConfirmationRequired, ApprovalExpired,
+    ApprovalNotFound,
 )
 from agent_service.domain.model.entities import (
     AgentApproval, AgentRun, AgentToolCall, ToolCallRequest,
@@ -129,14 +130,18 @@ class ApprovalService:
 
     def decide(self, approval_id: str, *, owner_id: int, tenant_id: str,
                decision: ApprovalDecision,
-               permissions: Sequence[str]
+               permissions: Sequence[str],
+               confirm: bool = False
                ) -> Tuple[AgentApproval, AgentRun]:
         """审批决策（幂等键是审批单状态本身）。
 
         - 审批单不存在 / 不属于当前用户/租户的 run → ``ApprovalNotFound``（404）；
         - 已决 → ``ApprovalConflict``（409）；
         - 已过期 → 先落 EXPIRED 再 ``ApprovalExpired``（409），不执行；
-        - 并发审批只有一个请求命中条件更新，其余按「已决」返回。
+        - 并发审批只有一个请求命中条件更新，其余按「已决」返回；
+        - **破坏性操作二次确认**（INT-2467）：``DESTRUCTIVE`` 工具批准时必须
+          同时带 ``confirm=true``，否则 ``ApprovalConfirmationRequired``（不落决策）。
+          拒绝（REJECT）不需要二次确认。
 
         ``ApprovalExpired`` 是「让 run 收下过期结果」的唤醒信号：调用方必须
         提交 run（``executor.submit``），否则 run 会一直停在 WAITING_APPROVAL。
@@ -164,6 +169,18 @@ class ApprovalService:
         if self._is_due(approval, now):
             self._approvals.expire(approval.id, now)
             raise ApprovalExpired(approval.id, approval.run_id)
+
+        if decision is ApprovalDecision.APPROVE and not confirm:
+            # DESTRUCTIVE 工具（设备控制等不可回滚动作）必须二次确认：
+            # 风险按当前注册表实时解析，审批单记录的 risk 只作兜底。
+            tool = str((approval.proposal or {}).get('tool') or '')
+            risk = self._gateway.risk_of(tool) if tool else None
+            if risk is None:
+                recorded = str((approval.proposal or {}).get('risk') or '')
+                risk = ToolRisk(recorded) if recorded in ToolRisk.__members__ \
+                    else None
+            if risk is ToolRisk.DESTRUCTIVE:
+                raise ApprovalConfirmationRequired(approval.id, tool)
 
         hit = self._approvals.decide(
             approval.id, decision.target, decided_by=owner_id,

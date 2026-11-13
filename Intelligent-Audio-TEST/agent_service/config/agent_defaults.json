@@ -50,5 +50,10 @@
     "validation_strict": false,
     "context_window_tokens": 128000,
     "system_section_ratio": 0.15
+  },
+  "driver_proposal": {
+    "publish_enabled": false,
+    "max_result_chars": 6000,
+    "max_diff_chars": 4000
   }
 }

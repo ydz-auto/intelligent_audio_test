@@ -259,7 +259,10 @@ def test_skills_endpoint_lists_31_tools_without_duplicates(tmp_path):
                            'testcase_query', 'testcase_generate',
                            'task_diagnose', 'log_diagnose', 'dashboard_query',
                            'report_compare', 'memory_search', 'memory_write',
-                           'evaluation_manage'}
+                           'evaluation_manage',
+                           # INT-2467 音频 / 设备 / SPL 写 + 驱动提案
+                           'audio_import', 'audio_annotate', 'device_control',
+                           'spl_calibrate', 'driver_propose'}
 
         low = client.get('/api/v1/agent/skills',
                          headers={'X-User-Id': '8', 'X-Tenant-Id': 't1',

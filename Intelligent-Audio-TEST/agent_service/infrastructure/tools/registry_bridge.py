@@ -187,6 +187,10 @@ class SharedToolRegistryBridge(ToolRegistryPort):
                 tool.parameters, arguments)
             if schema_error:
                 return schema_error
+            if name in intent_tools.WRITE_ACTION_TOOL_NAMES:
+                # 写工具（INT-2467）：动作白名单 / 跨字段规则与执行期同源，
+                # 提案阶段就拦下注定 422 的调用。
+                return intent_tools.validate_write_arguments(name, arguments)
             if name == 'report_compare':
                 return intent_tools.validate_report_compare(
                     str((arguments or {}).get('action') or ''), arguments or {})

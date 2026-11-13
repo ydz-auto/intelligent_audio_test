@@ -3,20 +3,29 @@ name: spl-calibration
 description: >-
   SPL 声压级校准口径速查：物理域 SPL 映射（播放设备 / 距离 / 测试频率 / 目标 SPL /
   校准状态 / 校准点集）与数字域 RMS→SPL 映射（被测 API / 参考 SPL / 增益限幅 /
-  校准点集），以及校准历史、最新校准数据、测试音播放的只读口径与写动作边界。
+  校准点集），以及校准历史、最新校准数据，和映射增删改 / 校准 / 测试音写操作
+  （写操作走审批）。
   触发词：SPL 映射、声压级、SPL 校准、校准状态、校准历史、校准点集、校准数据、
   测试音、增益偏移、增益限幅、目标声压级、数字域映射、RMS 映射、播放设备校准、
   已校准、未校准。
   不适用：被测设备连接 / 重启 / 告警（device-operations 负责）；驱动代码提案
   （driver-proposal 负责）；报告里的 SPL 指标解读（report-studio 负责）。
-version: 1.0.0
+version: 1.1.0
 owner: device-team
 allowed-tools:
   - device_query
+  - spl_calibrate
   - tool_search
 permissions:
   - spl:read
   - digital_spl:read
+  - spl:create
+  - spl:update
+  - spl:delete
+  - spl:test_tone
+  - digital_spl:create
+  - digital_spl:update
+  - digital_spl:delete
 budgets:
   maxToolCalls: 30
   maxTokens: 50000
@@ -24,9 +33,8 @@ budgets:
 
 # spl-calibration
 
-SPL（声压级）校准的只读解释入口。本 Skill 回答「映射怎么配的、校准状态是什么、
-历史与最新校准点集是什么、要校准 / 播放测试音需要什么条件」，**不执行校准、不播放
-测试音、不改映射**。
+SPL（声压级）校准入口：回答「映射怎么配的、校准状态是什么、历史与最新校准点集是
+什么」，并执行映射增删改 / 校准 / 测试音（先提案、后审批、再执行）。
 
 ## 何时用
 
@@ -136,20 +144,47 @@ SPL（声压级）校准的只读解释入口。本 Skill 回答「映射怎么�
 - 历史记录字段以接口实际返回为准（不同版本可能包含距离、测试频率、操作人、时间）；
   回答时引用原字段，不要自行补算差值或趋势。
 
-## 写动作边界（M1 不执行）
+## 写操作（`spl_calibrate`，需审批）
 
-- **物理校准**：`POST /api/v1/spl/{mapping_id}/calibrate`，权限 `spl:create`；
-  会播放测试音并回写测量点，改变校准状态；
-- **播放 / 停止测试音**：`POST /api/v1/spl/test-tone`、`/test-tone/stop`，权限
-  `spl:test_tone`；执行期间与任务音频争用扬声器，网关会校验运行中的任务；
-- **数字校准**：`POST /api/v1/digital-spl/{mapping_id}/calibrate`，权限
-  `digital_spl:create`；点集全量替换并有分布式锁互斥（冲突 409）；
-- **映射增删改**：`spl:create` / `spl:update` / `spl:delete` 与
-  `digital_spl:create` / `update` / `delete`。
+工具：`spl_calibrate`（WRITE，按动作收窄权限）。物理域 / 数字域共用这一个工具，
+**`spl_query` 一类名字不存在**，不要自造。
 
-M1 调这些写工具会得到 `APPROVAL_REQUIRED` 或未启用语义；只解释前置条件与影响，
-不要把它说成「平台不支持校准」。`spl_calibrate` 是唯一登记过的 SPL 写意图工具
-（M2 实现）；`generate_driver_from_elements` 一类名字与本域无关，不要混用。
+| action | 作用 | 目标接口 | 权限 |
+|---|---|---|---|
+| `mapping_create` | 创建物理域映射 | `POST /api/v1/spl` | `spl:create` |
+| `mapping_update` | 修改物理域映射 | `PUT /api/v1/spl/{mapping_id}` | `spl:update` |
+| `mapping_delete` | 删除物理域映射 | `DELETE /api/v1/spl/{mapping_id}` | `spl:delete` |
+| `calibrate` | 执行物理校准（播放测试音并回写点集） | `POST /api/v1/spl/{mapping_id}/calibrate` | `spl:create` |
+| `test_tone` / `test_tone_stop` | 播放 / 停止测试音 | `POST /api/v1/spl/test-tone`、`/test-tone/stop` | `spl:test_tone` |
+| `digital_mapping_create` | 创建数字域映射 | `POST /api/v1/digital-spl` | `digital_spl:create` |
+| `digital_mapping_update` | 修改数字域映射 | `PUT /api/v1/digital-spl/{mapping_id}` | `digital_spl:update` |
+| `digital_mapping_delete` | 删除数字域映射 | `DELETE /api/v1/digital-spl/{mapping_id}` | `digital_spl:delete` |
+| `digital_calibrate` | 提交数字域校准点集（全量替换） | `POST /api/v1/digital-spl/{mapping_id}/calibrate` | `digital_spl:create` |
+| `digital_set_default` | 设置 / 清除被测 API 默认映射 | `POST /api/v1/digital-spl/by-api/{api_id}/set-default` | `digital_spl:update` |
+
+### 何时需要审批
+
+- 所有动作都需要审批：返回 `APPROVAL_REQUIRED` 与 `approval_id` 表示**提案已生成、
+  尚未执行**；不要说「已校准 / 已改映射 / 已播放测试音」。
+- 权限按动作收窄：没有对应写码时提案都不会生成；不要用另一个域的动作绕权限。
+
+### 破坏性操作二次确认
+
+- `spl_calibrate` 是 `WRITE`（不是 `DESTRUCTIVE`），审批一次即可；但以下动作影响
+  现场，要在提案前把影响说清楚：
+  - `calibrate` 会**播放测试音**并覆盖该映射的校准点集与校准状态；
+  - `digital_calibrate` 是**全量替换**点集，且有分布式锁互斥（并发冲突返回 409）；
+  - `test_tone` 与任务音频争用扬声器，网关会校验运行中的任务（有 E2E 任务时会拒绝）。
+- 用户要求「一边跑任务一边校准」时先说明冲突，不要直接提交提案。
+
+### 回滚与失败处置
+
+- 映射修改 / 删除：没有自动回滚；先 `device_query` 的 `spl_mapping` /
+  `digital_spl_mapping` / `spl_history` 记下原字段与点集，失败后按原值再写回。
+- `calibrate` 失败：校准状态与点集可能已部分写入（按接口返回为准），
+  用 `spl_calibration_data` / `spl_history` 复核后再决定是否重跑。
+- `test_tone` 失败（扬声器被占用 / 有运行中任务）：如实说明原因，不要反复重试。
+- 任何写失败都不要声称「已回滚」——平台没有自动回滚，回滚是再次提案写回原值。
 
 ## Gotchas
 
@@ -173,7 +208,8 @@ M1 调这些写工具会得到 `APPROVAL_REQUIRED` 或未启用语义；只解�
    `spl_by_device` 的结果，不要说成接口给的筛选统计。
 9. **`is_current` 是设备维度的默认映射标记**，同一播放设备可能有多条映射；回答
    「当前用哪条」要看 `is_current`，不要按 `updated_at` 排序猜。
-10. **M1 写操作不可执行**：校准、测试音、映射增删改都会得到审批或未启用语义。
+10. **写操作先审批**：`spl_calibrate` 返回 `APPROVAL_REQUIRED` 只代表提案已生成；
+    校准 / 测试音 / 映射增删改都没有在审批前发生。
 
 ## 验收
 
@@ -184,5 +220,7 @@ M1 调这些写工具会得到 `APPROVAL_REQUIRED` 或未启用语义；只解�
 - [ ] 校准状态用 `calibrated` / `uncalibrated` 原值，没有把未校准说成失败；
 - [ ] 校准点集按接口原值引用（`spl` / `gainOffset` / `baseLevel` / `finalLevel` 或
       `target_spl` / `gain_linear` / `rms_dbfs`），没有插值或二次计算；
-- [ ] 提到校准 / 测试音时说明 M1 只读与审批边界，没有臆造接口或工具名；
+- [ ] 提到校准 / 测试音 / 映射写时说明「已生成待审批提案」，没有把审批前当成已执行；
+- [ ] 写失败时如实转述并给出复核路径（`spl_history` / `spl_calibration_data`），
+      没有声称已回滚；
 - [ ] 历史为空时明确说「没有历史记录」，没有推断成「未校准」。

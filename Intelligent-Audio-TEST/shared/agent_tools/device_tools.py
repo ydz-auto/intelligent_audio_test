@@ -25,18 +25,28 @@ from typing import Any, Dict, Optional, Sequence, Tuple
 
 from shared.agent_tools import mcp_registry
 from shared.agent_tools.pagination import check_page_bounds
+from shared.agent_tools.rest_target import rest_target as build_rest_target
 from shared.models.common_enums import (
     AlarmMetricType,
     AlarmSeverity,
     AlarmStatus,
     CalibrationStatus,
     DeviceGroupType,
+    DeviceOperation,
     DeviceStatusEventType,
 )
 
 DEVICE_READ = ('device:read',)
+DEVICE_CONTROL = ('device:control',)
 SPL_READ = ('spl:read',)
+SPL_CREATE = ('spl:create',)
+SPL_UPDATE = ('spl:update',)
+SPL_DELETE = ('spl:delete',)
+SPL_TEST_TONE = ('spl:test_tone',)
 DIGITAL_SPL_READ = ('digital_spl:read',)
+DIGITAL_SPL_CREATE = ('digital_spl:create',)
+DIGITAL_SPL_UPDATE = ('digital_spl:update',)
+DIGITAL_SPL_DELETE = ('digital_spl:delete',)
 
 # 设备只读动作 → 共享 MCP 注册表的 GET 工具名
 DEVICE_QUERY_ACTIONS: Dict[str, str] = {
@@ -59,25 +69,9 @@ def _rest_target(name: str, description: str, permissions: Sequence[str],
                  query_params: Sequence[str] = (),
                  schema: Optional[Dict[str, Any]] = None) -> dict:
     """构造 Agent 专用只读 REST 目标（与 MCP 注册项同形，供共享构造器使用）。"""
-    properties = dict(schema or {})
-    input_schema: Dict[str, Any] = {
-        'type': 'object', 'properties': properties,
-        'additionalProperties': True,
-    }
-    required = [key for key, value in properties.items()
-                if isinstance(value, dict) and value.get('required')]
-    if required:
-        input_schema['required'] = required
-    return {
-        'name': name,
-        'description': description,
-        'inputSchema': input_schema,
-        'permissions': list(permissions),
-        'method': 'GET',
-        'path': path,
-        'path_params': list(path_params),
-        'query_params': list(query_params),
-    }
+    return build_rest_target(name, description, permissions, 'GET', path,
+                             path_params=path_params,
+                             query_params=query_params, schema=schema)
 
 
 # SPL 只读动作 → Agent 专用 REST 目标（物理域 /api/v1/spl + 数字域 /api/v1/digital-spl）
@@ -287,12 +281,372 @@ def resolve_call(arguments: Dict[str, Any]
     return target, merged, None
 
 
+# ========================================================================
+# 写侧（INT-2467）：device_control（DESTRUCTIVE）+ spl_calibrate（WRITE）
+# ========================================================================
+#
+# 与只读侧同一约束：设备写动作映射共享 MCP 注册表的 ``device_*`` 写工具；
+# SPL 物理域 / 数字域没有对外 MCP 工具（§6.2 冻结 207 项），以 Agent 专用
+# REST 目标声明，只经 ``spl_calibrate`` 暴露。执行前一律走 INT-2466 的
+# 提案 + 审批 + 幂等：本模块只解析目标请求，不产生副作用。
+
+# 设备控制动作 → 共享 MCP 注册表的写工具名。
+# ``install`` / ``uninstall`` 是 ``install-app`` / ``uninstall-app`` 的意图别名
+# （动作名不带 app 后缀，参数里给安装包 / 包名）。
+DEVICE_CONTROL_ACTIONS: Dict[str, str] = {
+    'connect': 'device_connect',
+    'disconnect': 'device_disconnect',
+    'reboot': 'device_reboot',
+    'shutdown': 'device_shutdown',
+    'install': 'device_install_app',
+    'uninstall': 'device_uninstall_app',
+    'scan': 'device_scan',
+    'batch': 'device_batch_action',
+}
+
+# 动作支持的可选参数（动作独立白名单）
+DEVICE_CONTROL_PARAMS: Dict[str, Tuple[str, ...]] = {
+    'connect': ('params',),
+    'disconnect': ('params',),
+    'reboot': ('params',),
+    'shutdown': ('params',),
+    'install': ('params',),
+    'uninstall': ('params',),
+    'scan': (),
+    'batch': ('operation', 'device_ids', 'params', 'idempotency_key'),
+}
+
+DEVICE_CONTROL_REQUIRED: Dict[str, Tuple[str, ...]] = {
+    'connect': ('device_id',),
+    'disconnect': ('device_id',),
+    'reboot': ('device_id',),
+    'shutdown': ('device_id',),
+    'install': ('device_id', 'params'),
+    'uninstall': ('device_id', 'params'),
+    'scan': (),
+    'batch': ('operation', 'device_ids'),
+}
+
+# 批量动作白名单：与 device_service ``DeviceOperation`` 对齐（不含
+# ``health_check``——它是只读探测，不放在破坏性批量里）。
+DEVICE_BATCH_OPERATIONS: Tuple[str, ...] = tuple(
+    v.value for v in DeviceOperation)
+
+# 安装 / 卸载的参数必填键（device_service executor 直接按这两个键取值，
+# 缺参数会以 400 失败；工具层先拦下，避免生成注定失败的提案）。
+DEVICE_INSTALL_PARAM_KEYS: Tuple[str, ...] = ('file_path',)
+DEVICE_UNINSTALL_PARAM_KEYS: Tuple[str, ...] = ('package_name',)
+
+DEVICE_CONTROL_ACTION_PERMISSIONS: Dict[str, Tuple[str, ...]] = {
+    action: DEVICE_CONTROL for action in DEVICE_CONTROL_ACTIONS}
+
+
+def _prop(description: str, *, required: bool = False,
+          kind: str = 'string', enum: Sequence[str] = ()) -> dict:
+    """写目标的扁平参数声明（``rest_target`` 据此推导 required）。"""
+    prop: Dict[str, Any] = {'type': kind, 'description': description}
+    if required:
+        prop['required'] = True
+    if enum:
+        prop['enum'] = list(enum)
+    return prop
+
+
+def _write_target(name: str, description: str, permissions: Sequence[str],
+                  method: str, path: str, *, path_params: Sequence[str] = (),
+                  schema: Optional[Dict[str, Any]] = None) -> dict:
+    return build_rest_target(name, description, permissions, method, path,
+                             path_params=path_params, schema=schema)
+
+
+# SPL 映射 / 校准的公共字段（物理域 SPLMappingCreateRequest /
+# SPLMappingUpdateRequest，数字域 RmsSplMapping*Request 有各自的子集）。
+_SPL_MAPPING_FIELDS: Dict[str, Any] = {
+    'name': _prop('映射名称', required=True),
+    'description': _prop('描述'),
+    'device_id': _prop('播放设备 ID（与 device_type 至少给一个；这是播放设备，不是被测设备）',
+                       kind='integer'),
+    'device_type': _prop('设备类型（与 device_id 至少给一个）'),
+    'distance': _prop('测试距离（米，默认 1.0）', kind='number'),
+    'target_spl': _prop('目标声压级', kind='number'),
+    'digital_gain': _prop('数字增益', kind='number'),
+    'test_frequency': _prop('测试频率（Hz，默认 1000）', kind='integer'),
+    'calibration_status': _prop('校准状态（以接口返回为准）',
+                                enum=CALIBRATION_STATUS_VALUES),
+    'calibration_data': _prop(
+        '校准点集：物理域 {points: [{spl, gain_offset, digital_gain, '
+        'base_level, final_level}]}', kind='object'),
+}
+_SPL_MAPPING_UPDATE_FIELDS: Dict[str, Any] = dict(
+    _SPL_MAPPING_FIELDS, name=_prop('映射名称'),
+    is_current=_prop('是否设为当前映射', kind='boolean'))
+
+_DIGITAL_SPL_MAPPING_FIELDS: Dict[str, Any] = {
+    'api_id': _prop('被测 API ID（创建必填；走请求体，不是路径参数）',
+                    kind='integer', required=True),
+    'name': _prop('映射名称'),
+    'description': _prop('描述'),
+    'vendor': _prop('厂商（以被测 API 配置为准）'),
+    'protocol': _prop('协议（以被测 API 配置为准）'),
+    'reference_spl': _prop('参考声压级', kind='number'),
+    'reference_gain_linear': _prop('参考增益（线性）', kind='number'),
+    'calibration_status': _prop('校准状态（以接口返回为准）',
+                                enum=CALIBRATION_STATUS_VALUES),
+    'calibration_data': _prop(
+        '校准点集 {points: [{target_spl, gain_linear, rms_dbfs}]}；'
+        'rms_dbfs 必填主输入，gain_linear 由后端推导', kind='object'),
+    'min_gain_linear': _prop('最小增益（线性）', kind='number'),
+    'max_gain_linear': _prop('最大增益（线性）', kind='number'),
+}
+_DIGITAL_SPL_MAPPING_UPDATE_FIELDS: Dict[str, Any] = {
+    key: value for key, value in _DIGITAL_SPL_MAPPING_FIELDS.items()
+    if key != 'api_id'
+}
+
+# SPL 写动作 → Agent 专用 REST 目标
+SPL_CALIBRATE_TARGETS: Dict[str, dict] = {
+    # ---- 物理域 /api/v1/spl ----
+    'mapping_create': _write_target(
+        'spl_mapping_create', '创建 SPL 映射（物理域）', SPL_CREATE,
+        'POST', '/api/v1/spl', schema=_SPL_MAPPING_FIELDS),
+    'mapping_update': _write_target(
+        'spl_mapping_update', '修改 SPL 映射（物理域）', SPL_UPDATE,
+        'PUT', '/api/v1/spl/{mapping_id}', path_params=['mapping_id'],
+        schema=dict(_SPL_MAPPING_UPDATE_FIELDS,
+                    mapping_id=_prop('映射 ID', kind='integer', required=True))),
+    'mapping_delete': _write_target(
+        'spl_mapping_delete', '删除 SPL 映射（物理域）', SPL_DELETE,
+        'DELETE', '/api/v1/spl/{mapping_id}', path_params=['mapping_id'],
+        schema={'mapping_id': _prop('映射 ID', kind='integer', required=True)}),
+    'calibrate': _write_target(
+        'spl_mapping_calibrate', '执行 SPL 校准（按映射测量并写入校准点集）',
+        SPL_CREATE, 'POST', '/api/v1/spl/{mapping_id}/calibrate',
+        path_params=['mapping_id'],
+        schema={'mapping_id': _prop('映射 ID', kind='integer', required=True)}),
+    'test_tone': _write_target(
+        'spl_test_tone', '播放测试音（后端扬声器 / 指定设备）', SPL_TEST_TONE,
+        'POST', '/api/v1/spl/test-tone',
+        schema={'gain_value': _prop('增益（默认 50）', kind='number'),
+                'gain_offset': _prop('增益偏移', kind='number'),
+                'target_spl': _prop('目标声压（默认 65）', kind='number'),
+                'unique_id': _prop('目标设备唯一标识（不传用后端扬声器）')}),
+    'test_tone_stop': _write_target(
+        'spl_test_tone_stop', '停止测试音', SPL_TEST_TONE,
+        'POST', '/api/v1/spl/test-tone/stop',
+        schema={'unique_id': _prop('目标设备唯一标识（不传停止全部）')}),
+    # ---- 数字域 /api/v1/digital-spl ----
+    'digital_mapping_create': _write_target(
+        'digital_spl_mapping_create', '创建数字域 RMS→SPL 映射', DIGITAL_SPL_CREATE,
+        'POST', '/api/v1/digital-spl', schema=_DIGITAL_SPL_MAPPING_FIELDS),
+    'digital_mapping_update': _write_target(
+        'digital_spl_mapping_update', '修改数字域 RMS→SPL 映射',
+        DIGITAL_SPL_UPDATE, 'PUT', '/api/v1/digital-spl/{mapping_id}',
+        path_params=['mapping_id'],
+        schema=dict(_DIGITAL_SPL_MAPPING_UPDATE_FIELDS,
+                    mapping_id=_prop('映射 ID', kind='integer', required=True))),
+    'digital_mapping_delete': _write_target(
+        'digital_spl_mapping_delete', '删除数字域 RMS→SPL 映射',
+        DIGITAL_SPL_DELETE, 'DELETE', '/api/v1/digital-spl/{mapping_id}',
+        path_params=['mapping_id'],
+        schema={'mapping_id': _prop('映射 ID', kind='integer', required=True)}),
+    'digital_calibrate': _write_target(
+        'digital_spl_mapping_calibrate', '提交数字域校准点集（RMS→SPL 映射）',
+        DIGITAL_SPL_CREATE, 'POST', '/api/v1/digital-spl/{mapping_id}/calibrate',
+        path_params=['mapping_id'],
+        schema={'mapping_id': _prop('映射 ID', kind='integer', required=True),
+                'calibration_data': _prop(
+                    '校准点集 {points: [{target_spl, gain_linear, rms_dbfs}]}',
+                    required=True, kind='object')}),
+    'digital_set_default': _write_target(
+        'digital_spl_mapping_set_default', '设置 / 清除被测 API 的默认数字映射',
+        DIGITAL_SPL_UPDATE, 'POST',
+        '/api/v1/digital-spl/by-api/{api_id}/set-default',
+        path_params=['api_id'],
+        schema={'api_id': _prop('被测 API ID', kind='integer', required=True),
+                'mapping_id': _prop('映射 ID（为空 / 0 表示清除默认）',
+                                    kind='integer')}),
+}
+
+# SPL 写动作的可选参数白名单 = 目标 Schema 的字段（去掉路径参数）
+SPL_CALIBRATE_PARAMS: Dict[str, Tuple[str, ...]] = {
+    action: tuple(name for name in target['inputSchema']['properties']
+                  if name not in target['path_params'])
+    for action, target in SPL_CALIBRATE_TARGETS.items()
+}
+SPL_CALIBRATE_REQUIRED: Dict[str, Tuple[str, ...]] = {
+    action: tuple(target['inputSchema'].get('required') or ())
+    for action, target in SPL_CALIBRATE_TARGETS.items()
+}
+
+# SPL 写动作横跨物理域 / 数字域与不同动作语义（校准是 create、删除是 delete），
+# 按动作收窄权限；工具级声明只表达可见性（并集）。
+SPL_CALIBRATE_ACTION_PERMISSIONS: Dict[str, Tuple[str, ...]] = {
+    'mapping_create': SPL_CREATE,
+    'mapping_update': SPL_UPDATE,
+    'mapping_delete': SPL_DELETE,
+    'calibrate': SPL_CREATE,
+    'test_tone': SPL_TEST_TONE,
+    'test_tone_stop': SPL_TEST_TONE,
+    'digital_mapping_create': DIGITAL_SPL_CREATE,
+    'digital_mapping_update': DIGITAL_SPL_UPDATE,
+    'digital_mapping_delete': DIGITAL_SPL_DELETE,
+    'digital_calibrate': DIGITAL_SPL_CREATE,
+    'digital_set_default': DIGITAL_SPL_UPDATE,
+}
+SPL_CALIBRATE_PERMISSIONS: Tuple[str, ...] = (
+    SPL_CREATE + SPL_UPDATE + SPL_DELETE + SPL_TEST_TONE
+    + DIGITAL_SPL_CREATE + DIGITAL_SPL_UPDATE + DIGITAL_SPL_DELETE)
+
+
+def write_action_permissions(tool: str, action: Optional[str]
+                             ) -> Optional[Tuple[str, ...]]:
+    """写工具的动作级权限；未知动作返回 ``None``（调用方按工具级回落）。"""
+    if tool == 'device_control':
+        return DEVICE_CONTROL_ACTION_PERMISSIONS.get(action or '')
+    if tool == 'spl_calibrate':
+        return SPL_CALIBRATE_ACTION_PERMISSIONS.get(action or '')
+    return None
+
+
+def _normalize_device_control(action: str,
+                              merged: Dict[str, Any]) -> Optional[str]:
+    """设备控制动作的参数校验（写前拦下注定 400 的调用）。"""
+    params = merged.get('params')
+    if params is not None and not isinstance(params, dict):
+        return '参数 params 必须是对象'
+    if action in ('install', 'uninstall'):
+        keys = (DEVICE_INSTALL_PARAM_KEYS if action == 'install'
+                else DEVICE_UNINSTALL_PARAM_KEYS)
+        missing = [key for key in keys if not (params or {}).get(key)]
+        if missing:
+            return (f'action={action} 的 params 缺少必填键：{"、".join(missing)}'
+                    f'（{" / ".join(keys)}）')
+    if action == 'batch':
+        operation = merged.get('operation')
+        if operation not in DEVICE_BATCH_OPERATIONS:
+            return (f'参数 operation 取值必须是 '
+                    f'{"/".join(DEVICE_BATCH_OPERATIONS)} 之一')
+        device_ids = merged.get('device_ids')
+        if not isinstance(device_ids, list) or not device_ids:
+            return '参数 device_ids 必须是非空整数数组'
+        if any(not _positive_int(value) for value in device_ids):
+            return '参数 device_ids 只能包含正整数设备 ID'
+    if action == 'scan':
+        if params:
+            return 'action=scan 不接受 params（扫描无参数）'
+    return None
+
+
+def _normalize_spl_calibrate(action: str,
+                             merged: Dict[str, Any]) -> Optional[str]:
+    """SPL 写动作的参数校验：创建映射要求 device_id / device_type 至少一个。"""
+    if action == 'mapping_create':
+        if merged.get('device_id') is None and not merged.get('device_type'):
+            return 'action=mapping_create 需要 device_id 与 device_type 至少一个'
+    if action in ('calibrate', 'mapping_update', 'mapping_delete',
+                  'digital_calibrate', 'digital_mapping_update',
+                  'digital_mapping_delete') and merged.get('mapping_id') is None:
+        return f'action={action} 缺少必填参数：mapping_id'
+    if action == 'digital_calibrate' and \
+            not isinstance(merged.get('calibration_data'), dict):
+        return 'action=digital_calibrate 的 calibration_data 必须是对象'
+    return None
+
+
+def resolve_control_call(arguments: Dict[str, Any]
+                         ) -> Tuple[Optional[dict], Optional[dict], Optional[str]]:
+    """把 ``device_control`` 调用解析为 ``(目标工具, 合并参数, 错误文本)``。
+
+    ``batch`` 的意图参数 ``operation`` 在 REST 契约里叫 ``action``（
+    DeviceBatchActionRequest），这里做一次显式改名；其余动作参数原样透传。
+    """
+    action = arguments.get('action')
+    if action not in DEVICE_CONTROL_ACTIONS:
+        return None, None, (
+            f'action 取值必须是 {"/".join(DEVICE_CONTROL_ACTIONS)} 之一')
+    missing = [name for name in DEVICE_CONTROL_REQUIRED.get(action, ())
+               if arguments.get(name) is None]
+    if missing:
+        return None, None, f'action={action} 缺少必填参数：{"、".join(missing)}'
+    allowed = set(DEVICE_CONTROL_PARAMS.get(action, ())) \
+        | set(DEVICE_CONTROL_REQUIRED.get(action, ()))
+    merged = {key: value for key, value in arguments.items()
+              if key != 'action' and value is not None}
+    unknown = sorted(name for name in merged if name not in allowed)
+    if unknown:
+        return None, None, (
+            f'action={action} 不支持参数：{"、".join(unknown)}'
+            '（服务端会静默忽略这些字段）')
+    error = _normalize_device_control(action, merged)
+    if error:
+        return None, None, error
+
+    target = mcp_registry.get_tool(DEVICE_CONTROL_ACTIONS[action])
+    if target is None:  # pragma: no cover - 注册表内部一致性防御
+        return None, None, f'工具映射失效：device_control.{action}'
+    if action == 'batch':
+        body = {'action': merged['operation'],
+                'device_ids': list(merged['device_ids'])}
+        for key in ('params', 'idempotency_key'):
+            if merged.get(key) is not None:
+                body[key] = merged[key]
+        return target, {'body': body}, None
+    if action == 'scan':
+        return target, {}, None
+    rest_args: Dict[str, Any] = {'device_id': merged['device_id']}
+    if merged.get('params'):
+        rest_args['params'] = merged['params']
+    return target, rest_args, None
+
+
+def resolve_spl_calibrate_call(arguments: Dict[str, Any]
+                               ) -> Tuple[Optional[dict], Optional[dict],
+                                          Optional[str]]:
+    """把 ``spl_calibrate`` 调用解析为 ``(目标工具, 合并参数, 错误文本)``。"""
+    action = arguments.get('action')
+    if action not in SPL_CALIBRATE_TARGETS:
+        return None, None, (
+            f'action 取值必须是 {"/".join(SPL_CALIBRATE_TARGETS)} 之一')
+    missing = [name for name in SPL_CALIBRATE_REQUIRED.get(action, ())
+               if arguments.get(name) is None]
+    if missing:
+        return None, None, f'action={action} 缺少必填参数：{"、".join(missing)}'
+    allowed = set(SPL_CALIBRATE_PARAMS.get(action, ())) \
+        | set(SPL_CALIBRATE_REQUIRED.get(action, ()))
+    merged = {key: value for key, value in arguments.items()
+              if key != 'action' and value is not None}
+    unknown = sorted(name for name in merged if name not in allowed)
+    if unknown:
+        return None, None, (
+            f'action={action} 不支持参数：{"、".join(unknown)}'
+            '（服务端会静默忽略这些字段）')
+    error = _normalize_spl_calibrate(action, merged)
+    if error:
+        return None, None, error
+    target = SPL_CALIBRATE_TARGETS[action]
+    return target, merged, None
+
+
+def _positive_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
 __all__ = [
     'ALARM_METRIC_VALUES', 'ALARM_SEVERITY_VALUES', 'ALARM_STATUS_VALUES',
-    'CALIBRATION_STATUS_VALUES', 'DEVICE_QUERY_ACTIONS',
-    'DEVICE_QUERY_ACTION_NAMES', 'DEVICE_QUERY_ACTION_PERMISSIONS',
-    'DEVICE_QUERY_PARAMS', 'DEVICE_QUERY_PERMISSIONS', 'DEVICE_QUERY_REQUIRED',
-    'DEVICE_READ', 'DEVICE_SPL_TARGETS', 'DIGITAL_SPL_READ',
-    'GROUP_TYPE_VALUES', 'SPL_READ', 'STATUS_EVENT_TYPE_VALUES',
-    'action_permissions', 'normalize_arguments', 'resolve_call', 'rest_target',
+    'CALIBRATION_STATUS_VALUES', 'DEVICE_BATCH_OPERATIONS',
+    'DEVICE_CONTROL', 'DEVICE_CONTROL_ACTIONS',
+    'DEVICE_CONTROL_ACTION_PERMISSIONS', 'DEVICE_CONTROL_PARAMS',
+    'DEVICE_CONTROL_REQUIRED', 'DEVICE_INSTALL_PARAM_KEYS',
+    'DEVICE_QUERY_ACTIONS', 'DEVICE_QUERY_ACTION_NAMES',
+    'DEVICE_QUERY_ACTION_PERMISSIONS', 'DEVICE_QUERY_PARAMS',
+    'DEVICE_QUERY_PERMISSIONS', 'DEVICE_QUERY_REQUIRED', 'DEVICE_READ',
+    'DEVICE_SPL_TARGETS', 'DEVICE_UNINSTALL_PARAM_KEYS',
+    'DIGITAL_SPL_CREATE', 'DIGITAL_SPL_DELETE', 'DIGITAL_SPL_READ',
+    'DIGITAL_SPL_UPDATE', 'GROUP_TYPE_VALUES', 'SPL_CALIBRATE_ACTION_PERMISSIONS',
+    'SPL_CALIBRATE_PARAMS', 'SPL_CALIBRATE_PERMISSIONS',
+    'SPL_CALIBRATE_REQUIRED', 'SPL_CALIBRATE_TARGETS', 'SPL_CREATE',
+    'SPL_DELETE', 'SPL_READ', 'SPL_TEST_TONE', 'SPL_UPDATE',
+    'STATUS_EVENT_TYPE_VALUES', 'action_permissions', 'normalize_arguments',
+    'resolve_call', 'resolve_control_call', 'resolve_spl_calibrate_call',
+    'rest_target', 'write_action_permissions',
 ]

@@ -169,14 +169,20 @@ class RunService:
 
     def decide_approval(self, approval_id: str, *, owner_id: int,
                         tenant_id: str, decision: ApprovalDecision,
-                        permissions: Iterable[str] = ()
+                        permissions: Iterable[str] = (),
+                        confirm: bool = False
                         ) -> Tuple[object, AgentRun]:
-        """审批决议：只有 run 归属者本人能决策（越权一律 404）。"""
+        """审批决议：只有 run 归属者本人能决策（越权一律 404）。
+
+        ``confirm`` 是破坏性操作的二次确认（INT-2467）：DESTRUCTIVE 工具批准
+        时不带即拒绝决策，避免一次点击放行不可回滚的设备动作。
+        """
         if self._approvals is None:
             raise RuntimeError('审批服务未装配')
         approval, run = self._approvals.decide(
             approval_id, owner_id=owner_id, tenant_id=tenant_id,
-            decision=decision, permissions=tuple(permissions or ()))
+            decision=decision, permissions=tuple(permissions or ()),
+            confirm=bool(confirm))
         return _serialize_approval(approval), run
 
     # ------------------------------------------------------------ internals

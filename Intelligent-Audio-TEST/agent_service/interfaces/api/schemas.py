@@ -78,9 +78,14 @@ class ApprovalResponse(BaseModel):
 
 
 class ApprovalDecisionRequest(BaseModel):
-    """审批决议：``APPROVE`` / ``REJECT``（大小写不敏感）。"""
+    """审批决议：``APPROVE`` / ``REJECT``（大小写不敏感）。
+
+    ``confirm`` 是破坏性操作（``DESTRUCTIVE``：设备重启 / 关机 / 安装 / 卸载 /
+    批量控制）的二次确认；批准这类提案时必须显式传 ``true``，拒绝不需要。
+    """
 
     decision: str = Field(min_length=1)
+    confirm: bool = Field(False)
 
 
 class ApprovalDecisionResponse(BaseModel):

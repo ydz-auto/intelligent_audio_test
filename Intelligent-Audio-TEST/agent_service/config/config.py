@@ -36,6 +36,7 @@ _CONTEXT_DEFAULTS = _DEFAULTS.get('context', {})
 _STREAM_DEFAULTS = _DEFAULTS.get('event_stream', {})
 _SKILL_DEFAULTS = _DEFAULTS.get('skills', {})
 _APPROVAL_DEFAULTS = _DEFAULTS.get('approval', {})
+_DRIVER_PROPOSAL_DEFAULTS = _DEFAULTS.get('driver_proposal', {})
 
 
 class Config(BaseConfig):
@@ -210,6 +211,19 @@ class Config(BaseConfig):
     APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS = _get_float(
         'AGENT_APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS',
         float(_APPROVAL_DEFAULTS.get('expiry_scan_interval_seconds', 30)))
+
+    # ===== 驱动提案（INT-2467，§6.5）=====
+    # 发布开关：默认关闭（T2 隔离测试未启用前不发布；发布另需 DESTRUCTIVE 审批）
+    DRIVER_PUBLISH_ENABLED = _get_bool(
+        'AGENT_DRIVER_PUBLISH_ENABLED',
+        bool(_DRIVER_PROPOSAL_DEFAULTS.get('publish_enabled', False)))
+    # 工具结果里保留提案正文 / diff 的预算（超出只回清单 + hash，可复现）
+    DRIVER_PROPOSAL_MAX_RESULT_CHARS = _get_int(
+        'AGENT_DRIVER_PROPOSAL_MAX_RESULT_CHARS',
+        int(_DRIVER_PROPOSAL_DEFAULTS.get('max_result_chars', 6000)))
+    DRIVER_PROPOSAL_MAX_DIFF_CHARS = _get_int(
+        'AGENT_DRIVER_PROPOSAL_MAX_DIFF_CHARS',
+        int(_DRIVER_PROPOSAL_DEFAULTS.get('max_diff_chars', 4000)))
 
     # ===== 总开关（INT-2529，与网关同源）=====
     # 只用于启动期恢复投递门控：关闭态不产生任何后台 run（网关入口门控不变，

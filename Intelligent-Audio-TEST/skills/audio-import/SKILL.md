@@ -1,20 +1,25 @@
 ---
 name: audio-import
 description: >-
-  音频资源只读排查与导入前准备：查列表、看详情、按 MD5 查重、看目录树、标签、
-  特征 / 质量、已配算法、播放历史。触发词：音频列表、查音频、音频详情、这个音频
+  音频资源排查、导入与标注（写操作走审批）：查列表、看详情、按 MD5 查重、看目录树、
+  标签、特征 / 质量、已配算法、播放历史；URL 导入、分片上传初始化 / 合并、OSS 直传
+  完成确认、批量标注、改元数据、配算法。触发词：音频列表、查音频、音频详情、这个音频
   有没有导入过、MD5 查重、重复音频、音频目录树、文件夹结构、音频标签、音频格式、
-  采样率、音频质量、信噪比、特征、已配算法、播放历史、导入前检查。
-  不适用：真正执行导入 / 上传 / 批量标注 / 改元数据（M1 写工具未启用，请在音频
-  页面操作或等 M2）；也不负责用例生成、任务执行、报告导出——那些各有专门 Skill。
-version: 1.0.0
+  采样率、音频质量、信噪比、特征、已配算法、播放历史、导入前检查、导入音频、
+  上传音频、URL 导入、批量标注、修改音频元数据、配算法。
+  不适用：用例生成、任务执行、报告导出——那些各有专门 Skill。
+version: 1.1.0
 owner: audio-service
 allowed-tools:
   - audio_query
+  - audio_import
+  - audio_annotate
   - platform_contract
   - tool_search
 permissions:
   - audio:read
+  - audio:upload
+  - audio:update
 budgets:
   maxToolCalls: 30
   maxTokens: 40000
@@ -22,8 +27,8 @@ budgets:
 
 # audio-import
 
-音频域只读 Skill：回答「有哪些音频、某个音频长什么样、这个文件是不是已经导入过、
-目录怎么分层、质量如何」，并为导入操作做**读侧准备**（查重、看清目录与标签口径）。
+音频域 Skill：回答「有哪些音频、某个音频长什么样、这个文件是不是已经导入过、
+目录怎么分层、质量如何」，并执行**导入 / 标注写操作**（先提案、后审批、再执行）。
 
 数据一律来自 `audio_query`（网关 `/api/v1/audios` 的真实返回）。**只读不编造**：
 接口没返回的字段就说没有，不要用 0、估算值或示例值补齐。
@@ -40,8 +45,8 @@ budgets:
 
 ## 何时不用
 
-- 要「导入 / 上传 / 批量标注 / 改元数据」：M1 只读，`audio_import` /
-  `audio_annotate` 仍返回 `TOOL_NOT_ENABLED`；明确告诉用户去音频页面操作，不要假装已导入；
+- 要「用例 / 任务 / 报告」相关：转 `testcase-authoring` / `task-operations` /
+  `report-studio`；
 - 要「用标注生成用例 / 跑任务 / 出报告」：转 `testcase-authoring` / `task-operations` /
   `report-studio` 等对应 Skill；
 - 问平台通用字段 / 枚举 / 权限码：先用 `platform_contract`；
@@ -131,10 +136,53 @@ budgets:
 5. **看质量基线**：`quality` 的 `snr_db` / `quality_score` 可作为同批素材的对比参照；
    不要用它判定「能不能导入」——平台没有这条规则。
 
+## 写操作（需审批）
+
+写工具两个，全部走「提案 → 审批 → 执行」：**未审批不产生任何副作用**。
+
+| 工具 | 动作 | 对应接口 | 权限 |
+|---|---|---|---|
+| `audio_import` | `url_import`（必填 `url`；可选 `relative_path` / `audio_type`） | `POST /api/v1/audios/url-import` | `audio:upload` |
+| | `upload_init` | `POST /api/v1/audios/upload/init` | `audio:upload` |
+| | `upload_merge`（必填 `body`，含 `file_id` / `task_id`） | `POST /api/v1/audios/upload/merge` | `audio:upload` |
+| | `confirm`（必填 `oss_key` / `filename`） | `POST /api/v1/audios/upload/complete-direct` | `audio:upload` |
+| `audio_annotate` | `batch_annotate`（必填 `items`） | `POST /api/v1/audios/batch/annotations` | `audio:update` |
+| | `update_meta`（必填 `audio_id` / `metadata`） | `PUT /api/v1/audios/{audio_id}/metadata` | `audio:update` |
+| | `set_algorithms`（必填 `audio_id` / `algorithms`） | `PUT /api/v1/audios/{audio_id}/algorithms` | `audio:update` |
+
+### 何时需要审批
+
+- 上述**每一个**写动作都需要审批：调用后返回 `APPROVAL_REQUIRED` 与
+  `approval_id`，**不是执行结果**；不要说「已导入 / 已标注」，要说「已生成待审批提案」。
+- 提案只在你确有权限时生成（无 `audio:upload` / `audio:update` 直接拒绝）；
+  审批人批准前没有任何写库 / 写 OSS 行为。
+- 重复提交同一次调用是幂等的：同一提案不会重复建单，执行也只发生一次。
+
+### 破坏性操作二次确认
+
+- 音频域写动作都是 `WRITE`，**没有 `DESTRUCTIVE`**，因此不需要二次确认。
+- 但删除音频（`audio_delete`）不在本 Skill 的写工具里；用户要求删除时说明
+  当前不提供，去音频页面操作，不要用别的接口替代。
+
+### 回滚与失败处置
+
+- `url_import`：失败通常是 URL 不可达 / 无法解码 / 超出下载限制；按接口原文说明，
+  不要改 URL 反复重试；成功后会新建音频记录。
+- `upload_merge` / `confirm`：依赖上传会话（`file_id` / `upload_id` / `oss_key`）
+  已在服务端或 OSS 存在；会话过期 / 分片缺失会失败，需重新走上传流程。
+- `batch_annotate`：按 `items` 逐条生效；失败时不要假装全部成功，按接口返回说明。
+- `update_meta` / `set_algorithms`：覆盖式写入，原值不会自动保留；需要回滚时
+  只能重新写回上一版值（先 `audio_query` 的 `detail` / `algorithms` 记下原值）。
+- 任何写失败都如实转述接口文案；**不要**声称「已回滚」——平台没有自动回滚。
+
 ## Gotchas
 
-- **M1 写工具未启用**：`audio_import`、`audio_annotate` 返回 `TOOL_NOT_ENABLED`。
-  不要因为用户说「帮我导入」就声称已导入；说清楚当前只能查、导入要在音频页面做。
+- **写操作必须先审批**：`audio_import` / `audio_annotate` 返回 `APPROVAL_REQUIRED`
+  表示提案已生成、尚未执行；不要当成「已完成」，也不要重复调用催执行。
+- **分片字节不经 Agent 通道**：`upload_init` / `upload_merge` / `confirm` 只处理
+  上传会话与登记；音频字节由页面或 OSS 直传客户端放上去。Agent 无法替用户上传文件内容。
+- **批量算法配置不可用**：`PUT /audios/batch/algorithms` 被 `/{audio_id}/algorithms`
+  路由遮蔽（URL 不可达），批量场景请逐个 `set_algorithms`。
 - **by_md5 只回 id/name**：想确认格式、时长、标签，必须再 `detail`，别拿 name 推断格式。
 - **detail 对私有音频严格**：`visibility=private` 且非创建人时返回「资源不存在或无权访问」
   （404 与 403 同一文案，防探测）。**不要**据此断言音频一定不存在，只能说「无权访问或不存在」。
