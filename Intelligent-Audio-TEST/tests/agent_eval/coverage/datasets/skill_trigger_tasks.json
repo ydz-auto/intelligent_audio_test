@@ -1,0 +1,806 @@
+{
+  "version": 1,
+  "source": "INT-2465 M1 汇总评测（确定性词面代理）",
+  "tiers": {
+    "m1": [
+      "algorithm-config",
+      "audio-import",
+      "device-operations",
+      "driver-proposal",
+      "evaluation-config",
+      "log-diagnostics",
+      "report-compare",
+      "report-studio",
+      "spl-calibration",
+      "tag-group",
+      "task-operations",
+      "testcase-authoring"
+    ],
+    "extra": [
+      "platform-reference"
+    ]
+  },
+  "description": "12 个 M1 Skill × 10 条口语任务 + platform-reference（M0）10 条回归；触发准确率门槛 90%。",
+  "tasks": [
+    {
+      "id": "platform-reference-01",
+      "skill": "platform-reference",
+      "tier": "extra",
+      "query": "平台有哪些接口"
+    },
+    {
+      "id": "platform-reference-02",
+      "skill": "platform-reference",
+      "tier": "extra",
+      "query": "这个字段叫什么名字"
+    },
+    {
+      "id": "platform-reference-03",
+      "skill": "platform-reference",
+      "tier": "extra",
+      "query": "Run 状态枚举取值是什么"
+    },
+    {
+      "id": "platform-reference-04",
+      "skill": "platform-reference",
+      "tier": "extra",
+      "query": "权限码是什么"
+    },
+    {
+      "id": "platform-reference-05",
+      "skill": "platform-reference",
+      "tier": "extra",
+      "query": "某个工具的 Schema 怎么看"
+    },
+    {
+      "id": "platform-reference-06",
+      "skill": "platform-reference",
+      "tier": "extra",
+      "query": "tool_search 怎么用"
+    },
+    {
+      "id": "platform-reference-07",
+      "skill": "platform-reference",
+      "tier": "extra",
+      "query": "接口返回的是什么类型"
+    },
+    {
+      "id": "platform-reference-08",
+      "skill": "platform-reference",
+      "tier": "extra",
+      "query": "平台的接口前缀是什么"
+    },
+    {
+      "id": "platform-reference-09",
+      "skill": "platform-reference",
+      "tier": "extra",
+      "query": "平台服务清单怎么查"
+    },
+    {
+      "id": "platform-reference-10",
+      "skill": "platform-reference",
+      "tier": "extra",
+      "query": "这个权限码对应什么能力"
+    },
+    {
+      "id": "audio-import-01",
+      "skill": "audio-import",
+      "tier": "m1",
+      "query": "音频列表有哪些"
+    },
+    {
+      "id": "audio-import-02",
+      "skill": "audio-import",
+      "tier": "m1",
+      "query": "查音频 123 的详情"
+    },
+    {
+      "id": "audio-import-03",
+      "skill": "audio-import",
+      "tier": "m1",
+      "query": "这个音频有没有导入过"
+    },
+    {
+      "id": "audio-import-04",
+      "skill": "audio-import",
+      "tier": "m1",
+      "query": "按 MD5 查重"
+    },
+    {
+      "id": "audio-import-05",
+      "skill": "audio-import",
+      "tier": "m1",
+      "query": "重复音频怎么找"
+    },
+    {
+      "id": "audio-import-06",
+      "skill": "audio-import",
+      "tier": "m1",
+      "query": "音频目录树结构"
+    },
+    {
+      "id": "audio-import-07",
+      "skill": "audio-import",
+      "tier": "m1",
+      "query": "音频格式和采样率"
+    },
+    {
+      "id": "audio-import-08",
+      "skill": "audio-import",
+      "tier": "m1",
+      "query": "音频质量怎么样"
+    },
+    {
+      "id": "audio-import-09",
+      "skill": "audio-import",
+      "tier": "m1",
+      "query": "这个音频已配了哪些算法"
+    },
+    {
+      "id": "audio-import-10",
+      "skill": "audio-import",
+      "tier": "m1",
+      "query": "音频播放历史"
+    },
+    {
+      "id": "testcase-authoring-01",
+      "skill": "testcase-authoring",
+      "tier": "m1",
+      "query": "用例列表第一页"
+    },
+    {
+      "id": "testcase-authoring-02",
+      "skill": "testcase-authoring",
+      "tier": "m1",
+      "query": "用例详情里有什么"
+    },
+    {
+      "id": "testcase-authoring-03",
+      "skill": "testcase-authoring",
+      "tier": "m1",
+      "query": "用例轮次怎么配"
+    },
+    {
+      "id": "testcase-authoring-04",
+      "skill": "testcase-authoring",
+      "tier": "m1",
+      "query": "轮次参考参数是什么"
+    },
+    {
+      "id": "testcase-authoring-05",
+      "skill": "testcase-authoring",
+      "tier": "m1",
+      "query": "参考参数刷新状态"
+    },
+    {
+      "id": "testcase-authoring-06",
+      "skill": "testcase-authoring",
+      "tier": "m1",
+      "query": "用例导出作业状态"
+    },
+    {
+      "id": "testcase-authoring-07",
+      "skill": "testcase-authoring",
+      "tier": "m1",
+      "query": "用例的评估维度挂载怎么配"
+    },
+    {
+      "id": "testcase-authoring-08",
+      "skill": "testcase-authoring",
+      "tier": "m1",
+      "query": "用例统计有多少"
+    },
+    {
+      "id": "testcase-authoring-09",
+      "skill": "testcase-authoring",
+      "tier": "m1",
+      "query": "按分组看用例"
+    },
+    {
+      "id": "testcase-authoring-10",
+      "skill": "testcase-authoring",
+      "tier": "m1",
+      "query": "标注生成用例草案"
+    },
+    {
+      "id": "tag-group-01",
+      "skill": "tag-group",
+      "tier": "m1",
+      "query": "标签列表"
+    },
+    {
+      "id": "tag-group-02",
+      "skill": "tag-group",
+      "tier": "m1",
+      "query": "标签分类归属"
+    },
+    {
+      "id": "tag-group-03",
+      "skill": "tag-group",
+      "tier": "m1",
+      "query": "标签可见性怎么设置"
+    },
+    {
+      "id": "tag-group-04",
+      "skill": "tag-group",
+      "tier": "m1",
+      "query": "批量打标怎么做"
+    },
+    {
+      "id": "tag-group-05",
+      "skill": "tag-group",
+      "tier": "m1",
+      "query": "重命名标签"
+    },
+    {
+      "id": "tag-group-06",
+      "skill": "tag-group",
+      "tier": "m1",
+      "query": "用例分组列表"
+    },
+    {
+      "id": "tag-group-07",
+      "skill": "tag-group",
+      "tier": "m1",
+      "query": "分组下有多少用例"
+    },
+    {
+      "id": "tag-group-08",
+      "skill": "tag-group",
+      "tier": "m1",
+      "query": "分组可见性"
+    },
+    {
+      "id": "tag-group-09",
+      "skill": "tag-group",
+      "tier": "m1",
+      "query": "分组用例数"
+    },
+    {
+      "id": "tag-group-10",
+      "skill": "tag-group",
+      "tier": "m1",
+      "query": "分组里有哪些用例"
+    },
+    {
+      "id": "evaluation-config-01",
+      "skill": "evaluation-config",
+      "tier": "m1",
+      "query": "评估维度列表"
+    },
+    {
+      "id": "evaluation-config-02",
+      "skill": "evaluation-config",
+      "tier": "m1",
+      "query": "维度配置详情"
+    },
+    {
+      "id": "evaluation-config-03",
+      "skill": "evaluation-config",
+      "tier": "m1",
+      "query": "评分口径是什么"
+    },
+    {
+      "id": "evaluation-config-04",
+      "skill": "evaluation-config",
+      "tier": "m1",
+      "query": "评分规则怎么定"
+    },
+    {
+      "id": "evaluation-config-05",
+      "skill": "evaluation-config",
+      "tier": "m1",
+      "query": "分值范围是多少"
+    },
+    {
+      "id": "evaluation-config-06",
+      "skill": "evaluation-config",
+      "tier": "m1",
+      "query": "权重和统计方式"
+    },
+    {
+      "id": "evaluation-config-07",
+      "skill": "evaluation-config",
+      "tier": "m1",
+      "query": "聚合分母怎么算"
+    },
+    {
+      "id": "evaluation-config-08",
+      "skill": "evaluation-config",
+      "tier": "m1",
+      "query": "评估分类有哪些"
+    },
+    {
+      "id": "evaluation-config-09",
+      "skill": "evaluation-config",
+      "tier": "m1",
+      "query": "维度可见性"
+    },
+    {
+      "id": "evaluation-config-10",
+      "skill": "evaluation-config",
+      "tier": "m1",
+      "query": "重评估前置条件"
+    },
+    {
+      "id": "algorithm-config-01",
+      "skill": "algorithm-config",
+      "tier": "m1",
+      "query": "算法定义有哪些"
+    },
+    {
+      "id": "algorithm-config-02",
+      "skill": "algorithm-config",
+      "tier": "m1",
+      "query": "算法参数列表"
+    },
+    {
+      "id": "algorithm-config-03",
+      "skill": "algorithm-config",
+      "tier": "m1",
+      "query": "参考参数是什么"
+    },
+    {
+      "id": "algorithm-config-04",
+      "skill": "algorithm-config",
+      "tier": "m1",
+      "query": "参数映射怎么配"
+    },
+    {
+      "id": "algorithm-config-05",
+      "skill": "algorithm-config",
+      "tier": "m1",
+      "query": "算法表单 Schema"
+    },
+    {
+      "id": "algorithm-config-06",
+      "skill": "algorithm-config",
+      "tier": "m1",
+      "query": "表单字段"
+    },
+    {
+      "id": "algorithm-config-07",
+      "skill": "algorithm-config",
+      "tier": "m1",
+      "query": "算法下拉选项"
+    },
+    {
+      "id": "algorithm-config-08",
+      "skill": "algorithm-config",
+      "tier": "m1",
+      "query": "算法分组"
+    },
+    {
+      "id": "algorithm-config-09",
+      "skill": "algorithm-config",
+      "tier": "m1",
+      "query": "算法维度关系怎么配"
+    },
+    {
+      "id": "algorithm-config-10",
+      "skill": "algorithm-config",
+      "tier": "m1",
+      "query": "热重载前提"
+    },
+    {
+      "id": "task-operations-01",
+      "skill": "task-operations",
+      "tier": "m1",
+      "query": "任务列表有哪些"
+    },
+    {
+      "id": "task-operations-02",
+      "skill": "task-operations",
+      "tier": "m1",
+      "query": "任务详情"
+    },
+    {
+      "id": "task-operations-03",
+      "skill": "task-operations",
+      "tier": "m1",
+      "query": "执行进度怎么样"
+    },
+    {
+      "id": "task-operations-04",
+      "skill": "task-operations",
+      "tier": "m1",
+      "query": "任务统计和通过率"
+    },
+    {
+      "id": "task-operations-05",
+      "skill": "task-operations",
+      "tier": "m1",
+      "query": "失败用例归因"
+    },
+    {
+      "id": "task-operations-06",
+      "skill": "task-operations",
+      "tier": "m1",
+      "query": "失败原因是什么"
+    },
+    {
+      "id": "task-operations-07",
+      "skill": "task-operations",
+      "tier": "m1",
+      "query": "任务诊断报告"
+    },
+    {
+      "id": "task-operations-08",
+      "skill": "task-operations",
+      "tier": "m1",
+      "query": "重测建议"
+    },
+    {
+      "id": "task-operations-09",
+      "skill": "task-operations",
+      "tier": "m1",
+      "query": "用例执行详情"
+    },
+    {
+      "id": "task-operations-10",
+      "skill": "task-operations",
+      "tier": "m1",
+      "query": "任务实验室有哪些"
+    },
+    {
+      "id": "log-diagnostics-01",
+      "skill": "log-diagnostics",
+      "tier": "m1",
+      "query": "日志查询"
+    },
+    {
+      "id": "log-diagnostics-02",
+      "skill": "log-diagnostics",
+      "tier": "m1",
+      "query": "日志搜索"
+    },
+    {
+      "id": "log-diagnostics-03",
+      "skill": "log-diagnostics",
+      "tier": "m1",
+      "query": "日志级别统计"
+    },
+    {
+      "id": "log-diagnostics-04",
+      "skill": "log-diagnostics",
+      "tier": "m1",
+      "query": "错误日志"
+    },
+    {
+      "id": "log-diagnostics-05",
+      "skill": "log-diagnostics",
+      "tier": "m1",
+      "query": "报错日志"
+    },
+    {
+      "id": "log-diagnostics-06",
+      "skill": "log-diagnostics",
+      "tier": "m1",
+      "query": "异常日志"
+    },
+    {
+      "id": "log-diagnostics-07",
+      "skill": "log-diagnostics",
+      "tier": "m1",
+      "query": "日志诊断"
+    },
+    {
+      "id": "log-diagnostics-08",
+      "skill": "log-diagnostics",
+      "tier": "m1",
+      "query": "失败日志"
+    },
+    {
+      "id": "log-diagnostics-09",
+      "skill": "log-diagnostics",
+      "tier": "m1",
+      "query": "日志来源"
+    },
+    {
+      "id": "log-diagnostics-10",
+      "skill": "log-diagnostics",
+      "tier": "m1",
+      "query": "查日志里的关键词"
+    },
+    {
+      "id": "report-studio-01",
+      "skill": "report-studio",
+      "tier": "m1",
+      "query": "报告列表"
+    },
+    {
+      "id": "report-studio-02",
+      "skill": "report-studio",
+      "tier": "m1",
+      "query": "报告详情"
+    },
+    {
+      "id": "report-studio-03",
+      "skill": "report-studio",
+      "tier": "m1",
+      "query": "报告指标怎么解释"
+    },
+    {
+      "id": "report-studio-04",
+      "skill": "report-studio",
+      "tier": "m1",
+      "query": "报告用例明细"
+    },
+    {
+      "id": "report-studio-05",
+      "skill": "report-studio",
+      "tier": "m1",
+      "query": "报告统计"
+    },
+    {
+      "id": "report-studio-06",
+      "skill": "report-studio",
+      "tier": "m1",
+      "query": "报告进度"
+    },
+    {
+      "id": "report-studio-07",
+      "skill": "report-studio",
+      "tier": "m1",
+      "query": "页签计数"
+    },
+    {
+      "id": "report-studio-08",
+      "skill": "report-studio",
+      "tier": "m1",
+      "query": "通过率和平均分"
+    },
+    {
+      "id": "report-studio-09",
+      "skill": "report-studio",
+      "tier": "m1",
+      "query": "报告起草"
+    },
+    {
+      "id": "report-studio-10",
+      "skill": "report-studio",
+      "tier": "m1",
+      "query": "报告版本"
+    },
+    {
+      "id": "report-compare-01",
+      "skill": "report-compare",
+      "tier": "m1",
+      "query": "报告对比"
+    },
+    {
+      "id": "report-compare-02",
+      "skill": "report-compare",
+      "tier": "m1",
+      "query": "对比报告"
+    },
+    {
+      "id": "report-compare-03",
+      "skill": "report-compare",
+      "tier": "m1",
+      "query": "二次对比"
+    },
+    {
+      "id": "report-compare-04",
+      "skill": "report-compare",
+      "tier": "m1",
+      "query": "多报告并排对比"
+    },
+    {
+      "id": "report-compare-05",
+      "skill": "report-compare",
+      "tier": "m1",
+      "query": "报告差异"
+    },
+    {
+      "id": "report-compare-06",
+      "skill": "report-compare",
+      "tier": "m1",
+      "query": "指标差异"
+    },
+    {
+      "id": "report-compare-07",
+      "skill": "report-compare",
+      "tier": "m1",
+      "query": "通过率对比"
+    },
+    {
+      "id": "report-compare-08",
+      "skill": "report-compare",
+      "tier": "m1",
+      "query": "报告趋势"
+    },
+    {
+      "id": "report-compare-09",
+      "skill": "report-compare",
+      "tier": "m1",
+      "query": "异常报告"
+    },
+    {
+      "id": "report-compare-10",
+      "skill": "report-compare",
+      "tier": "m1",
+      "query": "环比同比"
+    },
+    {
+      "id": "device-operations-01",
+      "skill": "device-operations",
+      "tier": "m1",
+      "query": "设备列表"
+    },
+    {
+      "id": "device-operations-02",
+      "skill": "device-operations",
+      "tier": "m1",
+      "query": "设备详情"
+    },
+    {
+      "id": "device-operations-03",
+      "skill": "device-operations",
+      "tier": "m1",
+      "query": "设备分组"
+    },
+    {
+      "id": "device-operations-04",
+      "skill": "device-operations",
+      "tier": "m1",
+      "query": "设备在线状态"
+    },
+    {
+      "id": "device-operations-05",
+      "skill": "device-operations",
+      "tier": "m1",
+      "query": "状态历史"
+    },
+    {
+      "id": "device-operations-06",
+      "skill": "device-operations",
+      "tier": "m1",
+      "query": "设备告警"
+    },
+    {
+      "id": "device-operations-07",
+      "skill": "device-operations",
+      "tier": "m1",
+      "query": "告警规则"
+    },
+    {
+      "id": "device-operations-08",
+      "skill": "device-operations",
+      "tier": "m1",
+      "query": "可用序列号"
+    },
+    {
+      "id": "device-operations-09",
+      "skill": "device-operations",
+      "tier": "m1",
+      "query": "驱动关键词"
+    },
+    {
+      "id": "device-operations-10",
+      "skill": "device-operations",
+      "tier": "m1",
+      "query": "连接设备"
+    },
+    {
+      "id": "spl-calibration-01",
+      "skill": "spl-calibration",
+      "tier": "m1",
+      "query": "SPL 映射"
+    },
+    {
+      "id": "spl-calibration-02",
+      "skill": "spl-calibration",
+      "tier": "m1",
+      "query": "声压级校准"
+    },
+    {
+      "id": "spl-calibration-03",
+      "skill": "spl-calibration",
+      "tier": "m1",
+      "query": "SPL 校准状态"
+    },
+    {
+      "id": "spl-calibration-04",
+      "skill": "spl-calibration",
+      "tier": "m1",
+      "query": "校准历史"
+    },
+    {
+      "id": "spl-calibration-05",
+      "skill": "spl-calibration",
+      "tier": "m1",
+      "query": "校准点集"
+    },
+    {
+      "id": "spl-calibration-06",
+      "skill": "spl-calibration",
+      "tier": "m1",
+      "query": "校准数据"
+    },
+    {
+      "id": "spl-calibration-07",
+      "skill": "spl-calibration",
+      "tier": "m1",
+      "query": "测试音"
+    },
+    {
+      "id": "spl-calibration-08",
+      "skill": "spl-calibration",
+      "tier": "m1",
+      "query": "增益限幅"
+    },
+    {
+      "id": "spl-calibration-09",
+      "skill": "spl-calibration",
+      "tier": "m1",
+      "query": "数字域映射"
+    },
+    {
+      "id": "spl-calibration-10",
+      "skill": "spl-calibration",
+      "tier": "m1",
+      "query": "播放设备校准"
+    },
+    {
+      "id": "driver-proposal-01",
+      "skill": "driver-proposal",
+      "tier": "m1",
+      "query": "驱动提案"
+    },
+    {
+      "id": "driver-proposal-02",
+      "skill": "driver-proposal",
+      "tier": "m1",
+      "query": "驱动代码怎么生成"
+    },
+    {
+      "id": "driver-proposal-03",
+      "skill": "driver-proposal",
+      "tier": "m1",
+      "query": "生成驱动"
+    },
+    {
+      "id": "driver-proposal-04",
+      "skill": "driver-proposal",
+      "tier": "m1",
+      "query": "AppDriver 提案"
+    },
+    {
+      "id": "driver-proposal-05",
+      "skill": "driver-proposal",
+      "tier": "m1",
+      "query": "ApiVendorAdapter 适配器"
+    },
+    {
+      "id": "driver-proposal-06",
+      "skill": "driver-proposal",
+      "tier": "m1",
+      "query": "适配器代码"
+    },
+    {
+      "id": "driver-proposal-07",
+      "skill": "driver-proposal",
+      "tier": "m1",
+      "query": "UiAutoDev 元素树"
+    },
+    {
+      "id": "driver-proposal-08",
+      "skill": "driver-proposal",
+      "tier": "m1",
+      "query": "操作轨迹"
+    },
+    {
+      "id": "driver-proposal-09",
+      "skill": "driver-proposal",
+      "tier": "m1",
+      "query": "能力画像"
+    },
+    {
+      "id": "driver-proposal-10",
+      "skill": "driver-proposal",
+      "tier": "m1",
+      "query": "驱动模板和同类驱动样例"
+    }
+  ]
+}

@@ -163,14 +163,16 @@ class AgentEvalRunner:
 
     # ------------------------------------------------------------ scenarios
 
-    def run_golden(self) -> GoldenMetrics:
-        tasks = _load_json('golden_tasks.json')['tasks']
+    def run_golden(self, dataset: str = 'golden_tasks.json',
+                   *, dataset_dir: Optional[str] = None) -> GoldenMetrics:
+        tasks = _load_json(dataset, dataset_dir)['tasks']
         _assert_dataset_truth(tasks, id_key='id')
         stats = SimulationStats()
         model = SimulatedModel(stats)
         gateway = EvalToolGateway()
+        db_name = os.path.splitext(dataset)[0] + '.db'
         container = self._container(
-            os.path.join(self._work_dir, 'golden.db'), model, gateway,
+            os.path.join(self._work_dir, db_name), model, gateway,
             compression=True)
         failures: List[Dict[str, Any]] = []
         try:
@@ -331,8 +333,9 @@ def _snapshot_levels(container, session) -> Dict[str, int]:
     return counts
 
 
-def _load_json(name: str) -> Dict[str, Any]:
-    with open(os.path.join(DATASET_DIR, name), encoding='utf-8') as handle:
+def _load_json(name: str, directory: Optional[str] = None) -> Dict[str, Any]:
+    with open(os.path.join(directory or DATASET_DIR, name),
+              encoding='utf-8') as handle:
         return json.load(handle)
 
 
