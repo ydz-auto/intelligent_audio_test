@@ -5,11 +5,16 @@
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { AGENT_APPROVAL_STATUS, AGENT_RUN_STATUS } from '@/domain/models/agent'
 import type { AgentTimelineEntry } from '@/application/agent/agent-timeline'
 import { RunTimeline } from '@/features/ai-chat/components/run-timeline/run-timeline'
+import { useAuthStore } from '@/infrastructure/stores/auth-store'
+
+afterEach(() => {
+  useAuthStore.setState({ user: null })
+})
 
 const entries: AgentTimelineEntry[] = [
   {
@@ -38,7 +43,7 @@ const entries: AgentTimelineEntry[] = [
     approvalId: 'ap-1',
     decidedBy: 7,
     decidedAt: '2026-11-14T02:00:30Z',
-    detail: '写操作 · 已批准 · 决策人 7',
+    detail: '写操作 · 已批准 · 决策于 10:00:30',
   },
   {
     kind: 'context_compacted',
@@ -56,12 +61,20 @@ const entries: AgentTimelineEntry[] = [
     at: '2026-11-14T02:00:04Z',
     label: '运行结束',
     status: AGENT_RUN_STATUS.SUCCEEDED,
-    detail: '已完成',
   },
 ]
 
 describe('RunTimeline', () => {
   it('默认折叠；展开后按 sequence 顺序渲染事件与审批决策信息', async () => {
+    useAuthStore.setState({
+      user: {
+        id: '7',
+        username: 'dev_user',
+        displayName: 'dev_user',
+        roleName: '管理员',
+        permissions: ['*'],
+      },
+    })
     const { container } = render(
       <RunTimeline
         entries={entries}
@@ -92,7 +105,10 @@ describe('RunTimeline', () => {
       '4',
       '5',
     ])
-    expect(screen.getByText(/决策人 7/)).toBeVisible()
+    expect(screen.getByText(/决策人 我/)).toBeVisible()
+    expect(screen.getByText('已完成')).toBeVisible()
+    // 终态徽标不再与 label「运行结束」重复（P3-6）
+    expect(screen.queryByText('运行结束 · 已完成')).not.toBeInTheDocument()
     expect(
       container.querySelector('[data-timeline-debug="true"]')
     ).not.toBeNull()

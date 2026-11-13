@@ -20,7 +20,9 @@
  *   刷新打断的悬挂 assistant 气泡按服务端最新 run 状态收口。
  *
  * 已知边界（本轮不做）：刷新时若 run 仍在服务端执行，本端不重接 SSE（事件游标未持久化），
- * 该轮气泡按「事件流中断」收口；服务端会话上下文不受影响，下一轮追问仍延续同一会话。
+ * 该轮气泡按「事件流中断」收口；run 停在 WAITING_APPROVAL 且待审批卡已恢复时例外——气泡按
+ * 「等待审批」中性收口，不把用户引向重发（INT-2472 审计 P2-1）。服务端会话上下文不受影响，
+ * 下一轮追问仍延续同一会话。
  */
 import { create } from 'zustand'
 import { toast } from 'sonner'
@@ -1038,8 +1040,15 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
   /**
    * 刷新打断的悬挂气泡收口：本地仍有 loading/streaming 的 assistant 气泡，但本端已无进行中
    * run（刷新丢失事件流）。按服务端最新 run 状态给终态；服务端仍在跑则该轮按事件流中断收口。
+   *
+   * 例外（INT-2472 审计 P2-1）：服务端 run 仍停在 `WAITING_APPROVAL` 且已恢复出待审批卡时，
+   * 这一轮按「等待审批」中性收口（不落错误态、不给「重试」），把用户动作引向审批卡；
+   * 只有拿不到待审批卡时才按事件流中断收口。
    */
-  const reconcileInterruptedMessage = (runs: AgentRun[]) => {
+  const reconcileInterruptedMessage = (
+    runs: AgentRun[],
+    options?: { approvalWaiting?: boolean }
+  ) => {
     const pending = [...session().messages]
       .reverse()
       .find(
@@ -1054,6 +1063,26 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       runs.find((run) => !isTerminalRunStatus(run.status)) ??
       runs[runs.length - 1]
     const patch = (message: ChatMessage): ChatMessage => {
+      const waitingApproval =
+        latestRun?.status === AGENT_RUN_STATUS.WAITING_APPROVAL &&
+        options?.approvalWaiting === true
+      if (waitingApproval) {
+        return {
+          ...message,
+          status: CHAT_MESSAGE_STATUS.COMPLETE,
+          runStatus: AGENT_RUN_STATUS.WAITING_APPROVAL,
+          isReasoningStreaming: false,
+          // 保留已生成的正文；占位气泡没有正文时用「等待审批」兜底
+          versions: message.versions[0]?.content
+            ? message.versions
+            : [
+                {
+                  id: message.versions[0]?.id ?? `${message.key}-v1`,
+                  content: AGENT_APPROVAL_COPY.waitingMessage,
+                },
+              ],
+        }
+      }
       if (latestRun && isTerminalRunStatus(latestRun.status)) {
         return {
           ...message,
@@ -1095,15 +1124,22 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
    * 刷新 / 换宿主恢复：服务端最新 run 仍在等审批时，用列表接口恢复待审批卡
    * （§12.2「重连恢复待审批」）。本页没有接事件流，因此不改生命周期阶段
    * （syncPhase=false）：决策按钮照常可用，决策后由服务端继续执行。
+   *
+   * 返回恢复后是否确有可决策的待审批卡（P2-1：有卡才把悬挂气泡按「等待审批」收口）。
    */
-  const restorePendingApprovals = (runs: AgentRun[]) => {
+  const restorePendingApprovals = async (
+    runs: AgentRun[]
+  ): Promise<boolean> => {
     const waiting = [...runs]
       .reverse()
       .find((run) => run.status === AGENT_RUN_STATUS.WAITING_APPROVAL)
-    if (!waiting) return
+    if (!waiting) return false
     const current = get().run
     if (!current || current.id !== waiting.id) set({ run: waiting })
-    void get().refreshApprovals({ runId: waiting.id, syncPhase: false })
+    await get().refreshApprovals({ runId: waiting.id, syncPhase: false })
+    return get().approvals.some((approval) =>
+      isPendingApprovalStatus(approval.status)
+    )
   }
 
   /**
@@ -1124,8 +1160,11 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         if (session().agentSessionId !== sessionId) return
         restoredSessionId = sessionId
         hydrateRestoredMessages(detail.messages)
-        reconcileInterruptedMessage(detail.runs)
-        restorePendingApprovals(detail.runs)
+        // 先恢复待审批卡，再收口悬挂气泡：run 仍在等审批时气泡落「等待审批」中性态（P2-1）
+        const approvalWaiting = await restorePendingApprovals(detail.runs)
+        if (runToken !== token) return
+        if (session().agentSessionId !== sessionId) return
+        reconcileInterruptedMessage(detail.runs, { approvalWaiting })
       } catch (err) {
         if (runToken !== token) return
         if (session().agentSessionId !== sessionId) return

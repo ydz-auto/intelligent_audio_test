@@ -27,6 +27,10 @@ import {
   type AgentApproval,
   type AgentApprovalDecision,
 } from '@/domain/models/agent'
+import {
+  formatApprovalStepId,
+  formatApprovalTurn,
+} from '@/features/ai-chat/lib/approval'
 
 import { ApprovalCard } from './approval-card'
 
@@ -48,6 +52,8 @@ type ApprovalPanelProps = {
   decidingApprovalIds?: string[]
   /** 本 run 的工具调用次数（与审批卡同源：来自同一事件流的时间线） */
   toolCallCount?: number
+  /** run 已收口（已批准卡不再展示未来时的执行提示） */
+  runFinished?: boolean
   onDecide: (
     approvalId: string,
     decision: AgentApprovalDecision
@@ -99,6 +105,7 @@ export function ApprovalPanel({
   error = null,
   decidingApprovalIds = [],
   toolCallCount = 0,
+  runFinished = false,
   onDecide,
   onRetry,
 }: ApprovalPanelProps) {
@@ -188,31 +195,34 @@ export function ApprovalPanel({
       )}
 
       <div className='mt-2 space-y-3'>
-        {pendingGroups.map((group) => (
-          <div data-approval-step={group.stepId ?? 'unknown'} key={group.key}>
-            {(pendingGroups.length > 1 || group.items.length > 1) && (
-              <div className='text-muted-foreground mb-1.5 flex flex-wrap items-center gap-2 text-[11px]'>
-                <span className='font-medium'>
-                  {AGENT_APPROVAL_COPY.planTitle}（{group.items.length} 项）
-                </span>
-                {group.stepId && (
-                  <code className='font-mono'>{group.stepId}</code>
-                )}
-                {group.turn !== undefined && <span>第 {group.turn} 轮</span>}
+        {pendingGroups.map((group) => {
+          const groupStep = formatApprovalStepId(group.stepId)
+          const groupTurn = formatApprovalTurn(group.turn)
+          return (
+            <div data-approval-step={group.stepId ?? 'unknown'} key={group.key}>
+              {(pendingGroups.length > 1 || group.items.length > 1) && (
+                <div className='text-muted-foreground mb-1.5 flex flex-wrap items-center gap-2 text-[11px]'>
+                  <span className='font-medium'>
+                    {AGENT_APPROVAL_COPY.planTitle}（{group.items.length} 项）
+                  </span>
+                  {groupStep && <code className='font-mono'>{groupStep}</code>}
+                  {groupTurn && <span>{groupTurn}</span>}
+                </div>
+              )}
+              <div className='space-y-2'>
+                {group.items.map((approval) => (
+                  <ApprovalCard
+                    approval={approval}
+                    deciding={deciding.has(approval.id)}
+                    key={approval.id}
+                    onDecide={onDecide}
+                    runFinished={runFinished}
+                  />
+                ))}
               </div>
-            )}
-            <div className='space-y-2'>
-              {group.items.map((approval) => (
-                <ApprovalCard
-                  approval={approval}
-                  deciding={deciding.has(approval.id)}
-                  key={approval.id}
-                  onDecide={onDecide}
-                />
-              ))}
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {decided.length > 0 && (
@@ -231,6 +241,7 @@ export function ApprovalPanel({
                   deciding={false}
                   key={approval.id}
                   onDecide={onDecide}
+                  runFinished={runFinished}
                 />
               ))}
             </div>

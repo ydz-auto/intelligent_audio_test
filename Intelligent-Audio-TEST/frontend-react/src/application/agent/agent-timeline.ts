@@ -14,14 +14,12 @@ import {
   AGENT_APPROVAL_COPY,
   AGENT_APPROVAL_STATUS,
   AGENT_EVENT_TYPE,
-  AGENT_RUN_STATUS_LABELS,
   AGENT_TOOL_LABELS,
   AGENT_TOOL_RISK_LABELS,
   type AgentApproval,
   type AgentApprovalStatus,
   type AgentRunEvent,
   type AgentToolRisk,
-  type AgentRunStatus,
 } from '@/domain/models/agent'
 
 /** 时间线条目类型（与事件类型一一对应，message_delta 聚合为 message） */
@@ -73,10 +71,6 @@ const TOOL_RESULT_STATUS_LABELS: Record<string, string> = {
 function toolLabel(tool: string | undefined): string {
   if (!tool) return '未知工具'
   return AGENT_TOOL_LABELS[tool] ?? tool
-}
-
-function runStatusLabel(status: AgentRunStatus): string {
-  return AGENT_RUN_STATUS_LABELS[status] ?? status
 }
 
 function riskLabel(risk: AgentToolRisk | undefined): string | undefined {
@@ -177,12 +171,9 @@ function toEntry(event: AgentRunEvent): AgentTimelineEntry {
         ...base,
         kind: AGENT_TIMELINE_KIND.RUN_FINISHED,
         label: '运行结束',
-        detail: [
-          runStatusLabel(event.status),
-          event.error,
-        ]
-          .filter((item): item is string => Boolean(item))
-          .join(' · '),
+        // 终态（已完成 / 失败 / 已取消…）由条目徽标展示，detail 只留错误原因，
+        // 不再重复「运行结束 · 已完成」（INT-2472 审计 P3-6）
+        detail: event.error,
         status: event.status,
       }
     case AGENT_EVENT_TYPE.ERROR: {
@@ -266,13 +257,14 @@ export function applyApprovalToTimeline(
       return entry
     }
     changed = true
+    // 决策人数字 id 属内部字段，交给界面层解析成「我 / 其他用户」（P3-4）；
+    // 这里只保留状态与决策时间。
     const detail = [
       riskLabel(approval.proposal?.risk) ?? riskLabel(entry.risk),
       approvalStatusLabel(approval.status),
-      approval.decidedBy !== undefined
-        ? `${AGENT_APPROVAL_COPY.decidedBy} ${approval.decidedBy}`
+      approval.decidedAt
+        ? `决策于 ${formatClock(approval.decidedAt)}`
         : undefined,
-      approval.decidedAt ? formatClock(approval.decidedAt) : undefined,
     ]
       .filter((item): item is string => Boolean(item))
       .join(' · ')

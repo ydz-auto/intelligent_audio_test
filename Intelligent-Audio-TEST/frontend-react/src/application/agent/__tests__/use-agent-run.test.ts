@@ -731,6 +731,86 @@ describe('useAgentRun 审批卡 + 断线续传（INT-2472）', () => {
     expect(result.current.run?.id).toBe('r-9')
   })
 
+  it('刷新恢复：run 停在 WAITING_APPROVAL 且待审批卡已恢复时，悬挂气泡按「等待审批」中性收口（P2-1）', async () => {
+    getSessionMock.mockResolvedValue({
+      session: { id: 's-9', title: '历史会话' },
+      messages: [],
+      runs: [
+        {
+          id: 'r-9',
+          sessionId: 's-9',
+          status: AGENT_RUN_STATUS.WAITING_APPROVAL,
+        },
+      ],
+    })
+    listApprovalsMock.mockResolvedValue([
+      {
+        id: 'ap-9',
+        runId: 'r-9',
+        status: AGENT_APPROVAL_STATUS.PENDING,
+        proposal: { tool: 'memory_write', risk: AGENT_TOOL_RISK.WRITE },
+      },
+    ])
+    useAiChatSession.setState({
+      agentSessionId: 's-9',
+      messages: [
+        {
+          key: 'assistant-stale',
+          from: 'assistant',
+          versions: [{ id: 'assistant-stale-v1', content: '' }],
+          status: 'loading',
+        },
+      ],
+    })
+
+    renderHook(() => useAgentRun())
+
+    await waitFor(() => {
+      expect(useAiChatSession.getState().messages[0].status).toBe('complete')
+    })
+    const [message] = useAiChatSession.getState().messages
+    // 不落错误态、不给重试入口；按「等待审批」中性收口，正文用兜底文案
+    expect(message.status).toBe('complete')
+    expect(message.runStatus).toBe(AGENT_RUN_STATUS.WAITING_APPROVAL)
+    expect(message.errorCode).toBeUndefined()
+    expect(message.versions[0].content).toBe(AGENT_APPROVAL_COPY.waitingMessage)
+  })
+
+  it('刷新恢复：run 在等审批但拿不到待审批卡时，仍按事件流中断收口', async () => {
+    getSessionMock.mockResolvedValue({
+      session: { id: 's-9', title: '历史会话' },
+      messages: [],
+      runs: [
+        {
+          id: 'r-9',
+          sessionId: 's-9',
+          status: AGENT_RUN_STATUS.WAITING_APPROVAL,
+        },
+      ],
+    })
+    listApprovalsMock.mockResolvedValue([])
+    useAiChatSession.setState({
+      agentSessionId: 's-9',
+      messages: [
+        {
+          key: 'assistant-stale',
+          from: 'assistant',
+          versions: [{ id: 'assistant-stale-v1', content: '' }],
+          status: 'loading',
+        },
+      ],
+    })
+
+    renderHook(() => useAgentRun())
+
+    await waitFor(() => {
+      expect(useAiChatSession.getState().messages[0].status).toBe('error')
+    })
+    expect(useAiChatSession.getState().messages[0].errorCode).toBe(
+      'STREAM_INTERRUPTED'
+    )
+  })
+
   it('终态后补 run 快照：token 与预算进入 run（时间线展示预算消耗）', async () => {
     getRunMock.mockResolvedValue({
       id: 'r-1',

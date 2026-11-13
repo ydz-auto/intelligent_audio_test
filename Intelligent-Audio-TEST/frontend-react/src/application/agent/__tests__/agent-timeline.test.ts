@@ -95,6 +95,10 @@ describe('agent-timeline', () => {
     expect(message.charCount).toBe('你好，世界'.length)
     expect(message.detail).toBe(`${'你好，世界'.length} 字`)
     expect(countTimelineToolCalls(entries)).toBe(1)
+    // 终态由徽标展示，detail 不再重复「运行结束 · 已完成」（P3-6）
+    const finished = entries[entries.length - 1]
+    expect(finished.detail).toBeUndefined()
+    expect(finished.status).toBe(AGENT_RUN_STATUS.SUCCEEDED)
   })
 
   it('中间插入其他事件后 message_delta 另起一条（不跨事件聚合）', () => {
@@ -159,7 +163,9 @@ describe('agent-timeline', () => {
     expect(entries[0].status).toBe(AGENT_APPROVAL_STATUS.APPROVED)
     expect(entries[0].decidedBy).toBe(7)
     expect(entries[0].detail).toContain('已批准')
-    expect(entries[0].detail).toContain('决策人 7')
+    // 决策人数字 id 不在时间线文案里直出（P3-4：由界面层解析成「我 / 其他用户」）
+    expect(entries[0].detail).not.toContain('决策人 7')
+    expect(entries[0].detail).toContain('决策于')
     // 决策不产生事件，序号不变
     expect(entries[0].sequence).toBe(7)
   })

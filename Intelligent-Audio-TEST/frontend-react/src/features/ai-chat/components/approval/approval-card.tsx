@@ -30,12 +30,20 @@ import {
 import { cn } from '@/lib/utils'
 
 import { formatClock } from '@/application/agent/agent-timeline'
+import {
+  formatApprovalApprover,
+  formatApprovalStepId,
+  formatApprovalTurn,
+} from '@/features/ai-chat/lib/approval'
+import { useAuthStore } from '@/infrastructure/stores/auth-store'
 import { ApprovalDiffPreview } from './diff-preview'
 
 type ApprovalCardProps = {
   approval: AgentApproval
   /** 决策请求在途（store 中该审批单已登记，按钮立即禁用） */
   deciding: boolean
+  /** run 已收口：已批准卡不再用「将在服务端执行」的将来时（P3-5） */
+  runFinished?: boolean
   onDecide: (
     approvalId: string,
     decision: AgentApprovalDecision
@@ -79,11 +87,14 @@ function useNowTicker(active: boolean): number {
 export function ApprovalCard({
   approval,
   deciding,
+  runFinished = false,
   onDecide,
 }: ApprovalCardProps) {
   const [error, setError] = useState<string | null>(null)
   const [pendingDecision, setPendingDecision] =
     useState<AgentApprovalDecision | null>(null)
+  /** 当前用户 id：决策人是自己时展示「我」，不直出内部数字 id（P3-4） */
+  const currentUserId = useAuthStore((state) => state.user?.id)
 
   const status = approval.status
   const isPending = status === AGENT_APPROVAL_STATUS.PENDING
@@ -101,6 +112,9 @@ export function ApprovalCard({
   const risk = approval.proposal?.risk
   const toolLabel = tool ? (AGENT_TOOL_LABELS[tool] ?? tool) : '写操作'
   const isDestructive = risk === AGENT_TOOL_RISK.DESTRUCTIVE
+  const stepText = formatApprovalStepId(approval.proposal?.stepId)
+  const turnText = formatApprovalTurn(approval.proposal?.turn)
+  const approverText = formatApprovalApprover(approval.decidedBy, currentUserId)
 
   const remainingText = useMemo(() => {
     if (!isPending || expiresAtMs === null || isExpired) return null
@@ -153,12 +167,8 @@ export function ApprovalCard({
 
       <div className='text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]'>
         {tool && <code className='font-mono'>{tool}</code>}
-        {approval.proposal?.stepId && (
-          <span>步骤 {approval.proposal.stepId}</span>
-        )}
-        {approval.proposal?.turn !== undefined && (
-          <span>第 {approval.proposal.turn} 轮</span>
-        )}
+        {stepText && <span>步骤 {stepText}</span>}
+        {turnText && <span>{turnText}</span>}
         {isPending && expiresAtMs !== null && (
           <span data-approval-countdown>
             {isExpired
@@ -168,7 +178,7 @@ export function ApprovalCard({
         )}
         {!isPending && approval.decidedAt && (
           <span data-approval-decided>
-            {AGENT_APPROVAL_COPY.decidedBy} {approval.decidedBy ?? '-'} ·{' '}
+            {AGENT_APPROVAL_COPY.decidedBy} {approverText ?? '-'} ·{' '}
             {AGENT_APPROVAL_COPY.decidedAt} {formatClock(approval.decidedAt)}
           </span>
         )}
@@ -229,11 +239,13 @@ export function ApprovalCard({
         </div>
       )}
 
-      {!isPending && effectiveStatus === AGENT_APPROVAL_STATUS.APPROVED && (
-        <p className='text-muted-foreground mt-2 text-xs'>
-          {AGENT_APPROVAL_COPY.approvedHint}
-        </p>
-      )}
+      {!isPending &&
+        !runFinished &&
+        effectiveStatus === AGENT_APPROVAL_STATUS.APPROVED && (
+          <p className='text-muted-foreground mt-2 text-xs'>
+            {AGENT_APPROVAL_COPY.approvedHint}
+          </p>
+        )}
       {!isPending && effectiveStatus === AGENT_APPROVAL_STATUS.REJECTED && (
         <p className='text-muted-foreground mt-2 text-xs'>
           {AGENT_APPROVAL_COPY.rejectedHint}

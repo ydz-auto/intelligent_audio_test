@@ -429,6 +429,11 @@ export const AGENT_APPROVAL_COPY = {
   approvedHint: '已批准，Agent 将在服务端执行该写操作',
   rejectedHint: '已拒绝，该写操作不会执行',
   expiredHint: '提案已过期，写操作未执行且不可再批准',
+  /**
+   * 刷新恢复：run 服务端仍在等审批时，被打断的 assistant 气泡按「等待审批」中性收口
+   * （不再落事件流中断错误态）；气泡无正文时用这句兜底。
+   */
+  waitingMessage: '已生成写操作提案，请在下方的审批卡中批准或拒绝',
   /** 过期倒计时前缀（剩余 mm:ss） */
   expiresIn: '剩余',
   expiresAt: '有效期至',

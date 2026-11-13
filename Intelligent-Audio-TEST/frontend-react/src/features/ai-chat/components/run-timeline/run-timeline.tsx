@@ -31,11 +31,13 @@ import {
   AGENT_APPROVAL_COPY,
   AGENT_APPROVAL_STATUS,
   AGENT_RUN_STATUS,
+  AGENT_RUN_STATUS_LABELS,
   AGENT_TOOL_RESULT_STATUS,
   AGENT_TOOL_RISK_LABELS,
   type AgentApprovalStatus,
   type AgentRun,
   type AgentRunBudget,
+  type AgentRunStatus,
   type AgentToolRisk,
 } from '@/domain/models/agent'
 import {
@@ -44,6 +46,8 @@ import {
   type AgentTimelineEntry,
   type AgentTimelineKind,
 } from '@/application/agent/agent-timeline'
+import { formatApprovalApprover } from '@/features/ai-chat/lib/approval'
+import { useAuthStore } from '@/infrastructure/stores/auth-store'
 import { cn } from '@/lib/utils'
 
 /** 时间线条目图标（按类型；错误 / 审批用语义色） */
@@ -124,7 +128,11 @@ function entryStatusBadge(
     const failed =
       entry.status === AGENT_RUN_STATUS.FAILED ||
       entry.status === AGENT_RUN_STATUS.BUDGET_EXCEEDED
-    return { label: entry.label, variant: failed ? 'destructive' : 'secondary' }
+    // 徽标展示终态（已完成 / 失败 / 已取消…），不再与 label「运行结束」重复（P3-6）
+    const statusLabel = entry.status
+      ? (AGENT_RUN_STATUS_LABELS[entry.status as AgentRunStatus] ?? entry.status)
+      : entry.label
+    return { label: statusLabel, variant: failed ? 'destructive' : 'secondary' }
   }
   return null
 }
@@ -134,6 +142,11 @@ function TimelineEntry({ entry }: { entry: AgentTimelineEntry }) {
   const Icon = meta.icon
   const statusBadge = entryStatusBadge(entry)
   const risk = entry.risk as AgentToolRisk | undefined
+  const currentUserId = useAuthStore((state) => state.user?.id)
+  const approver =
+    entry.kind === AGENT_TIMELINE_KIND.APPROVAL
+      ? formatApprovalApprover(entry.decidedBy, currentUserId)
+      : null
   const sequenceText =
     entry.lastSequence !== entry.sequence
       ? `#${entry.sequence}–${entry.lastSequence}`
@@ -161,6 +174,14 @@ function TimelineEntry({ entry }: { entry: AgentTimelineEntry }) {
           )}
           {statusBadge && (
             <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
+          )}
+          {approver && (
+            <span
+              className='text-muted-foreground text-[11px]'
+              data-timeline-decided-by
+            >
+              {AGENT_APPROVAL_COPY.decidedBy} {approver}
+            </span>
           )}
           {entry.kind === AGENT_TIMELINE_KIND.CONTEXT_COMPACTED && entry.debug && (
             <Badge data-timeline-debug='true' variant='outline'>

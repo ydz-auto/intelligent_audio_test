@@ -5,7 +5,7 @@
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   AGENT_APPROVAL_DECISION,
@@ -14,6 +14,11 @@ import {
   type AgentApproval,
 } from '@/domain/models/agent'
 import { ApprovalCard } from '@/features/ai-chat/components/approval/approval-card'
+import { useAuthStore } from '@/infrastructure/stores/auth-store'
+
+afterEach(() => {
+  useAuthStore.setState({ user: null })
+})
 
 function buildApproval(overrides: Partial<AgentApproval> = {}): AgentApproval {
   return {
@@ -48,7 +53,8 @@ describe('ApprovalCard', () => {
     expect(screen.getByText('写操作')).toBeInTheDocument()
     expect(screen.getByText('待审批')).toBeInTheDocument()
     expect(screen.getByText(/步骤 step-1/)).toBeInTheDocument()
-    expect(screen.getByText(/第 2 轮/)).toBeInTheDocument()
+    // 后端 turn 从 0 起，界面展示 1 起（P3-2：不再出现「第 0 轮」）
+    expect(screen.getByText(/第 3 轮/)).toBeInTheDocument()
     expect(document.querySelector('[data-approval-countdown]')?.textContent).toContain(
       '剩余'
     )
@@ -84,7 +90,16 @@ describe('ApprovalCard', () => {
     expect(screen.getByRole('button', { name: '拒绝' })).toBeDisabled()
   })
 
-  it('已批准：不渲染决策按钮，展示决策人 / 时间与执行提示', () => {
+  it('已批准：不渲染决策按钮，决策人是自己时显示「我」，展示执行提示', () => {
+    useAuthStore.setState({
+      user: {
+        id: '7',
+        username: 'dev_user',
+        displayName: 'dev_user',
+        roleName: '管理员',
+        permissions: ['*'],
+      },
+    })
     render(
       <ApprovalCard
         approval={buildApproval({
@@ -98,10 +113,50 @@ describe('ApprovalCard', () => {
     )
     expect(screen.queryByRole('button', { name: '批准执行' })).not.toBeInTheDocument()
     expect(screen.getByText('已批准')).toBeInTheDocument()
+    // 决策人数字 id 不直出（P3-4）
     expect(document.querySelector('[data-approval-decided]')?.textContent).toContain(
-      '决策人 7'
+      '决策人 我'
     )
     expect(screen.getByText(/Agent 将在服务端执行该写操作/)).toBeInTheDocument()
+  })
+
+  it('run 已收口：已批准卡不再展示未来时的执行提示（P3-5）', () => {
+    render(
+      <ApprovalCard
+        approval={buildApproval({
+          status: AGENT_APPROVAL_STATUS.APPROVED,
+          decidedBy: 7,
+          decidedAt: '2026-11-14T02:03:00Z',
+        })}
+        deciding={false}
+        onDecide={vi.fn()}
+        runFinished
+      />
+    )
+    expect(screen.getByText('已批准')).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Agent 将在服务端执行该写操作/)
+    ).not.toBeInTheDocument()
+  })
+
+  it('长步骤 UUID 截断展示、turn=0 显示第 1 轮（P3-2 / P3-3）', () => {
+    render(
+      <ApprovalCard
+        approval={buildApproval({
+          proposal: {
+            tool: 'memory_write',
+            risk: AGENT_TOOL_RISK.WRITE,
+            stepId: '8dd2ee8d-1c4e-4b7a-9f00-112233445566',
+            turn: 0,
+          },
+        })}
+        deciding={false}
+        onDecide={vi.fn()}
+      />
+    )
+    expect(screen.queryByText(/8dd2ee8d-1c4e-4b7a/)).not.toBeInTheDocument()
+    expect(screen.getByText(/步骤 8dd2ee8d…/)).toBeInTheDocument()
+    expect(screen.getByText('第 1 轮')).toBeInTheDocument()
   })
 
   it('DESTRUCTIVE：风险徽标为高危操作（永远单条，卡片不出现批量按钮）', () => {

@@ -17,6 +17,7 @@ import {
   getCurrentMessageContent,
   getEditingMessageContent,
   getMessageAlignment,
+  countLatestAssistantToolCalls,
 } from '@/features/ai-chat/lib/message'
 import {
   AGENT_RUN_PHASE_COPY,
@@ -31,10 +32,11 @@ import {
   countTimelineToolCalls,
   type AgentTimelineEntry,
 } from '@/application/agent/agent-timeline'
-import type {
-  AgentApproval,
-  AgentApprovalDecision,
-  AgentRun,
+import {
+  isTerminalRunStatus,
+  type AgentApproval,
+  type AgentApprovalDecision,
+  type AgentRun,
 } from '@/domain/models/agent'
 import type { ChatMessage } from '@/domain/models/aiChat'
 
@@ -117,6 +119,17 @@ export function AiChat({
     messages.length - MAX_RENDERED_HISTORY_MESSAGES
   )
   const visibleMessages = messages.slice(visibleMessageOffset)
+
+  /**
+   * 审批面板「工具调用」计数（P3-1）：时间线是当前页面会话的事件投影，刷新后为空，
+   * 此时改用最后一条 assistant 气泡里已落的工具卡，避免与「待审批 1」不一致。
+   */
+  const toolCallCount =
+    timeline.length > 0
+      ? countTimelineToolCalls(timeline)
+      : countLatestAssistantToolCalls(messages)
+  /** run 已收口：已批准审批卡不再展示「将在服务端执行」的将来时（P3-5） */
+  const runFinished = run !== null && isTerminalRunStatus(run.status)
 
   const handleToggleMessageSource = (message: ChatMessage) => {
     setSourceMessageKeys((currentKeys) => {
@@ -260,7 +273,8 @@ export function AiChat({
               loading={approvalsLoading}
               onDecide={onDecideApproval}
               onRetry={onRetryApprovals}
-              toolCallCount={countTimelineToolCalls(timeline)}
+              runFinished={runFinished}
+              toolCallCount={toolCallCount}
             />
           )}
           {/* Run 时间线（§12.2）：事件 sequence 有序投影，默认折叠 */}
