@@ -9,7 +9,7 @@
 
 1. **唯一 Runtime：一个模型、一个上下文窗口、一个开放式工具循环**。不引入编排器，不按域拆 subagent。
 2. **能力扩展方式是 Skill，不是新 Agent**。Skill 承载流程、口径、判断与踩坑；工具承载动作与实时数据。
-3. **全平台 61 个业务能力全部纳入**，但内部 Agent 不暴露 205 个 MCP 原子工具，收敛为 31 个工具（含 `tool_search`、2 个记忆工具、3 个探索工具，业务意图工具 25 个）延迟加载。
+3. **全平台 61 个业务能力全部纳入**，但内部 Agent 不暴露 207 个 MCP 原子工具，收敛为 31 个工具（含 `tool_search`、2 个记忆工具、3 个探索工具，业务意图工具 25 个）延迟加载。
 4. **一套 Skill，两种宿主**：平台内置 Agent 与外部 Claude Code / Codex 共用同一批 `skills/` 资产；对外 MCP 保持现有 1:1 契约不变。
 5. **底座先行**：沙箱、上下文无感压缩、断点续跑、逐工具权限、写操作审批，先于业务 Skill 铺开。
 6. **模型密钥归用户**：用户配置自己的供应商 Key，加密存库、按用户隔离；平台默认不提供 Key，也不做隐式兜底。
@@ -140,20 +140,20 @@ skills/<skill-name>/
 ---
 name: report-studio
 description: >-
-  报告取数、指标解释、Markdown 起草与改稿、版本恢复、导出。
-  触发词：报告、对比报告、指标、WER、开放题、导出 PPT/PDF。
+  报告取数、指标解释与起草口径：三类报告列表 / 详情、指标矩阵、用例明细、
+  维度统计、生成进度、页签计数，以及报告文本的起草与版本口径。
+  触发词：报告详情、报告指标、通过率、用例平均值、报告起草。
+  不适用：多报告对比 / 趋势（report-compare）；生成 / 导出 / 发布等写操作（M2）。
 version: 1.0.0
 owner: report-team
 allowed-tools:
   - report_query
-  - report_generate
-  - report_compare
-  - report_export
+  - tool_search
 permissions:
   - report:read
 budgets:
-  maxToolCalls: 40
-  maxTokens: 60000
+  maxToolCalls: 30
+  maxTokens: 50000
 ---
 ```
 
@@ -187,6 +187,12 @@ budgets:
 | `log-diagnostics` | 日志搜索、失败诊断、导出 | `log_diagnose` | P1 |
 | `driver-proposal` | UiAutoDev 元素 → 设备驱动（`AppDriver`）+ 厂商 API 适配器（`ApiVendorAdapter`）提案 | `driver_propose`（对外唯一工具名；`target_kind` = `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具，落地卡 INT-2467） | P2 |
 | `app-api-onboarding` | App/API 接入全流程（含 ASR/TTS 测量路径）：受理、发现、计划、生成、验证、迭代、交付 | `ui_tree`、`ui_action`、`api_spec`、`driver_propose`、`device_query`、`testcase_generate`、`task_run`、`tool_search` | P1 |
+
+> **M1 只读落点（2026-11-13）**：`spl-calibration` 的只读能力由 `device_query` 的
+> SPL 动作承载（`spl_calibrate` 仍是 M2 写工具）；`tag-group` 的只读走 `tool_search`
+> 命中的 `tag_list` / `group_list`（`tag_group_manage` 仍是 M2 写工具）；
+> `driver-proposal` 在 M1 只做材料准备，`driver_propose` 未启用。
+> 本表「主要意图工具」列写全生命周期工具，M1 只装配其中已启用的只读项。
 
 ## 5. 单 Agent Loop 契约
 
@@ -268,17 +274,44 @@ budgets:
 | `dashboard_query` | 首页统计（只读；缓存刷新留 M2，与 INT-2461 一致） | READ |
 
 > **实现演进裁定（INT-2453，2026-11-13）**：31 个工具已在 `shared/agent_tools/intent_tools.py`
-> 全量登记，名称与风险等级与本表逐项一致。M0 只启用 `platform_contract` / `tool_search` /
-> `task_query` / `report_query` 4 个；其余 27 个 `enabled=false`（预留 Schema），调用返回
-> `TOOL_NOT_ENABLED`（不按写审批语义处理），启动不产生 `UNKNOWN_TOOL` 告警，`tool_search`
+> 全量登记，名称与风险等级与本表逐项一致。M0 时只启用 `platform_contract` / `tool_search` /
+> `task_query` / `report_query` 4 个（M1 已扩到 14 个，见下一条裁定）；其余 `enabled=false`
+> （预留 Schema），调用返回 `TOOL_NOT_ENABLED`（不按写审批语义处理），启动不产生 `UNKNOWN_TOOL` 告警，`tool_search`
 > 仍检索得到并标注 `enabled=false`。工具结果错误码固定为 `OK` / `PERMISSION_DENIED` /
 > `INVALID_ARGUMENTS` / `TOOL_NOT_ENABLED` / `UNKNOWN_TOOL` / `NOT_FOUND` /
 > `APPROVAL_REQUIRED` / `UPSTREAM_ERROR` / `UPSTREAM_UNAVAILABLE`。`tool_search` 的 M0 实现是
 > 关键词检索 + 中英词表召回扩展，语义检索尚未实现。
 
+> **实现演进裁定（INT-2459 / 2460 / 2461 / 2463，2026-11-13）**：M1 各域只读卡落地后，
+> 口径按以下事实同步，工具总数与风险等级仍与本表逐项一致（31 项）。
+>
+> 1. **启用集合 14 个**：`platform_contract` / `tool_search` / `task_query` /
+>    `report_query` / `audio_query` / `evaluation_query` / `algorithm_query` /
+>    `device_query` / `testcase_query` / `testcase_generate` / `task_diagnose` /
+>    `log_diagnose` / `dashboard_query` / `report_compare`；其余 17 个 `enabled=false`
+>    （含 5 个预留名称 `memory_search` / `memory_write` / `ui_tree` / `ui_action` / `api_spec`）。
+> 2. **`device_query` 覆盖 SPL 只读**（INT-2459）：物理域 `/api/v1/spl` 与数字域
+>    `/api/v1/digital-spl` 的只读端点折进本工具的 `spl_*` / `digital_spl_*` 动作，
+>    不新增 SPL 只读意图工具，也不进对外 MCP 1:1 清单；调用按 `action` 收窄到
+>    `device:read` / `spl:read` / `digital_spl:read` 三域之一。`spl_calibrate` 仍是 M2 写工具。
+> 3. **本地实现（不直接映射单一 REST）**：`testcase_generate`（标注 → 用例草案，只读推导、
+>    不落库）、`task_diagnose` 与 `log_diagnose.diagnose`（多个只读接口聚合并带来源 ID）、
+>    `report_compare`（按报告 ID 逐个 `GET /reports/{id}` 并排；平台 `POST /reports/compare`
+>    会落库生成报告，属写操作，不作只读工具暴露）。
+> 4. **标签 / 分组只读无专用意图工具**：走 `tool_search` 命中的 MCP 长尾
+>    `tag_list` / `group_list`；`tag_group_manage` 仍是 M2 写工具。
+> 5. **权限待规格**：`memory_write` / `driver_propose` 的权限码在 RBAC 尚未建立。
+>    未启用期间，普通账号调用先返回 `PERMISSION_DENIED`，只有 `*` 通配权限才走到
+>    `TOOL_NOT_ENABLED`（fail-closed，两种结果都不执行）。
+
 ### 6.2 外部 MCP
 
-- 保持 `POST /api/v1/mcp` 现有 1:1 工具不变（205 个，迁移前后 `tools/list` 逐项一致）；
+- 保持 `POST /api/v1/mcp` 的 1:1 工具语义不变：工具名 / 路径 / 权限声明逐项一致。
+  **实现演进裁定（INT-2461 / INT-2463，2026-11-13）**：工具数由 205 增至 **207**
+  （新增 `home_stats_details` / `home_stats_summary` 两个首页只读工具）；
+  `log_list` / `log_stats` / `report_list` / `report_statistics` /
+  `report_statistics_trend` / `report_cases` 补声明网关真实支持的**可选**查询参数
+  （不改既有参数语义、不移除参数）。外部 `tools/list` 以本节为准；
   `api_gateway/application/services/mcp/tools_registry.py` 已改为 re-export，不再保存第二份 Schema。
 - 注册表抽到 `shared/agent_tools/`，Gateway MCP 与 `agent_service` 共用，禁止复制两份 Schema。
 - 外部 Agent 的上下文管理由客户端负责，不做意图收敛。
@@ -734,7 +767,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 
 | 风险 | 应对 |
 |---|---|
-| 205 个工具注入导致选择退化 | 意图工具 ≤30 + tool search；Skill 限定工具集 |
+| 207 个工具注入导致选择退化 | 意图工具 ≤30 + tool search；Skill 限定工具集 |
 | 模型能力不足导致计划漂移 | scratchpad + 确定性校验 + 审批 + 预算 |
 | 压缩丢关键事实 | 永不压缩清单；事实带来源 ID，可重查 |
 | 沙箱逃逸 | 三层隔离 + 逃逸用例纳入 CI |
