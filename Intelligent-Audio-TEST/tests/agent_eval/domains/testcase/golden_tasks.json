@@ -1,0 +1,351 @@
+{
+  "domain": "testcase",
+  "skill": "testcase-authoring",
+  "secondary_skill": "tag-group",
+  "version": 1,
+  "source": "INT-2460（M1 用例与标签域只读 + 两个 Skill）",
+  "description": "用例域与标签/分组域的 golden tasks：口语 query → 期望工具 / 参数 / 目标接口；由 INT-2465（m1-08）统一评测器消费，本卡只提供数据与断言。",
+  "testcase_tasks": [
+    {
+      "id": "tc-01",
+      "query": "把用例列表第一页给我，每页 10 条",
+      "arguments": {
+        "action": "list",
+        "page": 1,
+        "per_page": 10
+      },
+      "expected_tool": "testcase_list",
+      "expected_path": "/api/v1/testcases?page=1&per_page=10",
+      "checks": [
+        "items",
+        "total",
+        "page",
+        "per_page",
+        "pages"
+      ],
+      "notes": "列表分页；条数以 total 为准，不自己数"
+    },
+    {
+      "id": "tc-02",
+      "query": "搜一下名字里带「拒识」的用例",
+      "arguments": {
+        "action": "list",
+        "keyword": "拒识",
+        "page": 1,
+        "per_page": 10
+      },
+      "expected_tool": "testcase_list",
+      "expected_path": "/api/v1/testcases?keyword=%E6%8B%92%E8%AF%86&page=1&per_page=10",
+      "checks": [
+        "items",
+        "total"
+      ],
+      "notes": "关键词过滤走 keyword（不是 search / status）"
+    },
+    {
+      "id": "tc-03",
+      "query": "这个分组下的用例有哪些",
+      "arguments": {
+        "action": "list",
+        "group_id": "efdce97d-f8a5-497d-85f6-8e74ef877ebd"
+      },
+      "expected_tool": "testcase_list",
+      "expected_path": "/api/v1/testcases?group_id=efdce97d-f8a5-497d-85f6-8e74ef877ebd",
+      "checks": [
+        "items",
+        "total"
+      ],
+      "notes": "分组过滤用字符串 UUID，不是整数"
+    },
+    {
+      "id": "tc-04",
+      "query": "用例列表里带「环境理解」标签的有多少条",
+      "arguments": {
+        "action": "list",
+        "tag": "环境理解"
+      },
+      "expected_tool": "testcase_list",
+      "expected_path": "/api/v1/testcases?tag=%E7%8E%AF%E5%A2%83%E7%90%86%E8%A7%A3",
+      "checks": [
+        "items",
+        "total"
+      ],
+      "notes": "标签过滤用标签名；计数引用 total"
+    },
+    {
+      "id": "tc-05",
+      "query": "只给我私有用例",
+      "arguments": {
+        "action": "list",
+        "visibility": "private"
+      },
+      "expected_tool": "testcase_list",
+      "expected_path": "/api/v1/testcases?visibility=private",
+      "checks": [
+        "items",
+        "total"
+      ],
+      "notes": "可见性只认 shared / private"
+    },
+    {
+      "id": "tc-06",
+      "query": "这条用例的详细配置是什么",
+      "arguments": {
+        "action": "detail",
+        "tc_id": "f50b2c8c-c0e7-4ed7-b582-d065da135269"
+      },
+      "expected_tool": "testcase_get",
+      "expected_path": "/api/v1/testcases/f50b2c8c-c0e7-4ed7-b582-d065da135269",
+      "checks": [
+        "id",
+        "name",
+        "config",
+        "audios",
+        "dimensions"
+      ],
+      "notes": "轮次配置在 config.rounds；详情的 audios/dimensions 是解析视图"
+    },
+    {
+      "id": "tc-07",
+      "query": "这条用例第 2 轮的轮次参考参数是什么",
+      "arguments": {
+        "action": "round_ref_params",
+        "tc_id": "f50b2c8c-c0e7-4ed7-b582-d065da135269",
+        "round_number": 2
+      },
+      "expected_tool": "testcase_round_ref_params",
+      "expected_path": "/api/v1/testcases/f50b2c8c-c0e7-4ed7-b582-d065da135269/rounds/2/ref-params",
+      "checks": [
+        "roundNumber",
+        "referenceParamsPath",
+        "referenceParams"
+      ],
+      "notes": "404 是「该轮未生成参考参数」，照上游原文回答"
+    },
+    {
+      "id": "tc-08",
+      "query": "刚才那个用例导出作业跑完了吗",
+      "arguments": {
+        "action": "export_status",
+        "task_id": "export-20261113-01"
+      },
+      "expected_tool": "testcase_export_job_status",
+      "expected_path": "/api/v1/testcases/export/jobs/export-20261113-01",
+      "checks": [
+        "status",
+        "phase",
+        "progress"
+      ],
+      "notes": "需要 testcase:import_export 权限，没有就明说无权查看"
+    },
+    {
+      "id": "tc-09",
+      "query": "用例参考参数刷新的进度到哪了",
+      "arguments": {
+        "action": "refresh_status",
+        "task_id": "refresh-1024"
+      },
+      "expected_tool": "testcase_refresh_status",
+      "expected_path": "/api/v1/testcases/refresh_task/refresh-1024",
+      "checks": [
+        "task_id",
+        "status",
+        "progress"
+      ],
+      "notes": "刷新任务不存在时接口返回 status=not_found，不是 500"
+    },
+    {
+      "id": "tc-10",
+      "query": "用例一共多少条，按分组怎么分布",
+      "arguments": {
+        "action": "stats"
+      },
+      "expected_tool": "testcase_stats",
+      "expected_path": "/api/v1/testcases/stats",
+      "checks": [
+        "total_count",
+        "by_group",
+        "recent_updates"
+      ],
+      "notes": "统计口径以接口返回为准"
+    }
+  ],
+  "tag_tasks": [
+    {
+      "id": "tg-01",
+      "query": "平台有哪些标签，先看第一页",
+      "tool": "tag_list",
+      "search_query": "标签列表",
+      "arguments": {
+        "page": 1,
+        "per_page": 20
+      },
+      "expected_path": "/api/v1/tags?page=1&per_page=20",
+      "checks": [
+        "items",
+        "total",
+        "page",
+        "per_page",
+        "pages"
+      ],
+      "notes": "长尾 MCP 工具，先 tool_search 再按 Schema 调用"
+    },
+    {
+      "id": "tg-02",
+      "query": "搜一下名字里带「环境」的标签",
+      "tool": "tag_list",
+      "search_query": "标签列表",
+      "arguments": {
+        "keyword": "环境"
+      },
+      "expected_path": "/api/v1/tags?keyword=%E7%8E%AF%E5%A2%83",
+      "checks": [
+        "items",
+        "total"
+      ],
+      "notes": "关键词参数是 keyword；分类过滤不在 Schema 里"
+    },
+    {
+      "id": "tg-03",
+      "query": "这个标签属于哪个分类",
+      "tool": "tag_list",
+      "search_query": "标签",
+      "arguments": {
+        "page": 1,
+        "per_page": 20
+      },
+      "expected_path": "/api/v1/tags?page=1&per_page=20",
+      "checks": [
+        "items"
+      ],
+      "notes": "分类归属看返回项上的 category_id / category_name"
+    },
+    {
+      "id": "tg-04",
+      "query": "标签的可见性怎么区分共享和私有",
+      "tool": "tag_list",
+      "search_query": "标签",
+      "arguments": {
+        "page": 1,
+        "per_page": 20
+      },
+      "expected_path": "/api/v1/tags?page=1&per_page=20",
+      "checks": [
+        "items"
+      ],
+      "notes": "只有 shared / private；private 仅归属人与 admin 可见"
+    },
+    {
+      "id": "tg-05",
+      "query": "平台一共多少个标签",
+      "tool": "tag_list",
+      "search_query": "标签",
+      "arguments": {
+        "page": 1,
+        "per_page": 1
+      },
+      "expected_path": "/api/v1/tags?page=1&per_page=1",
+      "checks": [
+        "total"
+      ],
+      "notes": "总数看 total，不是当前页长度"
+    },
+    {
+      "id": "tg-06",
+      "query": "有哪些用例分组",
+      "tool": "group_list",
+      "search_query": "用例分组",
+      "arguments": {},
+      "expected_path": "/api/v1/groups",
+      "checks": [
+        "items",
+        "total"
+      ],
+      "notes": "group_list 不接受过滤参数，返回全部分组"
+    },
+    {
+      "id": "tg-07",
+      "query": "每个用例分组下有多少条用例",
+      "tool": "group_list",
+      "search_query": "用例分组",
+      "arguments": {},
+      "expected_path": "/api/v1/groups",
+      "checks": [
+        "items",
+        "total"
+      ],
+      "notes": "分组用例数引用 test_case_count，不用列表长度推算"
+    },
+    {
+      "id": "tg-08",
+      "query": "同名用例分组怎么区分",
+      "tool": "group_list",
+      "search_query": "分组",
+      "arguments": {},
+      "expected_path": "/api/v1/groups",
+      "checks": [
+        "items"
+      ],
+      "notes": "分组名可重复，用字符串 UUID 的 id 区分"
+    },
+    {
+      "id": "tg-09",
+      "query": "用例分组的可见性怎么区分",
+      "tool": "group_list",
+      "search_query": "分组",
+      "arguments": {},
+      "expected_path": "/api/v1/groups",
+      "checks": [
+        "items"
+      ],
+      "notes": "分组 visibility 同标签口径"
+    },
+    {
+      "id": "tg-10",
+      "query": "标签列表里能看出哪些标签归在环境理解这类分类下吗",
+      "tool": "tag_list",
+      "search_query": "标签",
+      "arguments": {
+        "keyword": "环境"
+      },
+      "expected_path": "/api/v1/tags?keyword=%E7%8E%AF%E5%A2%83",
+      "checks": [
+        "items"
+      ],
+      "notes": "分类归属读返回项的 category_name；没有分类过滤参数"
+    }
+  ],
+  "testcase_trigger_extra": [
+    "帮我生成用例草案",
+    "复制这条用例会带上轮次和维度吗",
+    "这条用例第几轮放了哪些音频",
+    "第 2 轮的参考参数还没生成吗",
+    "参考参数刷新任务的状态"
+  ],
+  "tag_trigger_extra": [
+    "想给一批用例批量打标，现在能直接做吗",
+    "重命名标签会影响哪些用例",
+    "用例分组怎么挪用例",
+    "这个分组下多少条用例",
+    "某个分组里有多少用例",
+    "分组能不能设成私有"
+  ],
+  "testcase_negatives": [
+    "帮我把这批音频导入到音频库",
+    "导出这份 PDF 报告",
+    "校准这台设备的 SPL",
+    "查询评估维度的评分口径",
+    "算法参数怎么配置",
+    "启动任务并跑完这 50 条",
+    "设备告警怎么看",
+    "日志里有什么错误"
+  ],
+  "tag_negatives": [
+    "这条用例的轮次配置怎么看的",
+    "导出这份 PDF 报告",
+    "算法定义的状态有哪些",
+    "评估维度的权重要怎么调",
+    "音频文件的采样率是多少",
+    "启动任务并跑完这 50 条"
+  ]
+}
