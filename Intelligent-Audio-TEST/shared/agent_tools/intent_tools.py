@@ -16,6 +16,9 @@
 - ``report_compare``：多报告 / 二次对比与趋势（只读；本地组合，不生成平台报告）；
 - ``audio_query``：音频只读子集（映射 MCP ``audio_*`` 只读工具）；
 - ``evaluation_query``：评估维度 / 分类只读子集（映射 MCP ``evaluation_*`` 只读工具）；
+- ``evaluation_manage``：评估域写操作（INT-2469，M2）—— 维度 / 分类 CRUD、
+  维度可见性、触发重评估；动作表、动作级权限、body 字段白名单在
+  ``evaluation_tools``，写调用一律提案 + 审批（INT-2466 通用审批表）；
 - ``algorithm_query``：算法定义 / 参数 / 映射 / 表单 Schema 只读子集（映射 MCP ``algorithm_*`` 只读工具）；
 - ``memory_search`` / ``memory_write``：文件式长期记忆（INT-2490，§8.6）；
   检索走 ``rg``、写入需审批，路径由服务端按 tenant/owner 构造；两项都是
@@ -39,6 +42,12 @@ INT-2461、``report_query`` / ``report_compare`` INT-2463）；
 用同一份 MCP 定义组合多个只读接口，纯函数汇总在
 ``shared/agent_tools/diagnostics.py``，输出带来源 ID，不估算数值。
 
+M2 写域卡按域启用写意图工具（当前：``evaluation_manage`` INT-2469）；写工具
+同样走动作 → 工具映射，但执行前必须携带审批凭据（``context.approval``），
+提案 / 审批 / 幂等由 Loop 与审批服务统一承担（INT-2466），工具层只做
+参数校验、权限收窄与审批预览。分类更新 / 删除在外部 MCP 表未登记，映射到
+``evaluation_tools.EVALUATION_WRITE_TOOLS``（同形工具项，不外扩外部契约）。
+
 ``report_compare`` 是唯一的**本地组合**域工具（``kind='local'``，与
 ``tool_search`` / ``platform_contract`` 同层）：平台的对接口径
 （``POST /reports/compare`` / ``POST /reports/secondary-compare``）会**落库生成
@@ -55,10 +64,13 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import (
+    Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple,
+)
 
 from shared.agent_tools import contract as platform_contract_catalog
 from shared.agent_tools import device_tools
+from shared.agent_tools import evaluation_tools
 from shared.agent_tools import testcase_tools as case_tools
 from shared.agent_tools.diagnostics import (
     DEFAULT_LOG_ROWS as LOG_DIAGNOSE_DEFAULT_MAX_ROWS,
@@ -121,6 +133,11 @@ def _schema(properties: Dict[str, Any],
 
 # ---------------------------------------------------------------- 工具定义
 
+# 风险等级取值（与 ``agent_service.domain.enums.ToolRisk`` 同口径）。
+# ``WRITE_RISK_LEVELS`` 是「需要审批」的两级，注册期测试按它校验 REST 写映射。
+RISK_LEVELS: Tuple[str, ...] = ('READ', 'WRITE', 'DESTRUCTIVE')
+WRITE_RISK_LEVELS = frozenset({'WRITE', 'DESTRUCTIVE'})
+
 
 @dataclass(frozen=True)
 class IntentTool:
@@ -129,10 +146,19 @@ class IntentTool:
     name: str
     description: str
     parameters: Dict[str, Any]
-    risk: str = 'READ'
+    # 必填、无默认值（INT-2560 / INT-2559 P1-1）：risk 是「是否需要审批」的
+    # 唯一声明。留默认 READ 会让漏写 risk 的新写工具在注册期被当成只读 ——
+    # 不进提案、网关按只读放行、REST 按 POST 直发，绕开整条审批链。
+    risk: str
     permissions: Tuple[str, ...] = ()
     enabled: bool = False
     kind: str = 'intent'  # intent | intent_rest | local | reserved
+
+    def __post_init__(self) -> None:
+        if self.risk not in RISK_LEVELS:
+            raise ValueError(
+                f'工具 {self.name} 的 risk 取值非法：{self.risk!r}'
+                f'（必须是 {"/".join(RISK_LEVELS)} 之一）')
 
     @property
     def requires_approval(self) -> bool:
@@ -347,6 +373,11 @@ EVALUATION_QUERY_ACTIONS: Dict[str, str] = {
     'dimension': 'evaluation_dimension_get',
     'categories': 'evaluation_category_list',
 }
+
+# 评估写动作 → 目标工具名（INT-2469，M2 写域卡）：动作表 / 权限收窄 / body
+# 白名单在 ``evaluation_tools``，此处别名只供注册表与调用方按同一份口径读取。
+EVALUATION_MANAGE_ACTIONS: Dict[str, str] = (
+    evaluation_tools.EVALUATION_MANAGE_ACTIONS)
 
 # 用例只读动作 → 工具名（INT-2460）。
 # list / detail 直接复用 MCP 只读工具；统计 / 轮次参考参数 / 导出作业状态 /
@@ -900,18 +931,33 @@ INTENT_TOOLS: List[IntentTool] = [
                                    'group:create', 'group:update',
                                    'group:delete'),
         enabled=False, kind='reserved'),
+    # ---------------- M2 已实现（INT-2469 评估域写） ----------------
     IntentTool(
-        name='evaluation_manage', description='维度/分类 CRUD、触发重评估（写）。',
+        name='evaluation_manage',
+        description=('评估配置写操作（提案 → 审批 → 执行，审批前不产生副作用）：'
+                     '维度创建 / 修改 / 删除（级联软删）、维度可见性切换、'
+                     '分类创建 / 修改 / 删除（软删）、触发任务重新评估。'
+                     'body 字段名与 REST /api/v1/evaluation 一致（snake_case），'
+                     '不认识的字段会被拒绝而不是静默忽略；重评估只重算评估结论、'
+                     '不重跑执行，同一任务已在队列 / 正在重评估时后端拒绝重复提交。'),
         parameters=_schema({
-            'action': _prop('string', '动作', required=True,
-                            enum=['dimension_create', 'dimension_update',
-                                  'category_create', 'category_update', 'reevaluate']),
-            'body': _prop('object', '维度 / 分类字段'),
+            'action': _prop('string', '写动作', required=True,
+                            enum=list(evaluation_tools.EVALUATION_MANAGE_ACTIONS)),
+            'dim_id': _prop('integer', '维度 ID（dimension_update / '
+                                       'dimension_delete / dimension_visibility 必填）',
+                            minimum=1),
+            'cat_id': _prop('integer', '分类 ID（category_update / '
+                                       'category_delete 必填）', minimum=1),
+            'visibility': _prop('string', '目标可见性（dimension_visibility 必填）',
+                                enum=list(evaluation_tools.VISIBILITY_VALUES)),
+            'body': _prop('object', '维度 / 分类字段或重评估参数（create / update / '
+                                    'reevaluate 必填）'),
         }, required=('action',)),
-        risk='WRITE', permissions=('evaluation:dim_manage',
-                                   'evaluation:category_manage',
-                                   'evaluation:execute'),
-        enabled=False, kind='reserved'),
+        risk='WRITE', permissions=(
+            evaluation_tools.DIM_MANAGE, evaluation_tools.CATEGORY_MANAGE,
+            evaluation_tools.EVALUATION_EXECUTE, evaluation_tools.EVALUATION_SHARE),
+        enabled=True, kind='intent_rest'),
+
     IntentTool(
         name='algorithm_query',
         description=('算法配置只读查询（INT-2464）：定义 / 草稿 / 分组、设备与 API 参数、'
@@ -1114,6 +1160,15 @@ AGENT_UNEXPOSED_MCP_TOOLS: Dict[str, str] = {
 
 # 审计脱敏：这些工具的参数正文不落 agent_tool_call / 事件（§8.6：审计不落记忆
 # 正文）。值替换成 {redacted, sha256, length}，模型侧仍有 args_hash 可追溯。
+#
+# 约束（INT-2560，INT-2559 P2-4）：进本表的工具**不得走通用审批链**。
+# 通用审批链（Loop 提案 → agent_approval → 审批后执行 / 崩溃后重提案）拿
+# ``record.arguments`` 去执行和重提案，而这里的参数已是 ``redact_for_audit``
+# 之后的占位值 —— 通用链一旦拿到脱敏体，审批通过的「原文」会变成
+# ``{redacted, sha256, length}``。故本表只登记自带提案原语的工具
+# （``ToolGateway.proposal_capable``，当前仅 ``memory_write``：提案内容存
+# artifact，审计记录只留哈希）。域写工具要脱敏，必须先有同款提案原语并
+# 排除出通用审批链，否则不许登记到这里。
 AUDIT_REDACTED_ARGUMENTS: Dict[str, Tuple[str, ...]] = {
     'memory_write': ('content',),
 }
@@ -1255,6 +1310,18 @@ _REST_ACTION_MAP: Dict[str, Dict[str, str]] = {
     'dashboard_query': DASHBOARD_QUERY_ACTIONS,
 }
 
+# 非 GET 但语义只读的 REST 目标（INT-2560）：这四个端点用 POST 只是为了让
+# 过滤条件走 JSON body（数组 / 嵌套字段），不产生任何副作用。
+# 注册期风险断言据此放行 ``risk='READ'``；任何**新增**的 POST / PUT / PATCH /
+# DELETE 映射若不在本表，就必须声明 WRITE / DESTRUCTIVE（fail-closed：宁可
+# 多要求一次审批，也不让写操作按只读直发）。
+READ_ONLY_NON_GET_TOOLS: Dict[str, str] = {
+    'audio_get_by_md5': '按 MD5 批量查重：body 只承载 md5_list',
+    'audio_folder_tree': '音频目录树：body 只承载目录过滤条件',
+    'report_cases_search': '报告内用例搜索：body 只承载过滤 / 排序条件',
+    'report_case_averages': '用例指标均值：body 只承载过滤条件',
+}
+
 # 动作级参数白名单：动作不支持的参数在工具层直接报错（服务端静默忽略）。
 _ACTION_PARAM_TABLE: Dict[str, Dict[str, Tuple[str, ...]]] = {
     'task_query': TASK_QUERY_PARAMS,
@@ -1273,6 +1340,55 @@ def _lookup_rest_tool(name: str) -> Optional[dict]:
     return get_tool(name) or case_tools.get_tool(name)
 
 
+class DomainActionMap(NamedTuple):
+    """一个意图工具的动作表与静态目标解析器（INT-2562）。
+
+    写域（``evaluation_manage``）与 Agent 专用目标（``device_query`` 的 SPL
+    子集）不在 ``_REST_ACTION_MAP`` 里，动作表放在各自的域模块。这里登记
+    一次，注册期风险探针按本表自动枚举 —— 新增域卡不必再手改探针。
+    """
+    actions: Tuple[str, ...]
+    target: Callable[[str], Optional[dict]]
+
+
+# 意图工具名 → 域动作表（INT-2562）。新增 ``kind='intent_rest'`` 的域工具
+# 时必须在此登记，否则 ``test_risk_probe_covers_every_rest_mapping`` 会判红：
+# 未登记的域对风险探针不可见，写操作可以按只读直发、绕开审批链（INT-2559
+# P1-1 的 fail-open 形态）。
+DOMAIN_ACTION_MAPS: Dict[str, DomainActionMap] = {
+    # 设备动作走 MCP GET 目标，SPL 动作走本模块的 Agent 专用只读目标；
+    # ``rest_target`` 是执行期同一条解析（条件路由含 status_history）。
+    'device_query': DomainActionMap(
+        device_tools.DEVICE_QUERY_ACTION_NAMES,
+        lambda action: device_tools.rest_target(action, {})),
+    # 评估写动作：前 6 项在 MCP 注册表，后 2 项是 evaluation_tools 的
+    # Agent 专用写目标（分类更新 / 删除）。
+    'evaluation_manage': DomainActionMap(
+        tuple(evaluation_tools.EVALUATION_MANAGE_ACTIONS),
+        evaluation_tools.rest_target),
+}
+
+
+def rest_action_targets() -> List[Tuple[str, str, Optional[dict]]]:
+    """所有映射到 REST 的意图动作：(意图工具名, 动作, 静态 REST 目标定义)。
+
+    注册期风险探针的唯一事实源（INT-2562）：
+    - ``_REST_ACTION_MAP``：只读业务域意图工具的动作表；
+    - ``DOMAIN_ACTION_MAPS``：写域与 Agent 专用目标（``device_query`` 的设备 /
+      SPL 动作、``evaluation_manage`` 的评估写动作）。
+
+    新增域只需登记到 ``DOMAIN_ACTION_MAPS`` 就自动进入探针，不必再改测试。
+    """
+    rows: List[Tuple[str, str, Optional[dict]]] = []
+    for name, mapping in _REST_ACTION_MAP.items():
+        for action, target_name in mapping.items():
+            rows.append((name, action, _lookup_rest_tool(target_name)))
+    for name, domain in DOMAIN_ACTION_MAPS.items():
+        for action in domain.actions:
+            rows.append((name, action, domain.target(action)))
+    return rows
+
+
 def permissions_for(name: str,
                     arguments: Optional[Dict[str, Any]] = None
                     ) -> Optional[Tuple[str, ...]]:
@@ -1281,6 +1397,8 @@ def permissions_for(name: str,
     绝大多数工具是「工具 = 一个权限域」，直接用工具级声明。``device_query``
     横跨 device / spl / digital_spl 三个域，工具级声明只表达可见性，调用时按
     ``action`` 收窄，避免持有 device:read 的用户读 SPL 映射（反之亦然）。
+    ``evaluation_manage`` 同理：维度 / 分类 / 执行 / 分享四个权限域，按
+    ``action`` 收窄，避免持有维度管理权限的用户删除分类或触发重评估。
     动作非法时回落到工具级权限，由解析层给出明确的 action 错误。
     """
     tool = INTENT_TOOL_BY_NAME.get(name)
@@ -1291,6 +1409,10 @@ def permissions_for(name: str,
         return tuple(mcp['permissions']) if mcp is not None else None
     if name == 'device_query' and isinstance(arguments, dict):
         by_action = device_tools.action_permissions(arguments.get('action'))
+        if by_action is not None:
+            return by_action
+    if name == 'evaluation_manage' and isinstance(arguments, dict):
+        by_action = evaluation_tools.action_permissions(arguments.get('action'))
         if by_action is not None:
             return by_action
     return tuple(tool.permissions)
@@ -1578,6 +1700,9 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
       后其余参数原样透传（路径 / 查询 / body 由共享构造器决定）；
     - ``device_query``：设备动作映射 MCP ``device_*`` GET 工具，SPL 动作映射
       ``device_tools`` 的 Agent 专用只读目标（该域没有对外 MCP 工具）；
+    - ``evaluation_manage``：写动作映射 MCP ``evaluation_*`` 写工具（分类更新 /
+      删除映射 ``evaluation_tools`` 的 Agent 专用写目标），由 ``evaluation_tools``
+      做动作级参数校验与 body 白名单；
     - 其他 MCP 工具名（tool_search 命中后直接调用）：原样透传参数；
     - 本地实现的工具（``LOCAL_INTENT_TOOL_NAMES``，含 ``report_compare``）不走
       REST 映射：返回错误文本，避免同名 MCP 的写接口被当成本地只读工具执行；
@@ -1585,6 +1710,10 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
     """
     if name == 'device_query':
         return device_tools.resolve_call(arguments or {})
+    if name == 'evaluation_manage':
+        # M2 写工具：动作表 / body 白名单 / 权限收窄都在 evaluation_tools，
+        # 与只读工具的 _REST_ACTION_MAP 分开，避免写动作误入只读解析分支。
+        return evaluation_tools.resolve_call(arguments or {})
     if name in LOCAL_INTENT_TOOL_NAMES:
         return None, None, f'工具 {name} 由本地实现，不映射 REST 接口'
     mapping = _REST_ACTION_MAP.get(name)
@@ -1698,7 +1827,9 @@ __all__ = [
     'ALWAYS_AVAILABLE_TOOLS',
     'AUDIO_QUERY_ACTIONS', 'AUDIT_REDACTED_ARGUMENTS',
     'CONDITIONAL_REQUIRED', 'DASHBOARD_QUERY_ACTIONS',
-    'DASHBOARD_QUERY_PARAMS', 'ENABLED_TOOLS', 'EVALUATION_QUERY_ACTIONS',
+    'DASHBOARD_QUERY_PARAMS', 'DOMAIN_ACTION_MAPS', 'DomainActionMap',
+    'ENABLED_TOOLS', 'EVALUATION_MANAGE_ACTIONS',
+    'EVALUATION_QUERY_ACTIONS',
     'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool',
     'LOCAL_INTENT_TOOL_NAMES', 'LOCAL_TOOL_NAMES', 'LOG_DIAGNOSE_ACTIONS',
     'LOG_DIAGNOSE_ALL_ACTIONS', 'LOG_DIAGNOSE_DEFAULT_MAX_ROWS',
@@ -1707,13 +1838,16 @@ __all__ = [
     'REPORT_COMPARE_ACTIONS', 'REPORT_COMPARE_MAX_REPORTS',
     'PAGE_MIN', 'PER_PAGE_MAX',
     'REPORT_COMPARE_MIN_REPORTS', 'REPORT_PAGE_MIN', 'REPORT_PER_PAGE_MAX',
-    'REPORT_QUERY_ACTIONS', 'REPORT_QUERY_PARAMS',
+    'REPORT_QUERY_ACTIONS', 'REPORT_QUERY_PARAMS', 'READ_ONLY_NON_GET_TOOLS',
+    'RISK_LEVELS',
     'TASK_DOMAIN_STATS_GRANULARITIES',
     'TASK_QUERY_ACTIONS', 'TASK_QUERY_PARAMS', 'TESTCASE_QUERY_ACTIONS',
     'TESTCASE_QUERY_PARAMS', 'TESTCASE_VISIBILITY_VALUES', 'TOOL_INDEX',
-    'TOOL_INDEX_BY_NAME', 'action_params', 'conditional_required',
+    'TOOL_INDEX_BY_NAME', 'WRITE_RISK_LEVELS', 'action_params',
+    'conditional_required',
     'permissions_for',
     'platform_contract', 'redact_for_audit',
-    'required_for_action', 'resolve_rest_call', 'risk_of', 'tool_search',
+    'required_for_action', 'resolve_rest_call', 'rest_action_targets',
+    'risk_of', 'tool_search',
     'validate_arguments', 'validate_report_compare',
 ]

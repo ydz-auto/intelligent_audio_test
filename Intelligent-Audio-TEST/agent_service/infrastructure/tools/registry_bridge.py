@@ -25,7 +25,7 @@ from agent_service.domain.ports.tool_gateway import ToolDescriptor
 from agent_service.domain.ports.tool_registry import (
     RunCredentialPort, ToolRegistryPort, ToolTransportPort, ToolTransportResult,
 )
-from shared.agent_tools import diagnostics, intent_tools, mcp_registry
+from shared.agent_tools import diagnostics, evaluation_tools, intent_tools, mcp_registry
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +190,10 @@ class SharedToolRegistryBridge(ToolRegistryPort):
             if name == 'report_compare':
                 return intent_tools.validate_report_compare(
                     str((arguments or {}).get('action') or ''), arguments or {})
+            if name == 'evaluation_manage':
+                # 动作级必填 / body 字段白名单 / 可见性与重评估取值：Schema
+                # 表达不了，留到执行期才发现会让审批人批一条注定失败的提案。
+                return evaluation_tools.validate_arguments(arguments or {})
             return None
         mcp = mcp_registry.get_tool(name)
         if mcp is None:

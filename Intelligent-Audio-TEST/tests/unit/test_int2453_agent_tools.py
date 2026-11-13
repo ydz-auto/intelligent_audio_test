@@ -97,14 +97,16 @@ def test_intent_registry_has_31_unique_tools():
     #   INT-2459 device_query，含 SPL 只读子集 / INT-2460 testcase_query + testcase_generate /
     #   INT-2461 task_diagnose + log_diagnose + dashboard_query /
     #   INT-2463 report_compare；report_query 由 M0 最小版扩全字段 /
-    #   INT-2490 memory_search + memory_write）
+    #   INT-2490 memory_search + memory_write /
+    #   INT-2469 evaluation_manage（M2 首个写意图工具））
     # 精确等值：新增启用工具必须在本卡同步更新该集合，避免无意多启用。
     assert ENABLED_TOOLS == {'platform_contract', 'tool_search', 'task_query',
                              'report_query', 'audio_query', 'evaluation_query',
                              'algorithm_query', 'device_query',
                              'testcase_query', 'testcase_generate',
                              'task_diagnose', 'log_diagnose', 'dashboard_query',
-                             'report_compare', 'memory_search', 'memory_write'}
+                             'report_compare', 'memory_search', 'memory_write',
+                             'evaluation_manage'}
 
 
 def test_reserved_tool_names_present_and_disabled():
