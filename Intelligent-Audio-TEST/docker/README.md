@@ -317,6 +317,11 @@ compose 新增 `agent_service`（`docker/Dockerfile.agent_service`），依赖
   | `/app/memory` | 命名卷 `agent_memory` | rw（长期记忆，按 tenant/owner 隔离） |
   | `/app/agent_service/config` | `../agent_service/config` | ro（模型目录/预算/压缩阈值） |
 
+  `skills/` 还必须是**非空**的合法技能目录：以 `platform-reference/SKILL.md`
+  作哨兵（INT-2529）。Docker 对不存在的 bind 源会自动创建空目录，只判
+  `is_dir()` 会让「零 Skill」静默通过；空目录或只剩非 `SKILL.md` 文件时启动
+  明确失败，`SkillRegistry` 同样 fail-fast 报 `EMPTY_SKILLS_ROOT`。
+
 - **`/health`**：DB 不可用 → 503（无法读写 run/event）；Redis 不可用 →
   200 + `degraded`（只影响 SSE 唤醒，已退化为轮询）；`t2_runtime` 字段给出
   强隔离运行时可见性结论。

@@ -63,11 +63,24 @@ class SkillRegistry:
     # ------------------------------------------------------------ loading
 
     def load(self) -> 'SkillRegistry':
-        """重新扫描并校验。严格模式下有 ERROR 直接抛异常（启动失败）。"""
+        """重新扫描并校验。严格模式下有 ERROR 直接抛异常（启动失败）。
+
+        INT-2529：仓库一个 Skill 都没装到（空目录 / 缺 SKILL.md）属部署级
+        故障，与 ``strict`` 无关一律 fail-fast —— Docker 对不存在的 bind 源
+        会自动创建空目录，只读挂载静默变「零 Skill」不能等到运行期才发现。
+        """
         issues: List[SkillIssue] = []
         accepted: List[Skill] = []
         seen: Set[str] = set()
-        for skill in self._repository.load_all():
+        loaded = list(self._repository.load_all())
+        if not loaded:
+            issues.append(SkillIssue(
+                code=SkillIssueCode.EMPTY_SKILLS_ROOT,
+                severity=SkillIssueSeverity.ERROR,
+                skill='', path=str(getattr(self._repository, 'root', '') or ''),
+                message=('skills 目录未装载到任何 Skill（空目录或缺少 '
+                         'SKILL.md）：检查只读挂载是否指向真实技能目录')))
+        for skill in loaded:
             found = self._validate(skill)
             fatal = [i for i in found if i.severity is SkillIssueSeverity.ERROR]
             if not fatal and skill.name in seen:
@@ -103,6 +116,9 @@ class SkillRegistry:
                     len(self._skills), len(self._issues))
         if errors and not accepted:
             logger.error('没有任何可用 Skill：skills 目录是否挂载正确？')
+        if not loaded:
+            # 空目录不是「某个 Skill 不合法」，而是部署配置错误：非 strict 也失败。
+            raise SkillValidationError(self._issues)
         return self
 
     @property

@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 
+from agent_service.domain.model.skill import SKILL_FILE_NAME
 from shared.config.service_ports import AGENT_SERVICE_HTTP_PORT, API_GATEWAY_PORT
 from shared.infrastructure.config import BaseConfig, _get_bool, _get_float, _get_int
 
@@ -203,6 +204,18 @@ class Config(BaseConfig):
             problems.append(f'skills 目录不存在：{skills}（应只读挂载 ../skills）')
         elif not os.access(str(skills), os.R_OK):
             problems.append(f'skills 目录不可读：{skills}')
+        else:
+            # INT-2529：Docker 对不存在的 bind 源会自动创建空目录，只判
+            # is_dir() 会把「零 Skill」静默放行。以 platform-reference 作哨兵，
+            # 至少要求一个合法 SKILL.md 真实可读。
+            sentinel = skills / 'platform-reference' / SKILL_FILE_NAME
+            if not sentinel.is_file():
+                problems.append(
+                    f'skills 目录没有可用的 {SKILL_FILE_NAME}：{skills}'
+                    f'（至少需 platform-reference/{SKILL_FILE_NAME}；'
+                    '空目录多因 bind 源缺失被 Docker 自动创建）')
+            elif not os.access(str(sentinel), os.R_OK):
+                problems.append(f'Skill 哨兵文件不可读：{sentinel}')
         catalog = Path(cls.model_catalog_path())
         if not catalog.is_file():
             problems.append(f'模型目录文件不存在：{catalog}')

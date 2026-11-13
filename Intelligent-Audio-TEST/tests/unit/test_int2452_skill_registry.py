@@ -134,10 +134,33 @@ def test_directory_scan_lists_references_scripts_assets(tmp_path):
     assert skill.references == ('references/notes.md',)
 
 
-def test_missing_skills_root_is_empty_not_fatal(tmp_path):
-    registry = _registry(tmp_path / 'nope')
-    assert registry.skills == ()
-    assert registry.issues == ()
+def test_missing_skills_root_fails_fast(tmp_path):
+    """INT-2529：零 Skill 是部署级故障，不再当「空列表」静默放行。
+
+    （旧实现只打日志，Docker 对缺失 bind 源自动建空目录时可静默变零 Skill。）
+    """
+    with pytest.raises(SkillValidationError) as exc:
+        _registry(tmp_path / 'nope')
+    issues = exc.value.issues
+    assert [i.code for i in issues] == [SkillIssueCode.EMPTY_SKILLS_ROOT]
+    assert issues[0].severity is SkillIssueSeverity.ERROR
+
+
+def test_empty_skills_dir_fails_fast(tmp_path):
+    with pytest.raises(SkillValidationError) as exc:
+        _registry(tmp_path)  # 存在但一个 Skill 都没有
+    assert SkillIssueCode.EMPTY_SKILLS_ROOT in {i.code
+                                                for i in exc.value.issues}
+
+
+def test_skills_dir_with_only_non_skill_md_fails_fast(tmp_path):
+    directory = tmp_path / 'platform-reference'
+    directory.mkdir()
+    (directory / 'README.md').write_text('not a skill', encoding='utf-8')
+    with pytest.raises(SkillValidationError) as exc:
+        _registry(tmp_path)
+    assert SkillIssueCode.EMPTY_SKILLS_ROOT in {i.code
+                                                for i in exc.value.issues}
 
 
 # ---------------------------------------------------------------- validation

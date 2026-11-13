@@ -16,13 +16,13 @@ import yaml
 
 from agent_service.domain.model.skill import (
     FIELD_ALLOWED_TOOLS, FIELD_BUDGETS, FIELD_DESCRIPTION, FIELD_NAME,
-    FIELD_OWNER, FIELD_PERMISSIONS, FIELD_VERSION, Skill, SkillMeta,
+    FIELD_OWNER, FIELD_PERMISSIONS, FIELD_VERSION, SKILL_FILE_NAME, Skill,
+    SkillMeta,
 )
 from agent_service.domain.ports.skill_repository import SkillRepository
 
 logger = logging.getLogger(__name__)
 
-SKILL_FILE_NAME = 'SKILL.md'
 FRONTMATTER_DELIMITER = '---'
 REFERENCES_DIR = 'references'
 SCRIPTS_DIR = 'scripts'

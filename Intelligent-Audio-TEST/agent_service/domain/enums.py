@@ -159,6 +159,8 @@ class SkillIssueCode(str, Enum):
     MISSING_REQUIRED_SECTION = 'MISSING_REQUIRED_SECTION'
     UNKNOWN_TOOL = 'UNKNOWN_TOOL'
     L1_BUDGET_EXCEEDED = 'L1_BUDGET_EXCEEDED'
+    # 目录里一个 Skill 都没装到（空目录 / 缺 SKILL.md）：部署级故障，启动即失败
+    EMPTY_SKILLS_ROOT = 'EMPTY_SKILLS_ROOT'
 
 
 class SkillIssueSeverity(str, Enum):
