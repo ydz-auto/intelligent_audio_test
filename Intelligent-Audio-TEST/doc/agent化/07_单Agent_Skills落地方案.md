@@ -551,6 +551,11 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 
 1. 每个 step、tool call、approval、event 持久化，事件带严格递增 `sequence`。
 2. 写工具必须带 `Idempotency-Key`（run_id + step_id + tool + args_hash）。
+   **实现演进裁定（INT-2487）**：落地实现为 `run:step:tool_call_id:tool:args_hash`，
+   在方案口径上并入 `tool_call_id`。原因：同一批并行、参数相同的两次调用按
+   原口径会撞键，后一次的结果被错误复用（实测只执行一次）；`tool_call_id`
+   由模型给出、重启后按同一轮次原样重建，并入后既不丢幂等也不会误合并。
+   模型列注释与实现同步。
 3. Worker 重启后先查业务真实副作用，再决定是否重放，禁止重复执行可能已成功的写操作。
 4. 取消：设置取消标记，当前模型调用中止，已完成的写操作不回滚，后续步骤不再执行。
 

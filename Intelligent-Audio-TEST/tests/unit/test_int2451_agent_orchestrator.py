@@ -344,3 +344,107 @@ def test_pending_tool_call_is_executed(tmp_path):
                and e.payload.get('tool_call_id') == 'p1']
     assert len(results) == 1
     container.shutdown()
+
+
+# ---------------------------------------------------------------- INT-2487 修复回归
+# P1-1：未知工具的默认风险曾是 READ → 审批门禁 fail-open（§5.2 硬规则 5）
+
+def test_unregistered_tool_is_rejected_without_side_effects(tmp_path):
+    call = ToolCallRequest(tool_call_id='x1', name='task_delete_all',
+                           arguments={'all': True})
+    llm = FakeLlm([tool_turn([call]), text_turn('该工具不可用')])
+    # 注册表里只有只读的 task_query；模型却调了一个没注册的工具
+    gateway = FakeToolGateway(tools=[read_tool('task_query')])
+    container, _engine, _sf = build_stack(
+        tmp_path / 'l.db', llm, gateway=gateway, executor_factory=_inline)
+    session = new_session(container)
+    run = _submit(container, session)
+
+    assert gateway.executed == []  # 未执行、无副作用
+    row = container.repositories['tool_calls'].find(run.id, 'x1')
+    assert row.status is ToolCallStatus.DENIED
+    assert row.permission_decision == 'tool_not_registered'
+    assert row.risk is ToolRisk.DESTRUCTIVE  # 未知工具按最高风险记账（fail-closed）
+    results = [e for e in events_of(container, run.id)
+               if e.type.value == 'tool_result'
+               and e.payload.get('tool_call_id') == 'x1']
+    assert len(results) == 1
+    assert results[0].payload['ok'] is False
+    assert results[0].payload['error_code'] == 'TOOL_NOT_REGISTERED'
+    # 拒绝结果回灌模型，run 正常收尾而不是卡死
+    assert container.repositories['runs'].get(run.id).status is RunStatus.SUCCEEDED
+    container.shutdown()
+
+
+def test_registry_failure_rejects_entire_batch(tmp_path):
+    class BrokenRegistryGateway(FakeToolGateway):
+        def all_tools(self):
+            raise RuntimeError('tool registry unavailable')
+
+    calls = [ToolCallRequest(tool_call_id='r1', name='task_query', arguments={}),
+             ToolCallRequest(tool_call_id='r2', name='task_query', arguments={})]
+    llm = FakeLlm([tool_turn(calls), text_turn('注册表不可用')])
+    gateway = BrokenRegistryGateway(tools=[read_tool('task_query')])
+    container, _engine, _sf = build_stack(
+        tmp_path / 'n.db', llm, gateway=gateway, executor_factory=_inline)
+    session = new_session(container)
+    run = _submit(container, session)
+
+    # 注册表读取异常 → 整批拒绝，绝不降级为 READ 自动执行
+    assert gateway.executed == []
+    for call_id in ('r1', 'r2'):
+        row = container.repositories['tool_calls'].find(run.id, call_id)
+        assert row.status is ToolCallStatus.FAILED
+        assert row.permission_decision == 'tool_registry_unavailable'
+        assert row.risk is ToolRisk.DESTRUCTIVE
+    results = [e for e in events_of(container, run.id)
+               if e.type.value == 'tool_result']
+    assert {e.payload['tool_call_id'] for e in results} == {'r1', 'r2'}
+    assert all(e.payload['error_code'] == 'TOOL_REGISTRY_UNAVAILABLE'
+               for e in results)
+    container.shutdown()
+
+
+def test_registered_read_tool_still_executes(tmp_path):
+    call = ToolCallRequest(tool_call_id='s1', name='task_query',
+                           arguments={'task_id': 2})
+    llm = FakeLlm([tool_turn([call]), text_turn('完成')])
+    gateway = FakeToolGateway(tools=[read_tool('task_query')])
+    container, _engine, _sf = build_stack(
+        tmp_path / 'o.db', llm, gateway=gateway, executor_factory=_inline)
+    session = new_session(container)
+    run = _submit(container, session)
+
+    assert gateway.executed == [('s1', 'task_query', {'task_id': 2})]
+    row = container.repositories['tool_calls'].find(run.id, 's1')
+    assert row.status is ToolCallStatus.COMPLETED
+    assert row.risk is ToolRisk.READ
+    assert container.repositories['runs'].get(run.id).status is RunStatus.SUCCEEDED
+    container.shutdown()
+
+
+# P2-3：tool call 落库异常曾按 except Exception 吞掉 → 记录不存在但工具照常执行
+
+def test_persistence_error_fails_run_instead_of_executing(tmp_path, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    call = ToolCallRequest(tool_call_id='d1', name='task_query', arguments={})
+    llm = FakeLlm([tool_turn([call]), text_turn('never')])
+    gateway = FakeToolGateway(tools=[read_tool('task_query')])
+    container, _engine, _sf = build_stack(
+        tmp_path / 'p.db', llm, gateway=gateway, executor_factory=_inline)
+
+    def boom(_record):
+        raise OperationalError('INSERT INTO agent_tool_call', {},
+                               Exception('db down'))
+
+    monkeypatch.setattr(container.repositories['tool_calls'], 'create', boom)
+    session = new_session(container)
+    run = _submit(container, session)
+
+    stored = container.repositories['runs'].get(run.id)
+    assert stored.status is RunStatus.FAILED
+    assert (stored.error or '').startswith('WORKER_CRASH')
+    assert gateway.executed == []  # 记录没落库 → 绝不执行工具
+    container.shutdown()
+

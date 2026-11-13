@@ -59,6 +59,10 @@ from shared.utils.time_utils import utcnow
 
 logger = logging.getLogger(__name__)
 
+# 注册表里查不到的工具不可信：按最高风险记账（fail-closed），并一律拒绝执行。
+# 绝不把未知工具降级成 READ —— 那会让写操作绕过「提案 + 审批」门禁（§5.2 硬规则 5）。
+_UNKNOWN_TOOL_RISK = ToolRisk.DESTRUCTIVE
+
 
 @dataclass
 class OrchestratorSettings:
@@ -396,11 +400,17 @@ class RunOrchestrator:
             })
         return specs
 
-    def _descriptor_map(self) -> Dict[str, ToolDescriptor]:
+    def _descriptor_map(self) -> Optional[Dict[str, ToolDescriptor]]:
+        """读取工具注册表；读取失败返回 ``None``（调用方整批拒绝）。
+
+        绝不返回 ``{}``：空映射会让所有工具都「查不到」，若再降级成 READ 就把
+        未知工具当只读自动执行。异常由调用方转为整批拒绝（fail-closed）。
+        """
         try:
             return {d.name: d for d in self._tool_gateway.all_tools()}
-        except Exception:  # noqa: BLE001
-            return {}
+        except Exception:  # noqa: BLE001 - 注册表异常必须显式上抛给调用方
+            logger.exception('读取工具注册表失败，本批工具调用全部拒绝执行')
+            return None
 
     def _next_turn(self, run_id: str) -> int:
         max_turn = -1
@@ -430,48 +440,46 @@ class RunOrchestrator:
                              len(calls)))
         # 已落库的 tool 事件每批查一次（定向查询，不整条 run 全扫）
         emitted = self._emitted_tool_events(run.id)
+        # 注册表每批只读一次：一次读取失败 → 整批拒绝，不留「逐条降级」的口子
+        descriptors = self._descriptor_map()
+        if descriptors is None:
+            return [self._execute_one(run, step_id, call, turn, emitted, None)
+                    for call in calls]
         results: List[ToolResult] = []
         if workers == 1:
             for call in calls:
                 results.append(self._execute_one(
-                    run, step_id, call, turn, emitted))
+                    run, step_id, call, turn, emitted, descriptors))
             return results
         with ThreadPoolExecutor(max_workers=workers,
                                 thread_name_prefix='agent-tool') as pool:
             futures = {
                 pool.submit(self._execute_one, run, step_id, call, turn,
-                            emitted): call
+                            emitted, descriptors): call
                 for call in calls
             }
             for future in as_completed(futures):
-                call = futures[future]
-                try:
-                    results.append(future.result())
-                except Exception as exc:  # noqa: BLE001
-                    logger.exception('工具执行线程异常 tool=%s', call.name)
-                    results.append(ToolResult(
-                        tool_call_id=call.tool_call_id, tool=call.name,
-                        ok=False, content=f'工具执行异常: {exc}',
-                        error_code='TOOL_EXECUTION_ERROR'))
+                # 工具自身失败已在 _execute_one 内转成结果；这里冒出来的都是
+                # 落库等内部错误，必须上抛让 execute() 收口 FAILED，不能吞掉
+                # 后照常执行（§9.2 每个 tool call 必须持久化 / §13.5 可审计）。
+                results.append(future.result())
         return results
 
     def _execute_one(self, run: AgentRun, step_id: str,
-                     call: ToolCallRequest, turn: int,
-                     emitted: set) -> ToolResult:
+                     call: ToolCallRequest, turn: int, emitted: set,
+                     descriptors: Optional[Dict[str, ToolDescriptor]]
+                     ) -> ToolResult:
         if self._cancel_registry.is_cancelled(run.id):
             return ToolResult(
                 tool_call_id=call.tool_call_id, tool=call.name, ok=False,
                 content='run 已取消，工具未执行', error_code='RUN_CANCELLED')
-        descriptor = self._descriptor_map().get(call.name)
-        risk = descriptor.risk if descriptor else ToolRisk.READ
         args_hash = self._args_hash(call.arguments)
         # 幂等键 = run + step + tool_call_id + tool + args_hash。card 口径是
         # run+step+tool+args_hash，但同一批并行且参数相同的两次调用会撞键，
         # 后者的结果被错误复用（实测只执行一次）；tool_call_id 由模型给出、
         # 重启后按同一轮次原样重建，加入后既不丢幂等也不会误合并。
-        idempotency_key = (
-            f'{run.id}:{step_id}:{call.tool_call_id}:'
-            f'{call.name}:{args_hash}')[:255]
+        idempotency_key = self._idempotency_key(
+            run.id, step_id, call, args_hash)
 
         existing = self._tool_calls.find(run.id, call.tool_call_id)
         if existing is None:
@@ -511,6 +519,25 @@ class RunOrchestrator:
             self._ensure_tool_result_event(run.id, result, turn, emitted)
             return result
 
+        # 执行前必须确认风险等级：注册表不可读 → 整批拒绝；工具未注册 → 单条拒绝。
+        # 绝不把「查不到」当成 READ（那会绕过写操作审批门禁）。
+        if descriptors is None:
+            return self._reject_unregistered(
+                run, step_id, call, turn, emitted,
+                status=ToolCallStatus.FAILED,
+                decision='tool_registry_unavailable',
+                error_code='TOOL_REGISTRY_UNAVAILABLE',
+                message='工具注册表不可用，本批工具调用全部拒绝执行')
+        descriptor = descriptors.get(call.name)
+        if descriptor is None:
+            return self._reject_unregistered(
+                run, step_id, call, turn, emitted,
+                status=ToolCallStatus.DENIED,
+                decision='tool_not_registered',
+                error_code='TOOL_NOT_REGISTERED',
+                message=f'工具未注册，拒绝执行: {call.name}')
+        risk = descriptor.risk
+
         if existing is None:
             record = AgentToolCall(
                 id=str(uuid.uuid4()), run_id=run.id, step_id=step_id,
@@ -520,11 +547,9 @@ class RunOrchestrator:
                 idempotency_key=idempotency_key,
                 created_at=utcnow(), updated_at=utcnow(),
             )
-            try:
-                self._tool_calls.create(record)
-            except Exception:  # noqa: BLE001 - 唯一键冲突：另一线程已建
-                logger.debug('工具调用记录并发冲突，复用已有记录 tool_call_id=%s',
-                             call.tool_call_id)
+            # 并发唯一键冲突由仓储层收口成「复用已有记录」；其余 DB 错误
+            # （连接失败、值超长等）直接上抛，由 execute() 收口 FAILED。
+            self._tool_calls.create(record)
             self._events.append(run.id, EventType.TOOL_CALL, {
                 'tool_call_id': call.tool_call_id,
                 'tool': call.name,
@@ -585,6 +610,56 @@ class RunOrchestrator:
         self._append_tool_result(run.id, result, turn, emitted)
         return result
 
+    def _reject_unregistered(self, run: AgentRun, step_id: str,
+                             call: ToolCallRequest, turn: int, emitted: set,
+                             *, status: ToolCallStatus, decision: str,
+                             error_code: str, message: str) -> ToolResult:
+        """未注册 / 注册表不可用：记账并拒绝执行，绝不产生副作用。
+
+        仍落一条 ``agent_tool_call``（§9.2 每个 tool call 持久化 / §13.5 可审计），
+        风险按最高等级 ``DESTRUCTIVE`` 记录（fail-closed），并补 TOOL_CALL /
+        TOOL_RESULT 事件，保证模型侧 tool_calls 与结果成对、上下文可重建。
+        """
+        args_hash = self._args_hash(call.arguments)
+        idempotency_key = self._idempotency_key(
+            run.id, step_id, call, args_hash)
+        stored_result = {
+            'ok': False, 'content': message, 'error_code': error_code}
+        existing = self._tool_calls.find(run.id, call.tool_call_id)
+        if existing is None:
+            existing = self._tool_calls.find_by_idempotency_key(idempotency_key)
+        if existing is None:
+            record = AgentToolCall(
+                id=str(uuid.uuid4()), run_id=run.id, step_id=step_id,
+                tool_call_id=call.tool_call_id, tool=call.name,
+                arguments=call.arguments, args_hash=args_hash,
+                risk=_UNKNOWN_TOOL_RISK, status=status,
+                result=stored_result, permission_decision=decision,
+                error=message, idempotency_key=idempotency_key,
+                created_at=utcnow(), updated_at=utcnow(),
+            )
+            self._tool_calls.create(record)
+            self._events.append(run.id, EventType.TOOL_CALL, {
+                'tool_call_id': call.tool_call_id,
+                'tool': call.name,
+                'arguments': call.arguments or {},
+                'risk': _UNKNOWN_TOOL_RISK.value,
+                'rejected': error_code,
+                'turn': turn,
+            })
+            emitted.add((EventType.TOOL_CALL, call.tool_call_id))
+        else:
+            self._tool_calls.update(
+                existing.tool_call_id, run.id, status=status,
+                permission_decision=decision, result=stored_result,
+                error=message)
+            self._ensure_tool_call_event(run.id, existing, turn, emitted)
+        result = ToolResult(
+            tool_call_id=call.tool_call_id, tool=call.name,
+            ok=False, content=message, error_code=error_code)
+        self._append_tool_result(run.id, result, turn, emitted)
+        return result
+
     def _emitted_tool_events(self, run_id: str) -> set:
         """已落库的 tool 事件集合 ``{(EventType, tool_call_id)}``。
 
@@ -640,6 +715,13 @@ class RunOrchestrator:
             content=str(stored.get('content') or ''),
             error_code=stored.get('error_code'),
         )
+
+    @staticmethod
+    def _idempotency_key(run_id: str, step_id: str, call: ToolCallRequest,
+                         args_hash: str) -> str:
+        """幂等键口径（§9.2 演进裁定：并入 tool_call_id，见模型列注释）。"""
+        return (f'{run_id}:{step_id}:{call.tool_call_id}:'
+                f'{call.name}:{args_hash}')[:255]
 
     @staticmethod
     def _args_hash(arguments: Dict) -> str:

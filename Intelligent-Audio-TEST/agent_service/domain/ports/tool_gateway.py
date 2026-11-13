@@ -19,7 +19,8 @@ class ToolDescriptor:
     name: str
     description: str
     parameters: Dict[str, Any]
-    risk: ToolRisk = ToolRisk.READ
+    # 风险等级必填：不允许缺省成 READ（INT-2487：缺省会变成写操作 fail-open）
+    risk: ToolRisk
     sandbox_tier: SandboxTier = SandboxTier.T0_NONE
     permissions: tuple = ()
 

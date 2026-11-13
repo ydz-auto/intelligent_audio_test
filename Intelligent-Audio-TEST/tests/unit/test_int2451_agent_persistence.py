@@ -134,8 +134,20 @@ def test_tool_call_identities_are_unique(stack):
         tool='task_query', args_hash='h1', risk=ToolRisk.READ,
         status=ToolCallStatus.PENDING, idempotency_key='k2',
         created_at=now, updated_at=now)
+    # INT-2487 P2-3：同 (run_id, tool_call_id) 并发/重复投递由仓储收口为复用
+    # 已有记录（唯一键冲突），不再抛异常让上层 except 吞掉。
+    reused = calls.create(duplicate)
+    assert reused.id == record.id
+    assert len(calls.recent('r1', 10)) == 1
+
+    # 幂等键冲突但 tool_call_id 不同 → 数据异常，原样上抛（不静默复用）
+    conflicted = AgentToolCall(
+        id=str(uuid.uuid4()), run_id='r1', tool_call_id='call_2',
+        tool='task_query', args_hash='h1', risk=ToolRisk.READ,
+        status=ToolCallStatus.PENDING, idempotency_key='k1',
+        created_at=now, updated_at=now)
     with pytest.raises(IntegrityError):
-        calls.create(duplicate)
+        calls.create(conflicted)
 
 
 def test_run_lock_is_released_when_idle(stack):

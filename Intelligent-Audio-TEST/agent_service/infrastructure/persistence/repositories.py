@@ -584,6 +584,18 @@ class SqlToolCallRepository(_BaseRepo, ToolCallRepository):
             db.add(row)
             db.commit()
             return _to_tool_call(row)
+        except IntegrityError:
+            # 并发 / 重复投递已建同一条 tool call：复用已有记录（调用方按
+            # tool_call_id 继续 update，不会重复执行）。键冲突却查不到同
+            # tool_call_id 的记录属于数据异常，原样上抛由 execute() 收口 FAILED，
+            # 绝不静默吞掉其它 DB 错误。
+            db.rollback()
+            existing = self.find(tool_call.run_id, tool_call.tool_call_id)
+            if existing is None:
+                raise
+            logger.debug('工具调用记录已存在，复用 tool_call_id=%s',
+                         tool_call.tool_call_id)
+            return existing
         finally:
             db.close()
 
