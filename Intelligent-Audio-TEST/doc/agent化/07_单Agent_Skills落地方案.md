@@ -194,6 +194,14 @@ budgets:
 > 命中的 `tag_list` / `group_list`（`tag_group_manage` 仍是 M2 写工具）；
 > `driver-proposal` 在 M1 只做材料准备，`driver_propose` 未启用。
 > 本表「主要意图工具」列写全生命周期工具，M1 只装配其中已启用的只读项。
+>
+> **跨域通用工具没有归属 Skill（INT-2554 收口审计，2026-11-13）**：`dashboard_query`
+> （INT-2461）与 `memory_search` / `memory_write`（INT-2490）已启用，但上表 13 个 M1
+> Skill 均未在 `allowed-tools` 声明它们。按 §4.2 第 6 条与 §6.3，激活 Skill 的 run 只装配
+> 该 Skill 声明过的工具，因此这三项目前只在**未激活 Skill 的通用会话**可调用；Skill 正文
+> 不得指示未声明的工具（`SKILL_TOOL_DENIED`）。`memory_write` 是 WRITE，M1 的 Skill 只
+> 声明只读工具，故写入不能靠加 `allowed-tools` 解决；后续二选一（并入基础工具集 / 只给
+> `memory_search` 补声明）由 M2 拍板，现状 fail-closed。残留与缺陷卡见 §16。
 
 ### 4.4 用户自定义 Skill
 
@@ -318,7 +326,9 @@ budgets:
 | `ExplorationStopReason` | `DONE` / `BUDGET` / `LOGIN_REQUIRED` / `CAPTCHA` / `DESTRUCTIVE_BLOCKED` / `USER_CANCEL` |
 | `EventType` | `run_started` / `message_delta` / `tool_call` / `tool_result` / `approval_required` / `context_compacted` / `run_finished` / `error` |
 
-所有预算、阈值、超时、并发数写入配置（环境变量 + `config/`），不在代码中硬编码。
+run 级预算、阈值、超时、并发数写入配置（环境变量 + `config/`），不在代码中硬编码。
+工具层的聚合护栏上限（`REPORT_COMPARE_MAX_REPORTS`、`MAX_GENERATE_AUDIOS`、
+`MAX_LOG_ROWS` 等）当前是命名常量，配置化登记为残留（§16 R5）。
 
 ## 6. 工具层
 
@@ -329,7 +339,7 @@ budgets:
 | 工具 | 覆盖能力 | 风险 |
 |---|---|---|
 | `platform_contract` | 查询字段、枚举、权限码、接口说明 | READ |
-| `tool_search` | 按关键词/语义查找长尾工具并返回 Schema | READ |
+| `tool_search` | 按关键词 + 轻量语义（bigram / 词表扩展，无向量）查找长尾工具并返回 Schema | READ |
 | `ui_tree` | 读取设备 UI 树：裁剪节点、截图引用、与上次快照 diff；需设备租用 | READ |
 | `ui_action` | 设备 UI 动作：点击/长按/滑动/输入/返回/Home/等待；需设备租用与审批 | WRITE |
 | `api_spec` | 解析 OpenAPI/proto/WS 契约：端点、鉴权、请求响应样例 | READ |
@@ -372,7 +382,7 @@ budgets:
 > **实现演进裁定（INT-2459 / 2460 / 2461 / 2463，2026-11-13）**：M1 各域只读卡落地后，
 > 口径按以下事实同步，工具总数与风险等级仍与本表逐项一致（31 项）。
 >
-> 1. **启用集合 14 个**：`platform_contract` / `tool_search` / `task_query` /
+> 1. **启用集合 14 个**（INT-2490 后为 16 个，见下一条裁定）：`platform_contract` / `tool_search` / `task_query` /
 >    `report_query` / `audio_query` / `evaluation_query` / `algorithm_query` /
 >    `device_query` / `testcase_query` / `testcase_generate` / `task_diagnose` /
 >    `log_diagnose` / `dashboard_query` / `report_compare`；其余 17 个 `enabled=false`
@@ -387,9 +397,36 @@ budgets:
 >    会落库生成报告，属写操作，不作只读工具暴露）。
 > 4. **标签 / 分组只读无专用意图工具**：走 `tool_search` 命中的 MCP 长尾
 >    `tag_list` / `group_list`；`tag_group_manage` 仍是 M2 写工具。
-> 5. **权限待规格**：`memory_write` / `driver_propose` 的权限码在 RBAC 尚未建立。
->    未启用期间，普通账号调用先返回 `PERMISSION_DENIED`，只有 `*` 通配权限才走到
->    `TOOL_NOT_ENABLED`（fail-closed，两种结果都不执行）。
+> 5. **权限待规格**：`driver_propose` 的权限码在 RBAC 尚未建立（`memory_write` 已随
+>    INT-2490 启用，见下一条裁定）。未启用期间，普通账号调用先返回 `PERMISSION_DENIED`，
+>    只有 `*` 通配权限才走到 `TOOL_NOT_ENABLED`（fail-closed，两种结果都不执行）。
+
+> **实现演进裁定（INT-2465 / INT-2490，INT-2554 收口审计，2026-11-13）**：
+>
+> 1. **启用集合 16 个**：上文 14 个只读工具 + `memory_search` / `memory_write`；其余
+>    15 个 `enabled=false`，其中预留名称 3 个（`ui_tree` / `ui_action` / `api_spec`）。
+>    工具总数与风险等级仍与本表 31 项逐项一致。
+> 2. **记忆两工具不走 RBAC 码**：`memory_search`（READ）/ `memory_write`（WRITE）的
+>    `permissions` 为空 = 只要求登录；隔离由服务端按登录身份构造
+>    `memory/tenants/<tenant>/users/<owner>/` 路径保证（§8.6.1），模型入参里没有
+>    tenant / owner / 任意路径。`memory_write` 只生成 `PENDING` 提案、本人审批后落盘
+>    （M2 通用审批服务 INT-2466 未合入前的占位，见 §8.6.1 后「实现口径」注）。
+> 3. **`tool_search` 三层检索**（INT-2465）：关键词（名称 / 描述子串）→ 轻量语义
+>    （中文 bigram + 英文分词 + 中文意图词表 `_SYNONYMS` + 同族词 `_CONCEPTS` 的覆盖率
+>    打分）→ 归属标注（每条结果带 `intent` / `external_only`，与覆盖矩阵同源）。
+>    **不含 embedding 或向量库**：INT-2453 注里的「语义检索尚未实现」指向量语义检索，
+>    至今仍未实现；INT-2465 交付的「轻量语义」是确定性词面扩展，不得对外称语义检索。
+>    真实模型级检索质量评测归 M3（INT-2475）。
+> 4. **索引视图 205 ≠ 对外 MCP 总量 207**：`TOOL_INDEX` = 205 条 MCP 条目（207 −
+>    `audio_get_by_ids` 不索引 − `report_compare` 由已启用意图工具顶替）+ 30 条意图
+>    工具条目 = **235** 条。代码注释里的「205 个 MCP 工具」指索引视图；对外
+>    `tools/list` 以 §6.2 的 207 为准（同一口径也解释了 INT-2547 P3-1 的注释差异）。
+> 5. **归属矩阵**：`shared/agent_tools/COVERAGE.md` 由 `shared/agent_tools/coverage.py`
+>    生成（禁止手改），207 项逐行有结论：内部归属 198 / 仅外部 MCP 9 / 归属到 20 个
+>    意图工具；11 个意图工具是本地能力、无 MCP 归属。校验命令：
+>    `python -m shared.agent_tools.coverage --check`。
+> 6. **P3 收口**（INT-2547 八条 + 本次新增）见 §16「已登记残留」；其中代码注释 / Skill
+>    文案类不改本方案的对外口径。
 
 ### 6.2 外部 MCP
 
@@ -400,6 +437,10 @@ budgets:
   `report_statistics_trend` / `report_cases` 补声明网关真实支持的**可选**查询参数
   （不改既有参数语义、不移除参数）。外部 `tools/list` 以本节为准；
   `api_gateway/application/services/mcp/tools_registry.py` 已改为 re-export，不再保存第二份 Schema。
+- 工具总数口径（INT-2554 审计）：对外 `tools/list` **207** 项；`tool_search` 的索引视图
+  205 条 MCP 条目（207 − `audio_get_by_ids` − 由意图工具顶替的 `report_compare`）不是对外
+  总量，两者不要混用。207 项的逐条归属（内部归属 / 仅外部）见
+  `shared/agent_tools/COVERAGE.md`。
 - 注册表抽到 `shared/agent_tools/`，Gateway MCP 与 `agent_service` 共用，禁止复制两份 Schema。
 - 外部 Agent 的上下文管理由客户端负责，不做意图收敛。
 
@@ -650,12 +691,12 @@ W = 有效上下文窗口 = 用户覆盖值 → 模型目录默认值 → 128k �
 
 ### 8.6 长期记忆（不用向量 RAG）
 
-1. 不引入向量库、embedding 或语义检索；沿用 DSH 的文件式记忆：`memory/user_profile.md`、`memory/projects/<project>/project_memory.md`、`memory/projects/<project>/<date>/topics.md` 与会话 JSONL。
+1. 不引入向量库、embedding 或语义检索；沿用 DSH 的文件式记忆形态（用户偏好 / 项目记忆 / 话题记录 / 会话 JSONL），文件树按 §8.6.1 隔离落位：`memory/tenants/<tenant_id>/users/<owner_id>/user_profile.md`、`.../projects/<project>/project_memory.md`、`.../projects/<project>/<date>/topics.md`；会话正文归 `agent_context_snapshot`，不另存第二份。
 2. 知识获取靠 `rg`/`grep` + 文件读取 + Skill `references/`；代码与文档不做索引同步。
 3. 记忆分三层：用户偏好（跨项目）、项目规则（含本方案）、会话备忘（`run_scratchpad` + `context_snapshot`）。
-4. 写入只允许：用户显式“记住”、审批通过的 `memory_write`、run 结束的结构化备忘；禁止模型把猜测写入长期记忆。
-5. 会话开始时只注入用户偏好与项目规则摘要；细节由 `memory_search` 按关键词取。
-6. 记忆按 tenant/owner 目录隔离，路径不接收模型输入，写入前做敏感信息扫描。
+4. 写入只允许：用户显式“记住”、审批通过的 `memory_write`、run 结束的结构化备忘；禁止模型把猜测写入长期记忆。`memory_write` 只生成 `PENDING` 提案，审批通过才落盘（M2 前由本人经 §11 的 memory 提案接口审批）。
+5. 会话开始时只注入用户偏好与项目规则摘要（`AGENT_MEMORY_INJECT_MAX_TOKENS`，默认 600）；细节由 `memory_search` 按关键词取。
+6. 记忆按 tenant/owner 目录隔离，路径不接收模型输入，写入前做敏感信息扫描（规则见 `agent_service/config/memory_sensitive_rules.json`：凭证类 `block`、PII `redact`）；检索、写入、审批与 break-glass 一律写 `memory/.audit/<tenant>.jsonl`，只记元数据、不落正文。
 
 #### 8.6.1 隔离模型（默认严格按用户）
 
@@ -669,22 +710,24 @@ W = 有效上下文窗口 = 用户覆盖值 → 模型目录默认值 → 128k �
 8. 验收用例：A 读不到 B；跨租户读不到；路径穿越失败；提示注入无法改变身份；导出/删除只作用于本人。
 
 > **实现口径（INT-2490，2026-11-13）**：`memory_search` / `memory_write` 已在
-> `agent_service` 落地并启用（`shared/agent_tools/intent_tools.py` 两项
-> `enabled=true`，权限只要求登录——记忆域无 RBAC 码，隔离由服务端按身份构造
-> 路径保证）。检索为 `rg --fixed-strings --json`（镜像内安装 ripgrep，缺失即
-> 返回 `MEMORY_BACKEND_UNAVAILABLE`，不静默当空结果）；路径组件只接受
-> `[A-Za-z0-9._-]`，`..`/绝对路径/`~`/软链或 junction 穿越全部拒绝并留审计。
-> 写入走提案占位：M2 审批服务 INT-2466 未合入前，`memory_write` 只生成
-> `PENDING` 提案（`.proposals/`，不在用户树内），由本人经
-> `POST /api/v1/agent/memory/proposals/{id}/approve|reject` 审批；批准后文件
-> 内容与预演逐字一致，文件已被改动则判冲突不覆盖。敏感信息规则配置化
-> （`agent_service/config/memory_sensitive_rules.json`）：凭证类 `block`、
-> PII `redact`。审计写 `memory/.audit/<tenant>.jsonl`，只含
-> `run_id / tool / args_hash / decision / result_code`，`memory_write` 在
-> `agent_tool_call` 中的 `content` 以 sha256 代替。会话开始只注入用户偏好 +
-> 项目规则摘要（`AGENT_MEMORY_INJECT_MAX_TOKENS`，默认 600）；话题与细节由
-> `memory_search` 取。每用户配额 `AGENT_MEMORY_USER_QUOTA_BYTES` 只回报用量，
-> 自动清理策略留后续卡。
+> `agent_service` 落地并启用（`shared/agent_tools/intent_tools.py` 两项 `enabled=true`，
+> 权限只要求登录——记忆域无 RBAC 码，隔离由服务端按身份构造路径保证）。检索为
+> `rg --fixed-strings --json`（镜像内安装 ripgrep，缺失即返回
+> `MEMORY_BACKEND_UNAVAILABLE`，不静默当空结果）；路径组件只接受
+> `[A-Za-z0-9._-]`，`..` / 绝对路径 / `~` / 软链或 junction 穿越全部拒绝并留审计。
+> 写入走提案占位：M2 审批服务 INT-2466 未合入前，`memory_write` 只生成 `PENDING`
+> 提案（`memory/.proposals/<tenant>/<owner>/<id>.json`，不在用户树内），由本人经
+> `POST /api/v1/agent/memory/proposals/{id}/approve|reject` 审批；批准后文件内容与
+> 预演 `preview` 逐字一致，文件已被改动则判冲突不覆盖。敏感信息规则配置化
+> （`agent_service/config/memory_sensitive_rules.json`）：凭证类 `block`、PII `redact`。
+> 审计写 `memory/.audit/<tenant>.jsonl`，只含 `ts / action / tool / run_id /
+> tenant_id / owner_id / args_hash / decision / result_code / reason / rules`；
+> `memory_write` 在 `agent_tool_call` 中的 `content` 以 sha256 + 长度代替。
+> 会话开始只注入用户偏好 + 项目规则摘要（默认 600 tokens）；话题与细节由
+> `memory_search` 取。每用户配额 `AGENT_MEMORY_USER_QUOTA_BYTES`（默认 20 MiB）只
+> 回报用量、不阻断写入，自动清理策略留后续卡。管理端 break-glass 读取走
+> `GET /api/v1/agent/memory/break-glass`，需 `memory:break_glass`（RBAC 尚未建码 =
+> fail-closed，只有 `*` 通配可读），读取留审计。
 
 ## 9. 运行可靠性与状态
 
@@ -749,6 +792,7 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 | `agent_approval` | id, run_id, tool_call_id, proposal, diff, status, expires_at, decided_by, decided_at |
 | `agent_artifact` | id, run_id, kind, uri, size, metadata |
 | `agent_context_snapshot` | id, run_id, version, token_count, dropped_ids, memo, level |
+| `agent_skill` / `agent_skill_version` | 自定义 Skill 与版本快照，字段见 §4.4；M2/M3 交付，当前未建表 |
 
 索引：session owner、run owner/status、(`run_id`, `sequence`)、approval status/expiry、idempotency key 唯一索引。
 
@@ -776,6 +820,11 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 | DELETE | `/api/v1/agent/providers/{id}` | 逻辑删除并清空密文 |
 | POST | `/api/v1/agent/providers/{id}/verify` | 轻量连通性验证 |
 | POST | `/api/v1/agent/providers/{id}/set-default` | 设为默认 |
+| GET | `/api/v1/agent/memory/metadata` | 本人记忆条数 / 更新时间 / 用量（不含正文；INT-2490） |
+| GET | `/api/v1/agent/memory/proposals` | 待审批记忆写入提案（含预演 `preview`） |
+| POST | `/api/v1/agent/memory/proposals/{id}/approve` | 按预演落盘（文件被改动则判冲突） |
+| POST | `/api/v1/agent/memory/proposals/{id}/reject` | 拒绝提案，无副作用 |
+| GET | `/api/v1/agent/memory/break-glass` | 管理端读取正文，需 `memory:break_glass`，留审计 |
 | GET | `/api/v1/agent/skill` | 外部 Skill zip 下载（保留） |
 | POST | `/api/v1/mcp` | 外部 MCP（保留） |
 
@@ -788,28 +837,36 @@ SSE 事件载荷统一包含 `run_id`、`sequence`、`type`、`timestamp`；`mes
 ```text
 agent_service/
 ├─ interfaces/api/routes.py
+├─ interfaces/api/memory_routes.py   # 记忆元数据 / 提案审批 / break-glass（INT-2490）
 ├─ application/
 │  ├─ run_orchestrator.py        # 唯一 Loop
 │  ├─ skill_registry.py
 │  ├─ context_assembler.py
 │  ├─ tool_gateway.py
+│  ├─ memory_service.py          # 检索 / 提案 / 落盘 / 审计（INT-2490）
 │  ├─ approval_service.py
 │  └─ sandbox_runner.py
 ├─ domain/model/ + enums.py
 ├─ domain/services/context_window_resolver.py
 ├─ config/model_catalog.json        # 模型默认窗口/最大输出（配置化）
+├─ config/memory_sensitive_rules.json   # 记忆敏感信息规则（block / redact）
 └─ infrastructure/
    ├─ llm/openai_compatible.py
    ├─ llm/anthropic.py
    ├─ llm/provider_registry.py      # 用户供应商解析/默认选择
    ├─ llm/credential_store.py       # AES-GCM 加解密，禁止明文落盘
    ├─ skill/fs_skill_repository.py
+   ├─ memory/file_memory_store.py   # 文件式记忆读写（INT-2490）
+   ├─ memory/paths.py               # tenant/owner 路径构造与穿越拦截
+   ├─ memory/rg_search.py           # rg --fixed-strings --json 检索
+   ├─ memory/sensitive.py           # 敏感信息扫描
    ├─ tools/registry_bridge.py
    ├─ persistence/
    ├─ sandbox/docker_runner.py
    └─ observability/
 skills/                          # 顶层只读挂载
-shared/agent_tools/              # 工具 Schema 单一事实源
+shared/agent_tools/              # 工具 Schema 单一事实源（含 coverage.py → COVERAGE.md 归属矩阵）
+tests/agent_eval/coverage/       # M1 汇总评测：清单一致性 / 长尾 / 触发 / 无编造（INT-2465）
 ```
 
 - 端口注册到 `shared/config/service_ports.py`。
@@ -846,6 +903,9 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 7. 用户模型 Key 加密存储、掩码返回，只在模型调用时内存解密；平台默认无 Key，禁止隐式回退。
 8. 生产缺少 `AGENT_CREDENTIAL_MASTER_KEY` 时拒绝启动；主密钥轮换期间新旧版本并存。
 9. 记忆文件按 tenant/owner 隔离，路径不接收模型输入；写入需审批，读取前做敏感信息扫描。
+10. 网关 `POST /api/v1/reports/{report_id}/cases/search` 当前只有登录校验、无
+    `require_permission`（INT-2547 P3-8 登记，非 M1 四卡引入）；Agent / MCP 侧仍有工具级
+    权限门禁，但网关补 `report:read` 之前不得把该端点当作权限边界。
 
 ## 14. 评测
 
@@ -859,12 +919,27 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 
 评测集入库，Skill 变更必须跑对应集合；失败阻断合并。
 
+> **实现口径（INT-2465 / INT-2554，2026-11-13）**：M1 汇总评测在
+> `tests/agent_eval/coverage/`（离线、不连外部服务）：
+>
+> - 清单一致性：31 个意图工具在注册表 / Skill `allowed-tools` / `tool_search` 索引三处
+>   一致，`tools/list` 快照 207 项，`COVERAGE.md` 与 `coverage.py` 同源
+>   （`python -m shared.agent_tools.coverage --check`）；
+> - 长尾检索：20 个关键词全命中（18 条排第 1、19 条进前 3）；
+> - Skill 触发：12 个 M1 Skill 120/120，`platform-reference` 10/10 回归；
+> - 无编造数值：30/30（确定性模型 + 确定性工具替身，答案必须与工具返回逐字段相等）；
+> - 真实网关契约用例需 `AGENT_LIVE_GATEWAY=http://localhost:15000`，默认跳过。
+>
+> **触发评测是确定性词面代理**：只读 Skill L1 `description` 的「触发词：」段 + 本域词汇表
+> 做词面打分，**不调用真实模型**。真实模型级触发准确率需要用户供应商 Key / 计费通道，
+> 归 M3 全量评测卡 INT-2475；代理结论不等同于模型实测。
+
 ## 15. 里程碑与验收
 
 | 阶段 | 交付 | 验收 |
 |---|---|---|
 | M0 底座 | 单 loop、SkillRegistry、意图工具 3 个 + `tool_search`（关键词检索，INT-2453）、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1 + T2（首期启用）；压缩 L1–L3；`platform-reference` | T1/T2 逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
-| M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；`tool_search` 语义检索（关键词检索已随 M0 交付）；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值；记忆写入需审批 |
+| M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；`tool_search` 关键词 + 轻量语义检索（bigram / 词表扩展，无向量，INT-2465）；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%（当前为确定性词面代理，模型实测归 INT-2475）；无编造数值；记忆写入需审批 |
 | M2 写操作与报告 | 探索-生成层（`ui_tree`/`ui_action`/`api_spec`）；写工具、审批、幂等；App/API 接入全流程（受理→发现→计划→生成→验证→迭代→交付）；驱动提案（设备驱动 + API 适配器，提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；**用户自定义 Skill（USER 级 CRUD + zip 导入导出 + 逐项校验 + 版本快照 + 触发门槛）+ Skill 管理页**；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；两类提案均可复现且未审批不写注册表；接入包在 staging 冒烟通过；三类报告指标与 Report Service 逐字段一致；自定义 Skill 不得提权、不得越权引用工具、同名不得覆盖内置、历史 run 按版本回放 |
 | M3 自动化与评测 | Auto 模式、预算/熔断、全量评测；**TENANT 级共享 Skill 与发布审核流**；外部 Skill zip/MCP 对齐、文档更新 | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致 |
 
@@ -879,6 +954,27 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 | 写操作重复执行 | 幂等键 + 恢复前查副作用 |
 | Skill 泛滥 | 一个 Skill 一件事；Owner + 版本 + eval；中央小组把关 |
 | 外部与内部能力漂移 | 工具 Schema 单一事实源；清单一致性测试 |
+
+### 已登记残留（INT-2554 收口审计，2026-11-13）
+
+**P2（已开卡）**
+
+| 项 | 位置 | 状态 |
+|---|---|---|
+| 记忆工具未接入 Skill allowlist：`platform-reference` 正文指示 `memory_search` / `memory_write`，`allowed-tools` 却没声明（激活 Skill 时返回 `SKILL_TOOL_DENIED`）；两卡合入后清单一致性用例的白名单也要同步 `memory_search` | `skills/platform-reference/SKILL.md:11-13`、`:163-165`；`tests/agent_eval/coverage/test_registry_consistency.py:113` | 缺陷卡 **INT-2556** → 开发工程师A |
+
+**P3（INT-2547 八条，随本页登记、不阻塞 M1 门）**
+
+| # | 残留 | 位置 | 处置 |
+|---|---|---|---|
+| R1 | 代码注释仍写「205 个 MCP 工具」 | `shared/agent_tools/__init__.py:4`、`device_tools.py:9`、`intent_tools.py:20/:1074`、`search.py:4`、`testcase_tools.py:11` | 属索引视图口径（§6.1 裁定 4），对外仍以 §6.2 的 207 为准；注释随 M2 统一改 |
+| R2 | `driver-proposal` Skill 称调用 `driver_propose` 返回 `TOOL_NOT_ENABLED` | `skills/driver-proposal/SKILL.md:47,100` | 实际先 `PERMISSION_DENIED`（无 RBAC 码），只有 `*` 通配到 `TOOL_NOT_ENABLED`；文案随 M2 修 |
+| R3 | `tag-group` Skill 称 `group_list` 可分页 | `skills/tag-group/SKILL.md:55,63` | `group_list` 的 MCP Schema 无 `page` / `per_page`，按 Schema 调用；文案随 M2 修 |
+| R4 | `testcase_generate` 只声明 `testcase:read`，实际还依赖 audio / algorithm / evaluation / playback / group 只读权限 | `shared/agent_tools/intent_tools.py:756` | 工具描述补依赖权限（M2） |
+| R5 | 工具层聚合上限是代码常量 | `intent_tools.py:273`、`testcase_tools.py:119`、`diagnostics.py:27-30` | 见 §5.3；配置化（M2） |
+| R6 | `testcase_generate` 与创建服务是第二份推导实现 | `testcase_tools.py:204-234` vs `audio_service/application/services/_creation_annotation_mixin.py:174-204` | 补一致性回归或抽共享纯函数（后续卡） |
+| R7 | `testcase_query.export_status` 声明 `testcase:read`，端点要 `testcase:import_export` | `shared/agent_tools/intent_tools.py` | 权限码对齐（M2） |
+| R8 | 网关 `POST /reports/{id}/cases/search` 无 `require_permission` | `api_gateway/routes/report_bp.py:181` | 补 `report:read`（见 §13 第 10 条） |
 
 开放问题（需负责人后续拍板）：
 
