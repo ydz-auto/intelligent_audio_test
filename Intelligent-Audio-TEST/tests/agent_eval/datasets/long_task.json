@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "name": "跨域 60 轮长任务",
+  "name": "跨域 68 轮长任务（含 8 轮长期记忆召回，INT-2490）",
   "rounds": [
     {
       "round": 1,
@@ -781,6 +781,110 @@
         "task_id": "T36"
       },
       "prompt": "复核：请记录任务 T36 的 status"
+    },
+    {
+      "round": 61,
+      "kind": "recall",
+      "domain": "memory",
+      "fact_key": "mem:user_pref:value",
+      "expected_value": "中文",
+      "tool": "memory_search",
+      "arguments": {
+        "query": "用户偏好",
+        "scope": "USER"
+      },
+      "prompt": "回忆一下用户表达的语言偏好"
+    },
+    {
+      "round": 62,
+      "kind": "recall",
+      "domain": "memory",
+      "fact_key": "mem:project_rule:value",
+      "expected_value": "report-first",
+      "tool": "memory_search",
+      "arguments": {
+        "query": "项目规则",
+        "scope": "USER"
+      },
+      "prompt": "回忆一下项目里先做什么"
+    },
+    {
+      "round": 63,
+      "kind": "recall",
+      "domain": "memory",
+      "fact_key": "mem:export_style:value",
+      "expected_value": "pdf",
+      "tool": "memory_search",
+      "arguments": {
+        "query": "导出偏好",
+        "scope": "USER"
+      },
+      "prompt": "回忆一下用户要求的导出格式"
+    },
+    {
+      "round": 64,
+      "kind": "recall",
+      "domain": "memory",
+      "fact_key": "mem:audio_rule:value",
+      "expected_value": "wav-only",
+      "tool": "memory_search",
+      "arguments": {
+        "query": "音频规则",
+        "scope": "USER"
+      },
+      "prompt": "回忆一下音频格式的项目规则"
+    },
+    {
+      "round": 65,
+      "kind": "recall",
+      "domain": "memory",
+      "fact_key": "mem:report_rule:value",
+      "expected_value": "daily",
+      "tool": "memory_search",
+      "arguments": {
+        "query": "报告规则",
+        "scope": "USER"
+      },
+      "prompt": "回忆一下报告的节奏约定"
+    },
+    {
+      "round": 66,
+      "kind": "recall",
+      "domain": "memory",
+      "fact_key": "mem:device_rule:value",
+      "expected_value": "lan-only",
+      "tool": "memory_search",
+      "arguments": {
+        "query": "设备规则",
+        "scope": "USER"
+      },
+      "prompt": "回忆一下设备连接的项目规则"
+    },
+    {
+      "round": 67,
+      "kind": "recall",
+      "domain": "memory",
+      "fact_key": "mem:testcase_rule:value",
+      "expected_value": "tag-required",
+      "tool": "memory_search",
+      "arguments": {
+        "query": "用例规则",
+        "scope": "USER"
+      },
+      "prompt": "回忆一下用例的规则"
+    },
+    {
+      "round": 68,
+      "kind": "recall",
+      "domain": "memory",
+      "fact_key": "mem:speaker_rule:value",
+      "expected_value": "group-first",
+      "tool": "memory_search",
+      "arguments": {
+        "query": "扬声器规则",
+        "scope": "USER"
+      },
+      "prompt": "回忆一下扬声器分组的规则"
     }
   ]
 }

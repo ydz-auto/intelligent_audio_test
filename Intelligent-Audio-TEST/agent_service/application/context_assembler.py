@@ -31,7 +31,12 @@ import json
 import logging
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import (
+    Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, TYPE_CHECKING,
+)
+
+if TYPE_CHECKING:  # pragma: no cover - 仅类型标注，避免应用层模块循环导入
+    from agent_service.application.memory_service import MemoryService
 
 from agent_service.application.skill_registry import SkillRegistry
 from agent_service.domain.enums import (
@@ -50,6 +55,7 @@ from agent_service.domain.repositories import (
     RunRepository,
 )
 from agent_service.domain.services.token_estimator import estimate_message_tokens
+from shared.agent_tools.intent_tools import ALWAYS_AVAILABLE_TOOLS
 from shared.utils.time_utils import utcnow
 
 logger = logging.getLogger(__name__)
@@ -156,7 +162,8 @@ class ContextAssembler:
                  snapshots: Optional[ContextSnapshotRepository] = None,
                  artifacts: Optional[ArtifactRepository] = None,
                  artifact_store: Optional[ArtifactStore] = None,
-                 settings: Optional[CompactionSettings] = None):
+                 settings: Optional[CompactionSettings] = None,
+                 memory: Optional['MemoryService'] = None):
         self._events = events
         self._runs = runs
         self._system_prompt = system_prompt or ''
@@ -168,6 +175,9 @@ class ContextAssembler:
         self._artifacts = artifacts
         self._artifact_store = artifact_store or NullArtifactStore()
         self._settings = settings or CompactionSettings()
+        # 长期记忆注入（INT-2490）：只注入用户偏好与项目规则摘要，细节由
+        # 模型调 memory_search 取；None = 不注入（老部署 / 单测替身）。
+        self._memory = memory
         # run_id -> {artifact_id: uri}：避免每轮重建上下文时重复上传同一结果
         self._artifact_cache: Dict[str, Dict[str, str]] = {}
 
@@ -186,7 +196,9 @@ class ContextAssembler:
         skill = self._skills.get_visible(active_skill, permissions)
         if skill is None:
             return frozenset()
-        return frozenset(skill.meta.allowed_tools)
+        # Harness 级常驻工具（长期记忆）不受 Skill allowed-tools 收窄：
+        # 它们只读写调用者自己的私有记忆，不是某个域的业务能力。
+        return frozenset(skill.meta.allowed_tools) | ALWAYS_AVAILABLE_TOOLS
 
     def assemble(self, session_id: str, run: AgentRun, *,
                  permissions: Iterable[str] = (),
@@ -203,7 +215,7 @@ class ContextAssembler:
         if run.id not in {r.id for r in history_runs}:
             history_runs.append(run)
         messages, system_content = self._collect(
-            history_runs, permissions, active_skill)
+            history_runs, permissions, active_skill, run)
         # 快照回放：L3 已把旧对话压成备忘，重建上下文时直接复用它，
         # 不再每次重新摘要（否则每轮都要调一次摘要模型）。
         replay = self._latest_memo_snapshot(history_runs)
@@ -259,19 +271,22 @@ class ContextAssembler:
 
     def _collect(self, history_runs: Sequence[AgentRun],
                  permissions: Iterable[str],
-                 active_skill: Optional[str]
+                 active_skill: Optional[str],
+                 run: Optional[AgentRun] = None
                  ) -> Tuple[List[ContextMessage], str]:
         messages: List[ContextMessage] = []
         next_turn = 0
         for item in history_runs:
             produced, next_turn = self._messages_for_run(item, next_turn)
             messages.extend(produced)
-        system = self._system_content(permissions, active_skill, history_runs)
+        system = self._system_content(
+            permissions, active_skill, history_runs, run)
         return messages, system
 
     def _system_content(self, permissions: Iterable[str],
                         active_skill: Optional[str],
-                        history_runs: Sequence[AgentRun] = ()) -> str:
+                        history_runs: Sequence[AgentRun] = (),
+                        run: Optional[AgentRun] = None) -> str:
         parts: List[str] = []
         if self._system_prompt:
             parts.append(self._system_prompt)
@@ -279,10 +294,28 @@ class ContextAssembler:
             section = self._skills.system_section(permissions, active_skill)
             if section:
                 parts.append(section)
+        memory = self._memory_section(run)
+        if memory:
+            parts.append(memory)
         index = self._artifact_index(history_runs)
         if index:
             parts.append(index)
         return '\n\n'.join(parts)
+
+    def _memory_section(self, run: Optional[AgentRun]) -> str:
+        """会话开始注入的长期记忆摘要（§8.6 第 5 条）。
+
+        只含用户偏好 + 项目规则；token 上限由 MemoryService 按配置裁剪。
+        读取失败 / 无记忆时返回空串，不影响模型 Loop。
+        """
+        if self._memory is None or run is None:
+            return ''
+        try:
+            return self._memory.system_summary(
+                tenant_id=run.tenant_id, owner_id=run.owner_id) or ''
+        except Exception:  # noqa: BLE001 - 注入失败绝不拖垮 run
+            logger.warning('长期记忆摘要注入失败（本次跳过）', exc_info=True)
+            return ''
 
     def _artifact_index(self, history_runs: Sequence[AgentRun]) -> str:
         """Artifact 索引（§8.4 永不压缩清单 5）：带来源 ID 与 URI。"""

@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
+from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.config.config import Config
 from api_gateway.routes.agent_guard import require_agent_enabled
 from shared.utils.time_utils import utcnow
@@ -229,6 +230,44 @@ async def proxy_context_snapshots(run_id: str, request: Request):
 @router.get('/skills')
 async def proxy_skills(request: Request):
     """当前用户可见 Skill 列表（INT-2452；权限由 agent_service 按身份头过滤）。"""
+    return await _forward(request, 'GET')
+
+
+# ---------------------------------------------------------------- 长期记忆（INT-2490）
+# 路径由 agent_service 按身份头构造（tenant / owner），网关不接收任何路径参数；
+# break-glass 读取在网关侧先卡专用权限（RBAC 尚无该码 = fail-closed），
+# agent_service 侧再做一次同样的校验并留审计。
+
+MEMORY_BREAK_GLASS_PERMISSION = 'memory:break_glass'
+
+
+@router.get('/memory/metadata')
+async def proxy_memory_metadata(request: Request):
+    """本人记忆元数据（条数 / 更新时间 / 用量），不含正文。"""
+    return await _forward(request, 'GET')
+
+
+@router.get('/memory/proposals')
+async def proxy_memory_proposals(request: Request):
+    """待审批的记忆写入提案（含预演内容）。"""
+    return await _forward(request, 'GET')
+
+
+@router.post('/memory/proposals/{approval_id}/approve')
+async def proxy_memory_approve(approval_id: str, request: Request):
+    return await _forward(request, 'POST')
+
+
+@router.post('/memory/proposals/{approval_id}/reject')
+async def proxy_memory_reject(approval_id: str, request: Request):
+    return await _forward(request, 'POST')
+
+
+@router.get('/memory/break-glass')
+async def proxy_memory_break_glass(
+        request: Request,
+        _: None = require_permission(MEMORY_BREAK_GLASS_PERMISSION)):
+    """管理端 break-glass 读取正文：必须持专用权限，读取留审计。"""
     return await _forward(request, 'GET')
 
 

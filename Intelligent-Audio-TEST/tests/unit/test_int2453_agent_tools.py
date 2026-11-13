@@ -96,18 +96,20 @@ def test_intent_registry_has_31_unique_tools():
     # （INT-2458 audio_query / INT-2462 evaluation_query / INT-2464 algorithm_query /
     #   INT-2459 device_query，含 SPL 只读子集 / INT-2460 testcase_query + testcase_generate /
     #   INT-2461 task_diagnose + log_diagnose + dashboard_query /
-    #   INT-2463 report_compare；report_query 由 M0 最小版扩全字段）
+    #   INT-2463 report_compare；report_query 由 M0 最小版扩全字段 /
+    #   INT-2490 memory_search + memory_write）
     # 精确等值：新增启用工具必须在本卡同步更新该集合，避免无意多启用。
     assert ENABLED_TOOLS == {'platform_contract', 'tool_search', 'task_query',
                              'report_query', 'audio_query', 'evaluation_query',
                              'algorithm_query', 'device_query',
                              'testcase_query', 'testcase_generate',
                              'task_diagnose', 'log_diagnose', 'dashboard_query',
-                             'report_compare'}
+                             'report_compare', 'memory_search', 'memory_write'}
 
 
 def test_reserved_tool_names_present_and_disabled():
-    reserved = {'memory_search', 'memory_write', 'ui_tree', 'ui_action', 'api_spec'}
+    # INT-2490：记忆工具已实现并启用，预留集合只剩探索工具
+    reserved = {'ui_tree', 'ui_action', 'api_spec'}
     by_name = {t.name: t for t in INTENT_TOOLS}
     assert reserved <= set(by_name)
     for name in reserved:
@@ -116,6 +118,14 @@ def test_reserved_tool_names_present_and_disabled():
         assert tool.parameters['type'] == 'object'
         assert tool.risk in ('READ', 'WRITE', 'DESTRUCTIVE')
         assert isinstance(tool.permissions, tuple)
+    # 记忆工具：已启用、只要求登录（记忆域无 RBAC 码，隔离靠服务端路径构造）
+    for name in ('memory_search', 'memory_write'):
+        tool = by_name[name]
+        assert tool.enabled is True
+        assert tool.permissions == ()
+        assert tool.parameters['additionalProperties'] is False
+        assert 'tenant_id' not in tool.parameters['properties']
+        assert 'owner_id' not in tool.parameters['properties']
 
 
 def test_every_intent_tool_has_schema_and_risk():

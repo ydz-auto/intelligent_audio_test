@@ -115,9 +115,9 @@ def test_permission_denied_returns_plain_text_without_leak():
 
 
 def test_reserved_tool_returns_not_enabled():
+    # INT-2490：memory_* 已启用（记忆服务未装配时另有内存工具用例覆盖），
+    # 这里只保留仍未实现的探索工具。
     for name, args in [
-        ('memory_search', {'query': 'x'}),
-        ('memory_write', {'content': 'x', 'kind': 'preference'}),
         ('ui_tree', {'device_id': 1}),
         ('ui_action', {'device_id': 1, 'action': 'tap'}),
         ('api_spec', {'source': 'url'}),

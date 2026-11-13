@@ -59,6 +59,14 @@ class ToolGateway(ABC):
         """
         return None
 
+    def proposal_capable(self, name: str) -> bool:
+        """写工具是否走「提案 → 审批 → 落盘」而非直接拒绝。
+
+        默认 ``False``：审批链（M2）未启用时写操作一律拒绝。实现方只对
+        有提案原语的工具返回 ``True``（当前仅 ``memory_write``）。
+        """
+        return False
+
     @abstractmethod
     def execute(self, call: ToolCallRequest,
                 context: ToolInvocationContext) -> ToolResult:

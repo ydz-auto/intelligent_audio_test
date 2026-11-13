@@ -176,3 +176,40 @@ class SkillIssueSeverity(str, Enum):
 
     ERROR = 'ERROR'
     WARNING = 'WARNING'
+
+
+# ---------------------------------------------------------------- 长期记忆（INT-2490）
+#
+# 取值与方案 §8.6 / §8.6.1 及卡面接口草案逐字一致（记忆工具对外 Schema
+# 直接由这些枚举生成，不在注册表里再写一份字面量）。
+
+
+class MemoryScope(str, Enum):
+    """``memory_search`` 检索范围（tenant / owner 过滤由服务端强制附加）。"""
+
+    USER = 'USER'
+    PROJECT = 'PROJECT'
+    SKILL_REFERENCES = 'SKILL_REFERENCES'
+
+
+class MemorySection(str, Enum):
+    """``memory_write`` 可写区段（只允许调用者自己的目录）。"""
+
+    USER_PROFILE = 'USER_PROFILE'
+    PROJECT_MEMORY = 'PROJECT_MEMORY'
+    TOPIC = 'TOPIC'
+
+
+class MemoryWriteStatus(str, Enum):
+    """审批占位提案状态。M2（INT-2466）接入后由审批服务接管。"""
+
+    PENDING = 'PENDING'
+    APPROVED = 'APPROVED'
+    REJECTED = 'REJECTED'
+
+
+class SensitiveRuleAction(str, Enum):
+    """敏感信息扫描规则动作：拦截整笔写入 / 脱敏后放行。"""
+
+    BLOCK = 'block'
+    REDACT = 'redact'

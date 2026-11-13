@@ -58,6 +58,9 @@ from agent_service.domain.ports.side_effects import SideEffectChecker
 from agent_service.domain.ports.tool_gateway import (
     ToolDescriptor, ToolGateway, ToolInvocationContext,
 )
+from shared.agent_tools.intent_tools import (
+    ALWAYS_AVAILABLE_TOOLS, redact_for_audit,
+)
 from agent_service.domain.repositories import (
     ArtifactRepository, EventRepository, RunRepository, SessionRepository,
     StepRepository, ToolCallRepository,
@@ -615,6 +618,8 @@ class RunOrchestrator:
         长尾 MCP 工具（descriptor 为 None，tool_search 命中）：仅当未激活
         Skill，或 Skill 明确声明了 ``tool_search`` 时开放。
         """
+        if name in ALWAYS_AVAILABLE_TOOLS:
+            return None
         if descriptor is not None:
             if allowed_tools is not None and name not in allowed_tools:
                 return ('SKILL_TOOL_DENIED',
@@ -783,7 +788,10 @@ class RunOrchestrator:
             record = AgentToolCall(
                 id=str(uuid.uuid4()), run_id=run.id, step_id=step_id,
                 tool_call_id=call.tool_call_id, tool=call.name,
-                arguments=call.arguments, args_hash=args_hash, risk=risk,
+                # 审计不落记忆正文（INT-2490 §8.6）：memory_write 的 content
+                # 以 sha256 + 长度代替，args_hash 仍按原始参数计算。
+                arguments=redact_for_audit(call.name, call.arguments),
+                args_hash=args_hash, risk=risk,
                 status=ToolCallStatus.PENDING,
                 idempotency_key=idempotency_key,
                 created_at=utcnow(), updated_at=utcnow(),
@@ -794,7 +802,7 @@ class RunOrchestrator:
             self._events.append(run.id, EventType.TOOL_CALL, {
                 'tool_call_id': call.tool_call_id,
                 'tool': call.name,
-                'arguments': call.arguments,
+                'arguments': redact_for_audit(call.name, call.arguments),
                 'risk': risk.value,
                 'turn': turn,
             })
@@ -837,9 +845,12 @@ class RunOrchestrator:
             self._append_tool_result(run.id, result, turn, emitted)
             return result
 
-        if risk.requires_approval:
-            # M0 只读：写操作一律拒绝（审批链路 M2 落地）
-            message = '写操作需要审批，M0 未启用审批执行'
+        if risk.requires_approval and not self._tool_gateway.proposal_capable(
+                call.name):
+            # 无提案原语的写操作一律拒绝（审批链路 M2 落地）。
+            # 有提案原语的工具（memory_write，INT-2490）交给网关生成待审批
+            # 提案：审批前不产生任何副作用，结果码同样是 APPROVAL_REQUIRED。
+            message = '写操作需要审批，当前未启用直接执行'
             self._tool_calls.update(
                 call.tool_call_id, run.id,
                 status=ToolCallStatus.DENIED,
@@ -916,8 +927,10 @@ class RunOrchestrator:
             status=final_status,
             result=stored_result,
             latency_ms=latency_ms,
-            permission_decision=('deny' if result.error_code == 'PERMISSION_DENIED'
-                                 else 'allow'),
+            permission_decision=(
+                'deny' if result.error_code == 'PERMISSION_DENIED'
+                else 'approval_required'
+                if result.error_code == 'APPROVAL_REQUIRED' else 'allow'),
             result_code=result.error_code or ('OK' if result.ok else 'TOOL_FAILED'),
             error=None if result.ok else (result.error_code or 'TOOL_FAILED'))
         self._append_tool_result(run.id, result, turn, emitted)
@@ -947,7 +960,8 @@ class RunOrchestrator:
             record = AgentToolCall(
                 id=str(uuid.uuid4()), run_id=run.id, step_id=step_id,
                 tool_call_id=call.tool_call_id, tool=call.name,
-                arguments=call.arguments, args_hash=args_hash,
+                arguments=redact_for_audit(call.name, call.arguments),
+                args_hash=args_hash,
                 risk=_UNKNOWN_TOOL_RISK, status=status,
                 result=stored_result, permission_decision=decision,
                 error=message, idempotency_key=idempotency_key,
@@ -957,7 +971,7 @@ class RunOrchestrator:
             self._events.append(run.id, EventType.TOOL_CALL, {
                 'tool_call_id': call.tool_call_id,
                 'tool': call.name,
-                'arguments': call.arguments or {},
+                'arguments': redact_for_audit(call.name, call.arguments),
                 'risk': _UNKNOWN_TOOL_RISK.value,
                 'rejected': error_code,
                 'turn': turn,

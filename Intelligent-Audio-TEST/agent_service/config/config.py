@@ -228,6 +228,32 @@ class Config(BaseConfig):
     # 长期记忆文件树（§8.6）；部署为写卷，按 tenant/owner 隔离。
     MEMORY_ROOT = os.environ.get(
         'AGENT_MEMORY_ROOT', os.path.join(_PROJECT_DIR, 'memory'))
+
+    # ===== 长期记忆（INT-2490，§8.6 / §8.6.1）=====
+    # rg 可执行文件（模板镜像用 Dockerfile 安装 ripgrep；缺失时 memory_search
+    # 显式返回后端不可用，不静默当「没有记忆」）。
+    MEMORY_RG_BIN = (os.environ.get('AGENT_MEMORY_RG_BIN') or 'rg').strip() or 'rg'
+    MEMORY_RG_TIMEOUT_SECONDS = _get_float('AGENT_MEMORY_RG_TIMEOUT_SECONDS', 5.0)
+    MEMORY_SEARCH_DEFAULT_LIMIT = _get_int(
+        'AGENT_MEMORY_SEARCH_DEFAULT_LIMIT', 10)
+    MEMORY_SEARCH_MAX_LIMIT = _get_int('AGENT_MEMORY_SEARCH_MAX_LIMIT', 20)
+    MEMORY_SEARCH_MAX_QUERY_CHARS = _get_int(
+        'AGENT_MEMORY_SEARCH_MAX_QUERY_CHARS', 200)
+    MEMORY_SNIPPET_CHARS = _get_int('AGENT_MEMORY_SNIPPET_CHARS', 240)
+    # 会话开始注入摘要的 token 上限（卡面验收 5：实测不超过该值）
+    MEMORY_INJECT_MAX_TOKENS = _get_int('AGENT_MEMORY_INJECT_MAX_TOKENS', 600)
+    MEMORY_SUMMARY_MAX_PROJECTS = _get_int(
+        'AGENT_MEMORY_SUMMARY_MAX_PROJECTS', 5)
+    MEMORY_SUMMARY_LINES_PER_FILE = _get_int(
+        'AGENT_MEMORY_SUMMARY_LINES_PER_FILE', 20)
+    # 每用户磁盘上限（只回报用量；自动清理策略不在本卡实现，见 memory/README）
+    MEMORY_USER_QUOTA_BYTES = _get_int(
+        'AGENT_MEMORY_USER_QUOTA_BYTES', 20 * 1024 * 1024)
+    MEMORY_SENSITIVE_RULES_PATH = (
+        os.environ.get('AGENT_MEMORY_SENSITIVE_RULES')
+        or os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        'memory_sensitive_rules.json'))
+
     # 本目录（含 model_catalog.json / agent_defaults.json），部署为只读挂载。
     CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
     # T2 可信运行时（§7 拍板#2）：runsc（gVisor）或 firecracker。
@@ -356,3 +382,16 @@ class Config(BaseConfig):
                 or abs(sum(ratios.values()) - 1.0) > 1e-6:
             raise ValueError(
                 'AGENT_CONTEXT_RATIO_* 区段占比必须非负且合计为 1.0')
+        # 长期记忆（INT-2490）：上限必须为正且有序；敏感信息规则文件缺失即
+        # 启动失败——没有扫描规则就不能放行 memory_write（防静默无扫描写）。
+        if cls.MEMORY_SEARCH_DEFAULT_LIMIT <= 0 \
+                or cls.MEMORY_SEARCH_MAX_LIMIT < cls.MEMORY_SEARCH_DEFAULT_LIMIT:
+            raise ValueError(
+                'AGENT_MEMORY_SEARCH_*_LIMIT 必须为正，且 MAX ≥ DEFAULT')
+        if cls.MEMORY_INJECT_MAX_TOKENS <= 0:
+            raise ValueError('AGENT_MEMORY_INJECT_MAX_TOKENS 必须为正数')
+        if cls.MEMORY_RG_TIMEOUT_SECONDS <= 0:
+            raise ValueError('AGENT_MEMORY_RG_TIMEOUT_SECONDS 必须为正数')
+        if not Path(cls.MEMORY_SENSITIVE_RULES_PATH).is_file():
+            raise ValueError(
+                f'敏感信息规则文件不存在：{cls.MEMORY_SENSITIVE_RULES_PATH}')

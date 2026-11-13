@@ -549,9 +549,11 @@ def test_audio_query_call_is_audited_and_skill_scoped(tmp_path):
     assert created
     container.executor.submit(run.id)
 
-    # 激活 Skill 后只装配其 allowed-tools
+    # 激活 Skill 后只装配其 allowed-tools；记忆工具是 harness 级常驻
+    # （INT-2490：不属于任何业务域，激活 Skill 时仍可用）
     assert set(_tool_names(llm.requests[0])) == {
-        'audio_query', 'platform_contract', 'tool_search'}
+        'audio_query', 'platform_contract', 'tool_search',
+        'memory_search', 'memory_write'}
 
     record = container.repositories['tool_calls'].find(run.id, 'c1')
     assert record.tool == 'audio_query'

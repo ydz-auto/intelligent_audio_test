@@ -43,6 +43,20 @@ PLATFORM_FACTS = {
 }
 TOOL_SEARCH_FACTS = {'tool_search:task_get:risk': 'READ'}
 
+# 长期记忆事实（INT-2490）：跨会话预置在 memory/ 文件树里，长任务集用
+# memory_search 召回。键格式与工具事实一致（entity:index:field），
+# 命中「无编造数值」检查时按工具真实返回逐字段核对。
+MEMORY_FACTS = {
+    'mem:user_pref:value': '中文',
+    'mem:project_rule:value': 'report-first',
+    'mem:export_style:value': 'pdf',
+    'mem:audio_rule:value': 'wav-only',
+    'mem:report_rule:value': 'daily',
+    'mem:device_rule:value': 'lan-only',
+    'mem:testcase_rule:value': 'tag-required',
+    'mem:speaker_rule:value': 'group-first',
+}
+
 DETAIL_PADDING = 1200  # 每轮详情结果的附加正文（字符），模拟真实长结果
 
 
@@ -107,6 +121,10 @@ class EvalToolGateway(ToolGateway):
                 sandbox_tier=SandboxTier.T0_NONE),
             ToolDescriptor(
                 name='tool_search', description='工具 Schema 检索',
+                parameters={'type': 'object'}, risk=ToolRisk.READ,
+                sandbox_tier=SandboxTier.T0_NONE),
+            ToolDescriptor(
+                name='memory_search', description='长期记忆关键词检索',
                 parameters={'type': 'object'}, risk=ToolRisk.READ,
                 sandbox_tier=SandboxTier.T0_NONE),
         )
@@ -202,6 +220,21 @@ class EvalToolGateway(ToolGateway):
                 }],
                 'facts': dict(TOOL_SEARCH_FACTS),
             }
+        if tool == 'memory_search':
+            # 确定性替身：真实 rg 检索路径由单测覆盖；评测只关心
+            # 「召回率 + 无编造」在 50+ 轮会话里是否稳定。
+            return {
+                'scope': str(args.get('scope') or 'USER'),
+                'count': len(MEMORY_FACTS),
+                'truncated': False,
+                'items': [
+                    {'path': 'user_profile.md',
+                     'snippet': f'- {key} = {value}',
+                     'score': 1, 'updated_at': None}
+                    for key, value in MEMORY_FACTS.items()
+                ],
+                'facts': dict(MEMORY_FACTS),
+            }
         raise ValueError(f'未知工具 {tool}')
 
 
@@ -221,6 +254,8 @@ def expected_truth(fact_key: str) -> Optional[str]:
         return PLATFORM_FACTS[fact_key]
     if fact_key in TOOL_SEARCH_FACTS:
         return TOOL_SEARCH_FACTS[fact_key]
+    if fact_key in MEMORY_FACTS:
+        return MEMORY_FACTS[fact_key]
     if fact_key == 'task:list:total':
         return str(TASK_COUNT)
     if fact_key == 'report:list:total':
@@ -391,6 +426,7 @@ class RoundResult:
     answer: Optional[str]
     status: str
     requery: bool = False
+    domain: str = ''
 
     @property
     def correct(self) -> bool:
@@ -415,6 +451,15 @@ class ScenarioMetrics:
     compaction_count: int
     snapshot_levels: Dict[str, int] = field(default_factory=dict)
     run_failures: int = 0
+    # 长期记忆子集（domain='memory'）：召回命中率单独计（INT-2490）
+    memory_rounds: int = 0
+    memory_correct: int = 0
+
+    @property
+    def memory_hit_rate(self) -> float:
+        if not self.memory_rounds:
+            return 0.0
+        return self.memory_correct / self.memory_rounds
 
     @property
     def success_rate(self) -> float:
@@ -434,6 +479,9 @@ class ScenarioMetrics:
             'compaction_count': self.compaction_count,
             'snapshot_levels': dict(self.snapshot_levels),
             'run_failures': self.run_failures,
+            'memory_rounds': self.memory_rounds,
+            'memory_correct': self.memory_correct,
+            'memory_hit_rate': round(self.memory_hit_rate, 4),
         }
 
 
@@ -444,6 +492,7 @@ def summarize_rounds(name: str, rounds: Sequence[RoundResult],
     correct = sum(1 for r in rounds if r.correct)
     unknown = sum(1 for r in rounds if r.answer in (None, 'UNKNOWN'))
     requery = sum(1 for r in rounds if r.requery)
+    memory_rounds = [r for r in rounds if r.domain == 'memory']
     return ScenarioMetrics(
         name=name, rounds=total, answered=total - unknown, correct=correct,
         unknown=unknown,
@@ -453,11 +502,14 @@ def summarize_rounds(name: str, rounds: Sequence[RoundResult],
         compaction_count=sum(compaction_levels.values()),
         snapshot_levels=dict(compaction_levels),
         run_failures=run_failures,
+        memory_rounds=len(memory_rounds),
+        memory_correct=sum(1 for r in memory_rounds if r.correct),
     )
 
 
 __all__ = [
-    'DETAIL_PADDING', 'EvalToolGateway', 'PLATFORM_FACTS', 'RoundResult',
+    'DETAIL_PADDING', 'EvalToolGateway', 'MEMORY_FACTS', 'PLATFORM_FACTS',
+    'RoundResult',
     'ScenarioMetrics', 'SimulatedModel', 'SimulationStats', 'expected_truth',
     'report_facts', 'summarize_rounds', 'task_facts',
 ]

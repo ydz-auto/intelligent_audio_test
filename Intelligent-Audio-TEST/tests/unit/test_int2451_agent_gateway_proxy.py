@@ -206,3 +206,53 @@ def test_sse_transport_break_emits_unified_frame(harness):
     assert payload['run_id'] == 'r1'
     assert payload['sequence'] == 4  # 与已下发帧的 id 对齐，续传不跳过缺口
 
+
+
+# ---------------------------------------------------------------- 长期记忆（INT-2490）
+
+def test_memory_routes_are_proxied_with_identity_headers(harness):
+    make_app, calls = harness
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={'items': [], 'count': 0})
+
+    client = make_app(mode='off', handler=handler)
+    for method, path in (
+            ('get', '/api/v1/agent/memory/metadata'),
+            ('get', '/api/v1/agent/memory/proposals'),
+            ('post', '/api/v1/agent/memory/proposals/p1/approve'),
+            ('post', '/api/v1/agent/memory/proposals/p1/reject')):
+        response = getattr(client, method)(path)
+        assert response.status_code == 200, (method, path, response.text)
+    assert len(calls) == 4
+    for request in calls:
+        assert request.headers['X-User-Id'] == '0'
+        assert request.headers['X-Tenant-Id'] == 'default'
+
+
+def test_memory_break_glass_forwards_path_and_owner_query(harness):
+    make_app, calls = harness
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={'path': 'user_profile.md',
+                                         'content': 'x'})
+
+    client = make_app(mode='off', handler=handler)
+    resp = client.get('/api/v1/agent/memory/break-glass',
+                      params={'path': 'user_profile.md', 'owner_id': 7})
+    assert resp.status_code == 200, resp.text
+    assert calls[0].url.path == '/api/v1/agent/memory/break-glass'
+    assert 'path=user_profile.md' in str(calls[0].url)
+    assert 'owner_id=7' in str(calls[0].url)
+
+
+def test_memory_break_glass_requires_permission(harness):
+    make_app, calls = harness
+    client = make_app(mode='prod', handler=lambda request: httpx.Response(200))
+    resp = client.get('/api/v1/agent/memory/break-glass',
+                      params={'path': 'user_profile.md', 'owner_id': 7})
+    # 未登录：鉴权中间件先拒绝，绝不转发到上游
+    assert resp.status_code == 401
+    assert calls == []

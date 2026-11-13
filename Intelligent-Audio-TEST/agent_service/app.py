@@ -34,6 +34,7 @@ from agent_service.domain.exceptions import (
 )
 from agent_service.infrastructure.sandbox.t2_runtime import probe_t2_runtime
 from agent_service.interfaces.api.provider_routes import router as provider_router
+from agent_service.interfaces.api.memory_routes import router as memory_router
 from agent_service.interfaces.api.routes import router as agent_router
 
 logger = logging.getLogger(__name__)
@@ -252,6 +253,8 @@ def create_app(container=None) -> FastAPI:
     app.include_router(agent_router, prefix='/api/v1/agent', tags=['agent'])
     app.include_router(provider_router, prefix='/api/v1/agent',
                        tags=['agent-providers'])
+    app.include_router(memory_router, prefix='/api/v1/agent',
+                       tags=['agent-memory'])
     return app
 
 

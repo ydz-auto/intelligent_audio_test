@@ -668,6 +668,24 @@ W = 有效上下文窗口 = 用户覆盖值 → 模型目录默认值 → 128k �
 7. 会话与 Run 同样按 owner 隔离：`agent_session`、`agent_run`、`agent_run_event` 的查询强制带 `owner_id`。
 8. 验收用例：A 读不到 B；跨租户读不到；路径穿越失败；提示注入无法改变身份；导出/删除只作用于本人。
 
+> **实现口径（INT-2490，2026-11-13）**：`memory_search` / `memory_write` 已在
+> `agent_service` 落地并启用（`shared/agent_tools/intent_tools.py` 两项
+> `enabled=true`，权限只要求登录——记忆域无 RBAC 码，隔离由服务端按身份构造
+> 路径保证）。检索为 `rg --fixed-strings --json`（镜像内安装 ripgrep，缺失即
+> 返回 `MEMORY_BACKEND_UNAVAILABLE`，不静默当空结果）；路径组件只接受
+> `[A-Za-z0-9._-]`，`..`/绝对路径/`~`/软链或 junction 穿越全部拒绝并留审计。
+> 写入走提案占位：M2 审批服务 INT-2466 未合入前，`memory_write` 只生成
+> `PENDING` 提案（`.proposals/`，不在用户树内），由本人经
+> `POST /api/v1/agent/memory/proposals/{id}/approve|reject` 审批；批准后文件
+> 内容与预演逐字一致，文件已被改动则判冲突不覆盖。敏感信息规则配置化
+> （`agent_service/config/memory_sensitive_rules.json`）：凭证类 `block`、
+> PII `redact`。审计写 `memory/.audit/<tenant>.jsonl`，只含
+> `run_id / tool / args_hash / decision / result_code`，`memory_write` 在
+> `agent_tool_call` 中的 `content` 以 sha256 代替。会话开始只注入用户偏好 +
+> 项目规则摘要（`AGENT_MEMORY_INJECT_MAX_TOKENS`，默认 600）；话题与细节由
+> `memory_search` 取。每用户配额 `AGENT_MEMORY_USER_QUOTA_BYTES` 只回报用量，
+> 自动清理策略留后续卡。
+
 ## 9. 运行可靠性与状态
 
 ### 9.1 状态机
