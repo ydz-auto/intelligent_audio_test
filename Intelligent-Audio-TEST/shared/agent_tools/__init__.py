@@ -3,7 +3,9 @@
 
 - ``mcp_registry``：205 个外部 MCP 1:1 工具（api_gateway 与 agent_service 共用）；
 - ``intent_tools``：31 个内部意图工具（M0 实现 3 个业务 + tool_search；
-  M1 各域卡按域启用只读工具，当前含 ``algorithm_query``）；
+  M1 各域卡按域启用只读工具，当前含 ``audio_query`` / ``evaluation_query`` /
+  ``algorithm_query`` / ``device_query``）；
+- ``device_tools``：设备与 SPL 域只读动作表 / Agent 专用 SPL REST 目标；
 - ``search``：tool_search 关键词索引；
 - ``contract``：platform_contract 平台口径事实源。
 

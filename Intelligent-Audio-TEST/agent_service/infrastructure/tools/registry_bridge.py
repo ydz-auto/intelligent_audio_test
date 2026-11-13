@@ -161,6 +161,12 @@ class SharedToolRegistryBridge(ToolRegistryPort):
             return None
         return tuple(mcp['permissions'])
 
+    def permissions_for(self, name: str,
+                        arguments: Optional[Dict[str, Any]] = None
+                        ) -> Optional[Tuple[str, ...]]:
+        """按 action 收窄的权限（``device_query`` 跨 device / spl / digital_spl）。"""
+        return intent_tools.permissions_for(name, arguments)
+
     def is_mcp_tool(self, name: str) -> bool:
         return mcp_registry.get_tool(name) is not None
 

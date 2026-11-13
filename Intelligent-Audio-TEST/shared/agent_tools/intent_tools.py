@@ -6,7 +6,8 @@
 
 本卡（M0）实现 3 个业务意图工具 + ``tool_search``，M1 音频域卡（INT-2458）
 追加 ``audio_query``，评估域卡（INT-2462）追加 ``evaluation_query``，
-算法域卡（INT-2464）追加 ``algorithm_query``：
+算法域卡（INT-2464）追加 ``algorithm_query``，设备 / SPL 域卡（INT-2459）
+追加 ``device_query``（SPL 只读是该工具的子集，见 ``device_tools``）：
 
 - ``platform_contract``：平台口径（服务 / 接口前缀 / 枚举 / 权限码 / 工具 Schema）；
 - ``task_query``：任务只读子集（映射 MCP ``task_*`` 只读工具）；
@@ -19,7 +20,8 @@
   ``audio_get_by_ids``）不进索引、不可被 Agent 调用（INT-2530）。
 
 M1 各域卡按域启用自己的只读意图工具（已完成：``audio_query`` INT-2458、
-``evaluation_query`` INT-2462、``algorithm_query`` INT-2464）；
+``evaluation_query`` INT-2462、``algorithm_query`` INT-2464、
+``device_query`` INT-2459 —— 含 SPL 只读子集）；
 每个域工具 = 动作 → MCP 只读工具的映射，REST 路径 / 查询参数仍由
 ``mcp_registry`` 的共享构造器决定，不复制 Schema。
 
@@ -33,6 +35,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from shared.agent_tools import contract as platform_contract_catalog
+from shared.agent_tools import device_tools
 from shared.agent_tools.mcp_registry import TOOLS as MCP_TOOLS, get_tool
 
 # ---------------------------------------------------------------- schema 辅助
@@ -234,6 +237,9 @@ ACTION_REQUIRED: Dict[str, Dict[str, Tuple[str, ...]]] = {
         'dimensions': ('algo_type',),
         'dimension_params': ('dimension_id',),
     },
+    # 设备 / SPL 只读动作（INT-2459）；动作表、参数白名单与动作级权限
+    # 集中在 ``device_tools``，此处只登记条件必填，避免两套口径。
+    'device_query': device_tools.DEVICE_QUERY_REQUIRED,
 }
 
 # 条件必填：同一动作下，某参数出现（或取到某值）时连带必填的参数。
@@ -540,6 +546,62 @@ INTENT_TOOLS: List[IntentTool] = [
             'scope': _prop('string', '用例参数作用域（case_params，取值以接口返回为准）'),
         }, required=('action',)),
         risk='READ', permissions=('algorithm:read',), enabled=True, kind='intent_rest'),
+    # ---------------- M1 已实现（INT-2459 设备与 SPL 域只读） ----------------
+    # SPL 没有独立意图工具（§6.1 只有写工具 spl_calibrate）：物理域
+    # /api/v1/spl 与数字域 /api/v1/digital-spl 的只读端点都是本工具的动作，
+    # 目标定义见 ``device_tools``。工具级 permission 是三个域的并集（只决定
+    # 可见性），调用时按 action 收窄到 device:read / spl:read /
+    # digital_spl:read（``permissions_for``）。
+    IntentTool(
+        name='device_query',
+        description=('设备与 SPL 只读查询：被测设备列表 / 详情 / 分组 / 分组详情 / '
+                     '状态 / 状态历史（含健康检查事件）/ 告警 / 告警规则 / '
+                     '可用序列号 / 驱动关键词；SPL 物理域与数字域的映射 / 统计 / '
+                     '按设备或 API 查 / 校准历史 / 最新校准点集（测试音校准点）。'
+                     '只读，不连接 / 重启 / 扫描 / 安装设备，不执行校准、不播放测试音。'),
+        parameters=_schema({
+            'action': _prop('string', '查询动作', required=True,
+                            enum=list(device_tools.DEVICE_QUERY_ACTION_NAMES)),
+            'device_id': _prop('integer', '设备 ID（detail 必填；status_history 可选，'
+                                         '给了就查单设备；spl_by_device 必填，'
+                                         '但那是**播放设备** ID，不是被测设备 ID）'),
+            'group_id': _prop('string', '设备分组 ID（group 必填）'),
+            'mapping_id': _prop('integer', 'SPL 映射 ID（spl_mapping / spl_history / '
+                                           'spl_calibration_data / digital_spl_mapping 必填）'),
+            'api_id': _prop('integer', '被测 API ID（digital_spl_by_api 必填；'
+                                       'digital_spl_mappings 可作过滤）'),
+            'ids': _prop('array', '被测设备 ID 列表（status 过滤；服务端按逗号串接收）',
+                         items={'type': 'integer'}),
+            'device_ids': _prop('array', '被测设备 ID 列表（status_history 全量口径）',
+                                items={'type': 'integer'}),
+            'page': _prop('integer', '页码（列表类动作，默认 1）'),
+            'per_page': _prop('integer', '每页条数（列表类动作）'),
+            'keyword': _prop('string', '关键词过滤（list 匹配设备名 / 序列号等；'
+                                       'groups 匹配分组名；spl_mappings 匹配映射名）'),
+            'status': _prop('string', '状态过滤：list 按设备状态原值（如 online / offline），'
+                                      'alarms 按告警状态 ' +
+                                      '/'.join(device_tools.ALARM_STATUS_VALUES)),
+            'device_type': _prop('string', '设备类型过滤（list，接口原值，如 phone）'),
+            'algorithm_type': _prop('string', '算法类型过滤（list，算法类型取值以算法 options 为准）'),
+            'lab_id': _prop('integer', '实验室 ID 过滤（list）'),
+            'group_type': _prop('string', '设备分组类型过滤（groups）',
+                                enum=list(device_tools.GROUP_TYPE_VALUES)),
+            'severity': _prop('string', '告警级别过滤（alarms）',
+                              enum=list(device_tools.ALARM_SEVERITY_VALUES)),
+            'metric_type': _prop('string', '告警指标过滤（alarm_rules）',
+                                 enum=list(device_tools.ALARM_METRIC_VALUES)),
+            'enabled': _prop('boolean', '告警规则启用状态过滤（alarm_rules）'),
+            'event_type': _prop('string', '状态事件类型过滤（status_history）',
+                                enum=list(device_tools.STATUS_EVENT_TYPE_VALUES)),
+            'start_time': _prop('string', '起始时间（status_history，接口原样透传，'
+                                          '如 2026-11-01 00:00:00）'),
+            'end_time': _prop('string', '结束时间（status_history，接口原样透传）'),
+            'calibration_status': _prop('string', '校准状态过滤（spl_mappings / '
+                                                  'digital_spl_mappings）',
+                                        enum=list(device_tools.CALIBRATION_STATUS_VALUES)),
+        }, required=('action',)),
+        risk='READ', permissions=device_tools.DEVICE_QUERY_PERMISSIONS,
+        enabled=True, kind='intent_rest'),
     IntentTool(
         name='algorithm_manage', description='定义/参数/映射写操作、热重载（写）。',
         parameters=_schema({
@@ -580,16 +642,6 @@ INTENT_TOOLS: List[IntentTool] = [
         }, required=('action',)),
         risk='WRITE', permissions=('spl:create', 'spl:update', 'spl:test_tone'),
         enabled=False, kind='reserved'),
-    IntentTool(
-        name='device_query', description='设备、分组、状态、告警（只读）。',
-        parameters=_schema({
-            'action': _prop('string', '查询动作', required=True,
-                            enum=['list', 'detail', 'groups', 'status', 'alarms']),
-            'device_id': _prop('integer', '设备 ID'),
-            'page': _prop('integer', '页码'),
-            'per_page': _prop('integer', '每页条数'),
-        }, required=('action',)),
-        risk='READ', permissions=('device:read',), enabled=False, kind='reserved'),
     IntentTool(
         name='device_control', description='连接、重启、扫描、安装、批量控制（破坏性写）。',
         parameters=_schema({
@@ -774,6 +826,29 @@ _REST_ACTION_MAP: Dict[str, Dict[str, str]] = {
 }
 
 
+def permissions_for(name: str,
+                    arguments: Optional[Dict[str, Any]] = None
+                    ) -> Optional[Tuple[str, ...]]:
+    """按调用参数解析所需权限（OR 语义）；未知工具返回 None。
+
+    绝大多数工具是「工具 = 一个权限域」，直接用工具级声明。``device_query``
+    横跨 device / spl / digital_spl 三个域，工具级声明只表达可见性，调用时按
+    ``action`` 收窄，避免持有 device:read 的用户读 SPL 映射（反之亦然）。
+    动作非法时回落到工具级权限，由解析层给出明确的 action 错误。
+    """
+    tool = INTENT_TOOL_BY_NAME.get(name)
+    if tool is None:
+        if name in AGENT_UNEXPOSED_MCP_TOOLS:
+            return None
+        mcp = get_tool(name)
+        return tuple(mcp['permissions']) if mcp is not None else None
+    if name == 'device_query' and isinstance(arguments, dict):
+        by_action = device_tools.action_permissions(arguments.get('action'))
+        if by_action is not None:
+            return by_action
+    return tuple(tool.permissions)
+
+
 def risk_of(name: str) -> Optional[str]:
     """工具风险：意图工具取声明值；MCP 工具 GET=READ、其余=WRITE。
 
@@ -902,9 +977,13 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
     - ``task_query`` / ``report_query`` / ``evaluation_query``：按 ``action``
       映射到对应 MCP 只读工具，去掉 ``action`` 后其余参数原样透传（路径 /
       查询 / body 由共享构造器决定）；
+    - ``device_query``：设备动作映射 MCP ``device_*`` GET 工具，SPL 动作映射
+      ``device_tools`` 的 Agent 专用只读目标（该域没有对外 MCP 工具）；
     - 其他 MCP 工具名（tool_search 命中后直接调用）：原样透传参数；
     - 未知名称或动作非法：返回错误文本，由 ToolGateway 收敛为普通失败结果。
     """
+    if name == 'device_query':
+        return device_tools.resolve_call(arguments or {})
     mapping = _REST_ACTION_MAP.get(name)
     if mapping is not None:
         action = arguments.get('action')
@@ -988,7 +1067,8 @@ __all__ = [
     'CONDITIONAL_REQUIRED', 'ENABLED_TOOLS', 'EVALUATION_QUERY_ACTIONS',
     'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool', 'MCP_TOOLS',
     'REPORT_QUERY_ACTIONS', 'TASK_QUERY_ACTIONS', 'TOOL_INDEX',
-    'TOOL_INDEX_BY_NAME', 'conditional_required', 'platform_contract',
+    'TOOL_INDEX_BY_NAME', 'conditional_required', 'permissions_for',
+    'platform_contract',
     'required_for_action', 'resolve_rest_call', 'risk_of', 'tool_search',
     'validate_arguments',
 ]
