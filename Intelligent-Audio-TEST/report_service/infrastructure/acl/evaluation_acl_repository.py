@@ -33,11 +33,16 @@ logger = logging.getLogger(__name__)
 #
 # INT-2381：值同时是聚合链的峰值旋钮——逐块 yield 后峰值 ≈ 单块原始响应 +
 # 解析副本，随每块结果数线性放大（402 实测约 +44MB/条，见设计文档 §3.9.1）。
-# 默认 4 是「cgroup ≤ 600MB 且 RSS ≤ 500MB」达标前提下最大的块（402 查询实测
-# chunk=4 → cgroup 421MB / RSS 448MB；chunk=8 → 665MB / 687MB 已超）。块越大
-# 往返越少但峰值越高，调大前先按 §3.9.1 的表复测。
+#
+# INT-2436（M1 决策门）：判据从 INT-2381 的 B1′（cgroup ≤ 600MB）回收到
+# cgroup < 300MB。生成链（实际 OOM 链路）实测 402/407 chunk ∈ {1,2,4}：
+#   402 → 289.7 / 349.7 / 443.3 MB，407 → 249.0 / 281.5 / 373.7 MB
+# （cgroup memory.peak，一次性容器 + 副本库）。chunk=2 时 402 已 ≥ 300MB，
+# 只有 chunk=1 两个任务都达标 → 默认从 4 下调到 1（查询链 402 同口径
+# 270.3MB，耗时与 chunk=4 相当：查询 +1.5s、生成 ±1s 内）。块越大往返越少
+# 但峰值越高，调大前先按 §3.9.1 的实测表复测。
 _DIM_RESULT_BODY_CHUNK_SIZE = max(
-    int(_os.getenv('REPORT_DIM_RESULT_BODY_CHUNK_SIZE', '4')), 1)
+    int(_os.getenv('REPORT_DIM_RESULT_BODY_CHUNK_SIZE', '1')), 1)
 
 
 def _attach(dto, payload):
