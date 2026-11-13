@@ -267,9 +267,19 @@ budgets:
 | `driver_propose` | 生成设备驱动（`AppDriver`）+ 厂商 API 适配器（`ApiVendorAdapter`）代码提案（不执行、不注册、不发布）；`target_kind` = `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；落地卡 INT-2467。对外意图工具名唯一为 `driver_propose`，`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具 | WRITE |
 | `dashboard_query` | 首页统计（只读；缓存刷新留 M2，与 INT-2461 一致） | READ |
 
+> **实现演进裁定（INT-2453，2026-11-13）**：31 个工具已在 `shared/agent_tools/intent_tools.py`
+> 全量登记，名称与风险等级与本表逐项一致。M0 只启用 `platform_contract` / `tool_search` /
+> `task_query` / `report_query` 4 个；其余 27 个 `enabled=false`（预留 Schema），调用返回
+> `TOOL_NOT_ENABLED`（不按写审批语义处理），启动不产生 `UNKNOWN_TOOL` 告警，`tool_search`
+> 仍检索得到并标注 `enabled=false`。工具结果错误码固定为 `OK` / `PERMISSION_DENIED` /
+> `INVALID_ARGUMENTS` / `TOOL_NOT_ENABLED` / `UNKNOWN_TOOL` / `NOT_FOUND` /
+> `APPROVAL_REQUIRED` / `UPSTREAM_ERROR` / `UPSTREAM_UNAVAILABLE`。`tool_search` 的 M0 实现是
+> 关键词检索 + 中英词表召回扩展，语义检索尚未实现。
+
 ### 6.2 外部 MCP
 
-- 保持 `api_gateway/application/services/mcp/tools_registry.py` 现有 1:1 工具不变。
+- 保持 `POST /api/v1/mcp` 现有 1:1 工具不变（205 个，迁移前后 `tools/list` 逐项一致）；
+  `api_gateway/application/services/mcp/tools_registry.py` 已改为 re-export，不再保存第二份 Schema。
 - 注册表抽到 `shared/agent_tools/`，Gateway MCP 与 `agent_service` 共用，禁止复制两份 Schema。
 - 外部 Agent 的上下文管理由客户端负责，不做意图收敛。
 
@@ -597,7 +607,7 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 | `agent_run` | id, session_id, owner_id, status, model, budget, token_in, token_out, started_at, finished_at, error |
 | `agent_run_event` | id, run_id, sequence, type, payload, created_at |
 | `agent_step` | id, run_id, index, plan_snapshot, status, created_at |
-| `agent_tool_call` | id, run_id, step_id, tool, args_hash, risk, status, result_ref, latency_ms, permission_decision |
+| `agent_tool_call` | id, run_id, step_id, tool, args_hash, risk, status, result_ref, latency_ms, permission_decision, result_code |
 | `agent_approval` | id, run_id, tool_call_id, proposal, diff, status, expires_at, decided_by, decided_at |
 | `agent_artifact` | id, run_id, kind, uri, size, metadata |
 | `agent_context_snapshot` | id, run_id, version, token_count, dropped_ids, memo, level |
@@ -711,8 +721,8 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 
 | 阶段 | 交付 | 验收 |
 |---|---|---|
-| M0 底座 | 单 loop、SkillRegistry、意图工具 3 个、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1 + T2（首期启用）；压缩 L1–L3；`platform-reference` | T1/T2 逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
-| M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；tool search；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值；记忆写入需审批 |
+| M0 底座 | 单 loop、SkillRegistry、意图工具 3 个 + `tool_search`（关键词检索，INT-2453）、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1 + T2（首期启用）；压缩 L1–L3；`platform-reference` | T1/T2 逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
+| M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；`tool_search` 语义检索（关键词检索已随 M0 交付）；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值；记忆写入需审批 |
 | M2 写操作与报告 | 探索-生成层（`ui_tree`/`ui_action`/`api_spec`）；写工具、审批、幂等；App/API 接入全流程（受理→发现→计划→生成→验证→迭代→交付）；驱动提案（设备驱动 + API 适配器，提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；两类提案均可复现且未审批不写注册表；接入包在 staging 冒烟通过；三类报告指标与 Report Service 逐字段一致 |
 | M3 自动化与评测 | Auto 模式、预算/熔断、全量评测、外部 Skill zip/MCP 对齐、文档更新 | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致 |
 
