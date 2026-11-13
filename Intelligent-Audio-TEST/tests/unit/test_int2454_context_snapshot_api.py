@@ -9,6 +9,8 @@ import os
 os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
+# INT-2456：网关 Agent 总开关默认关闭，本组代理用例必须显式开启。
+os.environ.setdefault('AGENT_ENABLED', 'true')
 
 from fastapi.testclient import TestClient
 
