@@ -2,11 +2,13 @@
 """agent_service PO 汇总导入（导入即注册到 Base.metadata）。"""
 from agent_service.infrastructure.persistence.models.agent_models import (  # noqa: F401
     AgentApproval, AgentArtifact, AgentContextSnapshot, AgentLlmProvider,
-    AgentRun, AgentRunEvent, AgentSession, AgentStep, AgentToolCall,
+    AgentRun, AgentRunEvent, AgentRunSkill, AgentSession, AgentSkill,
+    AgentSkillVersion, AgentStep, AgentToolCall,
 )
 
 __all__ = [
     'AgentSession', 'AgentRun', 'AgentRunEvent', 'AgentStep',
     'AgentToolCall', 'AgentArtifact', 'AgentContextSnapshot',
-    'AgentLlmProvider', 'AgentApproval',
+    'AgentLlmProvider', 'AgentApproval', 'AgentSkill', 'AgentSkillVersion',
+    'AgentRunSkill',
 ]

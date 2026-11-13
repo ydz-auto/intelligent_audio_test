@@ -131,5 +131,6 @@ def test_status_values_are_enumerated():
 def test_create_all_registers_approval_table(metadata):
     """新表必须登记进模型全集（否则 create_all 不建表、表数守卫失衡）。"""
     module = _load(_CREATE_ALL, 'int2466_create_all')
-    assert module.EXPECTED_TABLE_COUNT == 110
+    # INT-2549 新增 Agent Skill 三表后全集 110 → 113
+    assert module.EXPECTED_TABLE_COUNT == 113
     assert _TABLE in metadata.tables

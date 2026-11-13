@@ -24,7 +24,8 @@ import os
 # INT-2451：agent_service 7 张运行底座表登记后 101 → 108
 # INT-2488：agent_llm_provider（用户模型供应商密钥库）108 → 109
 # INT-2466：agent_approval（写操作审批单）109 → 110
-EXPECTED_TABLE_COUNT = 110
+# INT-2549：agent_skill / agent_skill_version / agent_run_skill 110 → 113
+EXPECTED_TABLE_COUNT = 113
 
 # 确保项目根目录在 sys.path 中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -102,10 +103,12 @@ def _import_all_models():
     from transfer_agent.infrastructure.persistence.models import (  # noqa: F401
         TransferRecord, TransferChunk,
     )
-    # agent_service: 8 张表（INT-2451 运行底座 7 张 + INT-2488 用户模型供应商）
+    # agent_service: 12 张表（INT-2451 运行底座 7 张 + INT-2488 用户模型供应商
+    #                 + INT-2466 写操作审批单 + INT-2549 Skill 三表）
     from agent_service.infrastructure.persistence.models import (  # noqa: F401
         AgentArtifact, AgentContextSnapshot, AgentLlmProvider, AgentRun,
         AgentRunEvent, AgentSession, AgentStep, AgentToolCall,
+        AgentApproval, AgentSkill, AgentSkillVersion, AgentRunSkill,
     )
 
 
