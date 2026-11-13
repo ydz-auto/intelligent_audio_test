@@ -4,11 +4,13 @@
 按用户意图分组，不按 REST 1:1。全表 31 个（含 ``tool_search``、2 个记忆工具、
 3 个探索工具；业务意图工具 25 个），与方案 §6.1 表逐条对应。
 
-本卡（M0）只实现 3 个业务意图工具 + ``tool_search``：
+本卡（M0）实现 3 个业务意图工具 + ``tool_search``，M1 音频域卡（INT-2458）
+追加 ``audio_query``：
 
 - ``platform_contract``：平台口径（服务 / 接口前缀 / 枚举 / 权限码 / 工具 Schema）；
 - ``task_query``：任务只读子集（映射 MCP ``task_*`` 只读工具）；
 - ``report_query``：报告只读子集（映射 MCP ``report_*`` 只读工具）；
+- ``audio_query``：音频只读子集（映射 MCP ``audio_*`` 只读工具）；
 - ``tool_search``：对 205 个 MCP 工具 + 意图工具建索引，按关键词返回 Schema。
 
 其余意图工具在本注册表**预留名称与 Schema**（``enabled=False``），调用返回
@@ -26,10 +28,12 @@ from shared.agent_tools.mcp_registry import TOOLS as MCP_TOOLS, get_tool
 # ---------------------------------------------------------------- schema 辅助
 
 
-def _prop(kind: str, description: str, *, required: bool = False,
+def _prop(kind, description: str, *, required: bool = False,
           enum: Optional[Sequence[str]] = None,
           items: Optional[dict] = None) -> dict:
-    prop: Dict[str, Any] = {'type': kind, 'description': description}
+    """构造参数 Schema；``kind`` 可以是单个类型或类型元组（联合类型）。"""
+    prop_type = list(kind) if isinstance(kind, (list, tuple)) else kind
+    prop: Dict[str, Any] = {'type': prop_type, 'description': description}
     if enum:
         prop['enum'] = list(enum)
     if items:
@@ -96,6 +100,44 @@ REPORT_QUERY_ACTIONS: Dict[str, str] = {
     'case_averages': 'report_case_averages',
 }
 
+# 音频只读动作 → MCP 工具名（映射 MCP audio_* 只读子集，INT-2458）
+AUDIO_QUERY_ACTIONS: Dict[str, str] = {
+    'list': 'audio_list',
+    'detail': 'audio_get',
+    'by_ids': 'audio_get_by_ids',
+    'by_md5': 'audio_get_by_md5',
+    'tags': 'audio_list_tags',
+    'folder_tree': 'audio_folder_tree',
+    'features': 'audio_features',
+    'quality': 'audio_quality',
+    'algorithms': 'audio_get_algorithms',
+    'playback_history': 'audio_playback_history',
+}
+
+# 各动作可用的可选参数（动作独立口径）。
+# 动作不支持的参数在工具层直接报错——服务端对这些参数是静默忽略的，
+# 放过去会让模型把「全量」当成「过滤结果」。
+AUDIO_QUERY_PARAMS: Dict[str, Tuple[str, ...]] = {
+    'list': ('keyword', 'page', 'per_page', 'format', 'audio_type',
+             'sample_rate', 'duration', 'tags', 'direction',
+             'algorithm_type', 'visibility'),
+    'detail': (),
+    'by_ids': (),
+    'by_md5': (),
+    'tags': (),
+    'folder_tree': ('keyword', 'format', 'audio_type', 'sample_rate',
+                    'duration', 'tags', 'direction', 'algorithm_type',
+                    'parent_path', 'depth'),
+    'features': (),
+    'quality': (),
+    'algorithms': (),
+    'playback_history': ('page', 'per_page'),
+}
+
+# 时长过滤只认档位（audio_service/_audio_query_filters._DURATION_BUCKETS）：
+# short ≤30s、medium 30~300s、long >300s；传区间字符串会被服务端静默忽略。
+AUDIO_DURATION_BUCKETS: Tuple[str, ...] = ('short', 'medium', 'long')
+
 # 动作的必填参数（参数 Schema 无法表达的条件必填）
 ACTION_REQUIRED: Dict[str, Dict[str, Tuple[str, ...]]] = {
     'task_query': {
@@ -112,6 +154,17 @@ ACTION_REQUIRED: Dict[str, Dict[str, Tuple[str, ...]]] = {
         'progress': ('report_id',),
         'cases': ('report_id',),
         'case_averages': ('report_id',),
+    },
+    # 参数名与目标 REST 逐字一致（ids / md5_list 直接作为请求体字段）：
+    # 不在这里做改名映射，避免意图层与 REST 出现两套字段口径。
+    'audio_query': {
+        'detail': ('audio_id',),
+        'by_ids': ('ids',),
+        'by_md5': ('md5_list',),
+        'features': ('audio_id',),
+        'quality': ('audio_id',),
+        'algorithms': ('audio_id',),
+        'playback_history': ('audio_id',),
     },
 }
 
@@ -169,6 +222,44 @@ INTENT_TOOLS: List[IntentTool] = [
             'per_page': _prop('integer', '每页条数（list）'),
         }, required=('action',)),
         risk='READ', permissions=('report:read',), enabled=True, kind='intent_rest'),
+    IntentTool(
+        name='audio_query',
+        description=('音频只读查询：列表 / 详情 / 按 ID 批量 / 按 MD5 查重 / 标签 / '
+                     '目录树 / 特征分析 / 质量评估 / 已配算法 / 播放历史。'
+                     '字段口径与 REST /api/v1/audios 一致，缺失就是缺失，不编造数值。'),
+        parameters=_schema({
+            'action': _prop('string', '查询动作', required=True,
+                            enum=list(AUDIO_QUERY_ACTIONS)),
+            'audio_id': _prop('integer', '音频 ID（detail / features / quality / '
+                                         'algorithms / playback_history 必填）'),
+            'ids': _prop('array', '音频 ID 列表（by_ids 必填）',
+                         items={'type': 'integer'}),
+            'md5_list': _prop('array', 'MD5 列表（by_md5 必填）',
+                              items={'type': 'string'}),
+            'keyword': _prop('string', '关键词过滤（list 匹配文件名 / 原名，'
+                                       'folder_tree 额外匹配 asr_text）'),
+            'page': _prop('integer', '页码（list / playback_history，默认 1）'),
+            'per_page': _prop('integer', '每页条数（list / playback_history）'),
+            'format': _prop('string', '音频格式过滤（list / folder_tree，如 wav / mp3）'),
+            'audio_type': _prop('string', '音频类型过滤（list / folder_tree，如 dry / noise）'),
+            'sample_rate': _prop(('string', 'number'),
+                                 '采样率过滤（list / folder_tree）。可传 48、48000、'
+                                 '"48 kHz"：工具统一按 Hz 归一，list 转 kHz 精确匹配，'
+                                 'folder_tree 按 Hz ±100 容差'),
+            'duration': _prop('string', '时长档位过滤（list / folder_tree），'
+                                        '不是任意区间',
+                              enum=list(AUDIO_DURATION_BUCKETS)),
+            'tags': _prop('array', '标签过滤：list 只收字符串数组（AND）；'
+                                   'folder_tree 另支持 {name, mode: "or"} 对象',
+                          items={'type': ['string', 'object']}),
+            'direction': _prop('string', '语种方向过滤（list / folder_tree）'),
+            'algorithm_type': _prop('string', '算法类型过滤（list / folder_tree）'),
+            'visibility': _prop('string', '可见性过滤（list）',
+                                enum=['shared', 'private']),
+            'parent_path': _prop('string', '目录树父路径（folder_tree，缺省为根）'),
+            'depth': _prop('integer', '目录树展开深度（folder_tree，默认 1）'),
+        }, required=('action',)),
+        risk='READ', permissions=('audio:read',), enabled=True, kind='intent_rest'),
 
     # ---------------- 探索 / 记忆（预留，M1 / M2 实现） ----------------
     IntentTool(
@@ -233,17 +324,6 @@ INTENT_TOOLS: List[IntentTool] = [
         risk='WRITE', permissions=('memory:write',), enabled=False, kind='reserved'),
 
     # ---------------- 其余业务意图工具（预留，M1 / M2 实现） ----------------
-    IntentTool(
-        name='audio_query', description='音频列表、详情、MD5、标签、目录树、特征/质量（只读）。',
-        parameters=_schema({
-            'action': _prop('string', '查询动作', required=True,
-                            enum=['list', 'detail', 'tree', 'tags', 'quality']),
-            'audio_id': _prop('integer', '音频 ID'),
-            'search': _prop('string', '关键词'),
-            'page': _prop('integer', '页码'),
-            'per_page': _prop('integer', '每页条数'),
-        }, required=('action',)),
-        risk='READ', permissions=('audio:read',), enabled=False, kind='reserved'),
     IntentTool(
         name='audio_import', description='URL 导入、上传初始化/合并、OSS 直传确认（写）。',
         parameters=_schema({
@@ -502,9 +582,15 @@ def validate_arguments(schema: dict, arguments: Any) -> Optional[str]:
         if value is None:
             continue
         expected = spec.get('type')
-        checker = _TYPE_CHECKS.get(expected)
-        if checker is not None and not checker(value):
-            return f'参数 {name} 类型应为 {expected}'
+        if isinstance(expected, (list, tuple)):
+            # 联合类型（如 sample_rate 的 string | number）：任一匹配即通过
+            checkers = [_TYPE_CHECKS.get(t) for t in expected]
+            if not any(c is not None and c(value) for c in checkers):
+                return f'参数 {name} 类型应为 {" 或 ".join(expected)}'
+        else:
+            checker = _TYPE_CHECKS.get(expected)
+            if checker is not None and not checker(value):
+                return f'参数 {name} 类型应为 {expected}'
         enum = spec.get('enum')
         if enum and value not in enum:
             return f'参数 {name} 取值必须是 {"/".join(map(str, enum))} 之一'
@@ -519,6 +605,7 @@ def required_for_action(name: str, action: str) -> Tuple[str, ...]:
 _REST_ACTION_MAP: Dict[str, Dict[str, str]] = {
     'task_query': TASK_QUERY_ACTIONS,
     'report_query': REPORT_QUERY_ACTIONS,
+    'audio_query': AUDIO_QUERY_ACTIONS,
 }
 
 
@@ -531,6 +618,78 @@ def risk_of(name: str) -> Optional[str]:
     if mcp is None:
         return None
     return 'READ' if mcp['method'] == 'GET' else 'WRITE'
+
+
+def _sample_rate_hz(value: Any) -> Optional[float]:
+    """采样率入参归一到 Hz（数值）。无法解析返回 None。
+
+    接受 48000 / "48000" / "48 kHz" / "48khz" / 48；无单位的纯数值 < 1000
+    按 kHz 解释（与列表 REST 的 kHz 口径一致），≥ 1000 按 Hz。
+    """
+    if isinstance(value, bool):
+        return None
+    text = str(value).strip().lower().replace(' ', '')
+    if not text:
+        return None
+    if text.endswith('khz'):
+        number, multiplier = text[:-3], 1000.0
+    elif text.endswith('hz'):
+        number, multiplier = text[:-2], 1.0
+    else:
+        number, multiplier = text, None
+    try:
+        amount = float(number)
+    except ValueError:
+        return None
+    if amount <= 0:
+        return None
+    if multiplier is not None:
+        return amount * multiplier
+    return amount * 1000.0 if amount < 1000 else amount
+
+
+def _format_khz(hz: float) -> str:
+    """Hz → 列表 REST 的 kHz 字符串口径（48000 → "48"，44100 → "44.1"）。"""
+    return f'{hz / 1000:g}'
+
+
+def _normalize_audio_query_arguments(action: str,
+                                     merged: Dict[str, Any]) -> Optional[str]:
+    """按动作归一 audio_query 参数，返回错误文本或 None。
+
+    - 动作不支持的参数直接拒绝（服务端会静默忽略，放过去等于返回全量）；
+    - ``sample_rate`` 统一归一：list 发 kHz 字符串，folder_tree 发 Hz 整数；
+    - ``duration`` 只接受档位（short / medium / long）；
+    - ``tags`` 在 list 只接受字符串（AND），对象 OR 只在 folder_tree 有效。
+    """
+    allowed = set(AUDIO_QUERY_PARAMS.get(action, ()))
+    allowed |= set(required_for_action('audio_query', action))
+    unknown = sorted(name for name in merged if name not in allowed)
+    if unknown:
+        return f'action={action} 不支持参数：{"、".join(unknown)}'
+
+    if merged.get('sample_rate') is not None:
+        hz = _sample_rate_hz(merged['sample_rate'])
+        if hz is None:
+            return (f'参数 sample_rate 无法解析：{merged["sample_rate"]}'
+                    '（示例：48、48000、48 kHz）')
+        merged['sample_rate'] = _format_khz(hz) if action == 'list' else int(hz)
+
+    duration = merged.get('duration')
+    if duration is not None and duration not in AUDIO_DURATION_BUCKETS:
+        return (f'参数 duration 取值必须是 '
+                f'{"/".join(AUDIO_DURATION_BUCKETS)} 之一（时长档位）')
+
+    tags = merged.get('tags')
+    if tags:
+        for tag in tags:
+            if isinstance(tag, dict):
+                if action == 'list':
+                    return ('参数 tags 在 list 只支持字符串数组（AND）；'
+                            'OR 语义请用 folder_tree')
+                if not str(tag.get('name') or '').strip():
+                    return '参数 tags 对象必须含非空 name'
+    return None
 
 
 def resolve_rest_call(name: str, arguments: Dict[str, Any]
@@ -556,6 +715,10 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
         if mcp is None:  # pragma: no cover - 注册表内部一致性防御
             return None, None, f'工具映射失效：{name}.{action}'
         merged = {k: v for k, v in arguments.items() if k != 'action'}
+        if name == 'audio_query':
+            normalize_error = _normalize_audio_query_arguments(action, merged)
+            if normalize_error:
+                return None, None, normalize_error
         return mcp, merged, None
     mcp = get_tool(name)
     if mcp is not None:
@@ -602,8 +765,9 @@ def _serialize_intent(tool: IntentTool) -> dict:
 
 
 __all__ = [
-    'ACTION_REQUIRED', 'ENABLED_TOOLS', 'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS',
-    'IntentTool', 'MCP_TOOLS', 'REPORT_QUERY_ACTIONS', 'TASK_QUERY_ACTIONS',
-    'TOOL_INDEX', 'TOOL_INDEX_BY_NAME', 'platform_contract', 'required_for_action',
+    'ACTION_REQUIRED', 'AUDIO_QUERY_ACTIONS', 'ENABLED_TOOLS',
+    'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool', 'MCP_TOOLS',
+    'REPORT_QUERY_ACTIONS', 'TASK_QUERY_ACTIONS', 'TOOL_INDEX',
+    'TOOL_INDEX_BY_NAME', 'platform_contract', 'required_for_action',
     'resolve_rest_call', 'risk_of', 'tool_search', 'validate_arguments',
 ]
