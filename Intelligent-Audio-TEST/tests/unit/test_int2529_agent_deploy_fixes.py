@@ -16,6 +16,7 @@ os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
+import yaml
 from fastapi.testclient import TestClient
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
@@ -133,3 +134,42 @@ def test_enabled_switch_still_honours_recovery_flag(monkeypatch):
         monkeypatch, enabled=True, recovery_on_startup=False)
     assert container.recovery.calls == 0
     assert container.executor.submitted == []
+
+
+# ---------------------------------------------------------------- 网络隔离
+
+def _compose():
+    with open(os.path.join(PROJECT_ROOT, 'docker', 'docker-compose.yml'),
+              encoding='utf-8') as handle:
+        return yaml.safe_load(handle)
+
+
+def _networks(compose, service):
+    return list(compose['services'][service].get('networks') or [])
+
+
+def test_agent_service_is_off_the_default_network():
+    """同网络容器不能凭 X-User-Id 头绕过网关直连建 run（INT-2522 附带项）。"""
+    compose = _compose()
+    assert compose['networks']['agent_internal']['internal'] is True
+    assert _networks(compose, 'agent_service') == ['agent_internal',
+                                                   'agent_egress']
+    assert 'default' not in _networks(compose, 'agent_service')
+
+
+def test_agent_internal_membership_is_only_gateway_db_redis():
+    compose = _compose()
+    members = sorted(
+        name for name, service in compose['services'].items()
+        if 'agent_internal' in (service.get('networks') or []))
+    assert members == ['agent_service', 'api_gateway', 'postgres', 'redis']
+    for name in ('api_gateway', 'postgres', 'redis'):
+        assert 'default' in _networks(compose, name), name
+
+
+def test_agent_egress_has_no_other_members():
+    """出网网络只有 agent_service：LLM 供应商出网，但不构成第二条入站路径。"""
+    compose = _compose()
+    members = [name for name, service in compose['services'].items()
+               if 'agent_egress' in (service.get('networks') or [])]
+    assert members == ['agent_service']

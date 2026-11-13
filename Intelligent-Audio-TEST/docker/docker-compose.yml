@@ -45,6 +45,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # INT-2529：同时加入 agent 内部网络，供 agent_service 直连（其不入默认网络）。
+    networks:
+      - default
+      - agent_internal
     logging:
       driver: json-file
       options:
@@ -61,6 +65,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - default
+      - agent_internal
 
   # ==================== 数据库结构引导 job（一次性，门控后端服务启动）====================
   # 全新库初始化链（scripts/migrations/README.md）：建表 → 202608 结构 + RBAC 种子 →
@@ -215,6 +222,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    # INT-2529：网关是 agent_service 的唯一入站方（默认网络 + agent 内部网络）。
+    networks:
+      - default
+      - agent_internal
 
   task_service:
     restart: unless-stopped
@@ -649,6 +660,13 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    # INT-2529：只加入专用内部网络，不挂默认网络 —— 其余业务容器无法凭
+    # X-User-Id 头绕过网关开关直连建 run（agent_service 只信网关注入的身份）。
+    # agent_egress 仅承载出网（用户自带 LLM 供应商在集群外），成员只有本服务，
+    # 不构成第二条入站路径。新增被 agent 依赖的容器需同时加入 agent_internal。
+    networks:
+      - agent_internal
+      - agent_egress
     logging:
       driver: json-file
       options:
@@ -740,3 +758,15 @@ volumes:
   rustfs_data:
   # 网关 ↔ task_service 数据导入/导出 ZIP 中转卷（INT-25 链路依赖）
   data_transfer_tmp:
+
+networks:
+  # 默认网络：现役全栈互访口径（未显式声明 networks 的服务自动加入）。
+  default:
+  # INT-2529：agent_service 专用内部网络，成员仅 api_gateway / postgres / redis。
+  # internal 断掉该网络的出网与外部路由，收掉「同网络容器凭 X-User-Id 头绕过
+  # 网关开关直连建 run」的面。
+  agent_internal:
+    internal: true
+  # agent_service 出网：用户自带 LLM 供应商在集群外，内部网络不能出网；
+  # 该网络只有 agent_service 一个成员，不构成第二条入站路径。
+  agent_egress:

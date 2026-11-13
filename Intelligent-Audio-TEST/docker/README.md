@@ -309,6 +309,11 @@ compose 新增 `agent_service`（`docker/Dockerfile.agent_service`），依赖
   `agent_service`，但**只用于启动期恢复投递门控**（INT-2529）：关闭时
   `recovery.recover()` 与对应 `executor.submit` 一律跳过，保证「关闭态不产生
   任何后台 run」；不新增第二个开关名，也不形成第二套语义。
+- **网络隔离（INT-2529）**：`agent_service` 不加入默认网络，只连
+  `agent_internal`（`internal: true`，成员仅 `api_gateway` / `postgres` /
+  `redis`）与 `agent_egress`（仅本服务，用于访问用户自带的集群外 LLM 供应商）。
+  其余业务容器因此无法凭 `X-User-Id` 头绕过网关直连建 run；新增被 agent 依赖
+  的容器需同时加入 `agent_internal`。
 - **三个挂载点**（缺一即启动失败，`Config.validate_mounts`）：
 
   | 容器路径 | 来源 | 读写 |
