@@ -73,7 +73,8 @@ def test_all_tools_exposes_31_intent_tools():
     assert gateway.risk_of('ui_action').value == 'WRITE'
     assert gateway.risk_of('task_create').value == 'WRITE'   # MCP POST
     assert gateway.risk_of('task_get').value == 'READ'       # MCP GET
-    assert gateway.risk_of('no_such_tool').value == 'READ'   # 安全缺省
+    # 两份注册表都查不到 → None（fail-closed，INT-2500；不降级成 READ）
+    assert gateway.risk_of('no_such_tool') is None
 
 
 # ---------------------------------------------------------------- local tools

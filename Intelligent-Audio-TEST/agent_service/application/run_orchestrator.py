@@ -433,7 +433,10 @@ class RunOrchestrator:
         return specs
 
     def _descriptor_map(self) -> Optional[Dict[str, ToolDescriptor]]:
-        """读取工具注册表；读取失败返回 ``None``（调用方整批拒绝）。
+        """读取意图工具注册表；读取失败返回 ``None``（调用方整批拒绝）。
+
+        长尾 MCP 工具天然不在意图注册表里，执行期改由 ``risk_of`` 判定是否
+        已注册（两份注册表都查不到 = 未注册，见 ``_execute_one``）。
 
         绝不返回 ``{}``：空映射会让所有工具都「查不到」，若再降级成 READ 就把
         未知工具当只读自动执行。异常由调用方转为整批拒绝（fail-closed）。
@@ -582,8 +585,8 @@ class RunOrchestrator:
             self._ensure_tool_result_event(run.id, result, turn, emitted)
             return result
 
-        # 执行前必须确认风险等级：注册表不可读 → 整批拒绝；工具未注册 → 单条拒绝。
-        # 绝不把「查不到」当成 READ（那会绕过写操作审批门禁）。
+        # 执行前必须确认风险等级：注册表不可读 → 整批拒绝；两份注册表都
+        # 查不到 → 单条拒绝。绝不把「查不到」当成 READ（那会绕过写操作审批门禁）。
         if descriptors is None:
             return self._reject_unregistered(
                 run, step_id, call, turn, emitted,
@@ -591,15 +594,21 @@ class RunOrchestrator:
                 decision='tool_registry_unavailable',
                 error_code='TOOL_REGISTRY_UNAVAILABLE',
                 message='工具注册表不可用，本批工具调用全部拒绝执行')
+        # 意图注册表命中即用其声明风险；否则查 MCP 注册表（tool_search 命中的
+        # 长尾工具），风险由网关按 HTTP 方法推导（GET=READ、其余=WRITE）。
+        # 两份注册表都查不到才算未注册（fail-closed，INT-2500）。
         descriptor = descriptors.get(call.name)
-        if descriptor is None:
-            return self._reject_unregistered(
-                run, step_id, call, turn, emitted,
-                status=ToolCallStatus.DENIED,
-                decision='tool_not_registered',
-                error_code='TOOL_NOT_REGISTERED',
-                message=f'工具未注册，拒绝执行: {call.name}')
-        risk = descriptor.risk
+        if descriptor is not None:
+            risk = descriptor.risk
+        else:
+            risk = self._tool_gateway.risk_of(call.name)
+            if risk is None:
+                return self._reject_unregistered(
+                    run, step_id, call, turn, emitted,
+                    status=ToolCallStatus.DENIED,
+                    decision='tool_not_registered',
+                    error_code='TOOL_NOT_REGISTERED',
+                    message=f'工具未注册，拒绝执行: {call.name}')
 
         if existing is None:
             record = AgentToolCall(

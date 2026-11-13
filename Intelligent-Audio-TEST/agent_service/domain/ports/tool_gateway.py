@@ -50,12 +50,14 @@ class ToolGateway(ABC):
     def describe(self, names: Sequence[str]) -> Sequence[ToolDescriptor]:
         """返回本轮需要的工具描述（供 LLM tools 定义与风险判定）。"""
 
-    def risk_of(self, name: str) -> ToolRisk:
-        """工具风险等级（含 tool_search 命中的长尾工具）。
+    def risk_of(self, name: str) -> Optional[ToolRisk]:
+        """已注册工具的风险等级（含 tool_search 命中的长尾 MCP 工具）。
 
-        默认 READ；实现方必须覆盖，否则未知写工具会被 Loop 当只读放行。
+        两份注册表（意图工具 / MCP）都查不到时返回 ``None``，由调用方按
+        「未注册」拒绝执行（fail-closed）。默认实现返回 ``None``：不认识长尾
+        工具的网关不会把它们当成只读放行。
         """
-        return ToolRisk.READ
+        return None
 
     @abstractmethod
     def execute(self, call: ToolCallRequest,
