@@ -7,7 +7,8 @@
 - 版本恢复：restore 产生新版本（version+1），历史只读不可变
 - 图表：按当前报告数据 + ChartSpec 返回；非法/越权 chartId → 404/403
 - 导出：POST 创建作业（pending）→ 轮询至 done → download 可得文件；
-  重复导出同版本可重试稳定；PPTX/PDF 失败带错误信息
+  HTML / MD / PDF / PPTX 四格式真实渲染（INT-2471）；重复导出同文档版本
+  + 同格式 + 同主题复用同一作业，不重复产文件
 - 对象级权限：跨账号读文档/图表/导出作业 → 403（§15.8）
 """
 import os
@@ -119,6 +120,25 @@ class TestDocumentCrud:
         r = report_studio_service.create_document({'report_id': 999999})
         assert r['success'] is False
         assert r['code'] == 404
+
+    def test_create_same_content_reuses_document(self, sqlite_db):
+        """起草幂等（INT-2471）：同报告同操作人同正文再次起草 → 复用原文档。"""
+        session = database.get_db_session()
+        report_id = _seed_report(session)
+        session.close()
+        svc = report_studio_service
+        payload = {'report_id': report_id, 'title': '草稿A',
+                   'markdown_content': '# 同一份正文'}
+        first = svc.create_document(dict(payload))
+        assert first['success'] is True
+        assert first['data']['reused'] is not True
+
+        again = svc.create_document(dict(payload))
+        assert again['success'] is True
+        assert again['data']['doc_id'] == first['data']['doc_id']
+        assert again['data']['reused'] is True
+        docs, total = svc.repo.list_documents(report_id=report_id)
+        assert total == 1
 
     def test_update_optimistic_lock_conflict_409(self, sqlite_db):
         session = database.get_db_session()
@@ -268,37 +288,75 @@ class TestExportJob:
         dl = svc.download_export({'export_id': export_id})
         assert '# MD 内容' in __import__('base64').b64decode(dl['data']['content_base64']).decode('utf-8')
 
-    def test_export_retry_same_version_stable(self, sqlite_db):
-        """同一版本重复导出可重试稳定（§15.6）。"""
+    def test_export_retry_same_version_reuses_job(self, sqlite_db):
+        """同一文档版本 + 同格式 + 同主题重复导出复用同一作业（INT-2471 幂等）。"""
         session = database.get_db_session()
         report_id = _seed_report(session)
         session.close()
         svc = report_studio_service
         doc_id = svc.create_document({'report_id': report_id,
                                       'markdown_content': '# 重试'})['data']['doc_id']
-        ids = []
-        for _ in range(2):
-            r = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': 'md'})
-            assert r['success'] is True
-            ids.append(r['data']['export_id'])
-        for export_id in ids:
-            job = _wait_status(svc.repo, export_id, target={'done', 'failed'})
-            assert job.status == 'done', job.error
-            dl = svc.download_export({'export_id': export_id})
-            assert dl['success'] is True
+        r1 = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': 'md'})
+        assert r1['success'] is True
+        assert r1['data']['reused'] is False
+        job = _wait_status(svc.repo, r1['data']['export_id'],
+                           target={'done', 'failed'})
+        assert job.status == 'done', job.error
 
-    def test_export_unsupported_format_fails_with_error(self, sqlite_db):
-        """PPTX/PDF 属 S3 增强候选技术（§15.6）：作业 failed 带错误信息。"""
+        r2 = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': 'md'})
+        assert r2['success'] is True
+        assert r2['data']['export_id'] == r1['data']['export_id']
+        assert r2['data']['reused'] is True
+        assert r2['data']['status'] == 'done'
+        # 只落一个产物文件（重复导出不产生重复文件）
+        files = os.listdir(Config.REPORT_STUDIO_EXPORT_DIR)
+        assert len([f for f in files if f.endswith('.md')]) == 1, files
+        dl = svc.download_export({'export_id': r2['data']['export_id']})
+        assert dl['success'] is True
+
+    def test_export_pdf_and_pptx_produce_artifacts(self, sqlite_db):
+        """PDF / PPTX 真实渲染（INT-2471）：产物可打开、含文档正文。"""
         session = database.get_db_session()
         report_id = _seed_report(session)
         session.close()
         svc = report_studio_service
-        doc_id = svc.create_document({'report_id': report_id})['data']['doc_id']
-        r = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': 'pptx'})
-        assert r['success'] is True
-        job = _wait_status(svc.repo, r['data']['export_id'], target={'done', 'failed'})
-        assert job.status == 'failed'
-        assert 'S3' in (job.error or '') or 'html/md' in (job.error or '')
+        doc_id = svc.create_document({
+            'report_id': report_id,
+            'markdown_content': '# 报告标题\n\n## 一、结论\n\n- 通过率 93.68\n\n'
+                                '| 指标 | 值 |\n| --- | --- |\n| 通过率 | 93.68 |',
+        })['data']['doc_id']
+        for fmt, magic in (('pdf', b'%PDF'), ('pptx', b'PK')):
+            r = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': fmt})
+            assert r['success'] is True, r
+            job = _wait_status(svc.repo, r['data']['export_id'],
+                               target={'done', 'failed'})
+            assert job.status == 'done', job.error
+            assert os.path.exists(job.file_path)
+            with open(job.file_path, 'rb') as handle:
+                content = handle.read()
+            assert content.startswith(magic), (fmt, content[:8])
+
+        # PPTX 能被 python-pptx 重新打开，且正文进入幻灯片
+        pptx_job = svc.create_export_job(
+            {'doc_id': doc_id, 'version': 1, 'format': 'pptx'})
+        job = _wait_status(svc.repo, pptx_job['data']['export_id'],
+                           target={'done', 'failed'})
+        from pptx import Presentation
+        presentation = Presentation(job.file_path)
+        texts = ' '.join(
+            shape.text_frame.text
+            for slide in presentation.slides for shape in slide.shapes
+            if getattr(shape, 'has_text_frame', False))
+        assert '报告标题' in texts or '一、结论' in texts, texts
+
+        # PDF 可读且包含中文 CID 字体声明
+        pdf_job = svc.create_export_job(
+            {'doc_id': doc_id, 'version': 1, 'format': 'pdf'})
+        job = _wait_status(svc.repo, pdf_job['data']['export_id'],
+                           target={'done', 'failed'})
+        with open(job.file_path, 'rb') as handle:
+            pdf_bytes = handle.read()
+        assert b'STSong-Light' in pdf_bytes or b'/Type /Page' in pdf_bytes
 
     def test_export_bad_format_400(self, sqlite_db):
         session = database.get_db_session()

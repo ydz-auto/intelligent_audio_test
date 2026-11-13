@@ -25,7 +25,7 @@ from agent_service.domain.ports.tool_gateway import ToolDescriptor
 from agent_service.domain.ports.tool_registry import (
     RunCredentialPort, ToolRegistryPort, ToolTransportPort, ToolTransportResult,
 )
-from shared.agent_tools import diagnostics, intent_tools, mcp_registry
+from shared.agent_tools import diagnostics, intent_tools, mcp_registry, report_tools
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +190,12 @@ class SharedToolRegistryBridge(ToolRegistryPort):
             if name == 'report_compare':
                 return intent_tools.validate_report_compare(
                     str((arguments or {}).get('action') or ''), arguments or {})
+            if name == 'report_generate':
+                # 动作级必填 / body 白名单 / 版本与正文校验：Schema 表达不了，
+                # 留到执行期才发现会让审批人批一条注定失败的提案（INT-2471）。
+                return report_tools.validate_arguments(arguments or {})
+            if name == 'report_export':
+                return report_tools.validate_export(arguments or {})
             return None
         mcp = mcp_registry.get_tool(name)
         if mcp is None:

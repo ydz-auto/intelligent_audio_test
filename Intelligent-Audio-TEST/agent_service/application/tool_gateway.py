@@ -35,6 +35,7 @@ import json
 import logging
 import math
 import re
+import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from agent_service.application.memory_service import (
@@ -50,8 +51,9 @@ from agent_service.domain.ports.tool_registry import (
     RunCredentialPort, ToolRegistryPort, ToolTransportPort,
 )
 from shared.agent_tools import testcase_tools as case_tools
+from shared.agent_tools import report_tools
 from shared.agent_tools.intent_tools import redact_for_audit
-from shared.models.common_enums import ReportType
+from shared.models.common_enums import ReportStudioSourceType, ReportType
 
 logger = logging.getLogger(__name__)
 
@@ -283,6 +285,16 @@ class SharedToolGateway(ToolGateway):
         具体域写工具（M2 各域卡）可覆盖成字段级 diff；这里至少让审批人看到
         「这条提案会发什么请求」，而不是只有一个工具名。
         """
+        # 报告域写（INT-2471）：生成 / 重生成 / Studio 起草·编辑·恢复的字段级
+        # 预览（目标对象、正文长度、版本、影响面）；导出给固定版本 + 格式 + 主题。
+        if name == 'report_generate':
+            diff = report_tools.proposal_diff(dict(arguments or {}))
+            if diff is not None:
+                return diff
+        if name == 'report_export':
+            diff = report_tools.proposal_diff_export(dict(arguments or {}))
+            if diff is not None:
+                return diff
         tool, merged, error = self._bridge.resolve_rest(
             name, dict(arguments or {}))
         if error or tool is None:
@@ -361,6 +373,11 @@ class SharedToolGateway(ToolGateway):
             return self._run_log_diagnose(call, arguments, context)
         if name == 'report_compare':
             return self._run_report_compare(call, arguments, context)
+        # 报告写（INT-2471）：动作 → 目标 REST；导出行内编排异步作业
+        if name == 'report_generate':
+            return self._run_report_generate(call, arguments, context)
+        if name == 'report_export':
+            return self._run_report_export(call, arguments, context)
 
         mcp_tool, merged, resolve_error = self._bridge.resolve_rest(
             name, arguments)
@@ -901,6 +918,176 @@ class SharedToolGateway(ToolGateway):
         return self._fail(
             call, RESOURCE_NOT_FOUND,
             '参与对比的报告均不可访问（不存在或无权访问）')
+
+    # ------------------------------------------------------------ report write
+
+    def _run_report_generate(self, call: ToolCallRequest,
+                             arguments: Dict[str, Any],
+                             context: ToolInvocationContext) -> ToolResult:
+        """``report_generate``（INT-2471）：动作 → 平台既有写接口。
+
+        - ``generate`` / ``regenerate`` 复用报告服务既有幂等语义（已有报告返回
+          ``exists``、正在生成返回 ``generating``），工具层不新建报告、不重算指标；
+        - ``studio_draft`` 的 ``agent_session_id`` 由服务端按 run 注入：Studio
+          据此记 AI 编辑快照来源与审计关联，**模型不可传**（避免伪造归属）；
+        - 其余动作参数由 ``report_tools.resolve_call`` 校验并折成目标 REST 请求。
+        """
+        tool, merged, error = report_tools.resolve_call(dict(arguments or {}))
+        if error or tool is None:
+            return self._fail(call, INVALID_ARGUMENTS, error or '工具映射不可用')
+        if arguments.get('action') == 'studio_draft' and context.session_id:
+            body = merged.get('body')
+            if isinstance(body, dict):
+                body['agent_session_id'] = context.session_id
+        return self._call_rest(call, tool, merged, context)
+
+    def _run_report_export(self, call: ToolCallRequest,
+                           arguments: Dict[str, Any],
+                           context: ToolInvocationContext) -> ToolResult:
+        """``report_export``（INT-2471）：Studio 文档异步导出的行内编排。
+
+        1. 定位文档（``doc_id`` 优先，否则按 ``report_id`` 取最近更新的平台文档）；
+           同时回源读文档详情（归属校验 + 当前版本 / 标题）；
+        2. 固定 ``docId + version + format`` 建导出作业；服务端对同参数的
+           进行中 / 已完成作业复用（重复导出不产生第二个文件）；
+        3. 短轮询至终态，返回作业状态与鉴权下载引用；未完成如实返回 ``pending``，
+           由模型告诉用户稍后重试（同入参再次调用即复用 / 查询同一作业）。
+        """
+        args = dict(arguments or {})
+        error = report_tools.validate_export(args)
+        if error:
+            return self._fail(call, INVALID_ARGUMENTS, error)
+
+        doc, failure = self._resolve_studio_document(call, args, context)
+        if failure is not None:
+            return failure
+        version = args.get('version') or doc.get('current_version')
+        if not isinstance(version, int) or isinstance(version, bool) or version <= 0:
+            return self._fail(
+                call, UPSTREAM_ERROR,
+                f'Studio 文档 {doc.get("doc_id")} 缺少有效版本号，无法导出')
+
+        body: Dict[str, Any] = {'version': version, 'format': args['format']}
+        if args.get('theme'):
+            body['theme'] = args['theme']
+        create_tool, create_args, resolve_error = self._bridge.resolve_rest(
+            report_tools.EXPORT_CREATE_TOOL,
+            {'doc_id': doc['doc_id'], 'body': body})
+        if resolve_error or create_tool is None:
+            return self._fail(call, INVALID_ARGUMENTS,
+                              resolve_error or '工具映射不可用')
+        result = self._transport_call(create_tool, create_args, context)
+        failure = self._transport_failure(call, create_tool, result)
+        if failure is not None:
+            return failure
+        job = self._payload_data(result)
+        if not job.get('export_id'):
+            return self._fail(call, UPSTREAM_ERROR,
+                              '导出作业创建返回格式异常（缺少 export_id）')
+        job = self._poll_export_job(call, job, context)
+
+        status = str(job.get('status') or '')
+        note = {
+            'done': '导出完成，产物通过鉴权下载引用获取。',
+            'failed': f'导出失败：{job.get("error") or "未知原因"}',
+        }.get(status, '导出作业已提交（异步渲染中）；稍后用同一入参再次调用即可'
+                      '复用/查询该作业。')
+        payload = {
+            'doc_id': doc.get('doc_id'),
+            'report_id': doc.get('report_id'),
+            'version': job.get('version') if job.get('version') else version,
+            'format': job.get('format') or args['format'],
+            'theme': job.get('theme'),
+            'export_id': job.get('export_id'),
+            'status': status,
+            'progress': job.get('progress'),
+            'error': job.get('error'),
+            'download_ref': job.get('download_ref'),
+            'reused': bool(job.get('reused')),
+            'note': note,
+        }
+        return self._ok(call, json.dumps(payload, ensure_ascii=False))
+
+    def _resolve_studio_document(self, call: ToolCallRequest,
+                                 args: Dict[str, Any],
+                                 context: ToolInvocationContext):
+        """定位 Studio 文档并回源读详情 → ``(文档 data, 失败结果)``。"""
+        doc_id = args.get('doc_id')
+        if not doc_id:
+            list_tool = report_tools.get_tool(report_tools.DOCUMENTS_LIST_TOOL)
+            result = self._transport_call(list_tool, {
+                'report_id': args['report_id'],
+                'source_type': ReportStudioSourceType.PLATFORM_REPORT.value,
+                'limit': 1, 'offset': 0,
+            }, context)
+            failure = self._transport_failure(call, list_tool, result)
+            if failure is not None:
+                return None, failure
+            items = (self._payload_data(result).get('items') or [])
+            if not items:
+                return None, self._fail(
+                    call, RESOURCE_NOT_FOUND,
+                    f'报告 {args["report_id"]} 还没有 Studio 文档；请先用 '
+                    'report_generate 的 studio_draft 动作起草后再导出。')
+            doc_id = items[0].get('doc_id')
+            if not doc_id:
+                return None, self._fail(
+                    call, UPSTREAM_ERROR,
+                    'Studio 文档列表返回格式异常（缺少 doc_id）')
+
+        get_tool, get_args, resolve_error = self._bridge.resolve_rest(
+            'report_studio_get_document', {'doc_id': doc_id})
+        if resolve_error or get_tool is None:
+            return None, self._fail(call, INVALID_ARGUMENTS,
+                                    resolve_error or '工具映射不可用')
+        result = self._transport_call(get_tool, get_args, context)
+        failure = self._transport_failure(call, get_tool, result)
+        if failure is not None:
+            return None, failure
+        doc = self._payload_data(result)
+        if not doc.get('doc_id'):
+            return None, self._fail(
+                call, UPSTREAM_ERROR, 'Studio 文档详情返回格式异常（缺少 doc_id）')
+        return doc, None
+
+    def _poll_export_job(self, call: ToolCallRequest, job: Dict[str, Any],
+                         context: ToolInvocationContext) -> Dict[str, Any]:
+        """轮询导出作业至终态（有界）；轮询失败保留最后一次已知作业状态。"""
+        tool = report_tools.get_tool(report_tools.EXPORT_JOB_TOOL)
+        status = str(job.get('status') or '')
+        for _ in range(report_tools.EXPORT_POLL_MAX_ATTEMPTS):
+            if status in report_tools.EXPORT_TERMINAL_STATUSES:
+                return job
+            time.sleep(report_tools.EXPORT_POLL_INTERVAL_SECONDS)
+            result = self._transport_call(
+                tool, {'export_id': job['export_id']}, context)
+            if self._transport_failure(call, tool, result) is not None:
+                return job
+            latest = self._payload_data(result)
+            if not latest:
+                return job
+            # 复用语义（服务端标记）要保留：轮询回来的作业本身不带 reused
+            latest['reused'] = bool(job.get('reused'))
+            job = latest
+            status = str(job.get('status') or '')
+        return job
+
+    @staticmethod
+    def _payload_data(result) -> Dict[str, Any]:
+        payload = getattr(result, 'payload', None)
+        if not isinstance(payload, dict):
+            return {}
+        data = payload.get('data')
+        return dict(data) if isinstance(data, dict) else {}
+
+    def _transport_call(self, tool: dict, arguments: Dict[str, Any],
+                        context: ToolInvocationContext):
+        """按工具项直接发一次 REST（本地编排用，权限已在入口校验）。"""
+        return self._rest.call(
+            tool, arguments,
+            authorization=self._credentials.get(context.run_id),
+            user_id=context.owner_id, tenant_id=context.tenant_id,
+            permissions=context.permissions)
 
     def _run_memory_tool(self, call: ToolCallRequest, name: str,
                          arguments: Dict[str, Any],

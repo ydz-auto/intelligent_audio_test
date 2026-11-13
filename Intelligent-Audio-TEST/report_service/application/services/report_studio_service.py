@@ -32,6 +32,12 @@ from shared.models.common_enums import (
     StudioSnapshotReason,
     StudioUploadFormat,
 )
+from report_service.application.services.report_studio_renderer import (
+    EXPORT_MEDIA_TYPES,
+    ExportRenderError,
+    render_export,
+    render_html,
+)
 from report_service.config.config import Config
 
 logger = logging.getLogger(__name__)
@@ -137,6 +143,8 @@ class ReportStudioService:
             'source_file_path': doc.source_file_path,
             'source_format': doc.source_format,
             'source_file_size': doc.source_file_size,
+            # 本次创建是否复用了相同内容的已有草稿（INT-2471 起草幂等）
+            'reused': False,
             # 上传件（html/pptx）的鉴权下载引用，前端按沙箱 iframe/下载打开
             'source_download_ref': (
                 f'/api/v1/report-studio/documents/{doc.doc_id}/source'
@@ -182,6 +190,26 @@ class ReportStudioService:
         etag = _md5(1, markdown)
         snapshot_reason = StudioSnapshotReason.AI_EDIT.value if agent_session_id \
             else StudioSnapshotReason.MANUAL_EDIT.value
+
+        # 起草幂等（INT-2471）：同一报告 + 同一操作人 + 完全相同的正文再次起草
+        # 时复用原文档，不产生第二份文档与版本（重复生成 ≠ 新草稿）。显式传入
+        # doc_id 的调用方（迁移 / 导入工具）按自己的 ID 建文档，不参与复用。
+        existing = None
+        if not data.get('doc_id'):
+            try:
+                existing = self.repo.find_document_by_content(
+                    report_id=int(report_id),
+                    source_type=ReportStudioSourceType.PLATFORM_REPORT.value,
+                    created_by=created_by, markdown_content=str(markdown))
+            except Exception:  # pragma: no cover - 幂等查询失败不阻断正常创建
+                logger.warning('查询已有 Studio 草稿失败，按新草稿创建', exc_info=True)
+                existing = None
+        if existing is not None:
+            reused = self._doc_dict(existing)
+            reused['reused'] = True
+            return {'success': True,
+                    'message': '相同内容的 Studio 草稿已存在，已复用原文档',
+                    'data': reused, 'code': 0}
 
         from report_service.domain.entities.report_studio import (
             ReportStudioDocument,
@@ -626,7 +654,20 @@ class ReportStudioService:
             return {'success': False, 'message': f'文档版本 {version} 不存在',
                     'data': None, 'code': 404}
 
-        theme = data.get('theme') or 'default'
+        theme = str(data.get('theme') or 'default')
+        # 导出幂等（INT-2471）：同文档版本 + 同格式 + 同主题的进行中 / 已完成
+        # 作业复用，不重复渲染出第二份文件；失败或产物缺失才重建（重试语义）。
+        try:
+            reusable = self.repo.find_latest_export_job(
+                str(doc_id), int(version), fmt_value, theme)
+        except Exception:  # pragma: no cover - 幂等查询失败不阻断正常创建
+            logger.warning('查询已有导出作业失败，按新作业创建', exc_info=True)
+            reusable = None
+        if reusable is not None and self._reusable_export(reusable):
+            payload = self._export_job_dict(reusable)
+            payload['reused'] = True
+            return {'success': True, 'message': 'ok', 'data': payload, 'code': 0}
+
         export_id = _new_id()
         from report_service.domain.entities.report_studio import ReportStudioExportJob
         job = ReportStudioExportJob(
@@ -666,24 +707,18 @@ class ReportStudioService:
             target = self.repo.get_version(job.doc_id, job.version) or doc
             markdown = target.markdown_content or doc.markdown_content
 
-            export_dir = self._export_dir()
-            os.makedirs(export_dir, exist_ok=True)
-            if fmt == StudioExportFormat.MD.value:
-                filename = f'{export_id}.md'
-                content = markdown.encode('utf-8')
-                mime = 'text/markdown'
-            elif fmt == StudioExportFormat.HTML.value:
-                filename = f'{export_id}.html'
-                content = self._render_html(markdown, theme, doc.title).encode('utf-8')
-                mime = 'text/html'
-            else:
-                # PPTX/PDF 属 S3 增强候选技术（§15.6），本卡落地 HTML/MD
+            try:
+                content, ext, _mime = render_export(
+                    markdown, fmt, theme, doc.title)
+            except ExportRenderError as exc:
                 self.repo.update_export_job(
                     export_id, status=StudioExportStatus.FAILED.value,
-                    error=f'格式 {fmt} 渲染为后续增强（S3），当前支持 html/md',
-                    progress=100)
+                    error=str(exc), progress=100)
                 return
 
+            export_dir = self._export_dir()
+            os.makedirs(export_dir, exist_ok=True)
+            filename = f'{export_id}{ext}'
             file_path = os.path.join(export_dir, filename)
             with open(file_path, 'wb') as f:
                 f.write(content)
@@ -706,84 +741,27 @@ class ReportStudioService:
 
     @staticmethod
     def _render_html(markdown: str, theme: str, title: str) -> str:
-        """最小 Markdown → HTML 渲染（受控输出，无脚本执行）。
+        """最小 Markdown → HTML 渲染（委托 ``report_studio_renderer``）。
 
-        覆盖报告文档常用子集：标题/段落/粗斜体/列表/代码块/表格/分隔线。
-        模型输出视为不可信内容，渲染为纯 HTML 文本节点。
+        保留本方法作为既有调用入口；实现只有一份（导出作业与单测共用同一
+        受控渲染器），不维护第二套 HTML 口径。
         """
-        import html
-        lines = markdown.splitlines()
-        out: List[str] = []
-        i = 0
-        in_code = False
-        code_buf: List[str] = []
-        while i < len(lines):
-            line = lines[i]
-            if line.strip().startswith('```'):
-                if not in_code:
-                    in_code = True
-                    code_buf = []
-                else:
-                    out.append('<pre><code>' + html.escape('\n'.join(code_buf)) + '</code></pre>')
-                    in_code = False
-                i += 1
-                continue
-            if in_code:
-                code_buf.append(line)
-                i += 1
-                continue
-            stripped = line.strip()
-            if not stripped:
-                out.append('<p></p>')
-            elif stripped.startswith('### '):
-                out.append(f'<h3>{html.escape(stripped[4:])}</h3>')
-            elif stripped.startswith('## '):
-                out.append(f'<h2>{html.escape(stripped[3:])}</h2>')
-            elif stripped.startswith('# '):
-                out.append(f'<h1>{html.escape(stripped[2:])}</h1>')
-            elif stripped.startswith('- ') or stripped.startswith('* '):
-                out.append(f'<li>{html.escape(stripped[2:])}</li>')
-            elif stripped.startswith('|') and i + 1 < len(lines) \
-                    and set(lines[i + 1].strip().replace('|', '').replace('-', '').replace(':', '').replace(' ', '')) == set():
-                # 表格头 + 分隔行 → 简单表格
-                header_cells = [c.strip() for c in stripped.strip('|').split('|')]
-                i += 1
-                body_rows = []
-                while i + 1 < len(lines) and lines[i + 1].strip().startswith('|'):
-                    body_rows.append([c.strip() for c in lines[i + 1].strip().strip('|').split('|')])
-                    i += 1
-                html_rows = '<thead><tr>' + ''.join(
-                    f'<th>{html.escape(c)}</th>' for c in header_cells) + '</tr></thead>'
-                html_body = ''
-                for row in body_rows:
-                    html_body += '<tr>' + ''.join(
-                        f'<td>{html.escape(c)}</td>' for c in row) + '</tr>'
-                out.append(f'<table>{html_rows}<tbody>{html_body}</tbody></table>')
-            elif stripped == '---':
-                out.append('<hr/>')
-            else:
-                text = html.escape(stripped)
-                text = text.replace('**', '<strong>', 1).replace('**', '</strong>', 1)
-                text = text.replace('__', '<em>', 1).replace('__', '</em>', 1)
-                out.append(f'<p>{text}</p>')
-            i += 1
-        if in_code:
-            out.append('<pre><code>' + html.escape('\n'.join(code_buf)) + '</code></pre>')
-        theme_css = ('.report-studio-export{font-family:-apple-system,'
-                     'Segoe UI,Roboto,sans-serif;max-width:860px;margin:0 auto;'
-                     'padding:24px;line-height:1.6;}'
-                     'table{border-collapse:collapse;width:100%;margin:8px 0;}'
-                     'th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;}'
-                     'pre{background:#f5f5f5;padding:10px;border-radius:4px;overflow-x:auto;}'
-                     'code{background:#f5f5f5;padding:1px 4px;border-radius:3px;}')
-        return (
-            f'<!DOCTYPE html><html><head><meta charset="utf-8"/>'
-            f'<title>{html.escape(title)}</title><style>{theme_css}</style></head>'
-            f'<body class="report-studio-export"><h1>{html.escape(title)}</h1>'
-            f'<p class="export-theme">主题：{html.escape(theme)}</p>'
-            + ''.join(out)
-            + f'</body></html>'
-        )
+        return render_html(markdown, theme, title).decode('utf-8')
+
+    @staticmethod
+    def _reusable_export(job) -> bool:
+        """导出作业可否复用（INT-2471 幂等口径）。
+
+        - 进行中（pending / running）：复用，避免同一产物并发重复渲染；
+        - 已完成（done）：产物文件仍在才复用；文件被清理时按重试处理；
+        - 失败（failed）：不复用，允许重新渲染。
+        """
+        if job.status in (StudioExportStatus.PENDING.value,
+                          StudioExportStatus.RUNNING.value):
+            return True
+        if job.status == StudioExportStatus.DONE.value:
+            return bool(job.file_path) and os.path.exists(job.file_path)
+        return False
 
     @staticmethod
     def _export_job_dict(job) -> Dict[str, Any]:
@@ -801,6 +779,8 @@ class ReportStudioService:
             'updated_at': job.updated_at,
             # 下载引用：网关层据此拼接鉴权下载路径
             'download_ref': f'/api/v1/report-studio/exports/{job.export_id}/download',
+            # 本次创建是否复用了同文档版本 + 同格式 + 同主题的已有作业（INT-2471）
+            'reused': False,
         }
 
     # ------------------------------------------------------------------
@@ -840,7 +820,9 @@ class ReportStudioService:
         except OSError as e:
             return {'success': False, 'message': f'读取产物失败: {e}',
                     'data': None, 'code': 500}
-        mime = 'text/html' if job.format == StudioExportFormat.HTML.value else 'text/markdown'
+        # MIME 取渲染器的唯一事实源（md / html / pdf / pptx 四格式）
+        _ext, mime = EXPORT_MEDIA_TYPES.get(
+            job.format, ('.bin', 'application/octet-stream'))
         filename = os.path.basename(job.file_path)
         return {
             'success': True, 'message': 'ok',

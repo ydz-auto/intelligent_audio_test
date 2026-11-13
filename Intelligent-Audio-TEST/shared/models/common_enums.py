@@ -865,7 +865,9 @@ class PickableTaskStatus(str, Enum):
 class StudioExportFormat(str, Enum):
     """Report Studio 导出格式（INT-673，设计文档 §15.6）
 
-    HTML/MD 为本卡落地格式；PPTX/PDF 属 S3 增强候选技术（需实测后定）。
+    四种格式均为正式导出产物：HTML / MD（INT-673 首版）、PDF（reportlab，
+    中文走内置 CID 字体）、PPTX（python-pptx，INT-2471）。渲染实现见
+    ``report_service/application/services/report_studio_renderer.py``。
     """
     HTML = 'html'
     MD = 'md'

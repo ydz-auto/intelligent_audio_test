@@ -258,7 +258,8 @@ def test_skills_endpoint_lists_31_tools_without_duplicates(tmp_path):
                            'algorithm_query', 'device_query',
                            'testcase_query', 'testcase_generate',
                            'task_diagnose', 'log_diagnose', 'dashboard_query',
-                           'report_compare', 'memory_search', 'memory_write'}
+                           'report_compare', 'memory_search', 'memory_write',
+                           'report_generate', 'report_export'}
 
         low = client.get('/api/v1/agent/skills',
                          headers={'X-User-Id': '8', 'X-Tenant-Id': 't1',

@@ -39,7 +39,7 @@ _EXPECTED_PERMISSIONS = {
                          'algorithm:param_manage',
                          'algorithm:group_manage'},
     'spl_calibrate': {'spl:create', 'spl:update', 'spl:test_tone'},
-    'report_export': {'report:read'},
+    'report_export': {'report:studio:export'},
     'dashboard_query': {'home:read'},
 }
 
@@ -127,8 +127,9 @@ def test_pending_permission_spec_is_exactly_the_known_tools():
 
 def test_fixed_tools_use_fact_source_permission_codes():
     rbac = _rbac_codes()
-    # INT-2461 启用了 dashboard_query（首页只读），其余本卡修正项仍停用
-    enabled_later = {'dashboard_query'}
+    # INT-2461 启用了 dashboard_query（首页只读）；INT-2471 启用 report_export
+    # （M2 写工具，导出作业权限码 report:studio:export）
+    enabled_later = {'dashboard_query', 'report_export'}
     for name, expected in _EXPECTED_PERMISSIONS.items():
         tool = intent_tools.INTENT_TOOL_BY_NAME[name]
         assert set(tool.permissions) == expected, name

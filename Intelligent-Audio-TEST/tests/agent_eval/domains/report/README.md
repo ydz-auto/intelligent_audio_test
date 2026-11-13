@@ -1,12 +1,15 @@
-# 报告域只读评测（INT-2463）
+# 报告域评测（INT-2463 只读 / INT-2471 写 + Studio 链路）
 
 评测对象两层：
 
-1. **意图工具** `report_query` / `report_compare`：动作 → MCP 只读工具 / 本地只读
-   组合 → 网关真实路由；10 条 golden tasks（取数 6 条 + 对比 4 条，见
-   `fixtures.DOMAIN_TASKS`）逐条解析出目标工具、REST 路径与需要断言的返回字段；
+1. **意图工具** `report_query` / `report_compare`（只读）与 `report_generate` /
+   `report_export`（写）：动作 → MCP 工具 / 本地组合 → 网关真实路由；
+   10 条只读 golden tasks（取数 6 条 + 对比 4 条，见
+   `fixtures.DOMAIN_TASKS`）+ 写工具的契约与审批流用例；
 2. **Skill** `report-studio` / `report-compare`：L1 触发词覆盖、L2 正文与实际接口
-   口径一致、`allowed-tools` 只含已启用的只读工具、数值引用原文不做二次计算。
+   口径一致、`allowed-tools` 只含已启用工具（`report-studio` 自 INT-2471 起声明
+   `report_generate` / `report_export` 两个写工具，写调用一律提案 + 审批）、
+   数值引用原文不做二次计算。
 
 ## 卡面验收锚点
 
@@ -42,6 +45,21 @@ python -m pytest tests/agent_eval/domains/report -q
 ```bash
 AGENT_LIVE_GATEWAY=http://127.0.0.1:15000 python -m pytest \
     tests/agent_eval/domains/report/test_report_live_contract.py -s
+AGENT_LIVE_GATEWAY=http://127.0.0.1:15000 python -m pytest \
+    tests/agent_eval/domains/report/test_report_manage_live.py -s
 ```
 
 可用 `UI_TEST_USERNAME` / `UI_TEST_PASSWORD` 覆盖账号。
+
+## 写工具与 Studio 链路（INT-2471）
+
+- `test_report_manage_tool.py`：动作 → 网关路由映射、动作级权限、body 白名单、
+  审批字段级预览、导出格式枚举与参数校验（离线）；
+- `../../agent_write/test_write_report_generate_export.py`：提案 → 审批 → 执行的
+  端到端审批流、`agent_session_id` 服务端注入、导出编排（定位文档 → 固定版本 →
+  建作业 → 轮询）与复用、拒绝 / 权限回收 / 非法参数；
+- `test_report_manage_live.py`：真实 docker 网关上的「生成 exists（不重复建报告）
+  → Studio 起草 → 编辑 → 恢复 → 导出 html → 鉴权下载」链路；只写
+  `接线测试_INT2471_` 前缀数据，run 结束按 doc_id 精确清理。
+  PDF/PPTX 渲染与「重复导出复用同一作业」需新镜像（合入后重建 report_service）
+  才能在 docker 上实测，代码层由 `tests/unit/test_report_studio.py` 覆盖。

@@ -104,7 +104,8 @@ def test_intent_registry_has_31_unique_tools():
                              'algorithm_query', 'device_query',
                              'testcase_query', 'testcase_generate',
                              'task_diagnose', 'log_diagnose', 'dashboard_query',
-                             'report_compare', 'memory_search', 'memory_write'}
+                             'report_compare', 'memory_search', 'memory_write',
+                             'report_generate', 'report_export'}
 
 
 def test_reserved_tool_names_present_and_disabled():

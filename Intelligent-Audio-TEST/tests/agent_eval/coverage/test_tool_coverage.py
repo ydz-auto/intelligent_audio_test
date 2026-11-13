@@ -16,7 +16,9 @@ from shared.agent_tools import coverage, intent_tools, mcp_registry
 COVERAGE_FILE = coverage.coverage_path()
 
 MCP_TOTAL = 207          # INT-2453 谱 205 + INT-2461 首页只读 2
-LONG_TAIL_INDEX = 205    # tool_search 的 MCP 索引视图（去掉宿主语境 + 同名意图顶替）
+# tool_search 的 MCP 索引视图：去掉宿主语境通道（audio_get_by_ids）与已被
+# 已启用意图工具顶替的同名 MCP 项（report_compare、INT-2471 的 report_export）
+LONG_TAIL_INDEX = 204
 OWNED_TOTAL = 198
 EXTERNAL_TOTAL = 9
 
@@ -83,7 +85,7 @@ def test_external_only_tools_have_explicit_reasons():
 
 
 def test_long_tail_index_view_counts():
-    """tool_search 的 MCP 视图 205 项 + 31 个意图名称 = 235 个唯一名称。"""
+    """tool_search 的 MCP 视图 204 项 + 31 个意图名称（含顶替项）。"""
     mcp_entries = [e for e in intent_tools.TOOL_INDEX if e.get('kind') == 'mcp']
     assert len(mcp_entries) == LONG_TAIL_INDEX
     names = [entry['name'] for entry in intent_tools.TOOL_INDEX]
