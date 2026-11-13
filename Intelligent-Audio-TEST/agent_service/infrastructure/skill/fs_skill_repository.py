@@ -7,16 +7,25 @@
 
 单个文件的问题不改抛异常：解析失败写进 ``Skill.load_error``，由
 application/skill_registry 统一判定严重度与取舍。
+
+INT-2506：目录级失败（根目录不存在 / 不可读 / 为空、目录缺 ``SKILL.md``）
+不再只打一行日志——每个都带原因码回传给 ``SkillRegistry``，保证「挂了空目录
+或挂错路径导致 Skill 层整体消失」在 ``/skills`` 与 ``/health`` 上可见。
 """
 import logging
 import os
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+import stat as stat_module
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import yaml
 
+from agent_service.domain.enums import SkillIssueCode
 from agent_service.domain.model.skill import (
     FIELD_ALLOWED_TOOLS, FIELD_BUDGETS, FIELD_DESCRIPTION, FIELD_NAME,
     FIELD_OWNER, FIELD_PERMISSIONS, FIELD_VERSION, Skill, SkillMeta,
+)
+from agent_service.domain.model.skill_scan import (
+    SkillScanIssue, SkillScanResult,
 )
 from agent_service.domain.ports.skill_repository import SkillRepository
 
@@ -37,23 +46,63 @@ class FsSkillRepository(SkillRepository):
     def root(self) -> str:
         return self._root
 
-    def load_all(self) -> Sequence[Skill]:
-        if not self._root or not os.path.isdir(self._root):
-            logger.warning('skills 目录不存在：%s（Skill 列表为空）', self._root)
-            return ()
+    def load_all(self) -> SkillScanResult:
+        root_issue = self._check_root()
+        if root_issue is not None:
+            return SkillScanResult(issues=(root_issue,))
+
+        try:
+            entries = sorted(os.listdir(self._root))
+        except OSError as exc:
+            return SkillScanResult(issues=(self._unreadable_issue(exc),))
+
+        if not entries:
+            logger.warning('skills 目录为空：%s（未装载任何 Skill）', self._root)
+            return SkillScanResult(issues=(SkillScanIssue(
+                code=SkillIssueCode.SKILLS_ROOT_EMPTY, path=self._root,
+                message='skills 根目录存在但没有任何条目（检查部署挂载）'),))
+
         skills: List[Skill] = []
-        for entry in sorted(os.listdir(self._root)):
+        issues: List[SkillScanIssue] = []
+        for entry in entries:
             directory = os.path.join(self._root, entry)
             if not os.path.isdir(directory):
                 continue
             path = os.path.join(directory, SKILL_FILE_NAME)
             if not os.path.isfile(path):
-                logger.warning('Skill 目录缺少 %s：%s', SKILL_FILE_NAME, directory)
+                issues.append(SkillScanIssue(
+                    code=SkillIssueCode.SKILL_FILE_MISSING, path=directory,
+                    message=f'Skill 目录缺少 {SKILL_FILE_NAME}，已跳过'))
                 continue
             skills.append(self._load_one(directory, path))
-        return tuple(skills)
+        return SkillScanResult(skills=tuple(skills), issues=tuple(issues))
 
     # ------------------------------------------------------------ internals
+
+    def _check_root(self) -> Optional[SkillScanIssue]:
+        """根目录可用性检查；不可用时返回原因码，不抛异常。"""
+        if not self._root:
+            return SkillScanIssue(
+                code=SkillIssueCode.SKILLS_ROOT_MISSING, path='',
+                message='未配置 skills 根目录')
+        try:
+            mode = os.stat(self._root).st_mode
+        except FileNotFoundError:
+            return SkillScanIssue(
+                code=SkillIssueCode.SKILLS_ROOT_MISSING, path=self._root,
+                message='skills 根目录不存在（检查部署挂载路径）')
+        except OSError as exc:
+            return self._unreadable_issue(exc)
+        if not stat_module.S_ISDIR(mode):
+            return SkillScanIssue(
+                code=SkillIssueCode.SKILLS_ROOT_MISSING, path=self._root,
+                message='skills 根路径不是目录')
+        return None
+
+    def _unreadable_issue(self, exc: OSError) -> SkillScanIssue:
+        return SkillScanIssue(
+            code=SkillIssueCode.SKILLS_ROOT_UNREADABLE, path=self._root,
+            message=f'skills 根目录不可读：{exc}')
 
     def _load_one(self, directory: str, path: str) -> Skill:
         try:

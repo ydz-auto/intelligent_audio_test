@@ -137,13 +137,25 @@ def create_app(container=None) -> FastAPI:
     _register_error_handlers(app)
 
     @app.get('/health')
-    def health():
-        return {
+    def health(request: Request):
+        payload = {
             'status': 'ok',
             'service': Config.SERVICE_NAME,
             'version': Config.PLATFORM_VERSION,
             'llm_mode': 'user_provider',
         }
+        # INT-2506：Skill 装载摘要（计数 + 原因码）。错挂载 / 空目录导致 Skill
+        # 层整体消失时，这里不再与正常态无差别。
+        registry = getattr(
+            getattr(request.app.state, 'container', None),
+            'skill_registry', None)
+        if registry is not None:
+            payload['skills'] = {
+                'loaded': len(registry.skills),
+                'issues': len(registry.issues),
+                'issue_codes': sorted({i.code.value for i in registry.issues}),
+            }
+        return payload
 
     app.include_router(agent_router, prefix='/api/v1/agent', tags=['agent'])
     app.include_router(provider_router, prefix='/api/v1/agent',

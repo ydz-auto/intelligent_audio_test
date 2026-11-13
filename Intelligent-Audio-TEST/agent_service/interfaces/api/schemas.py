@@ -74,8 +74,22 @@ class SkillResponse(BaseModel):
     budgets: Dict[str, Any] = Field(default_factory=dict)
 
 
+class SkillIssueResponse(BaseModel):
+    """一条装载问题（目录级失败 / frontmatter 校验），供看板与审计消费。"""
+
+    code: str
+    severity: str
+    skill: str = ''
+    path: str = ''
+    message: str = ''
+
+
 class SkillListResponse(BaseModel):
     items: list = Field(default_factory=list)
+    # 装载总数（权限过滤前的 registry 结果）与问题摘要（INT-2506）
+    skills_count: int = 0
+    issues: list = Field(default_factory=list)
+    issues_count: int = 0
     # L1 常驻预算量级（§8.3 system 区段 15%），供前端与审计核对
     l1_tokens: int = 0
     l1_budget_tokens: int = 0

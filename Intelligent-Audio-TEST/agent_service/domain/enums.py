@@ -137,8 +137,16 @@ class LlmMessageRole(str, Enum):
 
 
 class SkillIssueCode(str, Enum):
-    """Skill 校验问题码（§4.2 frontmatter 契约）。"""
+    """Skill 校验问题码（§4.2 frontmatter 契约）。
 
+    目录级失败码（INT-2506）由仓储层回传：扫描阶段就必须给出原因码，不允许
+    空目录 / 错挂载 / 目录缺 SKILL.md 静默丢 Skill。
+    """
+
+    SKILLS_ROOT_MISSING = 'SKILLS_ROOT_MISSING'
+    SKILLS_ROOT_UNREADABLE = 'SKILLS_ROOT_UNREADABLE'
+    SKILLS_ROOT_EMPTY = 'SKILLS_ROOT_EMPTY'
+    SKILL_FILE_MISSING = 'SKILL_FILE_MISSING'
     INVALID_FRONTMATTER = 'INVALID_FRONTMATTER'
     MISSING_NAME = 'MISSING_NAME'
     MISSING_DESCRIPTION = 'MISSING_DESCRIPTION'
