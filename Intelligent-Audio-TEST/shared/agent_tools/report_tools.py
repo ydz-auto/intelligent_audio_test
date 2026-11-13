@@ -12,6 +12,8 @@
   - ``studio_draft``：用已取数的报告创建 Studio 文档草稿（版本 1），
     ``agent_session_id`` 由 ToolGateway 按 run 注入（模型不可传），
     同一报告 + 同一操作人 + 完全相同正文再次起草时复用原文档（不重复建文档）；
+    复用时若本次传入的 ``title`` / ``chart_refs`` / ``style_prefs`` 与旧文档
+    不同，旧值保留并在响应的 ``ignored`` 里列出（改这些字段走 ``studio_edit``）；
   - ``studio_edit``：编辑 Studio 文档生成新版本（``expected_version`` 乐观锁，
     冲突 409 + 差异原样回给模型，不覆盖他人改动）；
   - ``studio_restore``：把历史版本恢复为**新版本**（历史版本只读不可变）。
@@ -20,8 +22,9 @@
   1. 文档来源：显式 ``doc_id``，或按 ``report_id`` 取该报告最近更新的平台文档
      （``GET /api/v1/report-studio/documents``，只读）；找不到时明确提示先起草；
   2. ``version`` 缺省取文档当前版本（导出固定 ``docId + version + format``）；
-  3. 创建异步导出作业（``POST .../documents/{doc_id}/exports``）；服务端对
-     「同文档版本 + 同格式 + 同主题」的进行中 / 已完成作业复用，不重复产文件；
+  3. 创建异步导出作业（``POST .../documents/{doc_id}/exports``）；服务端只对
+     「本人 + 同文档版本 + 同格式 + 同主题」的进行中 / 已完成作业复用，不重复
+     产文件（他人作业含他人鉴权归属，不复用）；
   4. 短轮询作业至终态，返回 ``export_id`` / ``status`` / ``download_ref``；
      未完成时如实返回 ``pending``（再调一次同一入参即继续复用/查询该作业），
      不把「提交成功」说成「已导出」。
@@ -42,7 +45,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from shared.agent_tools.mcp_registry import get_tool as get_mcp_tool
 from shared.agent_tools.mcp_registry import tool_entry
-from shared.models.common_enums import StudioExportFormat
+from shared.models.common_enums import StudioExportFormat, StudioExportStatus
 
 # ---------------------------------------------------------------- 权限码
 # 口径：RBAC 事实源（scripts/migrations/202608/seed_rbac.py）与同能力 MCP 工具
@@ -118,12 +121,15 @@ _GENERATE_ALLOWED_KEYS = frozenset({'action', 'task_id', 'report_id', 'doc_id',
 REPORT_EXPORT_FORMATS: Tuple[str, ...] = tuple(f.value for f in StudioExportFormat)
 
 # 导出作业复用 / 轮询口径：
-# - 服务端对「同 doc_id + version + format + theme」的进行中 / 已完成作业复用，
-#   重复导出不会产生第二个文件；
+# - 服务端只对「同一操作人 + 同 doc_id + version + format + theme」的进行中 /
+#   已完成作业复用，重复导出不会产生第二个文件（他人作业含他人鉴权归属，
+#   不复用）；超时未推进的进行中作业判失效后重建；
 # - 工具层短轮询给模型一个可直接使用的结论，超时如实返回 pending。
 EXPORT_POLL_INTERVAL_SECONDS = 0.5
 EXPORT_POLL_MAX_ATTEMPTS = 20
-EXPORT_TERMINAL_STATUSES: Tuple[str, ...] = ('done', 'failed')
+# 作业终态：取值以 ``StudioExportStatus`` 为唯一事实源（与服务侧复用判定同源）
+EXPORT_TERMINAL_STATUSES: Tuple[str, ...] = (
+    StudioExportStatus.DONE.value, StudioExportStatus.FAILED.value)
 
 # ---------------------------------------------------------------- Agent 专用目标
 
@@ -404,8 +410,8 @@ def proposal_diff_export(arguments: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     for key in ('doc_id', 'report_id', 'version', 'theme'):
         if arguments.get(key) is not None:
             diff[key] = arguments[key]
-    diff['effect'] = ('按固定文档版本异步渲染导出产物；同文档版本 + 同格式 + 同主题的'
-                      '进行中 / 已完成作业复用，不重复产生文件')
+    diff['effect'] = ('按固定文档版本异步渲染导出产物；仅本人、同文档版本 + 同格式 + '
+                      '同主题的进行中 / 已完成作业复用，不重复产生文件')
     return diff
 
 

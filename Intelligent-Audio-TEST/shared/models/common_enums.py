@@ -875,6 +875,11 @@ class StudioExportFormat(str, Enum):
     PDF = 'pdf'
 
 
+# 导出主题缺省值（INT-2471）：请求不带 theme 时服务端归一成该值落库，
+# 渲染器与导出幂等查询都按同一口径比对，避免各处各写一份 'default' 字面量。
+DEFAULT_EXPORT_THEME = 'default'
+
+
 class StudioExportStatus(str, Enum):
     """Report Studio 导出作业状态（INT-673，设计文档 §15.5）"""
     PENDING = 'pending'

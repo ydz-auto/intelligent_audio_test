@@ -98,11 +98,16 @@ class ReportStudioRepository(ABC):
 
     @abstractmethod
     def find_latest_export_job(self, doc_id: str, version: int, fmt: str,
-                               theme: Optional[str]
+                               theme: Optional[str],
+                               created_by: Optional[int] = None
                                ) -> Optional[ReportStudioExportJob]:
-        """按「文档 + 固定版本 + 格式 + 主题」读最近一次导出作业（INT-2471）。
+        """按「文档 + 固定版本 + 格式 + 主题 + 操作人」读最近一次导出作业。
 
         导出幂等用：同一产物的进行中 / 已完成作业复用，不重复渲染文件。
+        ``created_by`` 是必给的隔离维度（INT-2471 复审 P2-1）：作业按操作人
+        归属，复用到他人作业会返回一个当前用户下载被拒（403）的引用，
+        因此复用只在本人的作业里找；``None`` 表示未认证运行（AUTH_MODE=off），
+        只匹配 ``created_by IS NULL`` 的作业，与起草幂等口径一致。
         """
 
     @abstractmethod

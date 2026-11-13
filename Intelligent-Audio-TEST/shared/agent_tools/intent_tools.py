@@ -1107,9 +1107,12 @@ INTENT_TOOLS: List[IntentTool] = [
         description=('导出 Report Studio 文档（提案 → 审批 → 执行）：按固定文档'
                      '版本异步渲染 PDF / PPTX / HTML / MD，返回导出作业与鉴权'
                      '下载引用。doc_id 优先，也可给 report_id 自动定位该报告最近'
-                     '更新的 Studio 文档；version 缺省为当前版本。同文档版本 + '
-                     '同格式 + 同主题的作业复用，不重复产文件；作业未完成时如实'
-                     '返回 pending，再调一次同一入参即继续复用/查询该作业。'),
+                     '更新的 Studio 文档；version 缺省为当前版本。作业复用只在'
+                     '**当前操作人本人**的同参数作业里找（他人作业下载会被拒），'
+                     '不重复产文件；作业超时未推进会判失效并重建；作业未完成时'
+                     '如实返回 pending，再调一次同一入参即继续复用/查询该作业。'
+                     '声明权限是 report:studio:export，编排内部读文档另需 '
+                     'report:read（RBAC 里含 export 的角色都已具备）。'),
         parameters=_schema({
             'doc_id': _prop('string', 'Studio 文档 ID（与 report_id 二选一，优先）'),
             'report_id': _prop('integer', '平台报告 ID（自动定位其 Studio 文档）',

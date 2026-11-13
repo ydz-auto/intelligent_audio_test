@@ -18,6 +18,7 @@ import logging
 import os
 import threading
 import uuid
+from datetime import datetime, timedelta, timezone
 from difflib import unified_diff
 from typing import Any, Dict, List, Optional
 
@@ -26,6 +27,7 @@ from shared.infrastructure.user_context import (
     get_current_user_is_admin,
 )
 from shared.models.common_enums import (
+    DEFAULT_EXPORT_THEME,
     ReportStudioSourceType,
     StudioExportFormat,
     StudioExportStatus,
@@ -36,11 +38,22 @@ from report_service.application.services.report_studio_renderer import (
     EXPORT_MEDIA_TYPES,
     ExportRenderError,
     render_export,
-    render_html,
 )
 from report_service.config.config import Config
 
 logger = logging.getLogger(__name__)
+
+# 导出作业失效窗口（INT-2471 复审 P2-2）：pending / running 作业超过该时长仍
+# 未推进，视为渲染进程中断（后台线程随进程丢失，行永久停在 running），落
+# ``failed`` 后按新作业重渲染；否则同参数导出会永远复用那张陈旧行、产物永远
+# 拿不到。10 分钟远大于正常渲染时长（毫秒~秒级），不会误伤进行中的作业。
+EXPORT_JOB_STALE_SECONDS = 600
+EXPORT_STALE_ERROR = '渲染超时：作业长时间未推进，已判失效'
+
+# Studio 时间列的落库口径（INT-2283）：PO 默认值 ``utc8now`` 写进
+# ``timestamp without time zone`` 后是东八区墙钟，读回来是无偏移的 naive 值。
+# 只在本模块做「距今多久」的判定时按东八区还原，不改任何写库口径。
+_STUDIO_DB_TZ = timezone(timedelta(hours=8))
 
 
 def _md5(*parts: Any) -> str:
@@ -207,8 +220,23 @@ class ReportStudioService:
         if existing is not None:
             reused = self._doc_dict(existing)
             reused['reused'] = True
-            return {'success': True,
-                    'message': '相同内容的 Studio 草稿已存在，已复用原文档',
+            # 匹配键是正文；同正文但 title / chart_refs / style_prefs 不同时，
+            # 旧文档的值会被保留（不静默改身份字段）。把未生效的字段如实列出来，
+            # 让调用方知道「传了但没生效」，而不是以为已经改好了（复审 P3-2）。
+            ignored = []
+            if data.get('title') is not None and str(existing.title) != str(title):
+                ignored.append('title')
+            if data.get('chart_refs') is not None \
+                    and list(existing.chart_refs or []) != chart_refs:
+                ignored.append('chart_refs')
+            if data.get('style_prefs') is not None \
+                    and dict(existing.style_prefs or {}) != style_prefs:
+                ignored.append('style_prefs')
+            message = '相同内容的 Studio 草稿已存在，已复用原文档'
+            if ignored:
+                reused['ignored'] = ignored
+                message += f'；以下参数未生效：{"、".join(ignored)}（改这些字段请用 studio_edit）'
+            return {'success': True, 'message': message,
                     'data': reused, 'code': 0}
 
         from report_service.domain.entities.report_studio import (
@@ -654,14 +682,28 @@ class ReportStudioService:
             return {'success': False, 'message': f'文档版本 {version} 不存在',
                     'data': None, 'code': 404}
 
-        theme = str(data.get('theme') or 'default')
-        # 导出幂等（INT-2471）：同文档版本 + 同格式 + 同主题的进行中 / 已完成
-        # 作业复用，不重复渲染出第二份文件；失败或产物缺失才重建（重试语义）。
+        theme = str(data.get('theme') or DEFAULT_EXPORT_THEME)
+        actor_id = get_current_user_id()
+        # 导出幂等（INT-2471）：同文档版本 + 同格式 + 同主题 + **同操作人**的
+        # 进行中 / 已完成作业复用，不重复渲染出第二份文件；失败、产物缺失或
+        # 超时未推进才重建（重试语义）。操作人维度是必须的（复审 P2-1）：
+        # 作业按 created_by 鉴权下载，复用他人作业只会拿到一个 403 的引用。
         try:
             reusable = self.repo.find_latest_export_job(
-                str(doc_id), int(version), fmt_value, theme)
+                str(doc_id), int(version), fmt_value, theme,
+                created_by=actor_id)
         except Exception:  # pragma: no cover - 幂等查询失败不阻断正常创建
             logger.warning('查询已有导出作业失败，按新作业创建', exc_info=True)
+            reusable = None
+        # 兜底校验归属（P2-1）：即使仓储实现口径变化，也绝不把他人作业返回给
+        # 当前调用方；不复用即按新作业重渲染。
+        if reusable is not None and self._owner_check_export(reusable) is not None:
+            logger.warning('导出作业 %s 不属于当前操作人，按新作业创建',
+                           reusable.export_id)
+            reusable = None
+        # 陈旧作业（P2-2）：进程中断后停在 pending / running 的行落 failed，
+        # 本次按新作业重建，避免同参数导出永久卡在同一张陈旧行上。
+        if reusable is not None and self._expire_stale_export(reusable):
             reusable = None
         if reusable is not None and self._reusable_export(reusable):
             payload = self._export_job_dict(reusable)
@@ -673,7 +715,7 @@ class ReportStudioService:
         job = ReportStudioExportJob(
             export_id=export_id, doc_id=str(doc_id), version=int(version),
             format=fmt_value, theme=str(theme), status=StudioExportStatus.PENDING.value,
-            progress=0, created_by=get_current_user_id(),
+            progress=0, created_by=actor_id,
         )
         try:
             self.repo.create_export_job(job)
@@ -740,19 +782,53 @@ class ReportStudioService:
         return os.path.abspath(base)
 
     @staticmethod
-    def _render_html(markdown: str, theme: str, title: str) -> str:
-        """最小 Markdown → HTML 渲染（委托 ``report_studio_renderer``）。
+    def _export_age_seconds(job) -> Optional[float]:
+        """作业距最后一次推进的秒数；无可用时间戳时返回 None（无法判定）。
 
-        保留本方法作为既有调用入口；实现只有一份（导出作业与单测共用同一
-        受控渲染器），不维护第二套 HTML 口径。
+        库侧口径已实测：部署库会话时区为 Asia/Shanghai（``SHOW timezone``），
+        ``utc8now`` 写入后读回的是东八区墙钟 naive 值，因此按 +8 还原。应用与
+        库有时钟偏差时年龄可能为负，负值小于阈值 → 按「未陈旧」处理。
         """
-        return render_html(markdown, theme, title).decode('utf-8')
+        raw = getattr(job, 'updated_at', None) or getattr(job, 'created_at', None)
+        if not raw:
+            return None
+        try:
+            moment = datetime.fromisoformat(str(raw))
+        except ValueError:
+            return None
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=_STUDIO_DB_TZ)
+        return (datetime.now(timezone.utc) - moment.astimezone(timezone.utc)).total_seconds()
+
+    def _expire_stale_export(self, job) -> bool:
+        """进行中作业超过失效窗口：落 ``failed`` 并返回 True（调用方按新作业重建）。
+
+        只对 pending / running 判定：终态作业不复用是 ``_reusable_export`` 的
+        职责，这里不改写它们的状态。
+        """
+        if job.status not in (StudioExportStatus.PENDING.value,
+                              StudioExportStatus.RUNNING.value):
+            return False
+        age = self._export_age_seconds(job)
+        if age is None or age < EXPORT_JOB_STALE_SECONDS:
+            return False
+        logger.warning('导出作业 %s 已 %.0fs 未推进（阈值 %ss），判定失效',
+                       job.export_id, age, EXPORT_JOB_STALE_SECONDS)
+        try:
+            self.repo.update_export_job(
+                job.export_id, status=StudioExportStatus.FAILED.value,
+                error=EXPORT_STALE_ERROR, progress=100)
+        except Exception:  # pragma: no cover - 落 failed 失败也应允许重建
+            logger.warning('把陈旧导出作业落 failed 失败，仍按新作业重建',
+                           exc_info=True)
+        return True
 
     @staticmethod
     def _reusable_export(job) -> bool:
         """导出作业可否复用（INT-2471 幂等口径）。
 
-        - 进行中（pending / running）：复用，避免同一产物并发重复渲染；
+        - 进行中（pending / running）：复用，避免同一产物并发重复渲染
+          （陈旧行由 ``_expire_stale_export`` 先判失效，不在此处放行）；
         - 已完成（done）：产物文件仍在才复用；文件被清理时按重试处理；
         - 失败（failed）：不复用，允许重新渲染。
         """

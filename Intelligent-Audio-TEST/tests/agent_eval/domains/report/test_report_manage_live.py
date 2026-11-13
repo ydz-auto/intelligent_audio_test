@@ -13,7 +13,8 @@ run 结束前删掉；真实报告只读，不改不删。
 - ``generate`` 对已有报告的任务返回 ``exists`` 且指向同一报告（不产生第二份）；
 - Studio 链路：起草（版本 1）→ 编辑（版本 2）→ 恢复版本 1（新版本 3）→
   导出 html（固定版本 3）→ 鉴权下载可得到 HTML 产物；
-- 清理：按本 run 创建的 doc_id 精确删除文档 / 版本 / 导出作业行。
+- 清理：按本 run 创建的 doc_id 精确删除文档 / 版本 / 导出作业行；导出产物文件
+  在 report_service 容器内（非宿主卷），删行前把路径打印成手工清理命令。
 
 注意：docker 栈跑的是 V10.11.2 当前镜像 —— PDF/PPTX 渲染与「重复导出复用
 同一作业」是 INT-2471 新代码，需合入并重建 report_service 镜像后才能实测；
@@ -122,15 +123,25 @@ def _download(token, download_ref):
 
 
 def _cleanup_studio_rows():
-    """删除本 run 创建的 Studio 文档 / 版本 / 图表 / 导出作业行。"""
+    """删除本 run 创建的 Studio 文档 / 版本 / 图表 / 导出作业行。
+
+    产物文件落在 report_service 容器内（``/app/report_studio_exports``，不是
+    宿主卷），本清理只能删库行；文件路径在删行前取出来打印成手工清理命令，
+    避免每跑一次留一个孤儿文件却没人知道在哪。
+    """
     if not CREATED_DOC_IDS:
         return
     try:
         import psycopg2
         conn = psycopg2.connect(LIVE_DB_URL)
         try:
+            orphan_files = []
             with conn.cursor() as cur:
                 for doc_id in CREATED_DOC_IDS:
+                    cur.execute(
+                        'SELECT file_path FROM report_studio_export_jobs '
+                        'WHERE doc_id=%s AND file_path IS NOT NULL', (doc_id,))
+                    orphan_files.extend(row[0] for row in cur.fetchall())
                     cur.execute(
                         'DELETE FROM report_studio_export_jobs WHERE doc_id=%s',
                         (doc_id,))
@@ -144,6 +155,9 @@ def _cleanup_studio_rows():
                         'DELETE FROM report_studio_documents WHERE doc_id=%s',
                         (doc_id,))
             conn.commit()
+            if orphan_files:
+                print('[INT-2471] 容器内产物文件需手工清理：\n  docker exec '
+                      '<report_service 容器> rm -f ' + ' '.join(orphan_files))
         finally:
             conn.close()
     except Exception as exc:  # pragma: no cover - 清理失败要显式提示

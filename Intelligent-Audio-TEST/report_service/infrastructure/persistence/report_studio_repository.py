@@ -379,21 +379,29 @@ class ReportStudioRepositoryImpl(ReportStudioRepository):
             session.close()
 
     def find_latest_export_job(self, doc_id: str, version: int, fmt: str,
-                               theme: Optional[str]
+                               theme: Optional[str],
+                               created_by: Optional[int] = None
                                ) -> Optional[ReportStudioExportJob]:
-        """按「文档 + 固定版本 + 格式 + 主题」读最近一次导出作业（INT-2471）。
+        """按「文档 + 固定版本 + 格式 + 主题 + 操作人」读最近一次导出作业。
 
         主题按落库值精确匹配（缺省主题落库为 'default'，由服务层归一后再查），
-        保证「同文档版本 + 同格式」的重复导出能复用同一作业 / 产物文件。
+        操作人按 ``created_by`` 精确匹配（INT-2471 复审 P2-1）：导出作业按操作人
+        归属，复用他人作业只会得到一个下载被判 403 的引用，因此只复用本人的作业，
+        与起草幂等 ``find_document_by_content`` 同一口径。
         """
         session = get_db_session()
         try:
-            po = session.query(ExportJobPO).filter(
+            query = session.query(ExportJobPO).filter(
                 ExportJobPO.doc_id == doc_id,
                 ExportJobPO.version == version,
                 ExportJobPO.format == fmt,
                 ExportJobPO.theme == theme,
-            ).order_by(ExportJobPO.created_at.desc()).first()
+            )
+            if created_by is None:
+                query = query.filter(ExportJobPO.created_by.is_(None))
+            else:
+                query = query.filter(ExportJobPO.created_by == created_by)
+            po = query.order_by(ExportJobPO.created_at.desc()).first()
             return _export_to_entity(po) if po else None
         finally:
             session.close()

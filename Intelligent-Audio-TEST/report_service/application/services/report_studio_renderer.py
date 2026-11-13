@@ -24,7 +24,7 @@ import html
 import io
 from typing import Dict, List, Tuple
 
-from shared.models.common_enums import StudioExportFormat
+from shared.models.common_enums import DEFAULT_EXPORT_THEME, StudioExportFormat
 
 # 导出格式 → (扩展名, MIME)。单一事实源，download 侧与作业落盘共用。
 EXPORT_MEDIA_TYPES: Dict[str, Tuple[str, str]] = {
@@ -210,7 +210,7 @@ def render_html(markdown: str, theme: str, title: str) -> bytes:
         f'<title>{html.escape(title or "")}</title><style>{_HTML_CSS}</style>'
         '</head><body class="report-studio-export">'
         f'<h1>{html.escape(title or "")}</h1>'
-        f'<p class="export-theme">主题：{html.escape(theme or "default")}</p>'
+        f'<p class="export-theme">主题：{html.escape(theme or DEFAULT_EXPORT_THEME)}</p>'
         + ''.join(out) + '</body></html>'
     ).encode('utf-8')
 
@@ -274,7 +274,7 @@ def render_pdf(markdown: str, theme: str, title: str) -> bytes:
         return Paragraph(escaped, style or base)
 
     story = [Paragraph(html.escape(title or ''), title_style),
-             Paragraph(f'主题：{html.escape(theme or "default")}', base),
+             Paragraph(f'主题：{html.escape(theme or DEFAULT_EXPORT_THEME)}', base),
              Spacer(1, 4)]
     pending_bullets: List[str] = []
 
@@ -303,6 +303,7 @@ def render_pdf(markdown: str, theme: str, title: str) -> bytes:
         elif kind == 'rule':
             story.append(Spacer(1, 6))
         elif kind == 'table':
+            truncated = len(block['rows']) > PDF_TABLE_MAX_ROWS
             rows = [block['headers']] + block['rows'][:PDF_TABLE_MAX_ROWS]
             data = [[_para(str(cell)) for cell in row] for row in rows]
             table = Table(data, repeatRows=1)
@@ -314,6 +315,11 @@ def render_pdf(markdown: str, theme: str, title: str) -> bytes:
                 ('RIGHTPADDING', (0, 0), (-1, -1), 4),
             ]))
             story.append(table)
+            # 超长表格截断要注明（与 PPTX 口径一致），不静默丢行（复审 P3-3）
+            if truncated:
+                story.append(Paragraph(
+                    f'（表格超过 {PDF_TABLE_MAX_ROWS} 行已截断，完整数据见 HTML/MD 产物）',
+                    base))
             story.append(Spacer(1, 6))
     _flush_bullets()
 
@@ -376,7 +382,7 @@ def render_pptx(markdown: str, theme: str, title: str) -> bytes:
     cover = presentation.slides.add_slide(title_layout)
     cover.shapes.title.text = title or '报告'
     subtitle = cover.placeholders[1]
-    subtitle.text = f'主题：{theme or "default"}'
+    subtitle.text = f'主题：{theme or DEFAULT_EXPORT_THEME}'
 
     def _add_text_frame(slide, blocks_for_slide: List[dict]) -> None:
         box = slide.shapes.add_textbox(

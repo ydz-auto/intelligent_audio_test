@@ -63,3 +63,10 @@ AGENT_LIVE_GATEWAY=http://127.0.0.1:15000 python -m pytest \
   `接线测试_INT2471_` 前缀数据，run 结束按 doc_id 精确清理。
   PDF/PPTX 渲染与「重复导出复用同一作业」需新镜像（合入后重建 report_service）
   才能在 docker 上实测，代码层由 `tests/unit/test_report_studio.py` 覆盖。
+
+### 手工清理（导出产物）
+
+导出产物写在 report_service 容器内 `/app/report_studio_exports`（非宿主卷），
+测试 teardown 只能删数据库行，删不掉容器里的文件。teardown 会把本 run 产出的
+文件路径打印成 `docker exec <report_service 容器> rm -f <路径…>` 形式的手工命令，
+需要时照抄执行即可；不复跑 live 测试时不会有新增孤儿文件。
