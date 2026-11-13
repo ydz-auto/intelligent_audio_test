@@ -79,6 +79,8 @@ budgets:
   行字段改为 `code` / `name` / `type` / `validation_rules`，并额外带
   `resolved_from`（本值来自哪一层）与 `profile_param_id`；
 - **`param_type=api`**：必须带 `api_id`，只返回该 API 实例的字段声明行。
+  `api_id` 只在 `param_type=api` 时生效：不带 `param_type`（缺省 `device`）时
+  接口静默忽略 `api_id`，返回的是算法级原始行，不是 API 作用域结果。
 
 同一个概念在两种形态里字段名不同，回答时按当前形态取，不要混用；
 缺哪一层就照实说「该层没有覆盖」，不要用算法级默认值冒充设备生效值。
@@ -124,12 +126,15 @@ budgets:
 ## Gotchas
 
 1. **定义列表的类型字段是 `type`**，不是 `algorithm_type`；参数 / 映射行才用 `algorithm_type`。
+   定义列表的过滤只认 `status` / `group_id`，传 `algorithm_type` 会被接口静默忽略，
+   需要按类型筛选请对返回行自行过滤。
 2. **带 `device_id` 的参数、映射返回裸数组**，不是 `{items,...}` 信封，且字段名改成
    `code` / `name` / `type` / `validation_rules`。
 3. **参考参数必须带 `algorithm_type`**：不带直接 400，这不是「列表为空」。
 4. **表单 Schema 是 camelCase**（`fieldCode` / `defaultValue`），参数接口是 snake_case
    （`param_code` / `default_value`）；同一概念两套拼写，跨接口对比时先对齐。
-5. **`param_type=api` 必须带 `api_id`**；`device_id` 只对 `param_type=device` 生效，
+5. **`param_type=api` 必须带 `api_id`**；`api_id` 只在 `param_type=api` 时生效，
+   否则接口静默忽略它。`device_id` 只对 `param_type=device` 生效，
    且必须同时给 `algorithm_type`，否则 400。
 6. **不要编造 `algorithm_type`**：合法取值只看 `action=options` 的返回；
    没出现的类型就是不存在，不要按名字猜（`asr` / `tts` 之类不保证存在）。

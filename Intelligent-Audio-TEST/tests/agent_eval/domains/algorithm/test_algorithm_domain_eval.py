@@ -189,6 +189,47 @@ def test_conditional_required_guards_match_gateway_rules():
     assert merged['device_id'] == 10
 
 
+def test_params_api_id_requires_param_type_api():
+    """INT-2525 P1-1：api_id 缺 param_type 时网关静默忽略，工具层必须拒绝。"""
+    _, _, error = intent_tools.resolve_rest_call(
+        'algorithm_query', {'action': 'params', 'api_id': 1,
+                            'algorithm_type': 'voice_llm'})
+    assert error and 'param_type' in error
+    # 非 api 作用域传 api_id 同样拒绝（网关按 param_type 走，api_id 被丢弃）
+    _, _, error = intent_tools.resolve_rest_call(
+        'algorithm_query', {'action': 'params', 'param_type': 'device',
+                            'api_id': 1, 'algorithm_type': 'voice_llm'})
+    assert error and 'param_type=api' in error
+    # 正确用法正常解析：参数原样进入算法参数 REST
+    tool, merged, error = intent_tools.resolve_rest_call(
+        'algorithm_query', {'action': 'params', 'param_type': 'api',
+                            'api_id': 1, 'algorithm_type': 'voice_llm'})
+    assert error is None and tool['name'] == 'algorithm_param_list'
+    assert merged == {'param_type': 'api', 'api_id': 1,
+                      'algorithm_type': 'voice_llm'}
+
+
+def test_params_device_id_and_api_scope_are_mutually_exclusive():
+    """设备作用域与 API 作用域互斥（网关对 device_id + param_type=api 返回 400）。"""
+    _, _, error = intent_tools.resolve_rest_call(
+        'algorithm_query', {'action': 'params', 'param_type': 'api', 'api_id': 1,
+                            'device_id': 10, 'algorithm_type': 'voice_llm'})
+    assert error and 'device_id' in error and 'param_type=device' in error
+
+
+def test_definitions_rejects_unsupported_algorithm_type_filter():
+    """INT-2525 P2-1：网关 AlgorithmListQuery 只认 status / group_id。"""
+    _, _, error = intent_tools.resolve_rest_call(
+        'algorithm_query', {'action': 'definitions', 'algorithm_type': 'asr'})
+    assert error and 'definitions' in error and 'status' in error
+    for arguments in ({'action': 'definitions', 'status': 'online'},
+                      {'action': 'definitions', 'group_id': 3}):
+        tool, _, error = intent_tools.resolve_rest_call(
+            'algorithm_query', arguments)
+        assert error is None, error
+        assert tool['name'] == 'algorithm_definition_list'
+
+
 def test_reference_params_requires_algorithm_type():
     """网关 GET /reference-params 无 algorithm_type 直接 400（不是空列表）。"""
     _, _, error = intent_tools.resolve_rest_call(
