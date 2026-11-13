@@ -21,9 +21,12 @@ from agent_service.application.sandbox_runner import (
     SandboxResult,
     SandboxRunner,
 )
-from tests.agent_sandbox._sandbox_support import RecordingDockerExecutor, docker_cli
+from tests.agent_sandbox._sandbox_support import (
+    RecordingDockerExecutor,
+    docker_cli,
+    sandbox_image,
+)
 
-SANDBOX_IMAGE = 'python:3.11-slim'
 DEFAULT_TEST_TIMEOUT_SECONDS = 30
 
 
@@ -33,23 +36,33 @@ def pytest_configure(config: pytest.Config) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def sandbox_skills_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """runner 的 Skill 根目录白名单限定在本用例的 tmp_path 下（P2-2）。"""
+    monkeypatch.setenv('AGENT_SKILLS_ROOT', str(tmp_path))
+    return tmp_path
+
+
 @pytest.fixture(scope='session')
 def docker_available() -> str:
     """docker daemon 可用且沙箱镜像在本地；否则 skip 并说明原因。"""
     if shutil.which('docker') is None:
         pytest.skip('未找到 docker CLI：T1 沙箱用例需要 Docker Desktop（Linux 容器）')
     try:
-        info = docker_cli('info', '--format', '{{.ServerVersion}}', timeout=30)
+        # 用 `docker version` 探活：本机 `docker info` 偶发 90s 级卡顿（已知环境问题），
+        # 拿它当就绪探测会把整批 docker 用例误判成 skip。
+        info = docker_cli('version', '--format', '{{.Server.Version}}', timeout=60)
     except (OSError, subprocess.TimeoutExpired) as exc:
         pytest.skip(f'docker daemon 不可用：{exc}')
     if info.returncode != 0:
         pytest.skip(f'docker daemon 不可用：{info.stderr.strip()[:200]}')
-    image = docker_cli('image', 'inspect', '--format', '{{.Id}}', SANDBOX_IMAGE, timeout=30)
+    image_name = sandbox_image()
+    image = docker_cli('image', 'inspect', '--format', '{{.Id}}', image_name, timeout=30)
     if image.returncode != 0:
         pytest.skip(
-            f'沙箱镜像 {SANDBOX_IMAGE} 不在本地（门禁需先 `docker pull {SANDBOX_IMAGE}`）'
+            f'沙箱镜像 {image_name} 不在本地（门禁需先 `docker pull {image_name}`）'
         )
-    return SANDBOX_IMAGE
+    return image_name
 
 
 @pytest.fixture

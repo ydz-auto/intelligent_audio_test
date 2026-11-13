@@ -36,11 +36,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Mapping, Protocol, Tuple
 
+from agent_service.domain.enums import SandboxTier
+
 logger = logging.getLogger(__name__)
 
-#: 方案 §7 的沙箱层级取值。INT-2451 的 domain/enums.py 落地后由编排层传
-#: ``SandboxTier.T1_TRUSTED_SCRIPT`` 的 value 进来；本模块只认这一个取值。
-SANDBOX_TIER_T1 = 'T1_TRUSTED_SCRIPT'
+#: 容器内 ``timeout`` 自限到点时的退出码（GNU coreutils 约定）。
+#: 宿主侧计时器消失时容器由它自己结束；判 BUDGET_EXCEEDED，不是 FAILED。
+SANDBOX_TIMEOUT_EXIT_CODE = 124
 
 #: 容器内固定挂载点（Skill 只读、/work 可写）。
 SKILL_MOUNT_PATH = '/skill'
@@ -99,6 +101,31 @@ class SandboxArtifactTooLargeError(SandboxArtifactError):
     """产物超出单文件大小 / 总量 / 数量上限。"""
 
 
+#: ``--user`` 只接受数值 ``uid[:gid]``；字面量比对会被 ``000`` / ``0:65534`` 绕过。
+_CONTAINER_USER_PATTERN = re.compile(r'^([0-9]{1,10})(?::([0-9]{1,10}))?$')
+_MAX_CONTAINER_UID = 2**32 - 1
+
+
+def parse_container_identity(raw: str) -> tuple[int, int]:
+    """解析容器运行身份 ``uid[:gid]``，按数值判定非 root（方案 §7 硬规则）。
+
+    ``0`` / ``000`` / ``0:0`` / ``0:65534`` / ``root`` 一律拒绝：``000`` 与
+    ``0:65534`` 是字面量比对的漏网写法，``root`` 不是数值身份。调用方（runner）
+    必须用它做白名单校验，不能只信 ``ContainerLimits`` 的构造期检查。
+    """
+    text = str(raw or '').strip()
+    match = _CONTAINER_USER_PATTERN.match(text)
+    if match is None:
+        raise SandboxConfigurationError(f'容器用户必须是数值 uid[:gid]：{raw!r}')
+    uid = int(match.group(1))
+    gid = int(match.group(2)) if match.group(2) else uid
+    if uid == 0:
+        raise SandboxConfigurationError('沙箱容器禁止以 root 运行（uid=0）')
+    if uid > _MAX_CONTAINER_UID or gid > _MAX_CONTAINER_UID:
+        raise SandboxConfigurationError(f'容器用户超出 uid/gid 取值范围：{raw!r}')
+    return uid, gid
+
+
 @dataclass(frozen=True)
 class ContainerLimits:
     """容器级资源上限（方案 §7）。由 infrastructure 从环境变量构造。"""
@@ -123,8 +150,8 @@ class ContainerLimits:
             raise SandboxConfigurationError('pids_limit 必须为正数')
         if self.cpus <= 0:
             raise SandboxConfigurationError('cpus 必须为正数')
-        if self.container_user in ('0', '0:0', 'root'):
-            raise SandboxConfigurationError('沙箱容器禁止以 root 运行')
+        # 按数值判定，不按字面量：``000`` / ``0:65534`` 同样是 uid 0。
+        parse_container_identity(self.container_user)
 
 
 @dataclass(frozen=True)
@@ -158,6 +185,7 @@ class ContainerExecution:
     container_id: str = ''
     killed_by_runner: bool = False
     start_failed: bool = False
+    work_limit_exceeded: bool = False
     error: str = ''
 
     @property
@@ -206,14 +234,28 @@ class SandboxArtifact:
 
 @dataclass(frozen=True)
 class SandboxRequest:
-    """调用方（单 loop 的 step 执行钩子）传入的 T1 脚本请求。"""
+    """调用方（单 loop 的 step 执行钩子）传入的 T1 脚本请求。
+
+    ``tier`` 用领域枚举 ``SandboxTier``（§5.3 禁魔法值）；JSON 边界按 value
+    传入的字符串在这里一次性转换，未知取值保留原样并由编排层判
+    ``UNSUPPORTED_TIER``。
+    """
 
     skill_name: str
     skill_root: Path
     script: str
     args: Tuple[str, ...] = ()
     env: Mapping[str, str] = field(default_factory=dict)
-    tier: str = SANDBOX_TIER_T1
+    tier: SandboxTier = SandboxTier.T1_TRUSTED_SCRIPT
+
+    def __post_init__(self) -> None:
+        if isinstance(self.tier, SandboxTier):
+            return
+        try:
+            object.__setattr__(self, 'tier', SandboxTier(str(self.tier)))
+        except ValueError:
+            # 未知层级不在这里抛：交给 run_trusted_script 记 UNSUPPORTED_TIER。
+            pass
 
 
 @dataclass(frozen=True)
@@ -277,10 +319,10 @@ class SandboxRunner:
     # ── 公开入口 ────────────────────────────────────────────────
     def run_trusted_script(self, request: SandboxRequest) -> SandboxResult:
         started = time.monotonic()
-        if request.tier != SANDBOX_TIER_T1:
+        if request.tier is not SandboxTier.T1_TRUSTED_SCRIPT:
             return self._rejected(
                 SandboxFailureReason.UNSUPPORTED_TIER,
-                f'仅支持 {SANDBOX_TIER_T1}，收到 {request.tier!r}（T2 首期不执行）',
+                f'仅支持 {SandboxTier.T1_TRUSTED_SCRIPT.value}，收到 {request.tier!r}（T2 首期不执行）',
             )
         try:
             _, script_relative = self._resolve_script(request)
@@ -297,6 +339,7 @@ class SandboxRunner:
             return self._rejected(SandboxFailureReason.INVALID_INVOCATION, str(exc))
 
         work_dir = self._create_work_dir()
+        limits = self._executor.limits
         invocation = ContainerInvocation(
             name=self._container_name(request.skill_name),
             skill_root=str(skill_root),
@@ -304,7 +347,15 @@ class SandboxRunner:
             script_relative_path=script_relative,
             args=tuple(request.args),
             env=dict(request.env),
-            limits=self._executor.limits,
+            # 限额唯一口径 = 执行器（runner）配置，应用层不再另行构造。
+            limits=limits,
+        )
+        logger.info(
+            '沙箱执行 effective limits：skill=%s image=%s user=%s memory=%s cpus=%s '
+            'pids=%s tmpfs=%s timeout=%ss output=%sB',
+            request.skill_name, limits.image, limits.container_user, limits.memory,
+            limits.cpus, limits.pids_limit, limits.tmpfs_size, limits.timeout_seconds,
+            limits.output_limit_bytes,
         )
         try:
             execution = self._executor.run(invocation)
@@ -389,6 +440,11 @@ class SandboxRunner:
                 execution, SandboxFailureReason.TIMEOUT, duration,
                 detail=f'超时终止（{self._executor.limits.timeout_seconds}s）',
             )
+        if execution.work_limit_exceeded:
+            return self._budget(
+                execution, SandboxFailureReason.RESOURCE_LIMIT_EXCEEDED, duration,
+                detail='执行中 /work 写入超过容量上限，容器被终止',
+            )
         if execution.output_truncated:
             return self._budget(
                 execution, SandboxFailureReason.OUTPUT_LIMIT_EXCEEDED, duration,
@@ -398,6 +454,13 @@ class SandboxRunner:
             return self._budget(
                 execution, SandboxFailureReason.MEMORY_LIMIT_EXCEEDED, duration,
                 detail=f'内存超限终止（{self._executor.limits.memory}）',
+            )
+        if execution.exit_code == SANDBOX_TIMEOUT_EXIT_CODE:
+            # 容器内 ``timeout`` 自限到点（宿主计时器在此前已消失时的兜底）：
+            # 这是超时，不是脚本非零退出，必须判 BUDGET_EXCEEDED。
+            return self._budget(
+                execution, SandboxFailureReason.TIMEOUT, duration,
+                detail=f'容器内 timeout 自限终止（{self._executor.limits.timeout_seconds}s）',
             )
         if execution.exit_code == 137:
             return self._budget(
@@ -466,7 +529,7 @@ class SandboxRunner:
             stderr=execution.stderr,
             duration_ms=duration,
             container_id=execution.container_id,
-            timed_out=execution.timed_out,
+            timed_out=execution.timed_out or reason is SandboxFailureReason.TIMEOUT,
             output_truncated=execution.output_truncated,
             detail=detail,
         )
