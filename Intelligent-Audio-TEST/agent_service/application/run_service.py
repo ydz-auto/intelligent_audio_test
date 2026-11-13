@@ -16,10 +16,11 @@ from agent_service.domain.enums import ApprovalDecision, EventType, RunStatus
 from agent_service.domain.exceptions import (
     InvalidRunTransition, RunNotFound, SessionNotFound, SkillNotAvailable,
 )
+from agent_service.domain.model.agent_skill import AgentRunSkill
 from agent_service.domain.model.budget import RunBudget
 from agent_service.domain.model.entities import AgentRun, AgentSession
 from agent_service.domain.repositories import (
-    EventRepository, RunRepository, SessionRepository,
+    AgentRunSkillRepository, EventRepository, RunRepository, SessionRepository,
 )
 from agent_service.domain.services.state_machine import RunStateMachine
 from agent_service.domain.ports.run_wakeup import RunWakeup
@@ -35,7 +36,8 @@ class RunService:
                  budget_defaults: Dict[str, int],
                  default_model: str = '',
                  skills: Optional[SkillRegistry] = None,
-                 approvals: Optional[ApprovalService] = None):
+                 approvals: Optional[ApprovalService] = None,
+                 run_skills: Optional[AgentRunSkillRepository] = None):
         self._sessions = sessions
         self._runs = runs
         self._events = events
@@ -45,6 +47,8 @@ class RunService:
         self._default_model = default_model
         self._skills = skills
         self._approvals = approvals
+        # INT-2549：run 激活快照（回放以本表 + 版本表为准，不随 Skill 修改变化）
+        self._run_skills = run_skills
 
     # ------------------------------------------------------------ sessions
 
@@ -56,7 +60,9 @@ class RunService:
         session = AgentSession(
             id=str(uuid.uuid4()), owner_id=owner_id, tenant_id=tenant_id,
             title=(title or '')[:200],
-            active_skill=self._resolve_skill(active_skill, permissions),
+            active_skill=self._resolve_skill(
+                active_skill, permissions, owner_id=owner_id,
+                tenant_id=tenant_id),
             model=(model or self._default_model or '')[:100],
             created_at=now, updated_at=now,
         )
@@ -88,18 +94,25 @@ class RunService:
         # 切换 Skill：显式传入则落库到会话（后续 run 继续沿用），本轮只注入
         # 该 Skill 的 L2；未传且会话已有激活 Skill 时沿用会话值。
         if active_skill:
-            session.active_skill = self._resolve_skill(active_skill, permissions)
+            session.active_skill = self._resolve_skill(
+                active_skill, permissions, owner_id=owner_id,
+                tenant_id=tenant_id)
             updated = self._sessions.update_active_skill(
                 session.id, session.active_skill)
             if updated is not None:
                 session = updated
         effective_skill = session.active_skill
-        if effective_skill and self._skills is not None and \
-                self._skills.get_visible(effective_skill, permissions) is None:
-            # 权限变化后原 Skill 不再可见：本轮不注入 L2，也不改动会话记录
-            logger.info('会话激活 Skill 当前不可见，本轮跳过 L2 session=%s skill=%s',
-                        session.id, effective_skill)
-            effective_skill = None
+        effective_skill_obj = None
+        if effective_skill and self._skills is not None:
+            effective_skill_obj = self._skills.get_visible(
+                effective_skill, permissions, owner_id=owner_id,
+                tenant_id=tenant_id)
+            if effective_skill_obj is None:
+                # 权限变化后原 Skill 不再可见：本轮不注入 L2，也不改动会话记录
+                logger.info(
+                    '会话激活 Skill 当前不可见，本轮跳过 L2 session=%s skill=%s',
+                    session.id, effective_skill)
+                effective_skill = None
 
         budget = RunBudget.from_dict(self._budget_defaults)
         now = utcnow()
@@ -122,6 +135,8 @@ class RunService:
                 'permissions': list(permissions),
                 'active_skill': effective_skill,
             })
+            # INT-2549：激活即追加版本快照；之后改 Skill 不影响本 run 回放
+            self._record_skill_snapshot(run.id, effective_skill_obj)
             self._sessions.touch(session.id)
             self._wakeup.notify(run.id)
         return run, created
@@ -187,17 +202,44 @@ class RunService:
 
     # ------------------------------------------------------------ internals
 
+    def _record_skill_snapshot(self, run_id: str, skill) -> None:
+        """一次激活 / 切换追加一行快照（失败不阻断 run 发起）。"""
+        if self._run_skills is None or skill is None:
+            return
+        skill_id = skill.skill_id or f'platform:{skill.name}'
+        try:
+            self._run_skills.add(AgentRunSkill(
+                run_id=run_id, skill_id=skill_id,
+                version=str(skill.meta.version or '0'),
+                content_hash=skill.content_hash or '',
+                activated_at=utcnow()))
+        except Exception:  # noqa: BLE001 - 快照失败不阻断 run 创建
+            logger.warning('写 agent_run_skill 快照失败 run=%s skill=%s',
+                           run_id, skill_id, exc_info=True)
+
     def _resolve_skill(self, name: Optional[str],
-                       permissions: Iterable[str]) -> Optional[str]:
+                       permissions: Iterable[str], *,
+                       owner_id: Optional[int] = None,
+                       tenant_id: Optional[str] = None) -> Optional[str]:
         """校验 Skill 存在且当前用户可见（§4.2 规则 7）；不可用直接拒绝。"""
+        skill = self._resolve_skill_obj(
+            name, permissions, owner_id=owner_id, tenant_id=tenant_id)
+        return skill.name if skill is not None else None
+
+    def _resolve_skill_obj(self, name: Optional[str],
+                           permissions: Iterable[str], *,
+                           owner_id: Optional[int] = None,
+                           tenant_id: Optional[str] = None):
+        """解析到领域 ``Skill``（INT-2549：快照需要 id / version / hash）。"""
         if not name:
             return None
         if self._skills is None:
-            return name
-        skill = self._skills.get_visible(name, permissions)
+            return None
+        skill = self._skills.get_visible(
+            name, permissions, owner_id=owner_id, tenant_id=tenant_id)
         if skill is None:
             raise SkillNotAvailable(name)
-        return skill.name
+        return skill
 
     @staticmethod
     def _normalize_key(raw: Optional[str], owner_id: int,

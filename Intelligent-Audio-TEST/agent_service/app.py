@@ -33,7 +33,9 @@ from agent_service.domain.exceptions import (
     CredentialDecryptError, CredentialKeyUnavailable,
     InvalidContextWindow, InvalidProviderConfiguration,
     InvalidRunTransition, ProviderNotFound, RunNotFound, SessionNotFound,
-    SkillNotAvailable,
+    SkillGateFailed, SkillImportInvalid, SkillInjectionDetected,
+    SkillNameConflict, SkillNotAvailable, SkillNotFound,
+    SkillPermissionEscalation, SkillServiceError, SkillStatusInvalid,
 )
 from agent_service.infrastructure.sandbox.t2_runtime import probe_t2_runtime
 from agent_service.interfaces.api.provider_routes import router as provider_router
@@ -160,6 +162,37 @@ def _register_error_handlers(app: FastAPI) -> None:
         # 未注册与权限不足统一 400：不区分「存在但无权」，避免泄漏 Skill 清单
         return JSONResponse(status_code=400,
                             content={'detail': 'Skill 不可用'})
+
+    # ---- INT-2549 自定义 Skill 域异常（错误码枚举化，不散落字符串）----
+    def _skill_error(status_code: int):
+        async def _handler(_request: Request, exc: SkillServiceError):
+            return JSONResponse(status_code=status_code, content={
+                'detail': str(exc) or 'Skill 操作失败',
+                'code': exc.code,
+                'issues': [
+                    {'code': issue.code.value,
+                     'severity': issue.severity.value,
+                     'skill': issue.skill,
+                     'field': getattr(issue, 'field', ''),
+                     'message': issue.message}
+                    for issue in getattr(exc, 'issues', ())
+                ],
+            })
+        return _handler
+
+    @app.exception_handler(SkillNotFound)
+    async def _skill_not_found(_request: Request, exc: SkillNotFound):
+        # 不存在 / 非本人 / 无写入口统一 404，不泄漏存在性
+        return JSONResponse(status_code=404, content={
+            'detail': 'Skill 不存在', 'code': exc.code, 'issues': []})
+
+    app.add_exception_handler(SkillNameConflict, _skill_error(409))
+    app.add_exception_handler(SkillPermissionEscalation, _skill_error(403))
+    app.add_exception_handler(SkillStatusInvalid, _skill_error(409))
+    app.add_exception_handler(SkillImportInvalid, _skill_error(400))
+    app.add_exception_handler(SkillInjectionDetected, _skill_error(400))
+    app.add_exception_handler(SkillGateFailed, _skill_error(409))
+    app.add_exception_handler(SkillServiceError, _skill_error(400))
 
     @app.exception_handler(ApprovalNotFound)
     async def _approval_not_found(_request: Request, _exc: ApprovalNotFound):

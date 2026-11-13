@@ -31,7 +31,10 @@ class TestEnums:
             'L1_TRIM', 'L2_DEDUPE', 'L3_MEMO', 'L4_REBUILD'}
         assert {e.value for e in EventType} == {
             'run_started', 'message_delta', 'tool_call', 'tool_result',
-            'approval_required', 'context_compacted', 'run_finished', 'error'}
+            'approval_required', 'context_compacted',
+            # INT-2549：对话沉淀建议（仅事件、不落库）
+            'skill_draft_suggested',
+            'run_finished', 'error'}
 
     def test_terminal_flags(self):
         assert RunStatus.SUCCEEDED.is_terminal

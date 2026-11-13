@@ -7,12 +7,14 @@ mcp.json（MCP 配置模板，URL 指向网关 MCP 端点）。``?base_url=`` �
 """
 from __future__ import annotations
 
-import io
 import logging
 import os
-import zipfile
+
+from shared.skill_package import SKILL_FILE_NAME, build_zip
 
 logger = logging.getLogger(__name__)
+
+MCP_FILE_NAME = 'mcp.json'
 
 _TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               '..', '..', '..', 'skill_templates')
@@ -61,15 +63,18 @@ def resolve_base_url(request) -> str:
 
 
 def build_skill_zip(base_url: str) -> bytes:
-    """拼装 skill zip（SKILL.md + mcp.json，base_url 注入），返回 bytes。"""
+    """拼装 skill zip（SKILL.md + mcp.json，base_url 注入），返回 bytes。
+
+    INT-2549：打包走 ``shared.skill_package.build_zip`` —— 与用户自定义
+    Skill 导入导出同一套路径校验与「根级直接是 SKILL.md、不套外层目录」口径，
+    不在这里另写一份 zipfile 逻辑。
+    """
     skill_md = _load_template('SKILL.md', _SKILL_TEMPLATE_FALLBACK)
     mcp_json = _load_template('mcp.json.tpl', _MCP_TEMPLATE_FALLBACK)
     if base_url:
         skill_md = _inject_base_url(skill_md, base_url)
         mcp_json = _inject_base_url(mcp_json, base_url)
-
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr('SKILL.md', skill_md)
-        zf.writestr('mcp.json', mcp_json)
-    return buf.getvalue()
+    return build_zip({
+        SKILL_FILE_NAME: skill_md.encode('utf-8'),
+        MCP_FILE_NAME: mcp_json.encode('utf-8'),
+    })

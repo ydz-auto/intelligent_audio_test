@@ -39,6 +39,8 @@ _AGENT_TABLES = [
     'agent_session', 'agent_run', 'agent_run_event', 'agent_step',
     'agent_tool_call', 'agent_artifact', 'agent_context_snapshot',
     'agent_llm_provider', 'agent_approval',
+    # INT-2549：自定义 Skill 当前行 / 版本快照 / run 激活快照
+    'agent_skill', 'agent_skill_version', 'agent_run_skill',
 ]
 
 TEST_MASTER_KEY = base64.b64encode(b'int2451-test-master-key-32byte!!').decode()

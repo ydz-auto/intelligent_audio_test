@@ -36,7 +36,9 @@ router = APIRouter(dependencies=[Depends(require_agent_enabled)])
 # 测试注入点（httpx.MockTransport）；生产为 None
 _transport_override: Optional[httpx.BaseTransport] = None
 
-_JSON_TIMEOUT_HEADERS = ('Content-Type', 'Cache-Control')
+# 原样回传的上游响应头：JSON 与 Skill 导出 zip 共用（zip 需要
+# Content-Disposition 才能带文件名；非 zip 响应没有该头，不影响）
+_JSON_TIMEOUT_HEADERS = ('Content-Type', 'Cache-Control', 'Content-Disposition')
 _CONNECT_TIMEOUT_SECONDS = 5.0
 
 
@@ -237,10 +239,8 @@ async def proxy_context_snapshots(run_id: str, request: Request):
     return await _forward(request, 'GET')
 
 
-@router.get('/skills')
-async def proxy_skills(request: Request):
-    """当前用户可见 Skill 列表（INT-2452；权限由 agent_service 按身份头过滤）。"""
-    return await _forward(request, 'GET')
+# GET /skills 的代理已迁到 ``agent_skill_bp``（INT-2549：同一路径要带
+# scope/status 过滤与自定义 Skill 字段，只保留一处路由，不写双口径）。
 
 
 # ---------------------------------------------------------------- 长期记忆（INT-2490）

@@ -22,4 +22,35 @@ class SkillRepository(ABC):
         """
 
 
-__all__ = ['SkillRepository']
+class SkillResourceStore(ABC):
+    """自定义 Skill 资源存储端口（INT-2549 §4.4）。
+
+    资源只走对象存储，表内仅存 key；``put`` 返回 key，``get`` 按 key 取回
+    字节（导出 / run 回放用）。实现复用仓库唯一 OSS 客户端，不新起存储栈。
+    """
+
+    @abstractmethod
+    def put(self, key: str, data: bytes,
+            content_type: str = 'application/octet-stream') -> str:
+        """写入资源，返回实际 key。"""
+
+    @abstractmethod
+    def get(self, key: str) -> bytes:
+        """按 key 取回资源字节；不存在时抛 ``KeyError``。"""
+
+    def delete(self, key: str) -> None:  # pragma: no cover - 默认无操作
+        """可选清理钩子；对象存储实现可覆盖（保留期策略不在本卡）。"""
+
+
+class NullSkillResourceStore(SkillResourceStore):
+    """未配置对象存储时的兜底：写入即失败，绝不静默丢资源。"""
+
+    def put(self, key: str, data: bytes,
+            content_type: str = 'application/octet-stream') -> str:
+        raise RuntimeError('未配置对象存储，无法保存 Skill 资源')
+
+    def get(self, key: str) -> bytes:
+        raise RuntimeError('未配置对象存储，无法读取 Skill 资源')
+
+
+__all__ = ['NullSkillResourceStore', 'SkillRepository', 'SkillResourceStore']

@@ -11,11 +11,21 @@
 本模块只描述「一个 Skill 是什么」，不负责扫描目录（infrastructure）也不
 负责校验取舍（application/skill_registry）。
 """
+import re
 from dataclasses import dataclass, field
 from typing import Dict, Mapping, Optional, Tuple
 
+from agent_service.domain.enums import SkillScope, SkillStatus
+
 # Skill 目录内的正文文件名（唯一事实源；扫描与部署校验共用，INT-2529）
 SKILL_FILE_NAME = 'SKILL.md'
+
+# 自定义 Skill 名称口径（INT-2549 §4.4 逐项校验）：小写字母/数字开头，
+# 后接小写字母/数字/连字符，总长 2~64。
+SKILL_NAME_PATTERN = re.compile(r'^[a-z0-9][a-z0-9-]{1,63}$')
+
+# 资源子目录（zip 包与对象存储路径同一口径，§4.1）
+RESOURCE_DIRS: Tuple[str, ...] = ('references', 'scripts', 'assets')
 
 # frontmatter 契约字段（§4.2）。缺 name / description 视为无效 Skill。
 FIELD_NAME = 'name'
@@ -67,7 +77,13 @@ class SkillMeta:
 
 @dataclass(frozen=True)
 class Skill:
-    """一个已装载的 Skill。``load_error`` 非空表示 frontmatter 不可解析。"""
+    """一个已装载的 Skill。``load_error`` 非空表示 frontmatter 不可解析。
+
+    INT-2549 起同一领域对象也承载自定义（TENANT / USER）层：
+    ``skill_id`` 非空 = 库内行（PLATFORM 为 ``platform:<name>`` 合成 ID），
+    ``scope`` / ``status`` / ``masked_by`` / ``content_hash`` 供列表标注与
+    run 快照回放；``resources`` 是「相对路径 → 对象存储 key」映射。
+    """
 
     meta: SkillMeta
     body: str
@@ -76,6 +92,14 @@ class Skill:
     scripts: Tuple[str, ...] = ()
     assets: Tuple[str, ...] = ()
     load_error: Optional[str] = None
+    skill_id: str = ''
+    scope: SkillScope = SkillScope.PLATFORM
+    status: SkillStatus = SkillStatus.ACTIVE
+    masked_by: Optional[str] = None
+    content_hash: str = ''
+    resources: Mapping[str, str] = field(default_factory=dict)
+    owner_id: Optional[int] = None
+    tenant_id: Optional[str] = None
 
     @property
     def name(self) -> str:
@@ -88,6 +112,11 @@ class Skill:
     @property
     def body_line_count(self) -> int:
         return len(self.body.splitlines())
+
+    @property
+    def is_custom(self) -> bool:
+        """是否库内自定义层（可写、有版本指针）。"""
+        return self.scope is not SkillScope.PLATFORM
 
     def has_section(self, title: str) -> bool:
         """正文是否有 ``## <title>`` 二级标题。"""
@@ -102,8 +131,8 @@ __all__ = [
     'BUDGET_MAX_TOKENS', 'BUDGET_MAX_TOOL_CALLS', 'FIELD_ALLOWED_TOOLS',
     'FIELD_BUDGETS', 'FIELD_DESCRIPTION', 'FIELD_NAME', 'FIELD_OWNER',
     'FIELD_PERMISSIONS', 'FIELD_VERSION', 'REQUIRED_SECTIONS',
-    'SECTION_ACCEPTANCE', 'SECTION_GOTCHAS', 'SKILL_DISCLOSURE_L1',
-    'SKILL_DISCLOSURE_L2', 'SKILL_DISCLOSURE_L3', 'SKILL_FILE_NAME',
-    'Skill', 'SkillMeta',
+    'RESOURCE_DIRS', 'SECTION_ACCEPTANCE', 'SECTION_GOTCHAS',
+    'SKILL_DISCLOSURE_L1', 'SKILL_DISCLOSURE_L2', 'SKILL_DISCLOSURE_L3',
+    'SKILL_FILE_NAME', 'SKILL_NAME_PATTERN', 'Skill', 'SkillMeta',
     'WILDCARD_PERMISSION',
 ]

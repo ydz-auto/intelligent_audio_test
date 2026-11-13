@@ -289,6 +289,43 @@ class Config(BaseConfig):
     T2_RUNTIME = os.environ.get('AGENT_T2_RUNTIME', 'runsc').strip() or 'runsc'
     SKILL_BODY_MAX_LINES = _get_int(
         'AGENT_SKILL_BODY_MAX_LINES', int(_SKILL_DEFAULTS.get('body_max_lines', 500)))
+    # ---- 自定义 Skill 写入口径（INT-2549 §4.4 逐项校验，全部配置化）----
+    SKILL_MAX_FILE_BYTES = _get_int(
+        'AGENT_SKILL_MAX_FILE_BYTES',
+        int(_SKILL_DEFAULTS.get('max_file_bytes', 64 * 1024)))
+    SKILL_MAX_RESOURCE_BYTES = _get_int(
+        'AGENT_SKILL_MAX_RESOURCE_BYTES',
+        int(_SKILL_DEFAULTS.get('max_resource_bytes', 512 * 1024)))
+    SKILL_MAX_PACKAGE_BYTES = _get_int(
+        'AGENT_SKILL_MAX_PACKAGE_BYTES',
+        int(_SKILL_DEFAULTS.get('max_package_bytes', 5 * 1024 * 1024)))
+    SKILL_MAX_ENTRIES = _get_int(
+        'AGENT_SKILL_MAX_ENTRIES',
+        int(_SKILL_DEFAULTS.get('max_entries', 200)))
+    SKILL_MAX_COMPRESSION_RATIO = _get_int(
+        'AGENT_SKILL_MAX_COMPRESSION_RATIO',
+        int(_SKILL_DEFAULTS.get('max_compression_ratio', 100)))
+    SKILL_PUBLISH_MIN_GOLDEN_TASKS = _get_int(
+        'AGENT_SKILL_PUBLISH_MIN_GOLDEN_TASKS',
+        int(_SKILL_DEFAULTS.get('publish_min_golden_tasks', 3)))
+    SKILL_RESOURCE_PREFIX = os.environ.get(
+        'AGENT_SKILL_RESOURCE_PREFIX',
+        str(_SKILL_DEFAULTS.get('resource_prefix', 'agent-skill'))).strip()
+    # agent_run_skill 保留口径（配置化；本卡只给口径与索引，不做自动清理）
+    SKILL_RUN_SNAPSHOT_RETENTION_DAYS = _get_int(
+        'AGENT_SKILL_RUN_SNAPSHOT_RETENTION_DAYS',
+        int(_SKILL_DEFAULTS.get('run_snapshot_retention_days', 180)))
+    # 发布门槛的 golden tasks 评测集：复用 INT-2454 / INT-2465 的基座文件，
+    # 不新建第二套。容器内未挂载时为空集（发布门槛恒不通过、只能留 DRAFT）。
+    SKILL_GOLDEN_TASKS_PATH = (
+        os.environ.get('AGENT_SKILL_GOLDEN_TASKS_PATH')
+        or os.path.join(_PROJECT_DIR, 'tests', 'agent_eval', 'coverage',
+                        'datasets', 'skill_trigger_tasks.json'))
+    # 注入 / 内网地址规则表（规则配置化，便于扩充而不改代码）
+    SKILL_GUARD_RULES_PATH = (
+        os.environ.get('AGENT_SKILL_GUARD_RULES')
+        or os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        'skill_guard_rules.json'))
     # True：任何校验问题都让启动失败；False：ERROR 剔除该 Skill、WARNING 仅告警
     SKILL_VALIDATION_STRICT = _get_bool(
         'AGENT_SKILL_VALIDATION_STRICT',
@@ -304,6 +341,20 @@ class Config(BaseConfig):
     @classmethod
     def skill_l1_budget_tokens(cls) -> int:
         return int(cls.CONTEXT_WINDOW_TOKENS * cls.SYSTEM_SECTION_RATIO)
+
+    @classmethod
+    def skill_settings(cls):
+        """自定义 Skill 写入口径（避免 application 反向依赖 config 常量字面量）。"""
+        from agent_service.application.skill_service import SkillSettings
+        return SkillSettings(
+            max_body_lines=cls.SKILL_BODY_MAX_LINES,
+            max_skill_bytes=cls.SKILL_MAX_FILE_BYTES,
+            max_resource_bytes=cls.SKILL_MAX_RESOURCE_BYTES,
+            max_package_bytes=cls.SKILL_MAX_PACKAGE_BYTES,
+            max_entries=cls.SKILL_MAX_ENTRIES,
+            max_compression_ratio=cls.SKILL_MAX_COMPRESSION_RATIO,
+            publish_min_golden_tasks=cls.SKILL_PUBLISH_MIN_GOLDEN_TASKS,
+            resource_prefix=cls.SKILL_RESOURCE_PREFIX)
 
     @classmethod
     def model_catalog_path(cls) -> str:

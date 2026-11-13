@@ -24,10 +24,15 @@ class SkillScanIssue:
 
 @dataclass(frozen=True)
 class SkillScanResult:
-    """一次目录扫描的完整结果：装载到的 Skill + 目录级问题。"""
+    """一次目录扫描的完整结果：装载到的 Skill + 目录级问题。
+
+    ``masked``（INT-2549）是被同名高层 Skill 遮蔽的条目：不参与 L1 / 触发，
+    但列表接口要返回并带 ``masked_by`` 标注（TENANT 同名时 USER 优先）。
+    """
 
     skills: Tuple[Skill, ...] = ()
     issues: Tuple[SkillScanIssue, ...] = field(default_factory=tuple)
+    masked: Tuple[Skill, ...] = field(default_factory=tuple)
 
 
 __all__ = ['SkillScanIssue', 'SkillScanResult']

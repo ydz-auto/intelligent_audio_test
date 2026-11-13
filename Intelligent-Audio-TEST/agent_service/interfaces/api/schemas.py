@@ -6,7 +6,7 @@ snake_case 契约（方案 §11）。
 """
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateSessionRequest(BaseModel):
@@ -124,6 +124,112 @@ class SkillListResponse(BaseModel):
     # L1 常驻预算量级（§8.3 system 区段 15%），供前端与审计核对
     l1_tokens: int = 0
     l1_budget_tokens: int = 0
+
+
+# ---------------------------------------------------------------- 自定义 Skill（INT-2549）
+
+class SkillIssueSchema(BaseModel):
+    """一条逐项校验问题（``code`` 为 ``SkillIssueCode`` 取值）。"""
+
+    code: str
+    severity: str
+    field: str = ''
+    message: str = ''
+
+
+class SkillViewSchema(BaseModel):
+    """Skill 列表 / 详情项（含旧字段，前端契约不破）。"""
+
+    id: str = ''
+    scope: str = ''
+    name: str = ''
+    description: str = ''
+    version: str = ''
+    status: str = ''
+    content_hash: str = ''
+    masked_by: Optional[str] = None
+    owner: str = ''
+    owner_id: Optional[int] = None
+    tenant_id: Optional[str] = None
+    created_by: Optional[int] = None
+    updated_at: Optional[str] = None
+    allowed_tools: list = Field(default_factory=list)
+    permissions: list = Field(default_factory=list)
+    budgets: Dict[str, Any] = Field(default_factory=dict)
+    issues: list = Field(default_factory=list)
+
+
+class SkillDraftRequest(BaseModel):
+    """新建 / 保存请求体。
+
+    只接受草稿内容：``scope`` / ``owner_id`` / ``tenant_id`` 由服务端按登录
+    身份填，请求体携带一律 400（字段留在这里是为了给出明确报错，而不是被
+    pydantic 静默忽略）。
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    # None = 本次不改动（PUT 语义；新建时缺省字段按空值处理）
+    name: Optional[str] = None
+    description: Optional[str] = None
+    frontmatter: Optional[Dict[str, Any]] = None
+    body: Optional[str] = None
+    resources: Optional[Dict[str, str]] = None
+    # 以下字段出现即 400（服务端赋值，不接受调用方指定）
+    scope: Optional[str] = None
+    owner_id: Optional[int] = None
+    tenant_id: Optional[str] = None
+    created_by: Optional[int] = None
+
+    def forbidden_identity_fields(self) -> list:
+        return [name for name in ('scope', 'owner_id', 'tenant_id', 'created_by')
+                if getattr(self, name) is not None]
+
+
+class SkillForkRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    name: str = ''
+    description: str = ''
+    scope: Optional[str] = None
+    owner_id: Optional[int] = None
+    tenant_id: Optional[str] = None
+
+    def forbidden_identity_fields(self) -> list:
+        return [name for name in ('scope', 'owner_id', 'tenant_id')
+                if getattr(self, name) is not None]
+
+
+class SkillVersionSchema(BaseModel):
+    version: str
+    content_hash: str = ''
+    created_at: Optional[str] = None
+    created_by: Optional[int] = None
+
+
+class SkillGateSchema(BaseModel):
+    golden_tasks: int = 0
+    passed: bool = False
+    failures: list = Field(default_factory=list)
+    note: str = ''
+
+
+class SkillPublishResponse(BaseModel):
+    skill: SkillViewSchema
+    gate: SkillGateSchema
+    participates_in_trigger: bool = False
+
+
+class SkillReplayItem(BaseModel):
+    skill_id: str
+    name: str = ''
+    scope: str = ''
+    version: str
+    content_hash: str = ''
+    activated_at: Optional[str] = None
+    resolved: bool = False
+    content_hash_matches: bool = False
+    body: str = ''
 
 
 # ---------------------------------------------------------------- providers

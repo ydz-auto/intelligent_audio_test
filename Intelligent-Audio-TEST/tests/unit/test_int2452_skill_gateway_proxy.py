@@ -18,7 +18,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api_gateway.middleware import AuthMiddleware
-from api_gateway.routes import agent_runtime_bp
+from api_gateway.routes import agent_runtime_bp, agent_skill_bp
 
 
 @pytest.fixture()
@@ -29,6 +29,8 @@ def harness():
         app = FastAPI()
         app.add_middleware(AuthMiddleware, auth_mode=mode)
         app.include_router(agent_runtime_bp.router, prefix='/api/v1/agent')
+        # INT-2549：GET /skills 的代理迁到 agent_skill_bp（带权限码）
+        app.include_router(agent_skill_bp.router, prefix='/api/v1/agent')
         agent_runtime_bp._transport_override = httpx.MockTransport(handler)
         return TestClient(app)
 

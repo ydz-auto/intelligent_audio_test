@@ -183,17 +183,37 @@ class ContextAssembler:
 
     # ------------------------------------------------------------ public
 
+    def resolve_skill(self, permissions: Iterable[str],
+                      active_skill: Optional[str], *,
+                      owner_id: Optional[int] = None,
+                      tenant_id: Optional[str] = None):
+        """解析当前激活 Skill（INT-2549；未装配注册表返回 ``None``）。"""
+        if not active_skill or self._skills is None:
+            return None
+        return self._skills.get_visible(active_skill, permissions,
+                                        owner_id=owner_id,
+                                        tenant_id=tenant_id)
+
     def allowed_tools(self, permissions: Iterable[str],
-                      active_skill: Optional[str]) -> Optional[frozenset]:
+                      active_skill: Optional[str], *,
+                      owner_id: Optional[int] = None,
+                      tenant_id: Optional[str] = None,
+                      skill_obj=None) -> Optional[frozenset]:
         """当前 run 的 Skill 工具白名单（§6.3 allowed-tools 交集）。
 
         - 未激活 Skill：返回 ``None``，表示不按 Skill 收窄（仅受用户权限约束）；
         - 激活 Skill 且可见：返回其 ``allowed-tools`` 集合（空集合 = 不装配工具）；
-        - 激活 Skill 但不可见（未注册 / 权限不足）：返回空集合，不泄漏 Skill 内容。
+        - 激活 Skill 但不可见（未注册 / 权限不足 / 非本人）：返回空集合，
+          不泄漏 Skill 内容。
+
+        INT-2549：``owner_id`` / ``tenant_id`` 用于自定义 Skill 的可见范围；
+        ``skill_obj`` 是在办 run 的版本快照（传入即按快照收窄，不重查可见性）。
         """
         if not active_skill or self._skills is None:
             return None
-        skill = self._skills.get_visible(active_skill, permissions)
+        skill = skill_obj or self._skills.get_visible(
+            active_skill, permissions, owner_id=owner_id,
+            tenant_id=tenant_id)
         if skill is None:
             return frozenset()
         # Harness 级常驻工具（长期记忆）不受 Skill allowed-tools 收窄：
@@ -203,6 +223,7 @@ class ContextAssembler:
     def assemble(self, session_id: str, run: AgentRun, *,
                  permissions: Iterable[str] = (),
                  active_skill: Optional[str] = None,
+                 active_skill_obj=None,
                  budget: Optional[ContextBudget] = None,
                  memo_summarizer: Optional[MemoSummarizer] = None
                  ) -> List[LlmMessage]:
@@ -210,12 +231,14 @@ class ContextAssembler:
 
         ``budget`` 为空时不启用 token 压缩（仅按消息条数兜底），供 GET session
         展示等非模型调用路径复用。``memo_summarizer`` 为空时 L3 降级为 L1。
+        ``active_skill_obj`` 是在办 run 的 Skill 版本快照。
         """
         history_runs = self._runs.list_session_runs(session_id, self._max_runs)
         if run.id not in {r.id for r in history_runs}:
             history_runs.append(run)
         messages, system_content = self._collect(
-            history_runs, permissions, active_skill, run)
+            history_runs, permissions, active_skill, run,
+            skill_obj=active_skill_obj)
         # 快照回放：L3 已把旧对话压成备忘，重建上下文时直接复用它，
         # 不再每次重新摘要（否则每轮都要调一次摘要模型）。
         replay = self._latest_memo_snapshot(history_runs)
@@ -272,7 +295,8 @@ class ContextAssembler:
     def _collect(self, history_runs: Sequence[AgentRun],
                  permissions: Iterable[str],
                  active_skill: Optional[str],
-                 run: Optional[AgentRun] = None
+                 run: Optional[AgentRun] = None,
+                 skill_obj=None
                  ) -> Tuple[List[ContextMessage], str]:
         messages: List[ContextMessage] = []
         next_turn = 0
@@ -280,18 +304,25 @@ class ContextAssembler:
             produced, next_turn = self._messages_for_run(item, next_turn)
             messages.extend(produced)
         system = self._system_content(
-            permissions, active_skill, history_runs, run)
+            permissions, active_skill, history_runs, run, skill_obj=skill_obj)
         return messages, system
 
     def _system_content(self, permissions: Iterable[str],
                         active_skill: Optional[str],
                         history_runs: Sequence[AgentRun] = (),
-                        run: Optional[AgentRun] = None) -> str:
+                        run: Optional[AgentRun] = None,
+                        skill_obj=None) -> str:
         parts: List[str] = []
         if self._system_prompt:
             parts.append(self._system_prompt)
         if self._skills is not None:
-            section = self._skills.system_section(permissions, active_skill)
+            # INT-2549：L1 只列当前 run 归属者可见的自定义 Skill；
+            # skill_obj 是在办 run 的版本快照（停用/修改不中途换内容）
+            section = self._skills.system_section(
+                permissions, active_skill,
+                owner_id=getattr(run, 'owner_id', None),
+                tenant_id=getattr(run, 'tenant_id', None),
+                active_skill_obj=skill_obj)
             if section:
                 parts.append(section)
         memory = self._memory_section(run)

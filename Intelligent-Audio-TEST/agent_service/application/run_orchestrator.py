@@ -26,7 +26,7 @@ import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from agent_service.application.approval_service import ApprovalService
 from agent_service.application.cancel_registry import CancelRegistry
@@ -184,7 +184,8 @@ class RunOrchestrator:
                  wakeup: RunWakeup, cancel_registry: CancelRegistry,
                  settings: OrchestratorSettings,
                  approvals: ApprovalService,
-                 sandbox: Optional[SandboxToolExecutor] = None):
+                 sandbox: Optional[SandboxToolExecutor] = None,
+                 skill_snapshots: Optional[Callable[[str], object]] = None):
         self._sessions = sessions
         self._runs = runs
         self._events = events
@@ -201,6 +202,8 @@ class RunOrchestrator:
         self._approvals = approvals
         self._wakeup = wakeup
         self._cancel_registry = cancel_registry
+        # INT-2549：run 的 Skill 版本快照解析（回放不随 Skill 修改变化）
+        self._skill_snapshots = skill_snapshots
         self._settings = settings
 
     # ------------------------------------------------------------ entry
@@ -283,8 +286,25 @@ class RunOrchestrator:
         # Skill 披露口径在发起 run 时固化（run_started）：权限用于 L1 过滤，
         # active_skill 决定是否注入 L2；恢复时读同一条事件，口径不变。
         permissions, active_skill = self._run_scope(run_id)
+        # INT-2549：run 的 Skill 内容按激活时的版本快照固定（停用 / 修改 /
+        # 删除都不中途换内容）；无快照时退回当前可见解析。
+        active_skill_obj = None
+        if active_skill:
+            if self._skill_snapshots is not None:
+                try:
+                    active_skill_obj = self._skill_snapshots(run_id)
+                except Exception:  # noqa: BLE001 - 快照读取失败退回实时解析
+                    logger.warning('读取 run Skill 快照失败 run=%s', run_id,
+                                   exc_info=True)
+            if active_skill_obj is None:
+                active_skill_obj = self._assembler.resolve_skill(
+                    permissions, active_skill,
+                    owner_id=run.owner_id, tenant_id=run.tenant_id)
         # §6.3 allowed-tools ∩ 用户权限：None = 未激活 Skill（不按 Skill 收窄）
-        allowed_tools = self._assembler.allowed_tools(permissions, active_skill)
+        allowed_tools = self._assembler.allowed_tools(
+            permissions, active_skill,
+            owner_id=run.owner_id, tenant_id=run.tenant_id,
+            skill_obj=active_skill_obj)
         # Skill 授权了 tool_search 时，检索到的长尾 MCP 工具允许在本次 run 执行；
         # 未激活 Skill 时同样允许（仅受用户权限约束）。
         allow_discovered = (allowed_tools is None
@@ -351,6 +371,7 @@ class RunOrchestrator:
                 request = self._build_request(
                     run, turn, provider, output_limit,
                     permissions=permissions, active_skill=active_skill,
+                    active_skill_obj=active_skill_obj,
                     allowed_tools=allowed_tools,
                     context_budget=context_budget,
                     memo_summarizer=self._memo_summarizer(
@@ -427,6 +448,9 @@ class RunOrchestrator:
                     self._finish(run_id, RunStatus.FAILED,
                                  error='EMPTY_MODEL_RESPONSE')
                     return
+                # INT-2549 §4.4 第 7 条第④项：正常结束后给出「沉淀为 Skill」
+                # 草案建议。仅事件、不落库；用户确认后由 POST /skills 建 DRAFT。
+                self._emit_skill_suggestion(run_id, active_skill)
                 self._finish(run_id, RunStatus.SUCCEEDED)
                 return
 
@@ -485,13 +509,14 @@ class RunOrchestrator:
                        provider: ResolvedProvider, output_limit: int, *,
                        permissions: Sequence[str] = (),
                        active_skill: Optional[str] = None,
+                       active_skill_obj=None,
                        allowed_tools: Optional[frozenset] = None,
                        context_budget: Optional[ContextBudget] = None,
                        memo_summarizer=None) -> LlmRequest:
         messages = self._assembler.assemble(
             run.session_id, run, permissions=permissions,
-            active_skill=active_skill, budget=context_budget,
-            memo_summarizer=memo_summarizer)
+            active_skill=active_skill, active_skill_obj=active_skill_obj,
+            budget=context_budget, memo_summarizer=memo_summarizer)
         tools = tuple(self._tool_specs(permissions, allowed_tools))
         return LlmRequest(
             messages=tuple(messages), tools=tools,
@@ -1493,6 +1518,38 @@ class RunOrchestrator:
     def _append_error(self, run_id: str, code: str, message: str) -> None:
         self._events.append(run_id, EventType.ERROR, {
             'code': code, 'message': message})
+
+    def _emit_skill_suggestion(self, run_id: str,
+                               active_skill: Optional[str]) -> None:
+        """产出「把本次流程沉淀为 Skill」的草案建议（事件，不落库）。
+
+        只在本次 run 实际调用了 ≥2 个工具（有可沉淀的流程）时给出；回执
+        明确 ``created=false`` / ``requires_confirmation=true``，用户确认后
+        才走 ``POST /api/v1/agent/skills`` 创建 ``DRAFT``，绝不自动落库或发布。
+        """
+        try:
+            calls = self._tool_calls.list_by_run(run_id)
+            tools = sorted({call.tool for call in calls
+                            if call.status is ToolCallStatus.COMPLETED})
+        except Exception:  # noqa: BLE001 - 建议失败不影响 run 收口
+            logger.warning('生成 Skill 沉淀建议失败 run=%s', run_id, exc_info=True)
+            return
+        if len(tools) < 2:
+            return
+        suggested = '-'.join(tools)[:64].strip('-') or 'run-skill'
+        suggested = ''.join(
+            ch if (ch.isalnum() or ch == '-') else '-'
+            for ch in suggested.lower().replace('_', '-')).strip('-')
+        if not suggested or not suggested[0].isalnum():
+            suggested = f'run-{suggested}'[:64].strip('-')
+        self._events.append(run_id, EventType.SKILL_DRAFT_SUGGESTED, {
+            'suggested_name': suggested,
+            'description': '基于本次 run 的执行流程沉淀的 Skill 草案',
+            'tools_used': tools,
+            'source_skill': active_skill,
+            'created': False,
+            'requires_confirmation': True,
+        })
 
     def _finish(self, run_id: str, status: RunStatus,
                 *, error: Optional[str] = None,

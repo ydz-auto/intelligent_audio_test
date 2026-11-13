@@ -221,6 +221,12 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(agent_runtime_router, prefix='/api/v1/agent',
                        tags=['agent-runtime'])
 
+    # INT-2549：自定义 Skill（CRUD / 导入导出 / 发布 / fork / 版本），
+    # 权限码 agent:skill:read / agent:skill:manage，透明转发到 agent_service
+    from api_gateway.routes.agent_skill_bp import router as agent_skill_router
+    app.include_router(agent_skill_router, prefix='/api/v1/agent',
+                       tags=['agent-skills'])
+
     # INT-2488：用户模型供应商（provider 管理 / 验证 / 模型目录），
     # 权限码 agent:provider:manage；审计只记 provider_id 与操作类型
     from api_gateway.routes.agent_provider_bp import router as agent_provider_router

@@ -12,7 +12,6 @@ Skill 名（与 SkillRegistry 目录序一致）。0 分视为未命中。
 from __future__ import annotations
 
 import os
-import re
 from typing import Dict, Iterable, List, Tuple
 
 from agent_service.application.skill_registry import SkillRegistry
@@ -29,9 +28,6 @@ M1_SKILLS: Tuple[str, ...] = (
 )
 EXTRA_SKILLS: Tuple[str, ...] = ('platform-reference',)
 ALL_SKILLS: Tuple[str, ...] = M1_SKILLS + EXTRA_SKILLS
-
-_TRIGGER_SECTION = re.compile(r'触发词[：:]\s*(.+?)(?:。|不适用|$)', re.S)
-_SPLIT = re.compile(r'[、，,；;。\s]+')
 
 # 域词汇表：每个 Skill 的口语核心词（与 L1 触发词同域，不跨域借词）。
 # 词汇表只做「同义收敛」，不替代 description —— 测试同时校验这些词能在
@@ -89,17 +85,15 @@ def load_skills() -> SkillRegistry:
 
 
 def trigger_terms(description: str) -> List[str]:
-    """L1 描述的「触发词：」段 → 小写词列表（去重保序）。"""
-    text = ' '.join((description or '').split())
-    match = _TRIGGER_SECTION.search(text)
-    raw = match.group(1) if match else ''
-    seen, ordered = set(), []
-    for term in _SPLIT.split(raw):
-        token = term.strip().lower()
-        if len(token) >= 2 and token not in seen:
-            seen.add(token)
-            ordered.append(token)
-    return ordered
+    """L1 描述的「触发词：」段 → 小写词列表（去重保序）。
+
+    INT-2549：实现迁到 ``agent_service.application.skill_trigger``（发布门槛
+    与评测共用同一份），这里只做转出，不再各写一套。
+    """
+    from agent_service.application.skill_trigger import (
+        trigger_terms as _trigger_terms,
+    )
+    return _trigger_terms(description)
 
 
 def skill_terms(skill_name: str, description: str) -> List[str]:
@@ -114,12 +108,11 @@ def skill_terms(skill_name: str, description: str) -> List[str]:
 
 
 def score_skill(terms: Iterable[str], query: str) -> Tuple[int, int]:
-    """返回 (分数, 最长命中词长度)。命中词按长度平方加权。"""
-    lowered = (query or '').lower()
-    hits = [term for term in terms if term in lowered]
-    score = sum(len(term) ** 2 for term in hits)
-    longest = max((len(term) for term in hits), default=0)
-    return score, longest
+    """返回 (分数, 最长命中词长度)。命中词按长度平方加权（生产侧同一实现）。"""
+    from agent_service.application.skill_trigger import (
+        score_skill as _score_skill,
+    )
+    return _score_skill(terms, query)
 
 
 def route(query: str, registry: SkillRegistry = None) -> Tuple:

@@ -196,3 +196,75 @@ def _is_sensitive_key(key: str) -> bool:
     # INT-1177：复数 _api_keys 与单数 _api_key 平行（如 xxx_api_keys）
     return (normalized.endswith('_api_key') or normalized.endswith('_secret_key')
             or normalized.endswith('_api_keys'))
+
+
+# ---------------------------------------------------------------- 判据复用（INT-2549）
+#
+# 自定义 Skill 落库前的「禁止凭证」校验复用与脱敏完全相同的判据：能掩的
+# 才算敏感，避免两套正则漂移。不含已掩码产物（``****``），保证幂等。
+
+_MASKED_MARK = '****'
+
+# 占位符形态（文档示例 / 模板变量）：<JWT>、${API_KEY}、{{token}}、Bearer
+# 这类值不是真实凭证，判据要放行——否则平台 Skill 正文里的
+# ``Authorization: Bearer <JWT>`` 会被误判成凭证而拒绝 fork / 导入。
+_PLACEHOLDER_PATTERN = re.compile(
+    r'<[^>]*>|\$\{[^}]*\}|\{\{[^}]*\}\}|^\.{2,}$|^x{3,}$|^Bearer$|^\$+\{?$',
+    re.IGNORECASE)
+_PLACEHOLDER_WORDS = frozenset({
+    'bearer', 'redacted', 'changeme', 'your-key', 'your_key', 'your-token',
+    'token', 'password', 'secret', 'api-key', 'api_key', '****', '***',
+})
+
+
+def _is_placeholder(value: str) -> bool:
+    text = (value or '').strip().strip('"\'')
+    if not text:
+        return True
+    lowered = text.lower()
+    if lowered in _PLACEHOLDER_WORDS:
+        return True
+    return bool(_PLACEHOLDER_PATTERN.search(text))
+
+
+def has_secret(text: Any) -> bool:
+    """自由文本是否含凭证（与 ``mask_text`` 同一组正则 / 键表）。
+
+    命中即视为「禁止落库」的内容（Skill 正文 / frontmatter / 资源）；
+    未命中不代表安全（规则化判据，存在漏报）。占位符（``<JWT>``、
+    ``${API_KEY}``、``Bearer``）不算凭证。
+    """
+    if not isinstance(text, str) or not text:
+        return False
+    if _BEARER_PATTERN.search(text):
+        return True
+    if _OPENAI_KEY_PATTERN.search(text):
+        return True
+    for match in _KV_PATTERN.finditer(text):
+        inner = match.group('dq')
+        if inner is None:
+            inner = match.group('sq')
+        if inner is not None:
+            value = inner.strip()
+            if value and not value.isdigit() \
+                    and _MASKED_MARK not in value \
+                    and not _is_placeholder(value):
+                return True
+            continue
+        if match.group('arr') is not None:
+            if match.group('arr').strip():
+                return True
+            continue
+        if match.group('obj') is not None:
+            return True
+        value = (match.group('value') or '').strip()
+        if value.lower().startswith('bearer '):
+            # 已是游离 Bearer 且 token 段过短（如 ``Bearer <JWT>``）不算凭证
+            if _BEARER_PATTERN.search(value):
+                return True
+            continue
+        if value and not value.isdigit() \
+                and _MASKED_MARK not in value \
+                and not _is_placeholder(value):
+            return True
+    return False

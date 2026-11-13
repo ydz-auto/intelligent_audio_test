@@ -10,7 +10,12 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from agent_service.domain.enums import ApprovalStatus, RunStatus
+from agent_service.domain.enums import (
+    ApprovalStatus, RunStatus, SkillScope, SkillStatus,
+)
+from agent_service.domain.model.agent_skill import (
+    AgentRunSkill, AgentSkill, AgentSkillVersion,
+)
 from agent_service.domain.model.entities import (
     AgentApproval, AgentArtifact, AgentContextSnapshot, AgentLlmProvider,
     AgentRun, AgentRunEvent, AgentSession, AgentStep, AgentToolCall,
@@ -247,3 +252,64 @@ class LlmProviderRepository(ABC):
     def find_first_active(self, owner_id: int, tenant_id: str,
                           exclude_id: Optional[str] = None
                           ) -> Optional[AgentLlmProvider]: ...
+
+
+class AgentSkillRepository(ABC):
+    """自定义 Skill（TENANT / USER 层）仓储（INT-2549 §4.4 / §10）。
+
+    唯一性由数据库局部唯一索引兜底（``(scope, owner_id, name)`` /
+    ``(scope, tenant_id, name)``）；仓储层不静默覆盖，冲突由应用层判定。
+    正文只在版本表，当前版本用 ``agent_skill.version`` 指针引用。
+    """
+
+    @abstractmethod
+    def add(self, skill: AgentSkill) -> AgentSkill: ...
+
+    @abstractmethod
+    def get(self, skill_id: str) -> Optional[AgentSkill]: ...
+
+    @abstractmethod
+    def find_by_name(self, scope: SkillScope, name: str, *,
+                     owner_id: Optional[int] = None,
+                     tenant_id: Optional[str] = None
+                     ) -> Optional[AgentSkill]:
+        """同作用域同名查找（冲突判定用；含 DISABLED 行，删除后不占名）。"""
+
+    @abstractmethod
+    def list_visible(self, *, tenant_id: str, owner_id: int,
+                     scopes: Optional[Sequence[SkillScope]] = None,
+                     statuses: Optional[Sequence[SkillStatus]] = None
+                     ) -> List[AgentSkill]:
+        """本人可见：``USER.owner_id=本人`` + ``TENANT.tenant_id=本租户``。"""
+
+    @abstractmethod
+    def list_active(self) -> List[AgentSkill]:
+        """全部 ``ACTIVE`` 自定义行（供 CompositeSkillRepository 合并去重）。"""
+
+    @abstractmethod
+    def update(self, skill_id: str, **fields) -> bool:
+        """条件更新（含 ``version`` 指针 +1）；返回是否命中。"""
+
+    @abstractmethod
+    def delete(self, skill_id: str) -> bool:
+        """删除当前行；版本行保留（历史 run 依赖其回放）。"""
+
+    @abstractmethod
+    def add_version(self, version: AgentSkillVersion) -> AgentSkillVersion: ...
+
+    @abstractmethod
+    def list_versions(self, skill_id: str) -> List[AgentSkillVersion]: ...
+
+    @abstractmethod
+    def get_version(self, skill_id: str,
+                    version: str) -> Optional[AgentSkillVersion]: ...
+
+
+class AgentRunSkillRepository(ABC):
+    """run 激活快照仓储（INT-2549）：一次激活 / 切换追加一行，不覆盖。"""
+
+    @abstractmethod
+    def add(self, snapshot: AgentRunSkill) -> AgentRunSkill: ...
+
+    @abstractmethod
+    def list_by_run(self, run_id: str) -> List[AgentRunSkill]: ...

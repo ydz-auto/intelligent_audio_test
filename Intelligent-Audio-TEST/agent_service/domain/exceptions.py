@@ -131,6 +131,61 @@ class SkillValidationError(AgentDomainError):
         super().__init__(f'Skill 校验失败（{len(self.issues)} 项）: {detail}')
 
 
+# ---------------------------------------------------------------- 自定义 Skill（INT-2549）
+
+
+class SkillServiceError(AgentDomainError):
+    """自定义 Skill 域异常基类：``code`` 即接口错误码（§4.4 枚举）。"""
+
+    code = 'SKILL_VALIDATION_FAILED'
+
+    def __init__(self, message: str, *, issues=()):
+        self.issues = tuple(issues or ())
+        super().__init__(message)
+
+
+class SkillNotFound(SkillServiceError):
+    """Skill 不存在 / 非本人可见 / 无写入口（对外统一 404，不泄漏存在性）。"""
+
+    code = 'SKILL_NOT_FOUND'
+
+
+class SkillNameConflict(SkillServiceError):
+    """同名冲突：与 PLATFORM 同名或同作用域重名（拒绝，不静默覆盖）。"""
+
+    code = 'SKILL_NAME_CONFLICT'
+
+
+class SkillPermissionEscalation(SkillServiceError):
+    """``permissions`` 超出当前用户权限（不得提权）。"""
+
+    code = 'SKILL_PERMISSION_ESCALATION'
+
+
+class SkillStatusInvalid(SkillServiceError):
+    """状态迁移非法（例如 ACTIVE 才能停用、DRAFT 才能发布）。"""
+
+    code = 'SKILL_STATUS_INVALID'
+
+
+class SkillImportInvalid(SkillServiceError):
+    """zip 导入非法（结构 / 体积 / 路径 / 压缩比 / 二进制）。"""
+
+    code = 'SKILL_IMPORT_INVALID'
+
+
+class SkillInjectionDetected(SkillServiceError):
+    """正文命中注入规则：可存草稿，禁止发布为 ACTIVE。"""
+
+    code = 'SKILL_INJECTION_DETECTED'
+
+
+class SkillGateFailed(SkillServiceError):
+    """发布门槛未通过（golden tasks 数量 / 触发判定）。"""
+
+    code = 'SKILL_GATE_FAILED'
+
+
 # ---------------------------------------------------------------- 长期记忆（INT-2490）
 
 

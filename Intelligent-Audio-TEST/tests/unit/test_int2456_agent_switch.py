@@ -18,7 +18,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api_gateway.routes import agent_provider_bp, agent_runtime_bp
+from api_gateway.middleware import AuthMiddleware
+from api_gateway.routes import agent_provider_bp, agent_runtime_bp, agent_skill_bp
 from api_gateway.routes.agent_guard import (
     AGENT_DISABLED_CODE, AGENT_DISABLED_MESSAGE, require_agent_enabled,
 )
@@ -34,8 +35,12 @@ def harness():
 
     def make_app(handler=None):
         app = FastAPI()
+        # INT-2549：/skills 代理带 RBAC 权限码，测试里用开放模式注入 ['*']
+        app.add_middleware(AuthMiddleware, auth_mode='off')
         app.include_router(agent_runtime_bp.router, prefix='/api/v1/agent')
         app.include_router(agent_provider_bp.router, prefix='/api/v1/agent')
+        # INT-2549：/skills 代理迁到 agent_skill_bp（同一总开关门控）
+        app.include_router(agent_skill_bp.router, prefix='/api/v1/agent')
 
         @app.get('/api/v1/tasks')
         def business_route():  # 人工业务流程的代表路由
