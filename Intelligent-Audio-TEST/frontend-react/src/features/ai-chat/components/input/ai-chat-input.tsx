@@ -16,6 +16,7 @@ import {
 } from '@/components/ai-elements/prompt-input'
 
 import { getInputControlState, getSubmittableInputText } from '@/features/ai-chat/lib/input'
+import { AgentProviderStatusChip } from '@/features/agent-providers/components/agent-provider-status-chip'
 import {
   CHAT_CHANNEL,
   type ChatChannel,
@@ -127,6 +128,12 @@ export function AiChatInput({
 
   return (
     <div className={compact ? 'grid shrink-0 gap-2 px-1 md:pb-2' : 'grid shrink-0 gap-4 px-1 md:pb-4'}>
+      {/* 平台 Agent 通道：服务端供应商状态摘要（INT-2493，与供应商管理页同一 query key） */}
+      {channel === CHAT_CHANNEL.PLATFORM && (
+        <div className='flex min-w-0 items-center px-2'>
+          <AgentProviderStatusChip compact={compact} />
+        </div>
+      )}
       <PromptInput
         className='border-border/70 bg-background/95 dark:bg-background/80 ring-foreground/5 shadow-[0_18px_60px_-32px_rgba(0,0,0,0.65)] ring-1 rounded-xl overflow-hidden transition-all duration-200 focus-within:border-primary/45 focus-within:ring-primary/15 focus-within:shadow-[0_22px_70px_-34px_rgba(0,0,0,0.75)]'
         onSubmit={handleSubmit}

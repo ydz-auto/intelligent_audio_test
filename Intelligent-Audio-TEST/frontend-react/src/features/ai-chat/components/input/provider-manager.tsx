@@ -8,10 +8,15 @@
  */
 import { Eye, EyeOff, PenLine, Plus, Settings2, Star, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { usePermissions } from '@/application/hooks/use-permissions'
+import {
+  AGENT_PROVIDER_MANAGE_PERMISSION,
+} from '@/features/agent-providers/constants'
 import {
   Dialog,
   DialogContent,
@@ -286,6 +291,8 @@ export function ProviderManager({
   onTestConnection,
   onFetchModels,
 }: ProviderManagerProps) {
+  const { hasPermission } = usePermissions()
+  const canManageServerProvider = hasPermission(AGENT_PROVIDER_MANAGE_PERMISSION)
   const [view, setView] = useState<'list' | 'form'>('list')
   const [editing, setEditing] = useState<LlmProvider | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<LlmProvider | null>(null)
@@ -334,6 +341,25 @@ export function ProviderManager({
             <DialogTitle>{PROVIDER_MANAGER_COPY.title}</DialogTitle>
             <DialogDescription>{PROVIDER_MANAGER_COPY.description}</DialogDescription>
           </DialogHeader>
+
+          {/* INT-2493：本机供应商降级为「直连 Demo」，平台 Agent 走服务端配置 */}
+          <div className='border-warning/40 bg-warning/10 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2'>
+            <Badge variant='warning'>{PROVIDER_MANAGER_COPY.demoBadge}</Badge>
+            <span className='text-muted-foreground min-w-0 flex-1 text-xs'>
+              {PROVIDER_MANAGER_COPY.demoHint}
+            </span>
+            {canManageServerProvider && (
+              <Button
+                className='text-primary h-6 shrink-0 px-1.5 text-xs underline underline-offset-2'
+                render={<Link onClick={handleClose} to='/agent-providers' />}
+                size='xs'
+                type='button'
+                variant='ghost'
+              >
+                {PROVIDER_MANAGER_COPY.demoServerLink}
+              </Button>
+            )}
+          </div>
 
           {view === 'form' ? (
             <ProviderForm

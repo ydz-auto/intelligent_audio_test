@@ -266,6 +266,48 @@ describe('useChatHandler 平台 Agent 通道', () => {
     expect(latest[1].versions[0].content).toBe(AGENT_ERROR_COPY.serviceUnavailable)
   })
 
+  it('无可用供应商（INT-2493）→ error 事件携带错误码，页面落配置引导态', async () => {
+    const { result } = renderPlatformChat()
+    await act(async () => {
+      result.current.sendChat('你好')
+    })
+
+    act(() => {
+      streamOptions?.onEvent({
+        type: 'error',
+        runId: 'r-1',
+        sequence: 1,
+        timestamp: 't',
+        errorCode: 'LLM_PROVIDER_NOT_CONFIGURED',
+        errorMessage: 'LLM_PROVIDER_NOT_CONFIGURED：未配置可用的模型供应商',
+      })
+    })
+
+    expect(latest[1].status).toBe(MESSAGE_STATUS.ERROR)
+    expect(latest[1].errorCode).toBe('LLM_PROVIDER_NOT_CONFIGURED')
+  })
+
+  it('无可用供应商但只到 run_finished（error 事件缺失）→ 仍落配置引导态', async () => {
+    const { result } = renderPlatformChat()
+    await act(async () => {
+      result.current.sendChat('你好')
+    })
+
+    act(() => {
+      streamOptions?.onEvent({
+        type: 'run_finished',
+        runId: 'r-1',
+        sequence: 1,
+        timestamp: 't',
+        status: AGENT_RUN_STATUS.FAILED,
+        error: 'LLM_PROVIDER_NOT_CONFIGURED：未配置可用的模型供应商',
+      })
+    })
+
+    expect(latest[1].status).toBe(MESSAGE_STATUS.ERROR)
+    expect(latest[1].errorCode).toBe('LLM_PROVIDER_NOT_CONFIGURED')
+  })
+
   it('run 失败但已有正文：保留正文 + FAILED 徽标，不清空内容', async () => {
     const { result } = renderPlatformChat()
     await act(async () => {

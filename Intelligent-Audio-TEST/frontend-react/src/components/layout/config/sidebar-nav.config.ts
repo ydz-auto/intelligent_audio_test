@@ -7,6 +7,7 @@ import {
   FileText,
   Gauge,
   Headphones,
+  KeyRound,
   ListChecks,
   MessagesSquare,
   Music,
@@ -51,6 +52,13 @@ export const ROOT_SIDEBAR_NAV: NavGroup[] = [
         url: '/ai-chat',
         icon: MessagesSquare,
         requiredPermission: 'report:read',
+      },
+      {
+        // INT-2493 模型供应商管理（§6.4 / §11）：权限码与网关 / 路由守卫同集合
+        title: '模型供应商',
+        url: '/agent-providers',
+        icon: KeyRound,
+        requiredPermission: 'agent:provider:manage',
       },
     ],
   },

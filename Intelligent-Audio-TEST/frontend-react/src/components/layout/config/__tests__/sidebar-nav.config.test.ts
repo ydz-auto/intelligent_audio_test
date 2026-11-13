@@ -23,9 +23,16 @@ describe('ROOT_SIDEBAR_NAV 完整性', () => {
     ])
   })
 
-  it('每组至少一项，条目总数与规范一致（INT-486 六组十四项；INT-1153 二轮返工后导航栏无「连接你的 agent」条目）', () => {
-    expect(allItems.length).toBe(14)
+  it('每组至少一项，条目总数与规范一致（INT-486 六组十四项 + INT-2493 模型供应商=十五项；INT-1153 二轮返工后导航栏无「连接你的 agent」条目）', () => {
+    expect(allItems.length).toBe(15)
     expect(ROOT_SIDEBAR_NAV.every((g) => g.items.length >= 1)).toBe(true)
+  })
+
+  it('AI 工具组含模型供应商入口（INT-2493，权限码 agent:provider:manage）', () => {
+    const aiTools = ROOT_SIDEBAR_NAV.find((g) => g.id === 'ai-tools')
+    const provider = aiTools?.items.find((i) => i.url === '/agent-providers')
+    expect(provider?.title).toBe('模型供应商')
+    expect(provider?.requiredPermission).toBe('agent:provider:manage')
   })
 
   it('总览组首项为「概览」指向 /dashboard', () => {

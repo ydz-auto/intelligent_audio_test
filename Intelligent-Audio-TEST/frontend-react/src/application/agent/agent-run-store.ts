@@ -42,6 +42,10 @@ import {
   type ChatMessageStatus,
 } from '@/domain/models/aiChat'
 import {
+  AGENT_PROVIDER_NOT_CONFIGURED_CODE,
+  isProviderNotConfiguredError,
+} from '@/domain/models/agentProvider'
+import {
   AGENT_STREAM_STATUS,
   cancelAgentRun,
   createAgentRun,
@@ -336,11 +340,11 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     closeStream()
   }
 
-  const failRun = (message: string) => {
+  const failRun = (message: string, code?: string) => {
     patchAssistant((current) => ({
       ...current,
       status: CHAT_MESSAGE_STATUS.ERROR,
-      errorCode: 'AGENT_ERROR',
+      errorCode: code || 'AGENT_ERROR',
       versions: [
         {
           id: current.versions[0]?.id ?? `${current.key}-v1`,
@@ -414,26 +418,34 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       }
       case AGENT_EVENT_TYPE.RUN_FINISHED: {
         const now = Date.now()
-        patchAssistant((message) =>
-          message.versions[0]?.content || assistantContent
+        // INT-2493 无可用供应商：即使 run_finished 先到（error 事件缺失），也落配置引导态
+        const providerMissing = isProviderNotConfiguredError(event.error)
+        patchAssistant((message) => {
+          const terminal = toTerminalPatch(event.status, message.startedAt, now)
+          const withGuidance: Partial<ChatMessage> = providerMissing
             ? {
-                ...message,
-                ...toTerminalPatch(event.status, message.startedAt, now),
+                ...terminal,
+                status: CHAT_MESSAGE_STATUS.ERROR,
+                errorCode: AGENT_PROVIDER_NOT_CONFIGURED_CODE,
               }
-            : {
-                ...message,
-                ...toTerminalPatch(event.status, message.startedAt, now),
-                versions: [
-                  {
-                    id: message.versions[0]?.id ?? `${message.key}-v1`,
-                    content:
-                      event.status === AGENT_RUN_STATUS.CANCELLED
-                        ? AGENT_ERROR_COPY.cancelled
-                        : event.error || AGENT_ERROR_COPY.runFailed,
-                  },
-                ],
-              }
-        )
+            : terminal
+          if (message.versions[0]?.content || assistantContent) {
+            return { ...message, ...withGuidance }
+          }
+          return {
+            ...message,
+            ...withGuidance,
+            versions: [
+              {
+                id: message.versions[0]?.id ?? `${message.key}-v1`,
+                content:
+                  event.status === AGENT_RUN_STATUS.CANCELLED
+                    ? AGENT_ERROR_COPY.cancelled
+                    : event.error || AGENT_ERROR_COPY.runFailed,
+              },
+            ],
+          }
+        })
         assistantKey = null
         finishRun(event.status, event.error)
         return
@@ -447,7 +459,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
           }
           return
         }
-        failRun(event.errorMessage || AGENT_ERROR_COPY.runFailed)
+        failRun(event.errorMessage || AGENT_ERROR_COPY.runFailed, event.errorCode)
         return
       }
       case AGENT_EVENT_TYPE.RUN_STARTED: {

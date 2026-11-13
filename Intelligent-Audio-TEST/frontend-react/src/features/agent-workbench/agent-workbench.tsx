@@ -6,7 +6,7 @@
  * Demo 态：头行 Demo 徽标（§3.10 落点②）；报告上下文选择器整块不渲染（§3.1B/§3.10）。
  * RBAC（§5）：report:read 门槛同整页——device_admin 无 report:read 时整窗不渲染。
  */
-import { Maximize2, Minus, Sparkles, X } from 'lucide-react'
+import { KeyRound, Maximize2, Minus, Sparkles, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from '@tanstack/react-router'
@@ -22,6 +22,11 @@ import { usePermissions } from '@/application/hooks/use-permissions'
 import { useAgentRunHost } from '@/application/agent/use-agent-run'
 import { useAgentRunStore } from '@/application/agent/agent-run-store'
 import { AgentConnectButton } from '@/components/layout/components/agent-connect-button'
+import {
+  AGENT_PROVIDERS_COPY,
+  AGENT_PROVIDERS_ROUTE,
+  AGENT_PROVIDER_MANAGE_PERMISSION,
+} from '@/features/agent-providers/constants'
 
 import {
   normalizeChatChannel,
@@ -260,6 +265,12 @@ export function AgentWorkbench() {
     setOpen(false)
   }
 
+  /** 模型供应商配置（INT-2493）：关闭浮窗并直达 /agent-providers */
+  const handleOpenProviders = () => {
+    setOpen(false)
+    void navigate({ to: AGENT_PROVIDERS_ROUTE })
+  }
+
   const floatingWindow = (
     <div className='bg-background fixed right-4 bottom-4 z-50 flex w-[min(28rem,calc(100vw-1rem))] max-h-[min(44rem,calc(100svh-5rem))] flex-col overflow-hidden rounded-2xl border shadow-2xl'>
       {/* 头行（§3.1B）：Demo 徽标 §3.10 落点②；INT-1153 二轮返工：炫彩
@@ -280,6 +291,26 @@ export function AgentWorkbench() {
           </TooltipContent>
         </Tooltip>
         <div className='ms-auto flex items-center gap-1'>
+          {hasPermission(AGENT_PROVIDER_MANAGE_PERMISSION) && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    aria-label={AGENT_PROVIDERS_COPY.pageTitle}
+                    className='text-muted-foreground hover:text-foreground size-7'
+                    onClick={handleOpenProviders}
+                    type='button'
+                    variant='ghost'
+                  >
+                    <KeyRound className='size-4' />
+                  </Button>
+                }
+              />
+              <TooltipContent>
+                <p>{AGENT_PROVIDERS_COPY.pageTitle}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
           <AgentConnectButton compact />
           <Button
             aria-label='最小化'

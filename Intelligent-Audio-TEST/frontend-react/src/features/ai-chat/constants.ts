@@ -329,10 +329,13 @@ export const AGENT_RUN_STATUS_LABELS = {
   BUDGET_EXCEEDED: '超出预算',
 } as const
 
-/** 供应商管理弹窗文案（§3.11/§6） */
+/** 供应商管理弹窗文案（§3.11/§6；INT-2493：本机供应商降级为「直连 Demo」） */
 export const PROVIDER_MANAGER_COPY = {
   title: 'LLM 供应商管理',
   description: '配置你自己的 AI 对话连接：填写供应商名称、API 地址与密钥。密钥仅保存在本机。',
+  demoBadge: '直连 Demo',
+  demoHint: '仅存本机浏览器；平台 Agent 一律使用服务端加密保存的模型供应商。',
+  demoServerLink: '去配置平台模型供应商',
   addProvider: '添加供应商',
   name: '名称',
   baseUrl: 'API Base URL',
@@ -354,7 +357,7 @@ export const PROVIDER_MANAGER_COPY = {
   fetchSuccess: '已获取 {n} 个模型',
   deleteTitle: '删除供应商？',
   deleteDesc: '该供应商的密钥将从本机移除，确定继续？',
-  footerHint: 'Demo 预览：供应商仅存本机，不上传平台；切换模型/供应商后新对话生效。',
+  footerHint: '直连 Demo：供应商仅存本机，不上传平台；切换模型/供应商后新对话生效。',
   baseUrlPlaceholder: 'https://api.openai.com/v1',
   addEditTitle: '添加供应商',
   editTitle: '编辑供应商',
