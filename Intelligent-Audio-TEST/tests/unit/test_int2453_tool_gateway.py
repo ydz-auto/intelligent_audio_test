@@ -201,6 +201,55 @@ def test_rest_network_error_is_plain_text():
     assert '不可用' in result.content
 
 
+# ------------------------------------------------ 上游内部实现细节脱敏（INT-2548）
+
+_PSYCOPG2_ERROR = (
+    '(psycopg2.errors.UndefinedFunction) operator does not exist: json ~~ text\n'
+    'LINE 4: ... AND (devices.supported_algorithms LIKE \'%\' || \'["asr"]\'::JSON || \'%\')\n'
+    'HINT: No operator matches the given name and argument types.'
+)
+
+
+def test_upstream_db_internals_are_not_relayed_to_model():
+    """PG 驱动异常 / SQL 原文 / HINT 不回灌模型，只给普通失败文案。"""
+    rest = FakeRestClient(status=400,
+                          payload={'success': False, 'code': 400,
+                                   'message': _PSYCOPG2_ERROR})
+    result = make_gateway(rest).execute(
+        call('report_query', {'action': 'list'}), ctx())
+
+    assert not result.ok and result.error_code == UPSTREAM_ERROR
+    assert '目标接口返回 400' in result.content
+    for leak in ('psycopg2', 'operator does not exist', 'LINE 4', 'HINT',
+                 'supported_algorithms', '::JSON'):
+        assert leak not in result.content, f'内部实现细节泄漏：{leak}'
+
+
+def test_upstream_plain_error_message_is_kept():
+    """非内部细节的上游正文照旧透传（模型要知道该改哪个参数）。"""
+    rest = FakeRestClient(status=400,
+                          payload={'success': False, 'code': 400,
+                                   'message': 'algorithm_type 取值非法'})
+    result = make_gateway(rest).execute(
+        call('report_query', {'action': 'list'}), ctx())
+
+    assert result.error_code == UPSTREAM_ERROR
+    assert 'algorithm_type 取值非法' in result.content
+
+
+def test_upstream_validation_error_is_sanitized_too():
+    rest = FakeRestClient(status=422,
+                          payload={'detail': 'Traceback (most recent call last):'
+                                             ' psycopg2 挂起'})
+    result = make_gateway(rest).execute(
+        call('report_query', {'action': 'list'}), ctx())
+
+    assert result.error_code == INVALID_ARGUMENTS
+    assert '参数校验失败' in result.content
+    assert 'psycopg2' not in result.content
+    assert 'Traceback' not in result.content
+
+
 def test_mcp_tool_direct_call_is_permission_checked():
     rest = FakeRestClient(payload={'items': []})
     gateway = make_gateway(rest)
