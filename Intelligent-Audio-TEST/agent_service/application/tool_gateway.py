@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """只读 ToolGateway（INT-2453，方案 §6.1 / §6.3）。
 
-意图工具（31 个注册项，M0 启用的 4 个）→ 目标 REST；逐调用校验：
+意图工具（31 个注册项；M0 启用 4 个，M1 各域卡按域追加只读工具——
+当前含 ``algorithm_query``）→ 目标 REST；逐调用校验：
 
 1. 用户 / 租户：身份来自网关注入，回源请求带同一 Authorization；
 2. 权限：intent 工具声明 permissions（OR 语义，``*`` 通配），不满足返回

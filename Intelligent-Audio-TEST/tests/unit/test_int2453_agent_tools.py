@@ -88,8 +88,9 @@ def test_intent_registry_has_31_unique_tools():
     assert len(INTENT_TOOLS) == 31
     names = [t.name for t in INTENT_TOOLS]
     assert len(names) == len(set(names))
-    assert ENABLED_TOOLS == {
-        'platform_contract', 'tool_search', 'task_query', 'report_query'}
+    # M0 四项必须始终可用；M1 起各域卡按域追加只读工具（INT-2464：algorithm_query）
+    assert {'platform_contract', 'tool_search', 'task_query',
+            'report_query'} <= ENABLED_TOOLS
 
 
 def test_reserved_tool_names_present_and_disabled():
