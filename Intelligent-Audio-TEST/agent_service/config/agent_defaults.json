@@ -43,7 +43,10 @@
   "approval": {
     "ttl_seconds": 900,
     "expiry_scan_limit": 200,
-    "expiry_scan_interval_seconds": 30
+    "expiry_scan_interval_seconds": 30,
+    "split_threshold": 20,
+    "split_chunk_size": 1,
+    "max_objects": 100
   },
   "skills": {
     "body_max_lines": 500,

@@ -211,6 +211,23 @@ class Config(BaseConfig):
     APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS = _get_float(
         'AGENT_APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS',
         float(_APPROVAL_DEFAULTS.get('expiry_scan_interval_seconds', 30)))
+    # ===== 拆单（INT-2571，§9.4.1）=====
+    # 单次影响 > 阈值的显式枚举对象必须拆成 N 张审批单（逐张决策、全批批准后
+    # 一次执行）。阈值默认 20 且**只允许收紧**：请求侧没有放宽入口，配置写大
+    # 也会被 20 夹住（§9.4「单次影响 > 20 个对象必须单条审批」是硬口径）。
+    APPROVAL_SPLIT_THRESHOLD_CAP = 20
+    APPROVAL_SPLIT_THRESHOLD = max(1, min(
+        APPROVAL_SPLIT_THRESHOLD_CAP,
+        _get_int('AGENT_APPROVAL_SPLIT_THRESHOLD',
+                 int(_APPROVAL_DEFAULTS.get('split_threshold', 20)))))
+    # 拆单粒度：每几张单一块；默认 1（每对象一张单）
+    APPROVAL_SPLIT_CHUNK_SIZE = max(1, _get_int(
+        'AGENT_APPROVAL_SPLIT_CHUNK_SIZE',
+        int(_APPROVAL_DEFAULTS.get('split_chunk_size', 1))))
+    # 单次调用对象上限：超过不建单，提案前拒绝 APPROVAL_OBJECT_LIMIT_EXCEEDED
+    APPROVAL_MAX_OBJECTS = max(1, _get_int(
+        'AGENT_APPROVAL_MAX_OBJECTS',
+        int(_APPROVAL_DEFAULTS.get('max_objects', 100))))
 
     # ===== 驱动提案（INT-2467，§6.5）=====
     # 发布开关：默认关闭（T2 隔离测试未启用前不发布；发布另需 DESTRUCTIVE 审批）

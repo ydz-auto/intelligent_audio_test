@@ -82,9 +82,25 @@ DIMENSION_BODY_FIELDS: Tuple[str, ...] = (
 )
 CATEGORY_BODY_FIELDS: Tuple[str, ...] = (
     'name', 'description', 'icon', 'visibility')
+# 重评估 body 里的数组字段（§9.4.1 / INT-2571）：注册期拆单探针据此枚举写
+# 工具数组参数，未在 ``shared.agent_tools.approval_split.ARRAY_PARAMS`` 分类
+# 的判红。``case_ids`` 只在 mode=selected 时决定影响面。
+REEVALUATE_BODY_ARRAY_FIELDS: Tuple[str, ...] = ('case_ids', 'dimension_ids')
 REEVALUATE_BODY_FIELDS: Tuple[str, ...] = (
-    'task_id', 'reevaluate_type', 'reextract_device_output',
-    'case_ids', 'dimension_ids', 'mode')
+    ('task_id', 'reevaluate_type', 'reextract_device_output')
+    + REEVALUATE_BODY_ARRAY_FIELDS + ('mode',))
+
+# 各动作 body 里的数组字段（§9.4.1 注册期拆单探针的枚举来源）。
+# 维度端点的 api_endpoints / required_inputs / output_fields 在网关是
+# ``Any``（既可能是数组也可能是对象），这里按数组登记 —— 宁可多分类一项，
+# 也不让一个新数组字段悄悄绕开对象计数。
+EVALUATION_BODY_ARRAY_FIELDS: Dict[str, Tuple[str, ...]] = {
+    'dimension_create': ('api_endpoints', 'required_inputs', 'output_fields',
+                         'associated_algorithms'),
+    'dimension_update': ('api_endpoints', 'required_inputs', 'output_fields',
+                         'associated_algorithms'),
+    'reevaluate': REEVALUATE_BODY_ARRAY_FIELDS,
+}
 
 # 动作 → 允许的 body 字段（None = 该动作不收 body）
 EVALUATION_MANAGE_BODY_FIELDS: Dict[str, Optional[Tuple[str, ...]]] = {
@@ -285,8 +301,10 @@ __all__ = [
     'CATEGORY_BODY_FIELDS', 'CATEGORY_MANAGE', 'DIM_MANAGE',
     'DIMENSION_BODY_FIELDS', 'EVALUATION_EXECUTE', 'EVALUATION_MANAGE_ACTIONS',
     'EVALUATION_MANAGE_BODY_FIELDS', 'EVALUATION_MANAGE_BODY_REQUIRED',
-    'EVALUATION_MANAGE_ID_PARAMS', 'EVALUATION_MANAGE_PERMISSIONS',
-    'EVALUATION_SHARE', 'EVALUATION_WRITE_TOOLS', 'REEVALUATE_BODY_FIELDS',
+    'EVALUATION_BODY_ARRAY_FIELDS', 'EVALUATION_MANAGE_ID_PARAMS',
+    'EVALUATION_MANAGE_PERMISSIONS',
+    'EVALUATION_SHARE', 'EVALUATION_WRITE_TOOLS',
+    'REEVALUATE_BODY_ARRAY_FIELDS', 'REEVALUATE_BODY_FIELDS',
     'REEVALUATE_MODES', 'REEVALUATE_TYPES', 'VISIBILITY_VALUES',
     'action_permissions', 'get_tool', 'proposal_diff', 'resolve_call',
     'rest_target', 'validate_arguments',

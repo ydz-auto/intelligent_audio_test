@@ -80,6 +80,16 @@ AUDIO_ANNOTATE_REQUIRED: Dict[str, Tuple[str, ...]] = {
     'set_algorithms': ('audio_id', 'algorithms'),
 }
 
+# §9.4.1（INT-2571）：``batch_annotate`` 的 items 子项里的数组字段。
+# 注册期拆单探针据此枚举写工具数组参数；未在
+# ``shared.agent_tools.approval_split.ARRAY_PARAMS`` 显式分类的判红。
+AUDIO_ANNOTATE_ITEM_ARRAY_FIELDS: Tuple[str, ...] = ('tags', 'annotations')
+# items 子项的对象标识字段（拆单按它枚举对象）
+AUDIO_ANNOTATE_ITEM_KEY: str = 'audio_id'
+# items 子项允许的全部字段（对象标识 + 数组字段）
+AUDIO_ANNOTATE_ITEM_FIELDS: Tuple[str, ...] = (
+    (AUDIO_ANNOTATE_ITEM_KEY,) + AUDIO_ANNOTATE_ITEM_ARRAY_FIELDS)
+
 # ``PUT /audios/{audio_id}/metadata`` 的 UpdateMetadataRequest 只认这些字段
 # （``tags`` 在该接口是**字符串**，不是数组）；其余字段服务端静默丢弃。
 AUDIO_METADATA_FIELDS: Tuple[str, ...] = (
@@ -105,7 +115,7 @@ def _normalize_batch_items(items: Any) -> Optional[str]:
     for index, item in enumerate(items):
         if not isinstance(item, dict):
             return f'参数 items[{index}] 必须是对象'
-        unknown = sorted(set(item) - {'audio_id', 'annotations', 'tags'})
+        unknown = sorted(set(item) - set(AUDIO_ANNOTATE_ITEM_FIELDS))
         if unknown:
             return f'参数 items[{index}] 含不支持字段：{"、".join(unknown)}'
         if not _positive_int(item.get('audio_id')):
@@ -257,7 +267,9 @@ def resolve_call(tool: str, arguments: Dict[str, Any]
 
 
 __all__ = [
-    'AUDIO_ANNOTATE_ACTIONS', 'AUDIO_ANNOTATE_PARAMS',
+    'AUDIO_ANNOTATE_ACTIONS', 'AUDIO_ANNOTATE_ITEM_ARRAY_FIELDS',
+    'AUDIO_ANNOTATE_ITEM_FIELDS', 'AUDIO_ANNOTATE_ITEM_KEY',
+    'AUDIO_ANNOTATE_PARAMS',
     'AUDIO_ANNOTATE_PERMISSIONS', 'AUDIO_ANNOTATE_REQUIRED',
     'AUDIO_IMPORT_ACTIONS', 'AUDIO_IMPORT_PARAMS',
     'AUDIO_IMPORT_PERMISSIONS', 'AUDIO_IMPORT_REQUIRED',

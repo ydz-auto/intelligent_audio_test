@@ -192,6 +192,11 @@ def cancel_run(run_id: str, request: Request,
 @router.get('/runs/{run_id}/approvals')
 def list_approvals(run_id: str, request: Request,
                    identity: Identity = Depends(get_identity)):
+    """本 run 的审批单（待审批 + 已决）。
+
+    §9.4.1 拆单后一次 tool call 可能有多张单：每条都带
+    ``batch_id`` / ``batch_index`` / ``batch_total`` / ``object_ref``。
+    """
     container = get_container(request)
     items = container.run_service.list_approvals(
         run_id, owner_id=identity.user_id, tenant_id=identity.tenant_id)

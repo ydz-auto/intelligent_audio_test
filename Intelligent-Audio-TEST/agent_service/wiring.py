@@ -296,14 +296,15 @@ def build_container(session_factory,
                     budget_ratios: Optional[SectionRatios] = None,
                     context_debug: Optional[bool] = None,
                     memory_service: Optional[MemoryService] = None,
+                    approval_settings: Optional[ApprovalSettings] = None,
                     ) -> AgentContainer:
     """组合根。``budget_defaults`` / ``terminal_grace_seconds`` /
     ``skill_registry`` / ``skills_root`` 与 ``provider_resolver`` /
     ``credential_store`` / ``window_resolver`` / ``provider_verifier`` /
     ``sandbox`` / ``http_transport`` 仅供测试注入替身；生产一律取 Config + 环境。
     ``context_max_runs`` / ``context_max_messages`` / ``artifact_store`` /
-    ``compaction_settings`` / ``budget_ratios`` / ``context_debug`` 同样仅供
-    测试（如 50 轮压缩评测）覆盖配置。"""
+    ``compaction_settings`` / ``budget_ratios`` / ``context_debug`` /
+    ``approval_settings`` 同样仅供测试（如拆单阈值 / 粒度 / 对象上限）覆盖配置。"""
     budgets = budget_defaults or Config.budget_defaults()
     sessions = SqlSessionRepository(session_factory)
     runs = SqlRunRepository(session_factory)
@@ -353,9 +354,13 @@ def build_container(session_factory,
     approval_service = ApprovalService(
         approvals=approvals, events=events, runs=runs,
         tool_gateway=gateway,
-        settings=ApprovalSettings(
+        settings=approval_settings or ApprovalSettings(
             ttl_seconds=Config.APPROVAL_TTL_SECONDS,
-            expiry_scan_limit=Config.APPROVAL_EXPIRY_SCAN_LIMIT),
+            expiry_scan_limit=Config.APPROVAL_EXPIRY_SCAN_LIMIT,
+            # INT-2571 §9.4.1 拆单口径（阈值已在 Config 层夹在 20 以内）
+            split_threshold=Config.APPROVAL_SPLIT_THRESHOLD,
+            split_chunk_size=Config.APPROVAL_SPLIT_CHUNK_SIZE,
+            max_objects=Config.APPROVAL_MAX_OBJECTS),
     )
     sandbox_executor = sandbox or build_sandbox_tool_executor(skills)
 

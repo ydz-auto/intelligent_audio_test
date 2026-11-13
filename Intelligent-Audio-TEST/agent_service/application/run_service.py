@@ -220,7 +220,7 @@ def _iso(value) -> Optional[str]:
 
 
 def _serialize_approval(approval) -> dict:
-    """审批单的对外结构（与 §10 字段 + 前端 AgentApprovalDto 一致）。"""
+    """审批单的对外结构（§10 + §9.4.1 批次字段，与前端 AgentApprovalDto 一致）。"""
     return {
         'id': approval.id,
         'run_id': approval.run_id,
@@ -232,4 +232,9 @@ def _serialize_approval(approval) -> dict:
         'decided_by': approval.decided_by,
         'decided_at': _iso(approval.decided_at),
         'created_at': _iso(approval.created_at),
+        # INT-2571：拆单批次（未拆单时 batch_id 为空、index/total 为 1）
+        'batch_id': getattr(approval, 'batch_id', None),
+        'batch_index': int(getattr(approval, 'batch_index', 1) or 1),
+        'batch_total': int(getattr(approval, 'batch_total', 1) or 1),
+        'object_ref': getattr(approval, 'object_ref', None),
     }

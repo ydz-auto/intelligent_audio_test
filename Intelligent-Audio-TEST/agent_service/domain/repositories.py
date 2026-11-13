@@ -155,22 +155,24 @@ class ToolCallRepository(ABC):
 
 
 class ApprovalRepository(ABC):
-    """写调用审批单仓储（§10 agent_approval，INT-2466）。
+    """写调用审批单仓储（§10 agent_approval，INT-2466 / INT-2571）。
 
     决策 / 过期一律走条件更新（``WHERE status='PENDING'``），把并发审批的
-    唯一性交给数据库，不依赖进程内锁。
+    唯一性交给数据库，不依赖进程内锁。一次 tool call 可以有 1..N 张单
+    （§9.4.1 拆单），按 ``batch_index`` 排序读取。
     """
 
     @abstractmethod
     def add(self, approval: AgentApproval) -> AgentApproval:
-        """插入审批单；(run_id, tool_call_id) 已存在时返回已有行（幂等）。"""
+        """插入审批单；(run_id, tool_call_id, batch_index) 已存在时返回已有行。"""
 
     @abstractmethod
     def get(self, approval_id: str) -> Optional[AgentApproval]: ...
 
     @abstractmethod
-    def find_for_tool_call(self, run_id: str,
-                           tool_call_id: str) -> Optional[AgentApproval]: ...
+    def list_for_tool_call(self, run_id: str,
+                           tool_call_id: str) -> List[AgentApproval]:
+        """一次 tool call 的全部审批单（按 ``batch_index`` 升序）。"""
 
     @abstractmethod
     def list_by_run(self, run_id: str) -> List[AgentApproval]: ...
@@ -188,6 +190,18 @@ class ApprovalRepository(ABC):
     @abstractmethod
     def expire(self, approval_id: str, now: datetime) -> bool:
         """PENDING 且已过期 → EXPIRED；返回是否命中。"""
+
+    @abstractmethod
+    def settle_batch(self, run_id: str, tool_call_id: str,
+                     target: ApprovalStatus, *,
+                     decided_by: Optional[int] = None,
+                     decided_at: Optional[datetime] = None,
+                     now: datetime) -> int:
+        """把同一次调用剩余的 PENDING 单整批收口（拒绝 / 过期，§9.4.1）。
+
+        返回命中的单数。``REJECTED`` 记 ``decided_by`` / ``decided_at``；
+        ``EXPIRED`` 不记决策人（系统结算）。
+        """
 
     @abstractmethod
     def list_due(self, now: datetime, limit: int) -> List[AgentApproval]:

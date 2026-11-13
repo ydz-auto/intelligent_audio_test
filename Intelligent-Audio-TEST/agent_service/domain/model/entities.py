@@ -93,12 +93,17 @@ class AgentToolCall:
 
 @dataclass
 class AgentApproval:
-    """写调用审批单（§10 agent_approval，INT-2466）。
+    """写调用审批单（§10 agent_approval，INT-2466 / INT-2571）。
 
-    一条提案对应一次 tool call（``(run_id, tool_call_id)`` 唯一）。审批前
-    不产生任何副作用；``decision_permissions`` 是审批人**决策时**的实时权限
-    快照 —— 执行前用它重新校验权限（审批后权限被收回 → 执行失败），因此不
-    再回读「发起 run 时」的旧权限。
+    一次 tool call 对应 1..N 张单（``(run_id, tool_call_id, batch_index)``
+    唯一）：单次影响 > 20 个对象时按 §9.4.1 拆成多张，同批共享 ``batch_id``，
+    ``batch_index`` 1..N、``batch_total`` 相同；未拆单时 ``batch_index`` 与
+    ``batch_total`` 都按 1（历史口径）。``object_ref = {kind, ids}`` 是本单
+    负责的对象（完整参数留在 ``agent_tool_call.arguments``）。
+
+    审批前不产生任何副作用；``decision_permissions`` 是审批人**决策时**的
+    实时权限快照 —— 执行前用它重新校验权限（审批后权限被收回 → 执行失败），
+    因此不再回读「发起 run 时」的旧权限。
     """
 
     id: str
@@ -111,6 +116,11 @@ class AgentApproval:
     decided_by: Optional[int] = None
     decided_at: Optional[datetime] = None
     decision_permissions: Optional[List[str]] = None
+    # INT-2571 §9.4.1：批次字段（未拆单时 batch_id 为空、index/total 为 1）
+    batch_id: Optional[str] = None
+    batch_index: int = 1
+    batch_total: int = 1
+    object_ref: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
