@@ -18,7 +18,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import yaml
@@ -51,8 +51,8 @@ from agent_service.domain.services.skill_visibility import (
     merge_skill_layers, to_domain_skill,
 )
 from shared.skill_package import (
-    PackageIssueCode, SkillPackageError, SkillPackageLimits,
-    build_skill_package, read_skill_package,
+    DEFAULT_MAX_UPLOAD_BYTES, PackageIssueCode, SkillPackageError,
+    SkillPackageLimits, build_skill_package, read_skill_package,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,8 @@ class SkillSettings:
     max_skill_bytes: int = 64 * 1024
     max_resource_bytes: int = 512 * 1024
     max_package_bytes: int = 5 * 1024 * 1024
+    # 上传（压缩前）体积上限：接口层 / 网关在读入内存前按同一口径拒绝
+    max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES
     max_entries: int = 200
     max_compression_ratio: int = 100
     publish_min_golden_tasks: int = 3
@@ -79,7 +81,8 @@ class SkillSettings:
             max_skill_bytes=self.max_skill_bytes,
             max_resource_bytes=self.max_resource_bytes,
             max_total_bytes=self.max_package_bytes,
-            max_compression_ratio=self.max_compression_ratio)
+            max_compression_ratio=self.max_compression_ratio,
+            max_upload_bytes=self.max_upload_bytes)
 
 
 @dataclass(frozen=True)
@@ -190,7 +193,8 @@ class SkillService:
                        if row.status.participates_in_trigger]
         active_skills = [self._domain_skill(row) for row in active_rows]
         effective, masked = merge_skill_layers(
-            platform, active_skills, active_only=True)
+            platform + active_skills, owner_id=owner_id, tenant_id=tenant_id,
+            active_only=True)
         items = [self._view_from_skill(skill) for skill in effective]
         items.extend(self._view_from_skill(skill) for skill in masked)
         # DRAFT / DISABLED 不参与合并，但列表要能看到（筛选已由仓储层完成）
@@ -218,6 +222,10 @@ class SkillService:
         if row is None:
             raise SkillNotFound(skill_id)
         return self._repository.list_versions(row.id)
+
+    def package_limits(self) -> SkillPackageLimits:
+        """zip 包限制（接口层上传体积与包解析共用同一口径）。"""
+        return self._settings.package_limits()
 
     # ------------------------------------------------------------ 写入口
 
@@ -770,11 +778,10 @@ class SkillService:
         raise SkillNotFound(skill_id)
 
     def _platform_skills(self) -> List[Skill]:
-        skills = [s for s in self._registry.skills
-                  if s.scope is SkillScope.PLATFORM]
-        skills.extend(s for s in self._registry.masked
-                      if s.scope is SkillScope.PLATFORM)
-        return skills
+        # registry.skills 是候选集（含被自定义层遮蔽的平台项），按 viewer 的
+        # 遮蔽由 merge_skill_layers 计算，这里只取平台层全集。
+        return [s for s in self._registry.skills
+                if s.scope is SkillScope.PLATFORM]
 
     def _platform_skill(self, skill_id: str) -> Optional[Skill]:
         if not skill_id.startswith(PLATFORM_ID_PREFIX):
@@ -891,7 +898,43 @@ def _parse_skill_md(raw: str) -> Tuple[Dict[str, Any], str]:
                                severity=SkillIssueSeverity.ERROR,
                                skill='', path='', field='frontmatter',
                                message='frontmatter 必须是映射')])
-    return dict(data), body
+    return _normalize_frontmatter(dict(data)), body
+
+
+def _normalize_frontmatter(value, *, path: str = ''):
+    """frontmatter 标量归一为 JSON 可序列化值（返工 P3：YAML 日期）。
+
+    ``yaml.safe_load`` 会把 ``released: 2026-11-14`` 解析成 ``datetime.date``，
+    原样进 ``content_hash`` 的 ``json.dumps`` 与 JSONB 落库都会 500。这里统一
+    转 ISO 字符串；其他非 JSON 标量（``!!binary`` 的 bytes、``!!set`` 等）
+    按 ``INVALID_FRONTMATTER`` 拒绝，不让一个字段把导入打成 500。
+    """
+    if isinstance(value, Mapping):
+        return {
+            str(key): _normalize_frontmatter(
+                item, path=f'{path}.{key}' if path else str(key))
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_normalize_frontmatter(item, path=f'{path}[{index}]')
+                for index, item in enumerate(value)]
+    if isinstance(value, datetime):
+        # datetime 是 date 的子类，先判 datetime 保留时间部分
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise SkillImportInvalid(
+        f'frontmatter 字段 {path or "(root)"} 不是合法的 JSON 标量：'
+        f'{type(value).__name__}',
+        issues=[SkillIssue(
+            code=SkillIssueCode.INVALID_FRONTMATTER,
+            severity=SkillIssueSeverity.ERROR, skill='', path='',
+            field=f'frontmatter.{path}' if path else 'frontmatter',
+            message=(f'frontmatter 字段 {path or "(root)"} 的类型 '
+                     f'{type(value).__name__} 不受支持（只允许字符串 / 数字 / '
+                     '布尔 / 列表 / 映射）'))])
 
 
 def normalize_body(text: str) -> str:

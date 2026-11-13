@@ -35,7 +35,11 @@ from agent_service.domain.exceptions import (
     InvalidRunTransition, ProviderNotFound, RunNotFound, SessionNotFound,
     SkillGateFailed, SkillImportInvalid, SkillInjectionDetected,
     SkillNameConflict, SkillNotAvailable, SkillNotFound,
-    SkillPermissionEscalation, SkillServiceError, SkillStatusInvalid,
+    SkillPackageTooLarge, SkillPermissionEscalation, SkillServiceError,
+    SkillStatusInvalid,
+)
+from agent_service.interfaces.api.upload_limit import (
+    SkillImportUploadLimitMiddleware,
 )
 from agent_service.infrastructure.sandbox.t2_runtime import probe_t2_runtime
 from agent_service.interfaces.api.provider_routes import router as provider_router
@@ -190,6 +194,8 @@ def _register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(SkillPermissionEscalation, _skill_error(403))
     app.add_exception_handler(SkillStatusInvalid, _skill_error(409))
     app.add_exception_handler(SkillImportInvalid, _skill_error(400))
+    # 上传体积超限在读入内存 / 解析 multipart 之前就拒绝（413）
+    app.add_exception_handler(SkillPackageTooLarge, _skill_error(413))
     app.add_exception_handler(SkillInjectionDetected, _skill_error(400))
     app.add_exception_handler(SkillGateFailed, _skill_error(409))
     app.add_exception_handler(SkillServiceError, _skill_error(400))
@@ -292,6 +298,10 @@ def create_app(container=None) -> FastAPI:
     app = FastAPI(title='Intelligent Audio Test - Agent Service',
                   lifespan=lifespan)
     _register_error_handlers(app)
+    # INT-2549 返工 P3：zip 导入在读入内存 / 解析 multipart 之前按
+    # Content-Length 拒绝超大包（网关侧同一口径，见 agent_skill_bp）。
+    app.add_middleware(SkillImportUploadLimitMiddleware,
+                       max_bytes=Config.SKILL_MAX_UPLOAD_BYTES)
 
     @app.get('/health')
     def health(request: Request):

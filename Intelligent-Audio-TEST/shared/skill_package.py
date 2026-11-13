@@ -39,6 +39,15 @@ RESOURCE_DIRS: Tuple[str, ...] = ('references', 'scripts', 'assets')
 RESOURCE_PREFIXES: Tuple[str, ...] = tuple(f'{name}/' for name in RESOURCE_DIRS)
 FRONTMATTER_DELIMITER = '---'
 
+# 上传（压缩前）体积上限：网关与 agent_service 接口层在读入内存前按同一
+# 口径拒绝（默认 10 MB；可用 ``AGENT_SKILL_MAX_UPLOAD_BYTES`` 调整）。
+DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+# 导入接口对外错误码（网关不依赖 agent_service 包，值必须与
+# ``agent_service.domain.enums.SkillErrorCode.SKILL_IMPORT_INVALID`` 一致，
+# 由单测钉死；网关超限 413 与接口层同码）。
+SKILL_IMPORT_INVALID_CODE = 'SKILL_IMPORT_INVALID'
+
 
 class PackageIssueCode(str, Enum):
     """包级问题码（共享词表；agent_service 的 ``SkillIssueCode`` 同名承接）。"""
@@ -71,6 +80,22 @@ class SkillPackageLimits:
     max_resource_bytes: int = 512 * 1024
     max_total_bytes: int = 5 * 1024 * 1024
     max_compression_ratio: int = 100
+    # 压缩前（上传原始字节）上限：在读入内存 / 解析 multipart 之前判定
+    max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES
+
+
+def ensure_upload_size(size: int, *,
+                       limits: Optional[SkillPackageLimits] = None) -> None:
+    """上传体积校验（网关与接口层共用；读入内存前调用）。
+
+    超过 ``max_upload_bytes`` 抛 ``PACKAGE_TOO_LARGE``：网关侧据此回 413、
+    服务层据此回 413，不把整包先读进内存再判定。
+    """
+    limits = limits or SkillPackageLimits()
+    if size > limits.max_upload_bytes:
+        raise SkillPackageError(
+            PackageIssueCode.PACKAGE_TOO_LARGE,
+            f'上传包 {size} 字节，超过上限 {limits.max_upload_bytes} 字节')
 
 
 @dataclass(frozen=True)
@@ -173,6 +198,7 @@ def read_skill_package(data: bytes,
     limits = limits or SkillPackageLimits()
     if not data:
         raise SkillPackageError(PackageIssueCode.INVALID_PATH, '包内容为空')
+    ensure_upload_size(len(data), limits=limits)
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:
@@ -253,9 +279,10 @@ def read_skill_package(data: bytes,
 
 
 __all__ = [
-    'FRONTMATTER_DELIMITER', 'PackageIssueCode', 'RESOURCE_DIRS',
-    'RESOURCE_PREFIXES', 'SKILL_FILE_NAME', 'SkillPackage',
-    'SkillPackageError', 'SkillPackageLimits', 'build_skill_package',
-    'build_zip', 'normalize_entry_path', 'read_skill_package',
+    'DEFAULT_MAX_UPLOAD_BYTES', 'FRONTMATTER_DELIMITER', 'PackageIssueCode',
+    'RESOURCE_DIRS', 'RESOURCE_PREFIXES', 'SKILL_FILE_NAME',
+    'SKILL_IMPORT_INVALID_CODE', 'SkillPackage', 'SkillPackageError',
+    'SkillPackageLimits', 'build_skill_package', 'build_zip',
+    'ensure_upload_size', 'normalize_entry_path', 'read_skill_package',
     'split_frontmatter',
 ]

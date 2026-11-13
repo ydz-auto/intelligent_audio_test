@@ -299,6 +299,10 @@ class Config(BaseConfig):
     SKILL_MAX_PACKAGE_BYTES = _get_int(
         'AGENT_SKILL_MAX_PACKAGE_BYTES',
         int(_SKILL_DEFAULTS.get('max_package_bytes', 5 * 1024 * 1024)))
+    # 上传（压缩前）体积上限：网关与接口层读入内存前按同一口径拒绝
+    SKILL_MAX_UPLOAD_BYTES = _get_int(
+        'AGENT_SKILL_MAX_UPLOAD_BYTES',
+        int(_SKILL_DEFAULTS.get('max_upload_bytes', 10 * 1024 * 1024)))
     SKILL_MAX_ENTRIES = _get_int(
         'AGENT_SKILL_MAX_ENTRIES',
         int(_SKILL_DEFAULTS.get('max_entries', 200)))
@@ -351,6 +355,7 @@ class Config(BaseConfig):
             max_skill_bytes=cls.SKILL_MAX_FILE_BYTES,
             max_resource_bytes=cls.SKILL_MAX_RESOURCE_BYTES,
             max_package_bytes=cls.SKILL_MAX_PACKAGE_BYTES,
+            max_upload_bytes=cls.SKILL_MAX_UPLOAD_BYTES,
             max_entries=cls.SKILL_MAX_ENTRIES,
             max_compression_ratio=cls.SKILL_MAX_COMPRESSION_RATIO,
             publish_min_golden_tasks=cls.SKILL_PUBLISH_MIN_GOLDEN_TASKS,

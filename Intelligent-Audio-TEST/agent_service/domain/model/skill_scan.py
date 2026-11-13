@@ -26,13 +26,13 @@ class SkillScanIssue:
 class SkillScanResult:
     """一次目录扫描的完整结果：装载到的 Skill + 目录级问题。
 
-    ``masked``（INT-2549）是被同名高层 Skill 遮蔽的条目：不参与 L1 / 触发，
-    但列表接口要返回并带 ``masked_by`` 标注（TENANT 同名时 USER 优先）。
+    INT-2549：三层同名的遮蔽是**查看者相关**的（不同 owner 的同名 USER
+    Skill 互不遮蔽），不能在装载期定论；``skills`` 只回候选集，合并由
+    ``domain.services.skill_visibility.merge_skill_layers`` 按 viewer 计算。
     """
 
     skills: Tuple[Skill, ...] = ()
     issues: Tuple[SkillScanIssue, ...] = field(default_factory=tuple)
-    masked: Tuple[Skill, ...] = field(default_factory=tuple)
 
 
 __all__ = ['SkillScanIssue', 'SkillScanResult']

@@ -19,13 +19,16 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from agent_service.domain.enums import (
-    SkillIssueCode, SkillIssueSeverity, SkillScope,
+    SkillIssueCode, SkillIssueSeverity,
 )
 from agent_service.domain.exceptions import SkillValidationError
 from agent_service.domain.model.skill import (
     REQUIRED_SECTIONS, WILDCARD_PERMISSION, Skill,
 )
 from agent_service.domain.ports.skill_repository import SkillRepository
+from agent_service.domain.services.skill_visibility import (
+    merge_skill_layers, skill_identity,
+)
 from agent_service.domain.services.token_estimator import estimate_tokens
 
 logger = logging.getLogger(__name__)
@@ -129,8 +132,10 @@ class SkillRegistry:
         self._required_sections = tuple(required_sections)
         self._strict = bool(strict)
         self._l1_budget_tokens = int(l1_budget_tokens)
+        # INT-2549：装载口径是「候选集」——平台层 + 全部 ACTIVE 自定义层。
+        # 同名遮蔽是**查看者相关**的（不同 owner 的同名 USER Skill 互不影响），
+        # 因此合并推迟到 visible_for / get_visible 按 viewer 计算。
         self._skills: Tuple[Skill, ...] = ()
-        self._masked: Tuple[Skill, ...] = ()
         self._issues: Tuple[SkillIssue, ...] = ()
 
     # ------------------------------------------------------------ loading
@@ -147,7 +152,9 @@ class SkillRegistry:
         """
         issues: List[SkillIssue] = []
         accepted: List[Skill] = []
-        seen: Set[str] = set()
+        # 身份键 = (scope, owner_id/tenant_id, name)：跨 owner / 跨租户的同名
+        # 是不同 Skill，不能按裸 name 判重复（库内局部唯一索引同口径）。
+        seen: Set[Tuple[str, Optional[object], str]] = set()
         scan = self._repository.load_all()
         for scan_issue in scan.issues:
             issues.append(SkillIssue(
@@ -167,23 +174,22 @@ class SkillRegistry:
         for skill in scan.skills:
             found = self._validate(skill)
             fatal = [i for i in found if i.severity is SkillIssueSeverity.ERROR]
-            if not fatal and skill.name in seen:
+            identity = skill_identity(skill)
+            if not fatal and identity in seen:
                 found.append(SkillIssue(
                     code=SkillIssueCode.DUPLICATE_NAME,
                     severity=SkillIssueSeverity.ERROR,
                     skill=skill.name, path=skill.path,
-                    message=f'Skill 名称重复：{skill.name}'))
+                    message=f'Skill 名称重复（同一作用域与归属）：{skill.name}'))
                 fatal = [i for i in found
                          if i.severity is SkillIssueSeverity.ERROR]
             issues.extend(found)
             if fatal:
                 continue
-            seen.add(skill.name)
+            seen.add(identity)
             accepted.append(skill)
 
         self._skills = tuple(accepted)
-        # INT-2549：被同名高层遮蔽的条目（列表标注用，不参与 L1 / 触发）
-        self._masked = tuple(getattr(scan, 'masked', ()) or ())
         budget_issue = self._check_l1_budget()
         if budget_issue is not None:
             issues.append(budget_issue)
@@ -214,12 +220,12 @@ class SkillRegistry:
 
     @property
     def skills(self) -> Tuple[Skill, ...]:
-        return self._skills
+        """装载到的全部候选（平台层 + 全部 ACTIVE 自定义层）。
 
-    @property
-    def masked(self) -> Tuple[Skill, ...]:
-        """被同名高层 Skill 遮蔽的条目（``masked_by`` 标注）。"""
-        return self._masked
+        这是**未按查看者合并**的候选集：同名遮蔽是查看者相关的，读取可见
+        清单请走 ``visible_for`` / ``l1_block``（内部按 viewer 合并）。
+        """
+        return self._skills
 
     @property
     def issues(self) -> Tuple[SkillIssue, ...]:
@@ -245,12 +251,11 @@ class SkillRegistry:
 
         INT-2549：``USER`` 只对 ``owner_id`` 本人可见、``TENANT`` 只对
         ``tenant_id`` 本租户可见；未传身份时只返回 ``PLATFORM``（安全默认）。
+        同名合并按 viewer 计算：不同 owner 的同名 USER Skill 各自生效。
         """
         granted = self._granted(permissions)
-        return tuple(
-            s for s in self._skills
-            if self._is_granted(s, granted)
-            and _viewer_allows(s, owner_id, tenant_id))
+        effective = self._merged(owner_id=owner_id, tenant_id=tenant_id)
+        return tuple(s for s in effective if self._is_granted(s, granted))
 
     def get_visible(self, name: Optional[str],
                     permissions: Optional[Iterable[str]],
@@ -258,16 +263,19 @@ class SkillRegistry:
                     tenant_id: Optional[str] = None) -> Optional[Skill]:
         if not name:
             return None
-        skill = self.get(name)
-        if skill is None:
-            return None
-        if not _viewer_allows(skill, owner_id, tenant_id):
-            return None
         granted = self._granted(permissions)
-        return skill if self._is_granted(skill, granted) else None
+        for skill in self._merged(owner_id=owner_id, tenant_id=tenant_id):
+            if skill.name == name:
+                return skill if self._is_granted(skill, granted) else None
+        return None
 
     def get(self, name: str) -> Optional[Skill]:
-        for skill in self._skills:
+        """无身份视角（PLATFORM 层）按名称取生效项。
+
+        需要按用户 / 租户取（含自定义层）时用 ``get_visible``；这里保持
+        「未传身份只放行 PLATFORM」的安全默认，避免内部调用拿到他人私有项。
+        """
+        for skill in self._merged():
             if skill.name == name:
                 return skill
         return None
@@ -326,6 +334,14 @@ class SkillRegistry:
 
     # ------------------------------------------------------------ internals
 
+    def _merged(self, *, owner_id: Optional[int] = None,
+                tenant_id: Optional[str] = None) -> Tuple[Skill, ...]:
+        """按查看者合并候选集（唯一实现在 domain.services.skill_visibility）。"""
+        effective, _ = merge_skill_layers(
+            self._skills, owner_id=owner_id, tenant_id=tenant_id,
+            active_only=False)
+        return effective
+
     @staticmethod
     def _granted(permissions: Optional[Iterable[str]]) -> Set[str]:
         if isinstance(permissions, str):
@@ -353,7 +369,9 @@ class SkillRegistry:
     def _check_l1_budget(self) -> Optional[SkillIssue]:
         if self._l1_budget_tokens <= 0:
             return None
-        tokens = estimate_tokens(self._render_l1(self._skills))
+        # 预算口径是「无身份视角」的 L1（PLATFORM 层），不把他人私有 Skill
+        # 算进本部署的常驻预算。
+        tokens = estimate_tokens(self._render_l1(self._merged()))
         if tokens <= self._l1_budget_tokens:
             return None
         return SkillIssue(
@@ -373,20 +391,6 @@ class SkillRegistry:
         if not lines:
             return ''
         return '\n'.join([L1_BLOCK_HEADER] + lines)
-
-
-def _viewer_allows(skill: Skill, owner_id: Optional[int],
-                   tenant_id: Optional[str]) -> bool:
-    """可见范围（INT-2549）：USER 只对本人、TENANT 只对本租户、PLATFORM 全体。
-
-    未传身份（``owner_id`` / ``tenant_id`` 为 ``None``）时只放行 PLATFORM，
-    保证「读库失败 / 调用方漏传身份」不会把别人的私有 Skill 泄漏出去。
-    """
-    if skill.scope is SkillScope.PLATFORM:
-        return True
-    if skill.scope is SkillScope.TENANT:
-        return tenant_id is not None and skill.tenant_id == tenant_id
-    return owner_id is not None and skill.owner_id == owner_id
 
 
 __all__ = ['SkillIssue', 'SkillRegistry', 'L1_BLOCK_HEADER', 'L2_BLOCK_HEADER',

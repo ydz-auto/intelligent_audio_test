@@ -158,7 +158,14 @@ class SqlAgentSkillRepository(_BaseRepo, AgentSkillRepository):
                 AgentSkillPO.status == SkillStatus.ACTIVE.value,
                 AgentSkillPO.scope.in_(
                     [SkillScope.USER.value, SkillScope.TENANT.value]),
-            ).order_by(AgentSkillPO.name.asc()).all()
+            ).order_by(
+                # 同名跨 owner / 跨租户是不同 Skill；排序加上归属与作用域，
+                # 保证装载顺序确定（合并才是查看者相关的那一步）。
+                AgentSkillPO.name.asc(),
+                AgentSkillPO.scope.asc(),
+                AgentSkillPO.owner_id.asc(),
+                AgentSkillPO.tenant_id.asc(),
+            ).all()
             return [_to_agent_skill(row) for row in rows]
         finally:
             db.close()

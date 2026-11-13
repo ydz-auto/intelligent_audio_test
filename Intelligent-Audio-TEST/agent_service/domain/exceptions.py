@@ -176,6 +176,13 @@ class SkillImportInvalid(SkillServiceError):
     code = SkillErrorCode.SKILL_IMPORT_INVALID.value
 
 
+class SkillPackageTooLarge(SkillImportInvalid):
+    """上传包超过体积上限（读入内存 / 解析前拒绝，对外 413）。
+
+    继承导入非法的错误码（``SKILL_IMPORT_INVALID``），不新增对外词表。
+    """
+
+
 class SkillInjectionDetected(SkillServiceError):
     """正文命中注入规则：可存草稿，禁止发布为 ACTIVE。"""
 

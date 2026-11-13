@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*-
 """Skill 三层来源的合并与去重（INT-2549 §4.4「来源与优先级」）。
 
-唯一实现：``CompositeSkillRepository`` 与列表接口共用本模块，不各写一套。
+唯一实现：``SkillRegistry``（L1 / 激活候选 / 权限可见性）与列表接口共用
+本模块，不各写一套。仓储层只装载候选、不在这里做去重。
 
-规则：
-- 优先级 ``USER > TENANT > PLATFORM``；
-- 同名时高层生效，低层进入 ``masked`` 并带 ``masked_by``（被哪个作用域遮蔽）；
+规则（**查看者相关**）：
+- 可见范围：``PLATFORM`` 全体可见；``TENANT`` 只对同租户可见；``USER``
+  只对本人可见（未传身份时只放行 ``PLATFORM``，安全默认）；
+- 同名只在**同一查看者可见的范围内**比较：两个用户各自的同名 USER Skill
+  互不遮蔽；某租户的同名 TENANT Skill 也不影响其他租户看到 PLATFORM；
+- 遮蔽只发生在同一查看者的跨层同名：``USER > TENANT > PLATFORM``，
+  被遮蔽项带 ``masked_by``（遮蔽它的作用域名）；
 - 只有 ``ACTIVE`` 参与自动触发与 L1 列表（是否过滤由调用方决定，本模块
   只做合并；``active_only=True`` 时先按状态过滤）。
 """
@@ -88,18 +93,53 @@ def to_domain_skill(row: AgentSkill,
     )
 
 
-def merge_skill_layers(platform: Sequence[Skill],
-                       custom: Sequence[Skill], *,
+def skill_identity(skill: Skill) -> Tuple[str, Optional[object], str]:
+    """Skill 的身份键（与库内局部唯一索引同一口径）。
+
+    ``USER`` 按 ``owner_id``、``TENANT`` 按 ``tenant_id``、``PLATFORM`` 无归
+    属；同名判断只在同一身份切片内成立，跨 owner / 跨租户的同名是不同 Skill。
+    """
+    scope = skill.scope if isinstance(skill.scope, SkillScope) \
+        else SkillScope(str(skill.scope))
+    if scope is SkillScope.TENANT:
+        holder = skill.tenant_id
+    elif scope is SkillScope.USER:
+        holder = skill.owner_id
+    else:
+        holder = None
+    return (scope.value, holder, skill.name)
+
+
+def viewer_allows(skill: Skill, owner_id: Optional[int],
+                  tenant_id: Optional[str]) -> bool:
+    """可见范围（INT-2549）：USER 只对本人、TENANT 只对本租户、PLATFORM 全体。
+
+    未传身份（``owner_id`` / ``tenant_id`` 为 ``None``）时只放行 PLATFORM，
+    保证「读库失败 / 调用方漏传身份」不会把别人的私有 Skill 泄漏出去。
+    """
+    if skill.scope is SkillScope.PLATFORM:
+        return True
+    if skill.scope is SkillScope.TENANT:
+        return tenant_id is not None and skill.tenant_id == tenant_id
+    return owner_id is not None and skill.owner_id == owner_id
+
+
+def merge_skill_layers(skills: Sequence[Skill], *,
+                       owner_id: Optional[int] = None,
+                       tenant_id: Optional[str] = None,
                        active_only: bool = True
                        ) -> Tuple[Tuple[Skill, ...], Tuple[Skill, ...]]:
-    """合并平台层与自定义层，返回 ``(生效项, 被遮蔽项)``。
+    """按「当前查看者」合并三层来源，返回 ``(生效项, 被遮蔽项)``。
 
+    合并键是 Skill 名称，但只在 ``viewer_allows`` 放行的范围内比较：
+    不同 owner 的同名 USER Skill 各自生效，互不进入 ``masked``；某租户的
+    同名 TENANT Skill 也不会遮蔽其他租户看到的 PLATFORM 同名 Skill。
     被遮蔽项带 ``masked_by``（遮蔽它的作用域名），用于列表标注；L1 只取
     生效项（调用方负责权限过滤）。
     """
     effective: List[Skill] = []
     masked: List[Skill] = []
-    # 同名桶：先放平台层，再按优先级放入自定义层
+    # 同名桶：平台层先入，自定义层按优先级覆盖（仅同一查看者视角）
     buckets: Dict[str, Skill] = {}
     others: Dict[str, List[Skill]] = {}
 
@@ -107,6 +147,8 @@ def merge_skill_layers(platform: Sequence[Skill],
         if active_only and not item.status.participates_in_trigger:
             return
         if not item.name:
+            return
+        if not viewer_allows(item, owner_id, tenant_id):
             return
         current = buckets.get(item.name)
         if current is None:
@@ -118,9 +160,7 @@ def merge_skill_layers(platform: Sequence[Skill],
         else:
             others.setdefault(item.name, []).append(item)
 
-    for skill in platform:
-        _accept(skill)
-    for skill in custom:
+    for skill in skills:
         _accept(skill)
 
     for name, skill in buckets.items():
@@ -144,5 +184,5 @@ def _with_masked_by(skill: Skill, by: SkillScope) -> Skill:
 
 __all__ = [
     'budget_map', 'merge_skill_layers', 'meta_from_frontmatter',
-    'text_list', 'to_domain_skill',
+    'skill_identity', 'text_list', 'to_domain_skill', 'viewer_allows',
 ]

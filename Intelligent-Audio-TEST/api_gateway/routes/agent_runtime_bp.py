@@ -16,7 +16,7 @@ SSE：先向上游做一次 run 快照预检（归属 / 存在性 / 状态），
 """
 import json
 import logging
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import httpx
 from fastapi import APIRouter, Depends, Request
@@ -26,6 +26,7 @@ from starlette.concurrency import run_in_threadpool
 from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.config.config import Config
 from api_gateway.routes.agent_guard import require_agent_enabled
+from shared.skill_package import SKILL_IMPORT_INVALID_CODE
 from shared.utils.time_utils import utcnow
 
 logger = logging.getLogger(__name__)
@@ -102,8 +103,42 @@ def _forward_json(request: Request, method: str, body: bytes,
     return _to_response(upstream)
 
 
-async def _forward(request: Request, method: str) -> Response:
-    body = await request.body() if method in ('POST', 'PUT', 'PATCH') else b''
+async def _read_body_limited(request: Request, limit: int) -> Optional[bytes]:
+    """有界读取请求体（INT-2549 返工 P3）。
+
+    先按 ``Content-Length`` 预判，再流式累加兜底（chunked 或无该头时同样
+    不会无界读入内存）；超限返回 ``None``，调用方回 413。
+    """
+    declared = request.headers.get('content-length')
+    if declared and declared.isdigit() and int(declared) > limit:
+        return None
+    chunks: List[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > limit:
+            return None
+        chunks.append(chunk)
+    return b''.join(chunks)
+
+
+async def _forward(request: Request, method: str, *,
+                   max_body_bytes: Optional[int] = None) -> Response:
+    if method in ('POST', 'PUT', 'PATCH'):
+        if max_body_bytes is None:
+            body = await request.body()
+        else:
+            body = await _read_body_limited(request, max_body_bytes)
+            if body is None:
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        'detail': (f'上传包超过网关上限 {max_body_bytes} 字节'
+                                   '（未读入内存）'),
+                        'code': SKILL_IMPORT_INVALID_CODE,
+                    })
+    else:
+        body = b''
     return await run_in_threadpool(_forward_json, request, method, body)
 
 

@@ -24,12 +24,14 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 
+from agent_service.application.skill_registry import SkillIssue
 from agent_service.application.skill_service import SkillDraftPayload
 from agent_service.config.config import Config
 from agent_service.domain.enums import (
-    ApprovalDecision, SkillErrorCode, SkillScope, SkillStatus,
+    ApprovalDecision, SkillErrorCode, SkillIssueCode, SkillIssueSeverity,
+    SkillScope, SkillStatus,
 )
-from agent_service.domain.exceptions import ApprovalExpired
+from agent_service.domain.exceptions import ApprovalExpired, SkillPackageTooLarge
 from agent_service.domain.model.entities import AgentRun, AgentSession
 from agent_service.interfaces.api.dependencies import (
     Identity, get_container, get_identity,
@@ -518,11 +520,26 @@ async def import_skill(request: Request,
                        identity: Identity = Depends(get_identity)):
     """zip 导入（根级 ``SKILL.md`` + references/scripts/assets）。"""
     service = _skill_service(request)
-    data = await file.read()
+    limit = service.package_limits().max_upload_bytes
+    declared = request.headers.get('content-length')
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise _upload_too_large(int(declared), limit)
+    # 有界读取：Content-Length 缺失（chunked）时也不会无界读入内存
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise _upload_too_large(len(data), limit)
     view = service.import_package(
         data, owner_id=identity.user_id, tenant_id=identity.tenant_id,
         permissions=identity.permissions)
     return _skill_view_dict(view)
+
+
+def _upload_too_large(size: int, limit: int) -> SkillPackageTooLarge:
+    message = f'上传包 {size} 字节，超过上限 {limit} 字节'
+    return SkillPackageTooLarge(message, issues=[SkillIssue(
+        code=SkillIssueCode.PACKAGE_TOO_LARGE,
+        severity=SkillIssueSeverity.ERROR, skill='', path='',
+        field='package', message=message)])
 
 
 @router.get('/skills/{skill_id}/export')

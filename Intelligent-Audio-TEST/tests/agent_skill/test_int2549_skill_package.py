@@ -18,9 +18,13 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 import pytest
 
-from agent_service.domain.enums import SkillIssueCode
+from agent_service.application.skill_service import SkillSettings
+from agent_service.domain.enums import SkillIssueCode, SkillScope
 from agent_service.domain.exceptions import SkillImportInvalid
 from agent_service.domain.model import skill as skill_model
+from agent_service.interfaces.api.upload_limit import (
+    SkillImportUploadLimitMiddleware,
+)
 from shared import skill_package
 from tests.agent_skill.helpers import (
     OWNER_ID, TENANT_ID, build_skill_stack, create_draft, draft_payload,
@@ -106,6 +110,10 @@ def test_shared_package_structure_matches_platform_package(monkeypatch):
     assert tuple(skill_package.RESOURCE_DIRS) == tuple(skill_model.RESOURCE_DIRS)
     for code in skill_package.PackageIssueCode:
         assert code.value in {item.value for item in SkillIssueCode}, code.value
+    # 网关不依赖 agent_service 包，导入错误码与域枚举同值（不各写一套）
+    from agent_service.domain.enums import SkillErrorCode
+    assert skill_package.SKILL_IMPORT_INVALID_CODE \
+        == SkillErrorCode.SKILL_IMPORT_INVALID.value
 
 
 def test_import_path_traversal_rejected(tmp_path):
@@ -208,3 +216,82 @@ def test_import_too_many_entries_rejected(tmp_path):
         service.import_package(_zip_bytes(entries), owner_id=OWNER_ID,
                                tenant_id=TENANT_ID, permissions=['*'])
     assert 'TOO_MANY_ENTRIES' in issues_codes(exc.value)
+
+
+# ---------------------------------------------------------------- 返工 P3
+
+DATE_SKILL_MD = (
+    '---\nname: date-skill\ndescription: 日期标量演示。触发词：日期\n'
+    'released: 2026-11-14\n---\n\n'
+    '# date\n\n## Gotchas\n\n- 无。\n\n## 验收\n\n- 无。\n')
+
+BINARY_SCALAR_SKILL_MD = (
+    '---\nname: bin-skill\ndescription: 二进制标量演示。触发词：二进制\n'
+    'blob: !!binary aGVsbG8=\n---\n\n'
+    '# bin\n\n## Gotchas\n\n- 无。\n\n## 验收\n\n- 无。\n')
+
+
+def test_import_yaml_date_scalar_is_normalized(tmp_path):
+    """返工 P3：YAML 日期标量不能把 content_hash / JSONB 打成 500。"""
+    container, service, _store = _stack(tmp_path)
+    imported = service.import_package(
+        _zip_bytes({'SKILL.md': DATE_SKILL_MD}), owner_id=OWNER_ID,
+        tenant_id=TENANT_ID, permissions=['*'])
+    assert imported.name == 'date-skill'
+    assert imported.content_hash
+    version = container.repositories['skills'].get_version(imported.id, '1')
+    # 归一为 ISO 字符串（date/datetime 原对象不可 JSON 序列化）
+    assert version.frontmatter['released'] == '2026-11-14'
+    assert isinstance(version.frontmatter['released'], str)
+    # 导出 → 重新导入内容指纹一致（归一化不破坏单一包口径）
+    _filename, exported = service.export_package(
+        imported.id, owner_id=OWNER_ID, tenant_id=TENANT_ID, permissions=['*'])
+    service.delete(imported.id, owner_id=OWNER_ID, tenant_id=TENANT_ID)
+    again = service.import_package(exported, owner_id=OWNER_ID,
+                                   tenant_id=TENANT_ID, permissions=['*'])
+    assert again.content_hash == imported.content_hash
+
+
+def test_import_non_json_scalar_is_rejected_with_reason_code(tmp_path):
+    """``!!binary`` 等非 JSON 标量 → 4xx INVALID_FRONTMATTER（不是 500）。"""
+    _container, service, _store = _stack(tmp_path)
+    with pytest.raises(SkillImportInvalid) as exc:
+        service.import_package(
+            _zip_bytes({'SKILL.md': BINARY_SCALAR_SKILL_MD}),
+            owner_id=OWNER_ID, tenant_id=TENANT_ID, permissions=['*'])
+    assert 'INVALID_FRONTMATTER' in issues_codes(exc.value)
+
+
+def test_import_upload_size_limited_before_parse(tmp_path):
+    """上传原始字节超过上限：解析前拒绝（PACKAGE_TOO_LARGE，不落库）。"""
+    container, _store = build_skill_stack(
+        tmp_path, settings=SkillSettings(max_upload_bytes=32))
+    service = container.skill_service
+    data = _zip_bytes({'SKILL.md': DATE_SKILL_MD})
+    assert len(data) > 32
+    with pytest.raises(SkillImportInvalid) as exc:
+        service.import_package(data, owner_id=OWNER_ID,
+                               tenant_id=TENANT_ID, permissions=['*'])
+    assert 'PACKAGE_TOO_LARGE' in issues_codes(exc.value)
+    assert container.repositories['skills'].find_by_name(
+        SkillScope.USER, 'date-skill', owner_id=OWNER_ID) is None
+
+
+def test_upload_limit_middleware_rejects_declared_length():
+    """中间件在解析 multipart 之前按 Content-Length 拒绝（413）。"""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+
+    @app.post('/api/v1/agent/skills/import')
+    async def _import():  # pragma: no cover - 不应被调用
+        return {'ok': True}
+
+    app.add_middleware(SkillImportUploadLimitMiddleware, max_bytes=16)
+    client = TestClient(app)
+    resp = client.post('/api/v1/agent/skills/import', content=b'x' * 32,
+                       headers={'Content-Type': 'application/zip'})
+    assert resp.status_code == 413
+    assert resp.json()['code'] == 'SKILL_IMPORT_INVALID'
+    assert resp.json()['issues'][0]['code'] == 'PACKAGE_TOO_LARGE'

@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from agent_service.app import create_app
 from agent_service.domain.enums import SkillStatus
+from shared.skill_package import SkillPackageLimits
 from tests.agent_skill.helpers import (
     OWNER_ID, build_skill_stack, demo_body,
 )
@@ -204,6 +205,50 @@ def test_import_export_roundtrip_via_api(tmp_path):
             headers=OWNER)
         assert imported.status_code == 201, imported.text
         assert imported.json()['name'] == 'api-skill'
+
+
+DATE_SKILL_MD = (
+    '---\nname: date-skill\ndescription: 日期标量。触发词：日期\n'
+    'released: 2026-11-14\n---\n\n'
+    '# date\n\n## Gotchas\n\n- 无。\n\n## 验收\n\n- 无。\n')
+
+
+def _zip_of(entries):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for name, data in entries.items():
+            archive.writestr(name, data)
+    return buf.getvalue()
+
+
+def test_import_yaml_date_scalar_returns_201_not_500(tmp_path):
+    """返工 P3：``released: 2026-11-14`` 不该把导入打成 500。"""
+    client, _container, _llm = _client(tmp_path)
+    with client:
+        resp = client.post(
+            '/api/v1/agent/skills/import',
+            files={'file': ('date-skill.zip', _zip_of(
+                {'SKILL.md': DATE_SKILL_MD}), 'application/zip')},
+            headers=OWNER)
+        assert resp.status_code == 201, resp.text
+        assert resp.json()['name'] == 'date-skill'
+
+
+def test_import_upload_over_limit_returns_413(tmp_path, monkeypatch):
+    """返工 P3：上传体积在读入内存前按上限拒绝（413，不进入解析）。"""
+    client, container, _llm = _client(tmp_path)
+    monkeypatch.setattr(
+        container.skill_service, 'package_limits',
+        lambda: SkillPackageLimits(max_upload_bytes=64))
+    with client:
+        resp = client.post(
+            '/api/v1/agent/skills/import',
+            files={'file': ('huge.zip', b'x' * 256, 'application/zip')},
+            headers=OWNER)
+        assert resp.status_code == 413, resp.text
+        payload = resp.json()
+        assert payload['code'] == 'SKILL_IMPORT_INVALID'
+        assert payload['issues'][0]['code'] == 'PACKAGE_TOO_LARGE'
 
 
 def test_run_skill_snapshot_endpoint(tmp_path):

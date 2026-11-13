@@ -9,20 +9,29 @@
 - ``agent:skill:manage``：新建 / 保存 / 发布 / 停用 / 删除 / fork / 导入。
 
 zip 导出 / 导入按原字节转发（``Content-Type`` / ``Content-Disposition``
-原样带回），网关不做二次打包，保证与 agent_service 同一包结构。
+原样带回），网关不做二次打包，保证与 agent_service 同一包结构。导入在
+读入内存前按 ``AGENT_SKILL_MAX_UPLOAD_BYTES``（与 agent_service 同一口径）
+拒绝超大包，回 413。
 """
 import logging
+import os
 
 from fastapi import APIRouter, Depends, Request
 
 from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.routes.agent_guard import require_agent_enabled
 from api_gateway.routes.agent_runtime_bp import _forward
+from shared.skill_package import DEFAULT_MAX_UPLOAD_BYTES
 
 logger = logging.getLogger(__name__)
 
 SKILL_READ_PERMISSION = 'agent:skill:read'
 SKILL_MANAGE_PERMISSION = 'agent:skill:manage'
+
+# 上传（压缩前）体积上限：与 agent_service 的 AGENT_SKILL_MAX_UPLOAD_BYTES
+# 同一口径，在网关读入内存前拒绝超大 zip（INT-2549 返工 P3）。
+SKILL_UPLOAD_MAX_BYTES = int(os.environ.get(
+    'AGENT_SKILL_MAX_UPLOAD_BYTES', DEFAULT_MAX_UPLOAD_BYTES))
 
 _READ = require_permission(SKILL_READ_PERMISSION)
 _MANAGE = require_permission(SKILL_MANAGE_PERMISSION)
@@ -43,8 +52,9 @@ async def proxy_create_skill(request: Request, _: None = _MANAGE):
 
 @router.post('/skills/import')
 async def proxy_import_skill(request: Request, _: None = _MANAGE):
-    """zip 导入（multipart，原字节转发）。"""
-    return await _forward(request, 'POST')
+    """zip 导入（multipart，原字节转发；读入内存前按上传上限拒绝）。"""
+    return await _forward(request, 'POST',
+                          max_body_bytes=SKILL_UPLOAD_MAX_BYTES)
 
 
 @router.put('/skills/{skill_id}')

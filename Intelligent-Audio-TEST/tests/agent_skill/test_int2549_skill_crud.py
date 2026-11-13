@@ -109,6 +109,108 @@ def test_other_user_cannot_see_or_touch_private_skill(tmp_path):
                        tenant_id=TENANT_ID, permissions=['*'])
 
 
+GOLDEN = {'demo-skill': ['演示 一下', '样例 给我', '看样例']}
+
+
+def test_two_owners_same_user_skill_name_are_independent(tmp_path):
+    """返工 P2：跨 owner 的同名 USER Skill 各自生效，不互相遮蔽。
+
+    库内局部唯一索引是 ``(owner_id, name) WHERE scope='USER'``，即同名是
+    允许的；合并桶必须按 owner 分桶，否则后加载者自己的 ACTIVE Skill 会从
+    L1 / 激活候选里消失（与服务列表的双口径）。
+    """
+    from tests.agent_skill.helpers import StaticGoldenTasks, build_skill_stack
+
+    container, _store = build_skill_stack(
+        tmp_path, golden=StaticGoldenTasks(GOLDEN))
+    service = container.skill_service
+    views = {}
+    for owner in (OWNER_ID, OTHER_USER_ID):
+        view = create_draft(service, owner_id=owner)
+        assert _publish(service, view.id, owner).skill.status \
+            is SkillStatus.ACTIVE
+        views[owner] = view
+
+    registry = container.skill_registry
+    for owner in (OWNER_ID, OTHER_USER_ID):
+        same = [s for s in registry.visible_for(
+            ['*'], owner_id=owner, tenant_id=TENANT_ID)
+            if s.name == 'demo-skill']
+        assert len(same) == 1, f'owner={owner} 的同名 Skill 必须各自生效'
+        assert same[0].owner_id == owner
+        visible = registry.get_visible('demo-skill', ['*'], owner_id=owner,
+                                       tenant_id=TENANT_ID)
+        assert visible is not None and visible.owner_id == owner
+        assert 'demo-skill' in registry.l1_block(
+            ['*'], owner_id=owner, tenant_id=TENANT_ID)
+        # 列表与 registry 同一口径（不再出现「列表 ACTIVE、L1 看不到」）
+        rows = [item for item in service.list(
+            owner_id=owner, tenant_id=TENANT_ID, permissions=['*'])
+            if item.name == 'demo-skill' and item.scope is SkillScope.USER]
+        assert len(rows) == 1 and rows[0].owner_id == owner
+        assert rows[0].status is SkillStatus.ACTIVE
+        assert rows[0].masked_by is None
+
+    # 用户 8 能激活自己的 Skill（修复前 get_visible → None → SkillNotAvailable）
+    session = container.run_service.create_session(
+        owner_id=OTHER_USER_ID, tenant_id=TENANT_ID, title='同名激活',
+        permissions=['*'], active_skill='demo-skill')
+    run, created = container.run_service.create_run(
+        session.id, owner_id=OTHER_USER_ID, tenant_id=TENANT_ID,
+        message='演示一下', permissions=['*'])
+    assert created
+    snapshots = container.repositories['run_skills'].list_by_run(run.id)
+    assert [item.skill_id for item in snapshots] == [views[OTHER_USER_ID].id]
+
+
+def test_tenant_skill_does_not_shadow_platform_for_other_tenants(tmp_path):
+    """返工 P2 同根：租户 A 的同名 TENANT Skill 不影响租户 B 看到的 PLATFORM。
+
+    可见性 / 遮蔽规则是本卡唯一实现，INT-2551 的 TENANT 写入要直接复用。
+    """
+    container, service, _store = _service(tmp_path)
+    repository = container.repositories['skills']
+    repository.add(AgentSkill(
+        id='tenant-t2', scope=SkillScope.TENANT, tenant_id='t2',
+        owner_id=None, name='platform-reference', description='租户 B 级演示',
+        version='1', status=SkillStatus.ACTIVE, content_hash='tenant'))
+    repository.add_version(AgentSkillVersion(
+        skill_id='tenant-t2', version='1', content_hash='tenant',
+        body='# tenant\n\n## Gotchas\n\n- 无。\n\n## 验收\n\n- 无。\n',
+        frontmatter={'name': 'platform-reference',
+                     'description': '租户 B 级演示'}))
+    container.skill_registry.reload()
+    registry = container.skill_registry
+
+    def _pick(owner_id, tenant_id):
+        return [s for s in registry.visible_for(
+            ['*'], owner_id=owner_id, tenant_id=tenant_id)
+            if s.name == 'platform-reference']
+
+    tenant_a = _pick(OWNER_ID, 't1')
+    tenant_b = _pick(OWNER_ID, 't2')
+    assert len(tenant_a) == 1 and tenant_a[0].scope is SkillScope.PLATFORM
+    assert len(tenant_b) == 1 and tenant_b[0].scope is SkillScope.TENANT
+
+    # 列表口径同一：租户 A 的平台行不被租户 B 的 TENANT 行遮蔽
+    items_a = [item for item in service.list(
+        owner_id=OWNER_ID, tenant_id='t1', permissions=['*'])
+        if item.name == 'platform-reference']
+    assert len(items_a) == 1 and items_a[0].scope is SkillScope.PLATFORM
+    assert items_a[0].masked_by is None
+    items_b = [item for item in service.list(
+        owner_id=OWNER_ID, tenant_id='t2', permissions=['*'])
+        if item.name == 'platform-reference']
+    by_scope = {item.scope: item for item in items_b}
+    assert by_scope[SkillScope.TENANT].masked_by is None
+    assert by_scope[SkillScope.PLATFORM].masked_by == 'TENANT'
+
+
+def _publish(service, skill_id, owner_id):
+    return service.publish(skill_id, owner_id=owner_id,
+                           tenant_id=TENANT_ID, permissions=['*'])
+
+
 def test_platform_skill_has_no_write_entry(tmp_path):
     _container, service, _store = _service(tmp_path)
     platform_id = 'platform:platform-reference'
