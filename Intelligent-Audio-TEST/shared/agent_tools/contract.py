@@ -7,7 +7,9 @@
 不在此处编造业务数值。
 
 维护约定：新增服务端口、接口前缀或枚举词表时先改代码事实源，再同步本文件；
-``tests/unit/test_int2453_agent_tools.py`` 会核对服务端口与索引完整性。
+``tests/unit/test_int2453_agent_tools.py`` 会核对服务端口与索引完整性，
+``tests/unit/test_int2501_tool_catalog_alignment.py`` 核对接口前缀与网关真实
+路由一致、意图工具权限码出自 RBAC 事实源。
 """
 from __future__ import annotations
 
@@ -74,7 +76,6 @@ ENDPOINT_PREFIXES: List[Dict[str, str]] = [
     {'prefix': '/api/v1/benchmarks', 'domain': '基准报告'},
     {'prefix': '/api/v1/system', 'domain': '系统信息'},
     {'prefix': '/api/v1/favorites', 'domain': '收藏'},
-    {'prefix': '/api/v1/trash', 'domain': '回收站'},
     {'prefix': '/api/v1/agent', 'domain': 'Agent sessions / runs / events / skills'},
     {'prefix': '/api/v1/agent/skill', 'domain': '外部 Skill 包 zip 下载（单数）'},
     {'prefix': '/api/v1/mcp', 'domain': '外部 MCP JSON-RPC'},
@@ -144,6 +145,10 @@ CONVENTIONS: List[str] = [
     'M0 阶段写操作不可执行：写工具调用返回 APPROVAL_REQUIRED。',
     'GET /api/v1/agent/skill（单数）是 Skill 包 zip 下载；/api/v1/agent/skills（复数）是可见 Skill 列表。',
     '报告 status 只表达 draft / published；生成进度看 GET /api/v1/reports/{id}/progress。',
+    '回收站没有独立前缀：恢复是 POST /api/v1/{tasks|testcases|reports}/{id}/restore、'
+    '彻底删除是 DELETE /api/v1/{tasks|testcases|reports}/{id}/purge（批量走 '
+    'POST /api/v1/{tasks|testcases|reports}/restore|purge）；回收站列表走各实体列表'
+    '接口的 deleted / only_deleted 过滤参数，收藏列表是 GET /api/v1/favorites。',
 ]
 
 _SECTIONS = {

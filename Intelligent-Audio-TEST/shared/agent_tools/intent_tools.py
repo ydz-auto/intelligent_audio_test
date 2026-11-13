@@ -356,6 +356,12 @@ INTENT_TOOLS: List[IntentTool] = [
         kind='intent_rest'),
 
     # ---------------- 探索 / 记忆（预留，M1 / M2 实现） ----------------
+    # 权限码口径（INT-2501）：一律取 RBAC 事实源
+    # （scripts/migrations/202608/seed_rbac.py）与同能力 MCP 工具
+    # （mcp_registry.py）实际使用的码，多码按 OR 判定；不自己拼不存在的码。
+    # memory_write / driver_propose 在 RBAC 尚无对应权限码（memory 域未建、
+    # 驱动生成无码），暂保留原声明（不存在即恒拒绝，fail-closed），
+    # 标「待规格」由需求规划师定码后再改。
     IntentTool(
         name='ui_tree',
         description=('读取设备 UI 树：裁剪节点、截图引用、与上次快照 diff；'
@@ -415,7 +421,8 @@ INTENT_TOOLS: List[IntentTool] = [
                           required=True),
             'scope': _prop('string', '写入范围', enum=['user', 'project']),
         }, required=('content', 'kind')),
-        risk='WRITE', permissions=('memory:write',), enabled=False, kind='reserved'),
+        risk='WRITE', permissions=('memory:write',),  # 待规格（INT-2501）：RBAC 无 memory 域
+        enabled=False, kind='reserved'),
 
     # ---------------- 其余业务意图工具（预留，M1 / M2 实现） ----------------
     IntentTool(
@@ -426,7 +433,7 @@ INTENT_TOOLS: List[IntentTool] = [
             'urls': _prop('array', '音频 URL 列表', items={'type': 'string'}),
             'upload_id': _prop('string', '上传会话 ID'),
         }, required=('action',)),
-        risk='WRITE', permissions=('audio:create',), enabled=False, kind='reserved'),
+        risk='WRITE', permissions=('audio:upload',), enabled=False, kind='reserved'),
     IntentTool(
         name='audio_annotate', description='批量标注、元数据、算法配置（写）。',
         parameters=_schema({
@@ -473,7 +480,10 @@ INTENT_TOOLS: List[IntentTool] = [
             'target_kind': _prop('string', '目标类型', enum=['tag', 'group']),
             'body': _prop('object', '标签 / 分组字段'),
         }, required=('action', 'target_kind')),
-        risk='WRITE', permissions=('tag:write',), enabled=False, kind='reserved'),
+        risk='WRITE', permissions=('tag:create', 'tag:update', 'tag:delete',
+                                   'group:create', 'group:update',
+                                   'group:delete'),
+        enabled=False, kind='reserved'),
     IntentTool(
         name='evaluation_manage', description='维度/分类 CRUD、触发重评估（写）。',
         parameters=_schema({
@@ -482,7 +492,10 @@ INTENT_TOOLS: List[IntentTool] = [
                                   'category_create', 'category_update', 'reevaluate']),
             'body': _prop('object', '维度 / 分类字段'),
         }, required=('action',)),
-        risk='WRITE', permissions=('evaluation:update',), enabled=False, kind='reserved'),
+        risk='WRITE', permissions=('evaluation:dim_manage',
+                                   'evaluation:category_manage',
+                                   'evaluation:execute'),
+        enabled=False, kind='reserved'),
     IntentTool(
         name='algorithm_query',
         description=('算法配置只读查询（INT-2464）：定义 / 草稿 / 分组、设备与 API 参数、'
@@ -515,7 +528,10 @@ INTENT_TOOLS: List[IntentTool] = [
                                   'mapping_upsert', 'reload']),
             'body': _prop('object', '算法配置字段'),
         }, required=('action',)),
-        risk='WRITE', permissions=('algorithm:update',), enabled=False, kind='reserved'),
+        risk='WRITE', permissions=('algorithm:definition_manage',
+                                   'algorithm:param_manage',
+                                   'algorithm:group_manage'),
+        enabled=False, kind='reserved'),
     IntentTool(
         name='task_run', description='创建、启动、停止、重试、合并、重提取（写）。',
         parameters=_schema({
@@ -542,7 +558,8 @@ INTENT_TOOLS: List[IntentTool] = [
             'device_id': _prop('integer', '设备 ID'),
             'body': _prop('object', '校准参数'),
         }, required=('action',)),
-        risk='WRITE', permissions=('spl:write',), enabled=False, kind='reserved'),
+        risk='WRITE', permissions=('spl:create', 'spl:update', 'spl:test_tone'),
+        enabled=False, kind='reserved'),
     IntentTool(
         name='device_query', description='设备、分组、状态、告警（只读）。',
         parameters=_schema({
@@ -590,7 +607,7 @@ INTENT_TOOLS: List[IntentTool] = [
             'format': _prop('string', '导出格式', required=True,
                             enum=['pdf', 'pptx', 'html', 'md']),
         }, required=('report_id', 'format')),
-        risk='WRITE', permissions=('report:export',), enabled=False, kind='reserved'),
+        risk='WRITE', permissions=('report:read',), enabled=False, kind='reserved'),
     IntentTool(
         name='log_diagnose', description='日志搜索、统计、诊断（只读）。',
         parameters=_schema({
@@ -615,14 +632,15 @@ INTENT_TOOLS: List[IntentTool] = [
             'capabilities': _prop('object', '能力画像 capabilities.json'),
             'ui_trace': _prop('object', 'UI 探索轨迹（ui_trace.json）'),
         }, required=('target_kind',)),
-        risk='WRITE', permissions=('algorithm:update',), enabled=False, kind='reserved'),
+        risk='WRITE', permissions=('algorithm:update',),  # 待规格（INT-2501）：RBAC 无对应码
+        enabled=False, kind='reserved'),
     IntentTool(
         name='dashboard_query', description='首页统计（只读；缓存刷新留 M2）。',
         parameters=_schema({
             'action': _prop('string', '统计动作', required=True,
                             enum=['summary', 'trend', 'recent_tasks']),
         }, required=('action',)),
-        risk='READ', permissions=('dashboard:read',), enabled=False, kind='reserved'),
+        risk='READ', permissions=('home:read',), enabled=False, kind='reserved'),
 ]
 
 INTENT_TOOL_BY_NAME: Dict[str, IntentTool] = {t.name: t for t in INTENT_TOOLS}

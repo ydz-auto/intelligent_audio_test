@@ -32,7 +32,7 @@
 | `/api/v1/data-transfer` | `data_transfer_bp` | 数据迁移 |
 | `/api/v1/benchmarks` | `benchmark_bp` | 基准报告 |
 | `/api/v1/system` | `system_bp` | 系统信息 |
-| `/api/v1/favorites`、`/api/v1/trash` | `favorite_trash_bp` | 收藏 / 回收站（按实体分治） |
+| `/api/v1/favorites` | `favorite_trash_bp` | 收藏（回收站无独立前缀：恢复 `POST {tasks\|testcases\|reports}/{id}/restore`、彻底删除 `DELETE {tasks\|testcases\|reports}/{id}/purge`，批量走 `POST {实体}/restore\|purge`；回收站列表走各实体列表的 `deleted` / `only_deleted` 过滤） |
 | `/api/v1/agent` | `agent_runtime_bp` | Agent sessions / runs / events / skills |
 | `/api/v1/agent/skill` | `agent_bp` | 外部 Skill 包 zip 下载（单数，与上面区分） |
 | `/api/v1/mcp` | `agent_bp` | 外部 MCP JSON-RPC |
