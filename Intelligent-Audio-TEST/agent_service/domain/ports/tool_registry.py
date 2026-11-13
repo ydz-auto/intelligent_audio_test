@@ -78,6 +78,10 @@ class ToolRegistryPort(ABC):
         """动作级参数白名单；没有白名单的工具 / 动作返回 None。"""
 
     @abstractmethod
+    def log_diagnose_stats_unsupported(self) -> Tuple[str, ...]:
+        """diagnose 中只作用于取样、级别统计接口不支持的参数（INT-2461）。"""
+
+    @abstractmethod
     def diagnose_task(self, sources: Dict[str, Any]) -> Dict[str, Any]:
         """任务失败诊断聚合（纯函数；输入是已取回的真实接口数据）。"""
 

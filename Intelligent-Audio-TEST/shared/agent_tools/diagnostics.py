@@ -310,6 +310,7 @@ def build_log_diagnosis(
         *,
         stats_filters: Optional[Mapping[str, Any]] = None,
         list_filters: Optional[Mapping[str, Any]] = None,
+        stats_unsupported: Optional[Sequence[str]] = None,
         levels: Optional[Sequence[str]] = None,
         stats: Optional[Mapping[str, Any]] = None,
         items: Optional[Sequence[Mapping[str, Any]]] = None,
@@ -321,6 +322,7 @@ def build_log_diagnosis(
     levels = tuple(levels or DIAGNOSIS_LOG_LEVELS)
     stats_filters = dict(stats_filters or {})
     list_filters = dict(list_filters or {})
+    stats_unsupported = tuple(stats_unsupported or ())
     stats_dict = dict(stats) if isinstance(stats, Mapping) else {}
     rows = log_rows(items)
     attribution = log_attribution(rows)
@@ -329,6 +331,10 @@ def build_log_diagnosis(
     notes: List[str] = []
     if stats_error:
         notes.append(f'日志统计接口本轮不可用（{stats_error}），级别统计为空')
+    if stats_unsupported:
+        notes.append(
+            f'级别统计接口不支持按 {" / ".join(stats_unsupported)} 过滤：'
+            f'本次级别统计为任务 / 全局口径；该参数只作用于日志样本取样')
     if list_error:
         notes.append(f'日志列表接口本轮不可用（{list_error}），没有样本可聚合')
     if sample_total is not None and len(rows) < sample_total:

@@ -274,9 +274,19 @@ class SharedToolGateway(ToolGateway):
 
         # 级别统计不带 level：保留完整 breakdown 才能判断样本覆盖率；
         # 样本按实际取样级别过滤。
-        stats_filters = {key: value for key, value in arguments.items()
-                         if key not in ('action', 'max_rows', 'level')}
-        list_filters = dict(stats_filters, level=','.join(levels),
+        # ``/api/v1/logs/stats`` 没有 test_case_id（LogStatsQuery，INT-2461 P2）：
+        # 该参数只作用于样本取样，进了 stats_filters 会让统计被误标成按用例
+        # 口径；剔除后由 diagnostics 在 notes 里写明真实口径。
+        base_filters = {key: value for key, value in arguments.items()
+                        if key not in ('action', 'max_rows', 'level')}
+        stats_unsupported_params = (
+            self._bridge.log_diagnose_stats_unsupported())
+        stats_unsupported = [
+            key for key in stats_unsupported_params
+            if base_filters.get(key) not in (None, '')]
+        stats_filters = {key: value for key, value in base_filters.items()
+                         if key not in stats_unsupported_params}
+        list_filters = dict(base_filters, level=','.join(levels),
                             page=1, per_page=limit)
 
         stats, stats_error, stats_status = self._fetch(
@@ -298,6 +308,7 @@ class SharedToolGateway(ToolGateway):
         payload = self._bridge.diagnose_logs({
             'stats_filters': stats_filters,
             'list_filters': list_filters,
+            'stats_unsupported': stats_unsupported,
             'levels': levels,
             'stats': stats,
             'items': items,

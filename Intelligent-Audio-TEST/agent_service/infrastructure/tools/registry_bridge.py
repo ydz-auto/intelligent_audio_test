@@ -198,6 +198,9 @@ class SharedToolRegistryBridge(ToolRegistryPort):
                          ) -> Optional[Tuple[str, ...]]:
         return intent_tools.action_params(name, action)
 
+    def log_diagnose_stats_unsupported(self) -> Tuple[str, ...]:
+        return tuple(intent_tools.LOG_DIAGNOSE_STATS_UNSUPPORTED_PARAMS)
+
     def diagnose_task(self, sources: Dict[str, Any]) -> Dict[str, Any]:
         return diagnostics.build_task_diagnosis(**sources)
 

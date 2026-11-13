@@ -159,6 +159,13 @@ LOG_DIAGNOSE_PARAMS: Dict[str, Tuple[str, ...]] = {
                  'test_case_id', 'start_time', 'end_time', 'max_rows'),
 }
 
+# ``diagnose`` 里只作用于日志取样、不能进入级别统计的参数（INT-2461 P2）：
+# ``GET /api/v1/logs/stats`` 的 ``LogStatsQuery`` 没有 ``test_case_id``
+# （``APIModel`` 是 ``extra='ignore'``，会静默丢弃）。若整体带进
+# ``stats_filters``，统计值会被误标成「按用例过滤」，实际是任务 / 全局口径；
+# 因此该参数只进 ``list_filters``，诊断输出的 ``notes`` 写明统计口径。
+LOG_DIAGNOSE_STATS_UNSUPPORTED_PARAMS: Tuple[str, ...] = ('test_case_id',)
+
 # 首页统计只读动作 → MCP 工具名（INT-2461；缓存刷新是写侧，留 M2）
 DASHBOARD_QUERY_ACTIONS: Dict[str, str] = {
     'details': 'home_stats_details',
@@ -417,7 +424,9 @@ INTENT_TOOLS: List[IntentTool] = [
             'module': _prop('string', '模块过滤（all = 不过滤）'),
             'category': _prop('string', '分类过滤（all = 不过滤）'),
             'task_id': _prop('integer', '任务 ID 过滤'),
-            'test_case_id': _prop('string', '用例 ID 过滤（search / diagnose）'),
+            'test_case_id': _prop(
+                'string', '用例 ID 过滤（search；按用例检索需同时带 task_id。'
+                          'diagnose 只用它取样，级别统计不支持按用例过滤）'),
             'start_time': _prop('string', '开始时间（ISO 8601）'),
             'end_time': _prop('string', '结束时间（ISO 8601）'),
             'page': _prop('integer', '页码（search，默认 1）'),
@@ -1185,7 +1194,8 @@ __all__ = [
     'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool',
     'LOCAL_TOOL_NAMES', 'LOG_DIAGNOSE_ACTIONS', 'LOG_DIAGNOSE_ALL_ACTIONS',
     'LOG_DIAGNOSE_DEFAULT_MAX_ROWS', 'LOG_DIAGNOSE_LOCAL_ACTIONS',
-    'LOG_DIAGNOSE_MAX_ROWS', 'LOG_DIAGNOSE_PARAMS', 'MCP_TOOLS',
+    'LOG_DIAGNOSE_MAX_ROWS', 'LOG_DIAGNOSE_PARAMS',
+    'LOG_DIAGNOSE_STATS_UNSUPPORTED_PARAMS', 'MCP_TOOLS',
     'REPORT_QUERY_ACTIONS', 'TASK_DOMAIN_STATS_GRANULARITIES',
     'TASK_QUERY_ACTIONS', 'TASK_QUERY_PARAMS', 'TOOL_INDEX',
     'TOOL_INDEX_BY_NAME', 'action_params', 'conditional_required',

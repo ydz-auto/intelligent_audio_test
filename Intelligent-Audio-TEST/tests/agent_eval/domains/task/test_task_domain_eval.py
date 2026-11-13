@@ -44,7 +44,8 @@ from agent_service.infrastructure.tools.registry_bridge import (
 from shared.agent_tools import diagnostics, intent_tools, mcp_registry
 from shared.agent_tools.intent_tools import (
     DASHBOARD_QUERY_ACTIONS, LOG_DIAGNOSE_ACTIONS,
-    LOG_DIAGNOSE_LOCAL_ACTIONS, TASK_QUERY_ACTIONS,
+    LOG_DIAGNOSE_LOCAL_ACTIONS, LOG_DIAGNOSE_STATS_UNSUPPORTED_PARAMS,
+    TASK_QUERY_ACTIONS,
 )
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -289,6 +290,15 @@ def test_log_diagnose_rejects_unsupported_action_params():
     _, _, error = intent_tools.resolve_rest_call(
         'log_diagnose', {'action': 'search', 'user_id': 7})
     assert error and 'user_id' in error
+
+
+def test_log_diagnose_stats_only_params_are_declared_and_unsupported():
+    """INT-2461 P2：只作用于取样的参数必须在动作白名单里，且不得进统计。"""
+    diagnose_params = set(intent_tools.LOG_DIAGNOSE_PARAMS['diagnose'])
+    stats_params = set(intent_tools.LOG_DIAGNOSE_PARAMS['stats'])
+    assert set(LOG_DIAGNOSE_STATS_UNSUPPORTED_PARAMS) <= diagnose_params
+    # 统计动作本身就不声明这些参数（工具层直接拒绝，不静默忽略）
+    assert not set(LOG_DIAGNOSE_STATS_UNSUPPORTED_PARAMS) & stats_params
 
 
 def test_log_diagnose_max_rows_bounds_come_from_schema():
@@ -577,6 +587,23 @@ def test_log_diagnosis_without_rows_is_not_reported_as_healthy():
     assert '不等于「服务正常」' in notes
 
 
+def test_log_diagnosis_reports_stats_scope_when_case_filter_is_sample_only():
+    """INT-2461 P2：级别统计接口没有 test_case_id，notes 必须写明口径。"""
+    payload = diagnostics.build_log_diagnosis(
+        stats_filters={'task_id': 588},
+        list_filters={'task_id': 588, 'test_case_id': 'case-abc',
+                      'level': 'error,critical', 'page': 1, 'per_page': 20},
+        stats_unsupported=['test_case_id'],
+        stats={'error': 5, 'critical': 1}, items=[], total=0)
+    assert payload['stats_filters'] == {'task_id': 588}
+    assert payload['sources'][0]['filters'] == {'task_id': 588}
+    assert payload['list_filters']['test_case_id'] == 'case-abc'
+    notes = ' '.join(payload['notes'])
+    assert '不支持按 test_case_id 过滤' in notes
+    assert '任务 / 全局口径' in notes
+    assert '只作用于日志样本取样' in notes
+
+
 def test_log_diagnosis_list_error_is_reported():
     payload = diagnostics.build_log_diagnosis(
         stats={'error': 0, 'critical': 0}, items=None,
@@ -724,6 +751,36 @@ def test_log_diagnose_custom_level_narrows_sample_but_keeps_stats_full():
     assert rest.calls[1]['arguments']['per_page'] == 30
     payload = json.loads(result.content)
     assert payload['sample_levels'] == ['warning']
+
+
+def test_log_diagnose_case_scope_only_narrows_sample_not_level_stats():
+    """INT-2461 P2：diagnose 带 test_case_id 时统计口径仍是任务 / 全局。"""
+    rest = ScriptedRest({
+        'log_stats': (200, {'success': True, 'data': {
+            'total': 1448, 'debug': 10, 'info': 1430, 'warning': 3,
+            'error': 5, 'critical': 0}}),
+        'log_list': (200, {'success': True, 'data': {
+            'items': [], 'total': 0, 'page': 1, 'per_page': 20, 'pages': 1}}),
+    })
+    result = _gateway(rest).execute(
+        _call('log_diagnose', {'action': 'diagnose', 'task_id': 588,
+                               'test_case_id': 'case-abc'}), _ctx())
+    assert result.ok is True
+    stats_args = rest.calls[0]['arguments']
+    list_args = rest.calls[1]['arguments']
+    # /api/v1/logs/stats 没有 test_case_id：不能带上去（会被静默忽略）
+    assert stats_args == {'task_id': 588}
+    # 按用例过滤只作用于样本取样
+    assert list_args['test_case_id'] == 'case-abc'
+
+    payload = json.loads(result.content)
+    assert payload['stats_filters'] == {'task_id': 588}
+    assert payload['sources'][0]['filters'] == {'task_id': 588}
+    assert payload['list_filters']['test_case_id'] == 'case-abc'
+    assert payload['stats']['error'] == 5          # 统计值原样保留
+    notes = ' '.join(payload['notes'])
+    assert '不支持按 test_case_id 过滤' in notes
+    assert '任务 / 全局口径' in notes
 
 
 def test_log_diagnose_search_maps_to_single_log_list_call():
