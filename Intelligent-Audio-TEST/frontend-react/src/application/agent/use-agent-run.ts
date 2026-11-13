@@ -305,8 +305,8 @@ export function useAgentRun(handlers: UseAgentRunHandlers = {}): UseAgentRunResu
     try {
       const snapshot = await cancelAgentRun(current.id)
       if (token !== tokenRef.current) return null
-      if (snapshot) setRun(snapshot)
-      if (snapshot && isTerminalRunStatus(snapshot.status)) {
+      setRun(snapshot)
+      if (isTerminalRunStatus(snapshot.status)) {
         emitSyntheticFinished(snapshot, snapshot.status, snapshot.error)
         finishRun(snapshot.status, snapshot.error)
         return null

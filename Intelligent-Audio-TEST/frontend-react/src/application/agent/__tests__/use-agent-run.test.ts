@@ -145,10 +145,10 @@ describe('useAgentRun', () => {
   })
 
   it('取消：连续点击只发一次取消请求，终态落 CANCELLED', async () => {
-    let resolveCancel: ((run: AgentRun | null) => void) | null = null
+    let resolveCancel: ((run: AgentRun) => void) | null = null
     cancelRunMock.mockImplementation(
       () =>
-        new Promise<AgentRun | null>((resolve) => {
+        new Promise<AgentRun>((resolve) => {
           resolveCancel = resolve
         })
     )

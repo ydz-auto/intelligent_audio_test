@@ -35,7 +35,6 @@ import {
   toAgentSession,
   toAgentSessionCreateDto,
   toAgentSessionDetail,
-  type AgentApprovalDto,
   type AgentApprovalsResponseDto,
   type AgentEventDto,
   type AgentRunCreateResponseDto,
@@ -188,7 +187,7 @@ export async function createAgentRun(
     ...((options?.headers as Record<string, string> | undefined) ?? {}),
     'Idempotency-Key': idempotencyKey,
   }
-  const dto = await request<AgentRunCreateResponseDto | AgentRunDto>(
+  const dto = await request<AgentRunCreateResponseDto>(
     'POST',
     AGENT_API_PATHS.sessionRuns(sessionId),
     toAgentRunCreateDto(input),
@@ -211,46 +210,36 @@ export async function getAgentRun(
   return toAgentRun(dto)
 }
 
-/** POST /agent/runs/{id}/cancel —— 取消（后端返 run 快照；无响应体返回 null） */
+/** POST /agent/runs/{id}/cancel —— 取消（后端恒返 RunResponse 快照，按 JSON 解析） */
 export async function cancelAgentRun(
   runId: string,
   options?: ApiRequestOptions
-): Promise<AgentRun | null> {
-  const text = await request<string>(
+): Promise<AgentRun> {
+  const dto = await request<AgentRunDto>(
     'POST',
     AGENT_API_PATHS.runCancel(runId),
     undefined,
-    { ...options, responseType: 'text', unwrapResponse: false }
+    options
   )
-  const raw = typeof text === 'string' ? text.trim() : ''
-  if (!raw) return null
-  try {
-    return toAgentRun(JSON.parse(raw) as AgentRunDto)
-  } catch {
-    return null
-  }
+  return toAgentRun(dto)
 }
 
 /**
- * GET /agent/runs/{id}/approvals —— 待审批提案。
- * 审批卡与决策流程属 M2（INT-2472）；本卡只接列表契约，接口未部署（404）按空列表。
+ * GET /agent/runs/{id}/approvals —— 待审批提案（`{"items": [...]}`）。
+ * 审批卡与决策流程属 M2（INT-2472）；本卡只接列表契约。端点已实现，404 只可能是
+ * 路径/网关配错，照常上抛（不伪装成「暂无待审批」）。
  */
 export async function listAgentApprovals(
   runId: string,
   options?: ApiRequestOptions
 ): Promise<AgentApproval[]> {
-  try {
-    const dto = await request<AgentApprovalDto[] | AgentApprovalsResponseDto>(
-      'GET',
-      AGENT_API_PATHS.runApprovals(runId),
-      undefined,
-      options
-    )
-    return toAgentApprovals(dto)
-  } catch (error) {
-    if (error instanceof ApiError && error.httpStatus === 404) return []
-    throw error
-  }
+  const dto = await request<AgentApprovalsResponseDto>(
+    'GET',
+    AGENT_API_PATHS.runApprovals(runId),
+    undefined,
+    options
+  )
+  return toAgentApprovals(dto)
 }
 
 // ===== Run 事件流（SSE + Last-Event-ID 续传） =====

@@ -15,6 +15,7 @@ import {
   toAgentErrorMessage,
 } from '@/infrastructure/api/agentApi'
 import { ApiError } from '@/infrastructure/api/api-error'
+import { AgentContractError } from '@/infrastructure/dto/agent.dto'
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -87,6 +88,16 @@ describe('agentApi', () => {
     expect(run.status).toBe(AGENT_RUN_STATUS.QUEUED)
   })
 
+  it('createAgentRun：扁平 run（旧草案）视为契约错误', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ id: 'r-2', session_id: 's-1', status: 'RUNNING' }))
+    )
+    await expect(createAgentRun('s-1', { message: '你好' }, 'idem-1')).rejects.toBeInstanceOf(
+      AgentContractError
+    )
+  })
+
   it('getAgentSession：拆 {session, messages, runs} 信封', async () => {
     vi.stubGlobal(
       'fetch',
@@ -109,12 +120,31 @@ describe('agentApi', () => {
     await expect(listAgentApprovals('r-1')).resolves.toEqual([])
   })
 
-  it('cancelAgentRun：空响应体返回 null（不因无 JSON 报错）', async () => {
+  it('listAgentApprovals：404 照常上抛（不伪装成空列表）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, 404)))
+    await expect(listAgentApprovals('r-1')).rejects.toBeInstanceOf(ApiError)
+  })
+
+  it('cancelAgentRun：按 RunResponse 解析快照', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({ id: 'r-1', session_id: 's-1', status: 'CANCELLED' })
+      )
+    )
+    await expect(cancelAgentRun('r-1')).resolves.toMatchObject({
+      id: 'r-1',
+      status: AGENT_RUN_STATUS.CANCELLED,
+    })
+  })
+
+  it('cancelAgentRun：空响应体报错（不静默返回 null）', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(new Response('', { status: 200 }))
     )
-    await expect(cancelAgentRun('r-1')).resolves.toBeNull()
+    // 后端恒返 RunResponse；非 JSON 由 client 的响应体解析报错上抛
+    await expect(cancelAgentRun('r-1')).rejects.toBeInstanceOf(Error)
   })
 
   it('错误归一：503=Agent 未开启、404=未部署、网络失败', () => {

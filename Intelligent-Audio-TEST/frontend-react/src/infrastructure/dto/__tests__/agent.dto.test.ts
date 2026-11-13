@@ -1,11 +1,13 @@
 /**
- * Agent DTO 转换单测（INT-2457）：snake_case → camelCase 只在本层发生；
- * 事件载荷兼容「顶层字段」与「payload 内字段」两种后端落法，未知类型丢弃。
+ * Agent DTO 转换单测（INT-2457 / INT-2519）：snake_case → camelCase 只在本层发生；
+ * 只认 agent_service 真实形态（平铺 snake_case 帧 / {run,created} / {items}），
+ * 旧草案形态（嵌套 payload / camelCase 键 / 扁平 run / 裸数组）必须判契约错误。
  */
 import { describe, expect, it } from 'vitest'
 
 import { AGENT_RUN_STATUS } from '@/domain/models/agent'
 import {
+  AgentContractError,
   toAgentApprovals,
   toAgentRun,
   toAgentRunCreateDto,
@@ -96,7 +98,7 @@ describe('agent.dto', () => {
     })
   })
 
-  it('事件：嵌套 payload 形态兼容（早期草案，顶层优先）', () => {
+  it('事件：嵌套 payload 形态不再兼容（真实帧字段平铺，嵌套即丢弃）', () => {
     const event = toAgentRunEvent({
       payload: {
         run_id: 'r-2',
@@ -104,22 +106,33 @@ describe('agent.dto', () => {
         type: 'tool_call',
         tool_call_id: 'tc-1',
         tool: 'report_query',
-        risk: 'READ',
-        summary: '查询报告 12 的指标',
       },
     })
-    expect(event).toMatchObject({
-      runId: 'r-2',
-      sequence: 3,
-      type: 'tool_call',
-      toolCallId: 'tc-1',
-      tool: 'report_query',
-      risk: 'READ',
-      summary: '查询报告 12 的指标',
-    })
+    expect(event).toBeNull()
   })
 
-  it('事件：tool_call 无 summary 时用 arguments 做只读摘要', () => {
+  it('事件：camelCase 键不再兜底（真实帧只有 snake_case）', () => {
+    expect(
+      toAgentRunEvent({
+        run_id: 'r-1',
+        sequence: 1,
+        type: 'message_delta',
+        messageId: 'm-1',
+        delta: '你好',
+      })
+    ).toBeNull()
+    expect(
+      toAgentRunEvent({
+        run_id: 'r-1',
+        sequence: 2,
+        type: 'tool_call',
+        toolCallId: 'tc-1',
+        name: 'report_query',
+      })
+    ).toBeNull()
+  })
+
+  it('事件：tool_call 摘要只取 arguments（真实帧无 summary/args_summary）', () => {
     const event = toAgentRunEvent({
       run_id: 'r-3',
       sequence: 6,
@@ -128,6 +141,9 @@ describe('agent.dto', () => {
       tool: 'report_query',
       risk: 'READ',
       arguments: { report_id: 12 },
+      // 旧草案键：不再读取，避免掩盖真实契约漂移
+      summary: '旧草案摘要',
+      args_summary: '旧草案摘要',
       turn: 1,
     })
     expect(event).toMatchObject({
@@ -146,6 +162,9 @@ describe('agent.dto', () => {
       ok: false,
       content: 'boom',
       error_code: 'E1',
+      // 旧草案键：不再读取，摘要只取真实的 content
+      summary: '旧草案摘要',
+      result_summary: '旧草案摘要',
       turn: 1,
     })
     expect(failed).toMatchObject({
@@ -222,8 +241,13 @@ describe('agent.dto', () => {
       created: true,
     })
     expect(run).toMatchObject({ id: 'r-1', sessionId: 's-1', status: AGENT_RUN_STATUS.QUEUED })
-    // 兼容扁平 run
-    expect(toAgentRunFromCreateResponse({ id: 'r-2', status: 'RUNNING' }).id).toBe('r-2')
+    // 扁平 run（旧草案 / 单测桩）不再是合法形态
+    expect(() =>
+      toAgentRunFromCreateResponse({
+        id: 'r-2',
+        status: 'RUNNING',
+      } as unknown as Parameters<typeof toAgentRunFromCreateResponse>[0])
+    ).toThrow(AgentContractError)
 
     const detail = toAgentSessionDetail({
       session: { id: 's-1', title: '会话' },
@@ -235,18 +259,49 @@ describe('agent.dto', () => {
     expect(detail.runs[0].id).toBe('r-1')
 
     expect(toAgentApprovals({ items: [] })).toEqual([])
-    expect(
-      toAgentApprovals([{ id: 'a-1', run_id: 'r-1', status: 'PENDING' }])
-    ).toMatchObject([{ id: 'a-1', status: 'PENDING' }])
+    expect(toAgentApprovals({ items: [{ id: 'a-1', run_id: 'r-1', status: 'PENDING' }] })).toMatchObject([
+      { id: 'a-1', status: 'PENDING' },
+    ])
+    // 裸数组（旧草案）不再是合法形态
+    expect(() =>
+      toAgentApprovals([
+        { id: 'a-1', run_id: 'r-1', status: 'PENDING' },
+      ] as unknown as Parameters<typeof toAgentApprovals>[0])
+    ).toThrow(AgentContractError)
+    expect(() =>
+      toAgentApprovals({} as Parameters<typeof toAgentApprovals>[0])
+    ).toThrow(AgentContractError)
   })
 
-  it('事件：未知类型 / 缺 sequence → 丢弃（不把未知载荷当已知结构渲染）', () => {
+  it('事件：error 帧读真实键 {code, message}', () => {
+    expect(
+      toAgentRunEvent({
+        run_id: 'r-1',
+        sequence: 8,
+        type: 'error',
+        code: 'LLM_TIMEOUT',
+        message: '模型超时',
+        // 旧草案键：不再读取
+        error_code: 'OLD',
+        detail: '旧草案详情',
+      })
+    ).toMatchObject({
+      type: 'error',
+      errorCode: 'LLM_TIMEOUT',
+      errorMessage: '模型超时',
+    })
+  })
+
+  it('事件：未知类型 / 缺 sequence / 缺必需键 → 丢弃（不把未知载荷当已知结构渲染）', () => {
     expect(
       toAgentRunEvent({ run_id: 'r', sequence: 1, type: 'brand_new_event' })
     ).toBeNull()
     expect(toAgentRunEvent({ run_id: 'r', type: 'message_delta' })).toBeNull()
     expect(
-      toAgentRunEvent({ run_id: 'r', sequence: 1, type: 'message_delta', payload: {} })
+      toAgentRunEvent({ run_id: 'r', sequence: 1, type: 'message_delta' })
+    ).toBeNull()
+    expect(
+      toAgentRunEvent({ run_id: 'r', sequence: 1, type: 'message_delta', payload: { message_id: 'm-1', delta: '你好' } })
     ).toBeNull()
   })
 })
