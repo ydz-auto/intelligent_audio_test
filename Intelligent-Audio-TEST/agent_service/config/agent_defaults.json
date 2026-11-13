@@ -60,5 +60,8 @@
     "max_actions": 30,
     "max_seconds": 300,
     "lease_ttl_seconds": 900
+  },
+  "onboarding": {
+    "staging_dir": ""
   }
 }

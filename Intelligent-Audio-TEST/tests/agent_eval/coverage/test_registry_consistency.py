@@ -60,6 +60,9 @@ SKILL_WRITE_TOOLS = {
     'testcase-authoring': {'testcase_write'},
     'tag-group': {'tag_group_manage'},
     'task-operations': {'task_run'},
+    # INT-2491 onboarding：探索动作（ui_action）+ 驱动提案 + staging 冒烟。
+    # 三者都是写路径，仍走提案 + 审批；该 Skill 是唯一同时携带 ui_action 的。
+    'app-api-onboarding': {'ui_action', 'driver_propose', 'task_run'},
 }
 # M2 起写意图工具开始按域进入 Skill allowed-tools：只有本集合里的写工具可以被
 # Skill 声明（新增写工具必须同时在这里登记，避免「悄悄把写工具塞进 Skill」）。
@@ -138,9 +141,8 @@ def test_skills_allowed_tools_stay_inside_the_31_names():
 # 首页统计没有专属 Skill（§4.3 清单空档）：INT-2461 的域任务直接覆盖该工具，
 # 本卡不改 Skill 清单，显式登记为已知缺口，避免「无遗漏」口径含糊。
 # INT-2492 探索-生成层：ui_tree / api_spec 由 §6.6 的 `app-api-onboarding`
-# Skill 承载，该 Skill 属 INT-2491（M2 onboarding 全流程）交付；在本卡先启用
-# 工具、Skill 声明后补，显式登记为已知空档（ui_action 是 WRITE，不在本口径）。
-SKILL_LESS_ENABLED_READ = {'dashboard_query', 'ui_tree', 'api_spec'}
+# Skill（INT-2491）声明，不再算空档；ui_action 是 WRITE，不在本口径。
+SKILL_LESS_ENABLED_READ = {'dashboard_query'}
 
 
 def test_enabled_read_tools_are_declared_or_documented():

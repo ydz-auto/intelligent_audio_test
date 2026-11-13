@@ -89,6 +89,13 @@ MEMORY_TOOLS = frozenset({'memory_search', 'memory_write'})
 # 不返回伪造的 UI 树（卡面「不写 mock 糊过去」）。
 EXPLORATION_TOOLS = frozenset({'ui_tree', 'ui_action', 'api_spec'})
 
+
+def _is_staging_smoke(name: str, arguments: Optional[Dict[str, Any]]) -> bool:
+    """``task_run(mode=SMOKE)``：本地 staging 冒烟（INT-2491）。"""
+    return (name == 'task_run' and isinstance(arguments, dict)
+            and str(arguments.get('mode') or '').upper() == 'SMOKE')
+
+
 # 不泄漏存在性的统一文案（403/404 同一口径）
 _DENIED_TEXT = '无权访问该资源，或该资源不存在。'
 _NOT_FOUND_TEXT = '资源不存在或无权访问。'
@@ -333,6 +340,10 @@ class SharedToolGateway(ToolGateway):
         if name == DRIVER_PROPOSE_TOOL and self._driver_proposals is not None:
             # 材料 / 能力画像在提案阶段就校验（缺材料不生成提案）
             return self._driver_proposals.validate(arguments or {})
+        if _is_staging_smoke(name, arguments or {}) and (
+                self._driver_proposals is None
+                or not self._driver_proposals.staging_available):
+            return 'onboarding staging 服务未装配，无法执行接入包冒烟'
         if name in ('ui_tree', 'ui_action') and (
                 self._exploration is None or not self._exploration.available):
             # 设备 UI 通道未接入：提案阶段就拒绝，不生成一条注定执行不了的审批单
@@ -361,6 +372,17 @@ class SharedToolGateway(ToolGateway):
                 'kind': 'driver_proposal',
                 'target_kind': args.get('target_kind'),
                 'materials': sorted(key for key in args if args[key] is not None),
+                'arguments': redact_for_audit(name, args),
+            }
+            self._mark_destructive(preview, name)
+            return preview
+        if _is_staging_smoke(name, args):
+            preview = {
+                'kind': 'staging_smoke',
+                'driver_ref': args.get('driver_ref'),
+                'case_ref': args.get('case_ref'),
+                'device_id': args.get('device_id'),
+                'writes_production_registry': False,
                 'arguments': redact_for_audit(name, args),
             }
             self._mark_destructive(preview, name)
@@ -474,6 +496,10 @@ class SharedToolGateway(ToolGateway):
         # 只在审批通过后执行；不注册、不发布。
         if name == DRIVER_PROPOSE_TOOL:
             return self._run_driver_propose(call, arguments, context)
+        # staging 冒烟（INT-2491）：只读 staging 目录 + mock / 真机执行器；
+        # 不写生产注册表。执行器未接入时明确 NOT_EXECUTED，不假通过。
+        if _is_staging_smoke(name, arguments):
+            return self._run_staging_smoke(call, arguments, context)
         # 探索-生成层（INT-2492）：ui_tree / ui_action 走设备端口与租约，
         # api_spec 是本地契约解析（不发任何真实请求）。
         if name in EXPLORATION_TOOLS:
@@ -1128,6 +1154,29 @@ class SharedToolGateway(ToolGateway):
             payload = self._driver_proposals.generate(
                 arguments, run_id=context.run_id)
         except DriverProposalError as exc:
+            return self._fail(call, INVALID_ARGUMENTS, str(exc))
+        return self._ok(call, json.dumps(payload, ensure_ascii=False))
+
+    def _run_staging_smoke(self, call: ToolCallRequest,
+                           arguments: Dict[str, Any],
+                           context: ToolInvocationContext) -> ToolResult:
+        """``task_run(mode=SMOKE)``：从 staging 读取接入包跑冒烟。
+
+        只读 staging 目录、不写生产注册表；包不存在 / 校验失败显式失败，
+        真机执行器未接入时返回 ``NOT_EXECUTED`` + 未覆盖项，绝不假通过。
+        """
+        if self._driver_proposals is None:
+            return self._fail(
+                call, TOOL_NOT_ENABLED,
+                'onboarding staging 服务未装配，无法执行接入包冒烟。')
+        try:
+            payload = self._driver_proposals.staging_smoke(
+                arguments, run_id=context.run_id)
+        except DriverProposalError as exc:
+            return self._fail(call, INVALID_ARGUMENTS, str(exc))
+        except FileNotFoundError as exc:
+            return self._fail(call, 'STAGING_PACKAGE_NOT_FOUND', str(exc))
+        except ValueError as exc:
             return self._fail(call, INVALID_ARGUMENTS, str(exc))
         return self._ok(call, json.dumps(payload, ensure_ascii=False))
 

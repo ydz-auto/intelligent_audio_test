@@ -59,6 +59,9 @@ from agent_service.domain.services.context_window_resolver import (
 from agent_service.infrastructure.artifacts.oss_artifact_store import (
     OssArtifactStore,
 )
+from agent_service.infrastructure.onboarding.staging_store import (
+    OnboardingStagingStore,
+)
 from agent_service.infrastructure.llm.credential_store import CredentialStore
 from agent_service.infrastructure.llm.provider_registry import ProviderRegistry
 from agent_service.infrastructure.llm.verifier import HttpProviderVerifier
@@ -342,7 +345,8 @@ def build_container(session_factory,
         settings=DriverProposalSettings(
             publish_enabled=Config.DRIVER_PUBLISH_ENABLED,
             max_result_chars=Config.DRIVER_PROPOSAL_MAX_RESULT_CHARS,
-            max_diff_chars=Config.DRIVER_PROPOSAL_MAX_DIFF_CHARS))
+            max_diff_chars=Config.DRIVER_PROPOSAL_MAX_DIFF_CHARS),
+        staging=OnboardingStagingStore(Config.ONBOARDING_STAGING_DIR))
     tool_rest = RestToolClient(
         Config.TOOL_GATEWAY_BASE_URL,
         timeout_seconds=Config.TOOL_HTTP_TIMEOUT_SECONDS)
