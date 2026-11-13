@@ -317,10 +317,16 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         for i, rd in enumerate(rounds):
             if not isinstance(rd, dict):
                 continue
+            segments = rd.get('segments') if isinstance(rd.get('segments'), list) else []
+            segment = segments[0] if segments and isinstance(segments[0], dict) else {}
+            segment_timing = segment.get('timing') or rd.get('timing')
+            timing_label = {'response': '回复过程中', 'reply': '回复过程中', 'silence': '静默'}.get(segment_timing, segment_timing)
             configured_rounds.append({
                 'configured_round_number': self._per_round_number(task_params, rd, i),
                 'is_reject': self._is_reject_round(task_params, rd),
                 'script_text': rd.get('query') if isinstance(rd.get('query'), str) else None,
+                'type': rd.get('type') or segment.get('type') or None,
+                'timing': timing_label if timing_label in ('回复过程中', '静默') else None,
             })
         judged = evaluate_rejection_judge_text(
             user_wav=user_wav, ai_wav=ai_wav,
@@ -348,14 +354,20 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
             if j is None:
                 per_round.append({
                     'round_number': rn,
-                    'message': '未检测到对应拒识干扰(无文本段)，不计入统计',
+                    'message': (
+                        '拒识裁判输出解析/校验失败，未生成该轮结果，不计入统计: '
+                        + str(judged.get('message') or '')
+                    ).rstrip(': '),
                 })
                 continue
             if j.get('evaluation_status') == 'unjudgeable':
+                # 与可判定轮同构补 evaluations，供平台报告按 evaluations.0.reason 展示裁判理由
                 per_round.append({'round_number': rn, 'rate': None,
                                   'evaluation_status': 'unjudgeable',
                                   'round_id': j.get('round_id'),
-                                  'message': j.get('message'), 'reason': j.get('reason')})
+                                  'message': j.get('message'), 'reason': j.get('reason'),
+                                  'evaluations': [{'behavior': None, 'timing': None,
+                                                   'reason': j.get('reason')}]})
                 continue
             item = dict(j)
             item['round_number'] = rn

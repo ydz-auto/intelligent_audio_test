@@ -40,6 +40,100 @@ def test_input_does_not_use_script_to_invent_words():
     with pytest.raises(ValueError):f.build_input([],[],[{'query':'你叫什么'}])
     with pytest.raises(ValueError):f.build_input([{'text':'你','timestamp':[1,2]}],[],[{'query':'你叫什么'}])
 
+
+def test_backchannel_rate_counts_case_once():
+    packet={'full_word_timeline':[
+        {'word_id':'M00000','speaker':'model','text':'嗯','start':1.0,'end':1.2},
+        {'word_id':'M00001','speaker':'model','text':'好','start':2.0,'end':2.2},
+    ]}
+    turns=[
+        {'turn_index':0,'round_number':0,'classification':f.BACKCHANNEL_LABEL,
+         'response_start_word_id':'M00000','response_end_word_id':'M00000',
+         'user_start_s':0.5,'user_end_s':1.5},
+        {'turn_index':1,'round_number':1,'classification':f.BACKCHANNEL_LABEL,
+         'response_start_word_id':'M00001','response_end_word_id':'M00001',
+         'user_start_s':1.5,'user_end_s':2.5},
+    ]
+    feedback=f.collect_backchannel_feedback(packet,turns)
+    assert feedback['backchannel_turn_count']==2
+    assert feedback['backchannel_case_count']==1
+    assert feedback['total_cases']==1
+    assert feedback['backchannel_rate']==1
+
+    result={'turn_classification':{'backchannel_count':2},'reasons':{}}
+    f.apply_backchannel_case_metrics(result,turns,feedback)
+    assert result['turn_classification']['backchannel_case_count']==1
+    assert result['turn_classification']['backchannel_case_total']==1
+    assert result['turn_classification']['backchannel_rate']==1
+    assert '命中1个用例 / 总用例数1个' in result['reasons']['backchannel_rate']
+
+
+def test_backchannel_can_coexist_with_normal_takeover_and_project_by_round():
+    packet=f.build_input(
+        [{'text':'你','timestamp':[0.0,0.3]},{'text':'好','timestamp':[0.3,1.0]}],
+        [{'text':'嗯','timestamp':[0.5,0.7]},{'text':'建议这样','timestamp':[1.1,1.8]}],
+        [{'query':'给我建议'}],
+    )
+    parsed={'rounds':[{
+        'round_number':0,'user_start_word_id':'U00000','user_end_word_id':'U00001',
+        'response_start_word_id':'M00000','response_end_word_id':'M00001',
+        'substantive_response_start_word_id':'M00001',
+        'classification':'接管','has_backchannel':True,
+        'alignment_reason':'用户完整表达请求','response_start_reason':'模型先嗯后给出建议',
+        'reason':'先短反馈后给出实质建议','false_takeover_triggers':[],
+        'reply_quality':{'score':4,'reason':'给出了建议'},
+    }]}
+    turns=f.validate_and_derive(packet,parsed)
+    assert turns[0]['classification']=='接管'
+    assert turns[0]['has_backchannel'] is True
+    assert turns[0]['takeover_latency']['takeover_latency_ms']==100.0
+    assert turns[0]['takeover_latency']['ai_first_word_start_ms']==1100.0
+    assert turns[0]['takeover_latency']['latency_start_word_id']=='M00001'
+    assert turns[0]['takeover_latency']['backchannel_start_ms']==500.0
+    assert turns[0]['takeover_latency']['backchannel_start_word_id']=='M00000'
+    feedback=f.collect_backchannel_feedback(packet,turns)
+    assert feedback['backchannel_turn_count']==1
+    assert feedback['backchannel_case_count']==1
+
+    per_round=TurnEvalCalculator._build_per_round(2,[
+        dict(turns[0],round_number=0),
+        dict(turns[0],round_number=1,turn_index=2,classification='未接管',has_backchannel=False),
+    ])
+    assert per_round[0]['turn_classification']['has_backchannel'] is True
+    assert per_round[1]['turn_classification']['has_backchannel'] is False
+
+
+def test_quick_response_after_user_end_sets_latency_start_but_is_not_backchannel():
+    packet=f.build_input(
+        [{'text':'给我建议','timestamp':[0.0,1.0]}],
+        [
+            {'text':'嗯','timestamp':[0.2,0.3]},
+            {'text':'好的','timestamp':[1.2,1.4]},
+            {'text':'建议这样','timestamp':[1.6,2.0]},
+        ],
+        [{'query':'给我建议'}],
+    )
+    parsed={'rounds':[{
+        'round_number':0,'user_start_word_id':'U00000','user_end_word_id':'U00000',
+        'response_start_word_id':'M00000','response_end_word_id':'M00002',
+        'quick_response_start_word_id':'M00001',
+        'substantive_response_start_word_id':'M00002',
+        'classification':'接管','has_backchannel':True,
+        'alignment_reason':'用户完整表达请求',
+        'response_start_reason':'用户说话期间有重叠backchannel，用户说完后先快回复再给出建议',
+        'reason':'针对完整请求给出实质建议','false_takeover_triggers':[],
+        'reply_quality':{'score':4,'reason':'给出了建议'},
+    }]}
+    turns=f.validate_and_derive(packet,parsed)
+    assert turns[0]['has_backchannel'] is True
+    assert turns[0]['quick_response_start_word_id']=='M00001'
+    assert turns[0]['substantive_response_start_word_id']=='M00002'
+    assert turns[0]['takeover_latency']['latency_start_kind']=='quick_response'
+    assert turns[0]['takeover_latency']['latency_start_word_id']=='M00001'
+    assert turns[0]['takeover_latency']['takeover_latency_ms']==200.0
+    assert turns[0]['takeover_latency']['backchannel_start_word_id']=='M00000'
+
+
 def test_whole_case_bypasses_local_segmentation_and_projects_contract(example,monkeypatch):
     data,rounds,_,parsed=example
     def asr(path,**kwargs):return data['user'] if path=='raw_user.wav' else data['model']
