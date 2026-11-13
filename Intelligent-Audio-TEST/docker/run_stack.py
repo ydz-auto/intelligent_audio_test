@@ -45,9 +45,10 @@ DEFAULT_PROJECT = 'intelligent-audio-test'
 def _project():
     return os.environ.get('COMPOSE_PROJECT_NAME') or DEFAULT_PROJECT
 
-# 健康探测口径（与 scripts/health_smoke.py 一致）：10 个 HTTP /health
-# + 前端 HTTP + 11 个 gRPC TCP + 3 个 infra TCP。api_test_service 不发布宿主
-# 端口（UC-1001），探测在容器网络内经 compose exec 完成。
+# 健康探测口径（与 scripts/health_smoke.py 一致）：HTTP /health（宿主映射端口）
+# + 前端 HTTP + gRPC TCP + 3 个 infra TCP。api_test_service 不发布宿主
+# 端口（UC-1001）、agent_service 不发布宿主端口（INT-2456，只经网关访问），
+# 两者探测都在容器网络内经 compose exec 完成。
 GRPC_PROBES = [
     # (服务名, 容器内端口)。宿主映射端口经 *_GRPC_PORT 环境变量覆盖（cmd_health 读取）；
     # api_test_service 宿主不发布端口（UC-1001），探测走 compose exec 容器内 TCP。
@@ -63,7 +64,7 @@ GRPC_PROBES = [
     ('transfer_agent', 51101, 'TRANSFER_AGENT_GRPC_PORT'),
 ]
 HTTP_PROBES = [
-    # (服务名, 容器内端口, 宿主端口环境变量)
+    # (服务名, 容器内端口, 宿主端口环境变量)；None = 宿主不发布端口，容器内探测
     ('api_gateway', 5000, 'API_GATEWAY_PORT'),
     ('task_service', 5001, 'TASK_SERVICE_HTTP_PORT'),
     ('e2e_test_service', 5002, 'E2E_TEST_HTTP_PORT'),
@@ -72,6 +73,8 @@ HTTP_PROBES = [
     ('algorithm_service', 5007, 'ALGORITHM_SERVICE_HTTP_PORT'),
     ('auth_service', 5009, 'AUTH_SERVICE_HTTP_PORT'),
     ('transfer_agent', 5010, 'TRANSFER_AGENT_HTTP_PORT'),
+    # INT-2456：agent_service 只经网关访问（不发布宿主端口，身份头不可伪造）。
+    ('agent_service', 5011, None),
 ]
 FRONTEND_PORT = int(os.environ.get('FRONTEND_PORT', '5173'))
 POSTGRES_PORT = int(os.environ.get('POSTGRES_PORT', '5432'))
@@ -195,6 +198,11 @@ def cmd_health(args):
 
     checks = []  # (名称, 探测函数)
     for name, container_port, host_env in HTTP_PROBES:
+        if host_env is None:
+            # 宿主不发布端口（agent_service）：容器网络内探测
+            checks.append((f"{name} :{container_port}(容器内)",
+                           lambda s=name, p=container_port: _compose_exec_tcp(s, p)))
+            continue
         host_p = host_port(host_env, container_port)
         checks.append((f"{name} :{host_p}", lambda p=host_p: _http_health(p)))
     checks.append((f"frontend :{host_port('FRONTEND_PORT', FRONTEND_PORT)}",

@@ -31,10 +31,51 @@ from agent_service.domain.exceptions import (
     InvalidRunTransition, ProviderNotFound, RunNotFound, SessionNotFound,
     SkillNotAvailable,
 )
+from agent_service.infrastructure.sandbox.t2_runtime import probe_t2_runtime
 from agent_service.interfaces.api.provider_routes import router as provider_router
 from agent_service.interfaces.api.routes import router as agent_router
 
 logger = logging.getLogger(__name__)
+
+
+def _probe_database() -> tuple:
+    """DB 连通探测：SELECT 1（连接池已由 init_db 建好，走 pre_ping 自愈）。
+
+    DB 不可用时 agent_service 无法读写 run / event，health 必须报 503，
+    否则 compose 健康门会用一个「活着但什么也做不了」的容器放行。
+    """
+    try:
+        from sqlalchemy import text
+
+        from shared.models.database import get_engine
+        engine = get_engine()
+        if engine is None:
+            return False, '数据库未初始化（DATABASE_URL 未生效）'
+        with engine.connect() as conn:
+            conn.execute(text('SELECT 1'))
+        return True, ''
+    except Exception as exc:  # noqa: BLE001 - 健康探测不抛，只回报状态
+        logger.warning('health: 数据库探测失败：%s', exc)
+        return False, str(exc)
+
+
+def _probe_redis() -> tuple:
+    """Redis 连通探测。
+
+    仅当唤醒后端为 redis 时探测：Redis 只承担 SSE 唤醒（正文仍回表读），
+    不可用时退化为轮询，故失败只降级不判死（见 wakeup.RedisRunWakeup）。
+    """
+    if Config.EVENT_WAKEUP_BACKEND != 'redis':
+        return True, '唤醒后端为 local，跳过 Redis 探测'
+    try:
+        import redis
+        client = redis.from_url(Config.REDIS_URL, socket_connect_timeout=1,
+                                socket_timeout=1)
+        client.ping()
+        return True, ''
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('health: Redis 探测失败（SSE 退化为轮询）：%s', exc)
+        return False, str(exc)
 
 
 def _register_error_handlers(app: FastAPI) -> None:
@@ -105,6 +146,8 @@ def create_app(container=None) -> FastAPI:
         Config.validate()
         owns_container = container is None
         if owns_container:
+            # INT-2456：三个部署挂载点缺一即启动失败（不静默忽略空目录）。
+            Config.validate_mounts()
             from shared.models.database import create_db_session, init_db
             init_db(pool_size=Config.DB_POOL_SIZE)
             from agent_service.wiring import build_container
@@ -138,12 +181,36 @@ def create_app(container=None) -> FastAPI:
 
     @app.get('/health')
     def health():
-        return {
-            'status': 'ok',
+        """健康检查：DB / Redis 连通 + T2 运行时可见性（INT-2456）。
+
+        - DB 不可用 → 503（无法读写 run/event，容器不可用）；
+        - Redis 不可用 → 200 + degraded（只影响 SSE 唤醒，已退化为轮询）；
+        - ``t2_runtime`` 为可见性结论（available / unavailable），不影响本服务
+          存活：T2 执行缺失时由沙箱按 T2_RUNTIME_UNAVAILABLE 明确拒绝。
+        """
+        db_ok, db_detail = _probe_database()
+        redis_ok, redis_detail = _probe_redis()
+        t2 = probe_t2_runtime(Config.T2_RUNTIME)
+        if not db_ok:
+            status = 'error'
+        elif not redis_ok:
+            status = 'degraded'
+        else:
+            status = 'ok'
+        payload = {
+            'status': status,
             'service': Config.SERVICE_NAME,
             'version': Config.PLATFORM_VERSION,
             'llm_mode': 'user_provider',
+            'checks': {
+                'database': {'status': 'ok' if db_ok else 'error',
+                             'detail': db_detail},
+                'redis': {'status': 'ok' if redis_ok else 'error',
+                          'detail': redis_detail},
+            },
+            't2_runtime': t2.as_health(),
         }
+        return JSONResponse(status_code=200 if db_ok else 503, content=payload)
 
     app.include_router(agent_router, prefix='/api/v1/agent', tags=['agent'])
     app.include_router(provider_router, prefix='/api/v1/agent',

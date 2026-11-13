@@ -9,6 +9,7 @@ protocol / api_key 全部来自用户自己的 ``agent_llm_provider``，本文�
 """
 import json
 import os
+from pathlib import Path
 
 from shared.config.service_ports import AGENT_SERVICE_HTTP_PORT
 from shared.infrastructure.config import BaseConfig, _get_bool, _get_float, _get_int
@@ -134,6 +135,14 @@ class Config(BaseConfig):
     # ===== Skill（§4；顶层只读目录由部署挂载，INT-2456）=====
     SKILLS_ROOT = os.environ.get(
         'AGENT_SKILLS_ROOT', os.path.join(_PROJECT_DIR, 'skills'))
+    # 长期记忆文件树（§8.6）；部署为写卷，按 tenant/owner 隔离。
+    MEMORY_ROOT = os.environ.get(
+        'AGENT_MEMORY_ROOT', os.path.join(_PROJECT_DIR, 'memory'))
+    # 本目录（含 model_catalog.json / agent_defaults.json），部署为只读挂载。
+    CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
+    # T2 可信运行时（§7 拍板#2）：runsc（gVisor）或 firecracker。
+    # 缺失时 T2 请求报 T2_RUNTIME_UNAVAILABLE，不得静默降级 T1。
+    T2_RUNTIME = os.environ.get('AGENT_T2_RUNTIME', 'runsc').strip() or 'runsc'
     SKILL_BODY_MAX_LINES = _get_int(
         'AGENT_SKILL_BODY_MAX_LINES', int(_SKILL_DEFAULTS.get('body_max_lines', 500)))
     # True：任何校验问题都让启动失败；False：ERROR 剔除该 Skill、WARNING 仅告警
@@ -151,6 +160,50 @@ class Config(BaseConfig):
     @classmethod
     def skill_l1_budget_tokens(cls) -> int:
         return int(cls.CONTEXT_WINDOW_TOKENS * cls.SYSTEM_SECTION_RATIO)
+
+    @classmethod
+    def model_catalog_path(cls) -> str:
+        """模型目录的实际路径（空配置 = config/model_catalog.json）。"""
+        return cls.MODEL_CATALOG_PATH or os.path.join(
+            cls.CONFIG_DIR, 'model_catalog.json')
+
+    @classmethod
+    def validate_mounts(cls) -> None:
+        """启动前校验三个部署挂载点（方案 07 拍板#3，INT-2456）。
+
+        - ``skills/`` 只读：缺失即启动失败（空目录会被解读成「没有 Skill」，
+          属于静默故障）；
+        - ``memory/`` 写卷：缺失或不可写即启动失败（长期记忆写丢不能等到运行期
+          才发现）；
+        - ``agent_service/config/``：模型目录文件必须存在（窗口/输出上限的唯一
+          事实源）。
+
+        只在真实进程启动路径（自建组合根）调用；测试注入组合根不校验，避免把
+        宿主机目录布局带进单测。
+        """
+        problems = []
+        skills = Path(cls.SKILLS_ROOT)
+        if not skills.is_dir():
+            problems.append(f'skills 目录不存在：{skills}（应只读挂载 ../skills）')
+        elif not os.access(str(skills), os.R_OK):
+            problems.append(f'skills 目录不可读：{skills}')
+        catalog = Path(cls.model_catalog_path())
+        if not catalog.is_file():
+            problems.append(f'模型目录文件不存在：{catalog}')
+        memory = Path(cls.MEMORY_ROOT)
+        if not memory.is_dir():
+            problems.append(
+                f'memory 目录不存在：{memory}（应挂载可写卷，见 compose agent_memory）')
+        else:
+            probe = memory / '.write_probe'
+            try:
+                probe.write_text('ok', encoding='utf-8')
+                probe.unlink()
+            except OSError as exc:
+                problems.append(f'memory 目录不可写：{memory}（{exc}）')
+        if problems:
+            raise RuntimeError(
+                'agent_service 部署挂载校验失败：' + '；'.join(problems))
 
     @classmethod
     def budget_defaults(cls) -> dict:

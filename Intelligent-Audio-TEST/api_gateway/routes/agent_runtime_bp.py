@@ -19,16 +19,18 @@ import logging
 from typing import Optional, Tuple
 
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from api_gateway.config.config import Config
+from api_gateway.routes.agent_guard import require_agent_enabled
 from shared.utils.time_utils import utcnow
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+# INT-2456：总开关默认关闭，关闭时本组路由 503 AGENT_DISABLED、不转发上游。
+router = APIRouter(dependencies=[Depends(require_agent_enabled)])
 
 # 测试注入点（httpx.MockTransport）；生产为 None
 _transport_override: Optional[httpx.BaseTransport] = None
