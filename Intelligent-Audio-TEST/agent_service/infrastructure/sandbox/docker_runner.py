@@ -28,6 +28,7 @@ import logging
 import os
 import re
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -87,6 +88,61 @@ DEFAULT_REAPER_INTERVAL_SECONDS = 30
 #: runner HTTP 响应读取上限（防止返回体撑爆 agent_service 内存）。
 DEFAULT_RUNNER_RESPONSE_LIMIT_BYTES = 8 * 1024 * 1024
 
+#: 允许被 ``--mount`` 进容器的宿主目录允许根（逗号分隔多根，INT-2518 P1-4）。
+#: 应用侧的一次性输入/产物目录必须建在允许根之下，runner 侧按它复核路径。
+WORK_ROOT_ENV = 'AGENT_SANDBOX_WORK_ROOT'
+
+
+def default_work_root() -> str:
+    """未显式配置允许根时的缺省根：系统临时目录（应用侧一次性目录建在这里）。"""
+    return str(Path(tempfile.gettempdir()).resolve())
+
+
+def parse_work_roots(raw: str | None) -> tuple[str, ...]:
+    """解析 ``AGENT_SANDBOX_WORK_ROOT``：逗号分隔的绝对路径，逐个 resolve。
+
+    空值回落为系统临时目录（不是「不校验」）：任何路径仍必须落在某个允许根下。
+    相对路径直接拒绝，避免以 cwd 为准的隐式允许根。
+    """
+    items = [item.strip() for item in (raw or '').split(',') if item.strip()]
+    if not items:
+        return (default_work_root(),)
+    roots: list[str] = []
+    for item in items:
+        path = Path(item)
+        if not path.is_absolute():
+            raise SandboxConfigurationError(
+                f'{WORK_ROOT_ENV} 必须是绝对路径（逗号分隔多根）：{item!r}'
+            )
+        roots.append(str(path.resolve()))
+    return tuple(roots)
+
+
+def configured_work_roots() -> tuple[str, ...]:
+    return parse_work_roots(os.environ.get(WORK_ROOT_ENV))
+
+
+def validate_path_within_roots(
+    path: Path | str,
+    roots: Sequence[Path | str],
+    label: str,
+) -> Path:
+    """``path``（resolve 后）必须落在某个允许根之下，否则拒绝（fail closed）。
+
+    用 ``Path.resolve()`` 先消掉 ``..`` / 符号链接再判定：调用方拼进 ``..`` 或
+    在允许根内放一个指向根外的符号链接都会被解析到真实位置后拒绝。
+    """
+    target = Path(path).resolve()
+    allowed = tuple(Path(root).resolve() for root in roots)
+    if not allowed:
+        raise SandboxConfigurationError(f'{label} 没有可用允许根（fail closed）：{target}')
+    if any(target == root or root in target.parents for root in allowed):
+        return target
+    raise SandboxConfigurationError(
+        f'{label} 必须在允许根 {[str(root) for root in allowed]} 之下：{target}'
+    )
+
+
 #: 默认 Skill 根目录 = ``<项目根>/skills``，与 ``agent_service.config.Config.SKILLS_ROOT``
 #: 同源。这里按本文件位置本地计算，**禁止 import ``agent_service.config``**：
 #: ``shared`` 的 ``BaseConfig`` 在类定义期就要求 ``DATABASE_URL`` / ``OSS_*``，而独立
@@ -126,6 +182,8 @@ class SandboxPolicy:
     container_kill_grace_seconds: int = DEFAULT_CONTAINER_KILL_GRACE_SECONDS
     orphan_grace_seconds: int = DEFAULT_ORPHAN_GRACE_SECONDS
     reaper_interval_seconds: int = DEFAULT_REAPER_INTERVAL_SECONDS
+    #: 宿主目录允许根（``AGENT_SANDBOX_WORK_ROOT``）：``work_dir`` 必须落在其下。
+    work_roots: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         # fail closed：允许根确定不了就不放行，绝不能退化成「不校验 skill_root」。
@@ -134,6 +192,11 @@ class SandboxPolicy:
             raise SandboxConfigurationError(
                 f'沙箱 Skill 根目录未配置或不是绝对路径：{self.skills_root!r}'
             )
+
+    @property
+    def effective_work_roots(self) -> tuple[str, ...]:
+        """允许根；未显式配置时取系统临时目录（仍逐路径校验，不是不校验）。"""
+        return self.work_roots or (default_work_root(),)
 
     @classmethod
     def from_env(cls) -> 'SandboxPolicy':
@@ -163,6 +226,7 @@ class SandboxPolicy:
                 os.environ.get('AGENT_SANDBOX_REAPER_INTERVAL_SECONDS',
                                str(DEFAULT_REAPER_INTERVAL_SECONDS))
             ),
+            work_roots=configured_work_roots(),
         )
 
 
@@ -290,7 +354,12 @@ def validate_script_relative_path(raw: str) -> str:
     return '/'.join(parts)
 
 
-def validate_image(image: str, policy: SandboxPolicy | None) -> None:
+def validate_image_reference(image: str) -> str:
+    """镜像引用格式校验（T1/T2 共用）：非空、不得以 ``-`` 开头、匹配引用正则。
+
+    不以 ``-`` 开头是防参数注入（``--privileged`` 会被 docker 当全局参数）；
+    正则同时挡掉空白 / 换行 / 空镜像。
+    """
     text = str(image or '').strip()
     if not text:
         raise SandboxConfigurationError('沙箱镜像未配置')
@@ -298,6 +367,24 @@ def validate_image(image: str, policy: SandboxPolicy | None) -> None:
         raise SandboxConfigurationError(f'沙箱镜像不得以 - 开头：{image!r}')
     if IMAGE_REFERENCE_PATTERN.match(text) is None:
         raise SandboxConfigurationError(f'沙箱镜像引用非法：{image!r}')
+    return text
+
+
+def validate_allowed_image(image: str, allowed_images) -> str:
+    """镜像必须在允许集合内（runner 侧唯一口径，payload 不能自带镜像）。"""
+    text = validate_image_reference(image)
+    allowed = frozenset(allowed_images or ())
+    if not allowed:
+        raise SandboxConfigurationError('沙箱镜像允许集合为空（fail closed）')
+    if text not in allowed:
+        raise SandboxConfigurationError(
+            f'沙箱镜像不在允许集合内：{text!r}（允许：{sorted(allowed)}）'
+        )
+    return text
+
+
+def validate_image(image: str, policy: SandboxPolicy | None) -> None:
+    text = validate_image_reference(image)
     if policy is not None and text not in policy.allowed_images:
         raise SandboxConfigurationError(
             f'沙箱镜像不在允许集合内：{text!r}（允许：{sorted(policy.allowed_images)}）'
@@ -367,11 +454,10 @@ def validate_invocation(
         return
     # P2-2：允许根由 SandboxPolicy 保证非空（构造期 fail closed），这里无条件校验，
     # 不存在「根目录解析不出来就跳过白名单」的放宽分支。
-    allowed_root = Path(policy.skills_root).resolve()
-    if skill_root != allowed_root and allowed_root not in skill_root.parents:
-        raise SandboxConfigurationError(
-            f'skill_root 必须在允许的 Skills 根目录 {allowed_root} 下：{skill_root}'
-        )
+    # skill_root 走 Skills 根白名单，work_dir 走宿主允许根（INT-2518 P1-4）：
+    # 同一套 resolve + 前缀判定，``..`` 与根外符号链接都会在 resolve 后露出真实位置。
+    validate_path_within_roots(skill_root, (policy.skills_root,), 'skill_root')
+    validate_path_within_roots(work_dir, policy.effective_work_roots, 'work_dir')
     validate_limits_within(policy.limits, invocation.limits)
 
 
@@ -549,6 +635,33 @@ def inspect_container_state(
     }
 
 
+def work_dir_exceeds(work_dir: str | Path, limit_bytes: int) -> bool:
+    """运行中巡检工作区占用量（T1/T2 共用，超限即由调用方终止容器）。
+
+    这是「运行中」门禁：事后 ``collect_artifacts`` 只能拦产物体积，拦不住不可信
+    代码在阶段内把宿主磁盘写满（INT-2518 P1-3）。``limit_bytes <= 0`` 视为不巡检。
+    """
+    if limit_bytes <= 0 or not work_dir:
+        return False
+    total = 0
+    try:
+        for root, _dirs, files in os.walk(work_dir):
+            for name in files:
+                try:
+                    total += os.path.getsize(os.path.join(root, name))
+                except OSError:
+                    continue
+                if total > limit_bytes:
+                    logger.warning(
+                        '沙箱工作区超过容量上限：%s > %sB（work_dir=%s）',
+                        total, limit_bytes, work_dir,
+                    )
+                    return True
+    except OSError:
+        return False
+    return False
+
+
 def execute_docker_container(
     argv: Sequence[str],
     container_name: str,
@@ -557,11 +670,14 @@ def execute_docker_container(
     *,
     timeout_seconds: int | None = None,
     runtime: str = '',
+    work_dir: str | None = None,
+    work_limit_bytes: int = 0,
 ) -> ContainerExecution:
     """跑一次一次性容器并回收结果（T1/T2 共用，不含镜像/加固参数构造）。
 
-    超时或输出超限时**先杀附着的 docker CLI、再 ``docker rm -f``**，保证不留
-    遗留容器；结束后统一 inspect（取 OOM 状态）并删除容器。
+    超时、输出超限或运行中 ``/work`` 超容量时**先杀附着的 docker CLI、再
+    ``docker rm -f``**，保证不留遗留容器；结束后统一 inspect（取 OOM 状态）并
+    删除容器。
     """
     started = time.monotonic()
     timeout = timeout_seconds or limits.timeout_seconds
@@ -601,15 +717,24 @@ def execute_docker_container(
     stderr_reader.start()
 
     timed_out = False
+    work_limit_exceeded = False
     deadline = time.monotonic() + timeout
+    next_work_check = time.monotonic() + WORK_DIR_CHECK_INTERVAL_SECONDS
     while process.poll() is None:
         if limit_reached.is_set():
             _terminate(process, container_name, docker_binary)
             break
-        if time.monotonic() >= deadline:
+        now = time.monotonic()
+        if now >= deadline:
             timed_out = True
             _terminate(process, container_name, docker_binary)
             break
+        if work_limit_bytes > 0 and now >= next_work_check:
+            next_work_check = now + WORK_DIR_CHECK_INTERVAL_SECONDS
+            if work_dir_exceeds(work_dir, work_limit_bytes):
+                work_limit_exceeded = True
+                _terminate(process, container_name, docker_binary)
+                break
         time.sleep(0.05)
 
     try:
@@ -645,8 +770,9 @@ def execute_docker_container(
         output_truncated=output.truncated,
         duration_ms=duration_ms,
         container_id=str((state or {}).get('container_id') or ''),
-        killed_by_runner=timed_out or output.truncated,
+        killed_by_runner=timed_out or output.truncated or work_limit_exceeded,
         start_failed=start_failed,
+        work_limit_exceeded=work_limit_exceeded,
         # 启动失败（125）走 error，供应用层判 FAILED/CONTAINER_START_FAILED。
         error=stderr_text[:1000] if start_failed else '',
         runtime=runtime,
@@ -847,24 +973,7 @@ class HostCliDockerExecutor(SandboxExecutor):
 
     def _work_dir_exceeds(self, work_dir: str) -> bool:
         """运行中巡检 ``/work`` 占用量；超限即终止（不等容器结束再校验）。"""
-        limit = self._policy.work_limit_bytes
-        total = 0
-        try:
-            for root, _dirs, files in os.walk(work_dir):
-                for name in files:
-                    try:
-                        total += os.path.getsize(os.path.join(root, name))
-                    except OSError:
-                        continue
-                    if total > limit:
-                        logger.warning(
-                            '沙箱 /work 超过容量上限：%s > %sB（work_dir=%s）',
-                            total, limit, work_dir,
-                        )
-                        return True
-        except OSError:
-            return False
-        return False
+        return work_dir_exceeds(work_dir, self._policy.work_limit_bytes)
 
     def _docker_cli_env(self) -> dict[str, str]:
         return _docker_cli_env()
@@ -922,11 +1031,36 @@ class OrphanContainer:
     status: str
 
 
+@dataclass(frozen=True)
+class ReaperTarget:
+    """一个回收目标：标签 + 该类容器的「合法最长存活」口径。
+
+    T1 的容器最长存活 = 单阶段 ``timeout``；T2 是多阶段的整份计划
+    （``total_timeout_seconds``），两者不能共用一个阈值——否则正常跨阶段运行
+    的 T2 容器会被当成孤儿误杀（INT-2518 P1-2）。
+    """
+
+    label_selector: str
+    timeout_seconds: int
+    grace_seconds: int
+
+    def __post_init__(self) -> None:
+        if not self.label_selector:
+            raise SandboxConfigurationError('回收目标缺少容器标签')
+        if self.timeout_seconds < 0 or self.grace_seconds < 0:
+            raise SandboxConfigurationError('回收目标的超时/宽限不能为负数')
+
+    @property
+    def threshold_seconds(self) -> float:
+        return self.timeout_seconds + self.grace_seconds
+
+
 class SandboxContainerReaper:
     """按 label 回收「创建时间已超 timeout + 宽限」的孤儿沙箱容器。
 
     runner 启动时先同步扫一次（上次崩溃 / 重启遗留的容器），之后后台定时扫。
-    回收日志带容器名 / id / 存活时长，便于审计追溯。
+    支持多个回收目标（``targets``）：每个标签有自己的阈值，回收日志带标签 /
+    容器名 / id / 存活时长，便于审计追溯。
     """
 
     def __init__(
@@ -936,6 +1070,7 @@ class SandboxContainerReaper:
         grace_seconds: int | None = None,
         interval_seconds: int | None = None,
         label_selector: str = SANDBOX_CONTAINER_LABEL,
+        targets: Sequence[ReaperTarget] | None = None,
     ) -> None:
         self._docker_binary = docker_binary
         self._label_selector = label_selector or SANDBOX_CONTAINER_LABEL
@@ -953,12 +1088,26 @@ class SandboxContainerReaper:
                            str(DEFAULT_REAPER_INTERVAL_SECONDS))
             if interval_seconds is None else interval_seconds
         )
+        self._targets: tuple[ReaperTarget, ...] = tuple(targets) if targets else (
+            ReaperTarget(self._label_selector, self._timeout_seconds, self._grace_seconds),
+        )
+        if not self._targets:
+            raise SandboxConfigurationError('回收器至少需要一个回收目标')
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
     @property
+    def targets(self) -> tuple[ReaperTarget, ...]:
+        return self._targets
+
+    @property
+    def target_thresholds(self) -> dict[str, float]:
+        """标签 → 阈值（秒）：T1 与 T2 必须不同口径，供装配/日志/测试断言。"""
+        return {target.label_selector: target.threshold_seconds for target in self._targets}
+
+    @property
     def threshold_seconds(self) -> float:
-        return self._timeout_seconds + self._grace_seconds
+        return self._targets[0].threshold_seconds
 
     @property
     def interval_seconds(self) -> int:
@@ -966,12 +1115,13 @@ class SandboxContainerReaper:
 
     @property
     def label_selector(self) -> str:
-        return self._label_selector
+        return self._targets[0].label_selector
 
-    def list_containers(self) -> list[OrphanContainer]:
+    def list_containers(self, label_selector: str | None = None) -> list[OrphanContainer]:
+        selector = label_selector or self.label_selector
         listing = run_docker_admin(
             self._docker_binary,
-            ['ps', '--all', '--filter', f'label={self._label_selector}', '--format', '{{.ID}}'],
+            ['ps', '--all', '--filter', f'label={selector}', '--format', '{{.ID}}'],
         )
         if listing is None or listing.returncode != 0:
             return []
@@ -1004,22 +1154,37 @@ class SandboxContainerReaper:
         """回收一次，返回被回收的容器名列表（便于测试与日志）。"""
         current = time.time() if now is None else now
         reaped: list[str] = []
-        for container in self.list_containers():
+        for target in self._targets:
+            target_reaped = self._reap_target(target, current)
+            if target_reaped:
+                logger.warning(
+                    '回收孤儿沙箱容器：label=%s 阈值=%.0fs 回收 %d 个 %s',
+                    target.label_selector, target.threshold_seconds,
+                    len(target_reaped), target_reaped,
+                )
+            reaped.extend(target_reaped)
+        return reaped
+
+    def _reap_target(self, target: ReaperTarget, current: float) -> list[str]:
+        reaped: list[str] = []
+        for container in self.list_containers(target.label_selector):
             age = current - container.created_at
-            if age < self.threshold_seconds:
+            if age < target.threshold_seconds:
                 continue
             result = run_docker_admin(
                 self._docker_binary, ['rm', '--force', container.container_id]
             )
             if result is None or result.returncode != 0:
                 logger.warning(
-                    '孤儿沙箱容器回收失败：name=%s id=%s age=%.0fs',
-                    container.name, container.container_id[:12], age,
+                    '孤儿沙箱容器回收失败：label=%s name=%s id=%s age=%.0fs',
+                    target.label_selector, container.name,
+                    container.container_id[:12], age,
                 )
                 continue
             logger.warning(
-                '回收孤儿沙箱容器：name=%s id=%s age=%.0fs status=%s',
-                container.name, container.container_id[:12], age, container.status,
+                '回收孤儿沙箱容器：label=%s name=%s id=%s age=%.0fs status=%s',
+                target.label_selector, container.name, container.container_id[:12],
+                age, container.status,
             )
             reaped.append(container.name)
         return reaped

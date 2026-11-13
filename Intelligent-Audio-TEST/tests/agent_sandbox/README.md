@@ -23,6 +23,7 @@
 | `test_sandbox_runner_transport.py` | T1 runner/sidecar HTTP 通道与宿主 CLI 通道行为一致；无令牌拒绝启动；鉴权失败明确失败 | 是 | 否 |
 | `test_sandbox_lifecycle.py` | 异常路径必删容器、容器 `timeout -k` 自限、孤儿容器回收（超龄回收 / 未超龄不误杀） | 是 | 否 |
 | `test_t2_contract.py` | T2 加固参数逐条、运行时不可用与**不降级 T1**、代码来源/hash、出口白名单、输入/产物上限、阶段失败映射、产物写 `agent_artifact`、yaml/env 配置 | 否 | 否 |
+| `test_t2_boundary_p1.py` | INT-2518 边界回归：payload 限额/镜像复核、`container_user` 数值判定、argv `timeout` 自限、回收器 t1/t2 阈值分层、`/work` 运行中门禁、宿主目录允许根；真实容器用例（自限、`/work` 超限、t2 孤儿回收、镜像含 `timeout`） | 部分是 | 否 |
 | `test_t2_escape.py` | T2 逃逸（mount/unshare/ptrace/setuid/chroot/宿主文件）、联网、凭证、资源（时长/CPU/内存/PID/产物体积）、失败语义、无遗留容器、默认四阶段链 + 多模块包（`.pyc` 不算产物） | 是 | **是** |
 
 ## 运行
@@ -177,6 +178,24 @@ result.to_sandbox_event()
 > 未加 `--rm`：需要 `docker inspect` 取 `container_id` 与 `OOMKilled`。runner 崩溃
 > 且不重启时容器会停在自己 `timeout` 到点（状态 `exited`），由下一次 runner 启动
 > 的回收扫清。
+
+## T2 生命周期与边界（INT-2518）
+
+T2 与 T1 同口径的三层防线 + 两条额外边界（runner 是唯一安全边界，payload 只允许
+比 runner 配置更严格）：
+
+1. **argv 自限**：镜像后包 `timeout -k <grace> <timeout>`，退出码 124 → `BUDGET_EXCEEDED/TIMEOUT`。
+2. **回收双目标**：`SandboxContainerReaper` 同时按 `agent-sandbox=t1` 与
+   `agent-sandbox=t2` 回收；T1 阈值 = 单阶段超时 + 宽限，T2 阈值 = 整份计划
+   `total_timeout_seconds` + 宽限（不能共用一个阈值，否则跨阶段容器会被误杀）。
+3. **`/work` 运行中门禁**：与 T1 共用巡检函数，T2 阈值 `AGENT_SANDBOX_T2_WORK_LIMIT_BYTES`
+   （不得小于产物体积上限）；超限 terminate → `BUDGET_EXCEEDED/RESOURCE_LIMIT_EXCEEDED`。
+4. **payload 复核**：限额（`validate_limits_within`）、镜像白名单
+   （`AGENT_SANDBOX_T2_ALLOWED_IMAGES`，空 = 只允许配置镜像）、非 root（数值解析
+   `uid != 0`）全部在 runner 侧再判一次，放大即 400。
+5. **宿主目录允许根**：`AGENT_SANDBOX_WORK_ROOT`（逗号分隔多根，缺省系统临时目录）
+   之下才可挂载；T2 `input_root`/`work_dir`、T1 `work_dir` 均 `resolve()` 后判定，
+   `..` 与根外符号链接一律 400。
 
 ## Docker 访问方式（红线）
 

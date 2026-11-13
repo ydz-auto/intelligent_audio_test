@@ -194,9 +194,13 @@ def test_t2_container_env_has_no_credentials_and_fixed_home(tmp_path: Path) -> N
 
 def test_t2_command_runs_after_image(tmp_path: Path) -> None:
     invocation = _invocation(tmp_path, command=('python3', '-m', 'compileall', '-q', '/input'))
-    argv = build_t2_run_argv(invocation)
-    assert argv[-5:] == ['python3', '-m', 'compileall', '-q', '/input']
-    assert argv[-6] == invocation.limits.image
+    argv = build_t2_run_argv(invocation, container_kill_grace_seconds=5)
+    image_index = argv.index(invocation.limits.image)
+    # 镜像之后紧跟容器内自限：``timeout -k <grace> <timeout>``（逐 token 断言）。
+    assert argv[image_index + 1:image_index + 5] == [
+        'timeout', '--kill-after', '5', str(invocation.limits.timeout_seconds),
+    ], 'T2 命令必须由 timeout 包装（INT-2518 P1-2）'
+    assert argv[image_index + 5:] == ['python3', '-m', 'compileall', '-q', '/input']
 
 
 # ── 2. 防降级：绝不回落到 runc/T1 ─────────────────────────────

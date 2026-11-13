@@ -26,15 +26,18 @@ from agent_service.application.sandbox_runner import (
     SandboxConfigurationError,
 )
 from agent_service.infrastructure.sandbox.docker_runner import (
+    DEFAULT_ORPHAN_GRACE_SECONDS,
     RUNNER_API_PATH,
     HostCliDockerExecutor,
     SandboxContainerReaper,
     SandboxPolicy,
     build_docker_run_argv,
+    build_limits_from_env,
     parse_memory_bytes,
     validate_limits_within,
     validate_script_relative_path,
 )
+from agent_service.infrastructure.sandbox.policy import load_t2_policy
 from agent_service.infrastructure.sandbox.runner_service import SandboxRunnerServer
 
 TEST_TOKEN = 'it-token-' + uuid.uuid4().hex[:12]
@@ -227,9 +230,35 @@ def test_build_argv_revalidates_script_path(tmp_path: Path) -> None:
 
 
 def test_reaper_default_selector_is_t1_label() -> None:
+    """单目标构造（兼容用法）仍以 t1 标签 + 单阶段超时为默认。"""
     reaper = SandboxContainerReaper(timeout_seconds=60, grace_seconds=30, interval_seconds=30)
     assert reaper.label_selector == 'agent-sandbox=t1'
     assert reaper.threshold_seconds == 90
+
+
+def test_runner_reaper_covers_t1_and_t2_with_layered_thresholds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """runner 装配的回收器必须同时覆盖 t1 / t2，且阈值不同（INT-2518 P1-2）。
+
+    T2 一个 run 会跑多个阶段，整份计划的合法存活时间远大于单阶段；两者共用
+    一个阈值会把跨阶段仍在正常运行的 T2 容器误杀。
+    """
+    from agent_service.infrastructure.sandbox.runner_service import build_container_reaper
+
+    monkeypatch.delenv('AGENT_SANDBOX_ORPHAN_GRACE_SECONDS', raising=False)
+    reaper = build_container_reaper()
+    thresholds = reaper.target_thresholds
+    assert set(thresholds) == {'agent-sandbox=t1', 'agent-sandbox=t2'}, (
+        '回收器必须同时覆盖 t1 与 t2 标签'
+    )
+    assert thresholds['agent-sandbox=t1'] == (
+        build_limits_from_env().timeout_seconds + DEFAULT_ORPHAN_GRACE_SECONDS
+    )
+    assert thresholds['agent-sandbox=t2'] == (
+        load_t2_policy().total_timeout_seconds + DEFAULT_ORPHAN_GRACE_SECONDS
+    ), 'T2 阈值必须取整份计划超时（total_timeout_seconds）+ 宽限'
+    assert thresholds['agent-sandbox=t2'] > thresholds['agent-sandbox=t1']
 
 
 def test_reaper_threshold_and_interval_from_env(monkeypatch: pytest.MonkeyPatch) -> None:

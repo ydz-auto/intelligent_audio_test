@@ -42,15 +42,21 @@ from agent_service.application.sandbox_runner import (
     SandboxRuntimeAvailability,
 )
 from agent_service.infrastructure.sandbox.docker_runner import (
+    DEFAULT_ORPHAN_GRACE_SECONDS,
+    DEFAULT_REAPER_INTERVAL_SECONDS,
     RUNNER_API_PATH,
     RUNNER_HEALTH_PATH,
+    SANDBOX_CONTAINER_LABEL,
     HostCliDockerExecutor,
+    ReaperTarget,
     SandboxContainerReaper,
+    build_limits_from_env,
     execution_to_dict,
     invocation_from_dict,
 )
 from agent_service.infrastructure.sandbox.policy import T2Policy, load_t2_policy
 from agent_service.infrastructure.sandbox.t2_runner import (
+    T2_CONTAINER_LABEL,
     T2_RUNTIME_API_PATH,
     T2_RUNNER_API_PATH,
     T2DockerExecutor,
@@ -236,6 +242,41 @@ def _build_t2_executor() -> T2DockerExecutor | None:
         return None
 
 
+def build_container_reaper(docker_binary: str = 'docker') -> SandboxContainerReaper:
+    """回收器装配：t1 / t2 各一个回收目标，阈值分层（INT-2518 P1-2）。
+
+    - t1：单阶段 ``timeout`` + 宽限（T1 一个容器就是一个阶段）；
+    - t2：整份计划 ``total_timeout_seconds`` + 宽限——跨阶段仍在合法运行的
+      T2 容器不能被单阶段阈值误杀。
+
+    未配置 T2 策略时用 ``T2Policy`` 的缺省整份计划时长，仍然覆盖 t2 标签
+    （不会因为配置损坏就放弃回收）。
+    """
+    grace_seconds = int(
+        os.environ.get('AGENT_SANDBOX_ORPHAN_GRACE_SECONDS',
+                       str(DEFAULT_ORPHAN_GRACE_SECONDS))
+    )
+    interval_seconds = int(
+        os.environ.get('AGENT_SANDBOX_REAPER_INTERVAL_SECONDS',
+                       str(DEFAULT_REAPER_INTERVAL_SECONDS))
+    )
+    t1_timeout = build_limits_from_env().timeout_seconds
+    try:
+        t2_total_timeout = load_t2_policy().total_timeout_seconds
+    except SandboxConfigurationError:
+        t2_total_timeout = T2Policy().total_timeout_seconds
+        logger.exception('T2 策略加载失败，回收阈值退回缺省整份计划时长')
+    targets = (
+        ReaperTarget(SANDBOX_CONTAINER_LABEL, t1_timeout, grace_seconds),
+        ReaperTarget(T2_CONTAINER_LABEL, t2_total_timeout, grace_seconds),
+    )
+    return SandboxContainerReaper(
+        docker_binary=docker_binary,
+        targets=targets,
+        interval_seconds=interval_seconds,
+    )
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -258,7 +299,8 @@ def main() -> int:
         logger.error('沙箱 runner 启动失败：%s', exc)
         return 2
     # P1-1：runner 崩溃 / 重启后遗留的容器没人回收。启动先同步扫一次，之后后台定时扫。
-    reaper = SandboxContainerReaper(docker_binary=docker_binary)
+    # INT-2518 P1-2：t1（单阶段超时）与 t2（整份计划超时）分层阈值，两者都要回收。
+    reaper = build_container_reaper(docker_binary=docker_binary)
     try:
         reaped = reaper.reap_once()
         if reaped:
@@ -266,10 +308,13 @@ def main() -> int:
     except Exception:  # noqa: BLE001 - 回收失败不阻断 runner 提供执行能力
         logger.exception('启动回收孤儿沙箱容器失败')
     reaper.start_background()
-    logger.info(
-        '沙箱运行器回收策略：阈值=%ss（timeout+宽限） 间隔=%ss',
-        reaper.threshold_seconds, reaper.interval_seconds,
-    )
+    for selector, threshold in reaper.target_thresholds.items():
+        logger.info(
+            '沙箱运行器回收策略：label=%s 阈值=%ss（%s） 间隔=%ss',
+            selector, threshold,
+            '整份计划超时+宽限' if selector == T2_CONTAINER_LABEL else '单阶段超时+宽限',
+            reaper.interval_seconds,
+        )
     if t2_executor is not None:
         # 不在启动路径上探测 docker info（部分宿主上偶发很慢）：首次 T2 请求时探测，
         # 不可用会以 T2_RUNTIME_UNAVAILABLE 明确失败。

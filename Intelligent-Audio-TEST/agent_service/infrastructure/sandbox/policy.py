@@ -27,8 +27,17 @@ from agent_service.application.sandbox_runner import (
     ContainerLimits,
     SandboxConfigurationError,
     T2RunnerOptions,
+    parse_container_identity,
 )
 from agent_service.domain.enums import SandboxRuntime
+from agent_service.infrastructure.sandbox.docker_runner import (
+    DEFAULT_CONTAINER_KILL_GRACE_SECONDS,
+    DEFAULT_WORK_LIMIT_BYTES,
+    WORK_ROOT_ENV,
+    configured_work_roots,
+    parse_work_roots,
+    validate_image_reference,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +138,15 @@ class T2Policy:
     artifacts: T2ArtifactLimits = field(default_factory=T2ArtifactLimits)
     input: T2InputLimits = field(default_factory=T2InputLimits)
     egress: T2EgressPolicy = field(default_factory=T2EgressPolicy)
+    #: 允许的镜像集合（``AGENT_SANDBOX_T2_ALLOWED_IMAGES``）；空 = 只允许
+    #: ``container_limits.image``。payload 送来别的镜像一律 400（INT-2518 P1-1）。
+    allowed_images: tuple[str, ...] = ()
+    #: 运行中 ``/work`` 容量门禁（``AGENT_SANDBOX_T2_WORK_LIMIT_BYTES``）。
+    work_limit_bytes: int = DEFAULT_WORK_LIMIT_BYTES
+    #: 容器内 ``timeout -k <grace>`` 的宽限（与 T1 共用配置项）。
+    container_kill_grace_seconds: int = DEFAULT_CONTAINER_KILL_GRACE_SECONDS
+    #: 宿主目录允许根（``AGENT_SANDBOX_WORK_ROOT``，与 T1 共用）。
+    work_roots: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.runtime not in {item.value for item in SandboxRuntime}:
@@ -146,8 +164,34 @@ class T2Policy:
             raise SandboxConfigurationError(
                 'total_timeout_seconds 不得小于单阶段 timeout_seconds'
             )
-        if self.container_limits.container_user in ('0', '0:0', 'root'):
-            raise SandboxConfigurationError('T2 沙箱容器禁止以 root 运行')
+        # 按数值判定非 root（``000`` / ``0:65534`` / ``root`` 都算 uid=0）。
+        parse_container_identity(self.container_limits.container_user)
+        for image in self.allowed_images:
+            validate_image_reference(image)
+        if self.work_limit_bytes <= 0:
+            raise SandboxConfigurationError('work_limit_bytes 必须为正数')
+        if self.work_limit_bytes < self.artifacts.max_total_bytes:
+            raise SandboxConfigurationError(
+                f'work_limit_bytes ({self.work_limit_bytes}) 不得小于产物总量上限 '
+                f'({self.artifacts.max_total_bytes})：否则合法产物会被运行中巡检误杀'
+            )
+        for root in self.work_roots:
+            if not Path(root).is_absolute():
+                raise SandboxConfigurationError(
+                    f'AGENT_SANDBOX_WORK_ROOT 必须是绝对路径：{root!r}'
+                )
+
+    @property
+    def allowed_image_set(self) -> frozenset[str]:
+        """允许镜像集合；未显式配置时取配置镜像本身（不放开为任意镜像）。"""
+        if self.allowed_images:
+            return frozenset(self.allowed_images)
+        return frozenset({self.container_limits.image})
+
+    @property
+    def effective_work_roots(self) -> tuple[str, ...]:
+        """宿主目录允许根；未配置时回落系统临时目录（仍逐路径校验）。"""
+        return self.work_roots or configured_work_roots()
 
     def to_runner_options(self) -> T2RunnerOptions:
         """转成应用层编排策略（infrastructure 不反向依赖应用层策略对象）。"""
@@ -339,4 +383,23 @@ def load_t2_policy(
             ),
         ),
         egress=egress,
+        allowed_images=tuple(
+            item.strip()
+            for item in _env(
+                env, 'AGENT_SANDBOX_T2_ALLOWED_IMAGES',
+                ','.join(str(item) for item in (data.get('allowed_images') or [])),
+            ).split(',')
+            if item.strip()
+        ),
+        work_limit_bytes=_env_int(
+            env, 'AGENT_SANDBOX_T2_WORK_LIMIT_BYTES',
+            int(data.get('work_limit_bytes', DEFAULT_WORK_LIMIT_BYTES)),
+        ),
+        container_kill_grace_seconds=_env_int(
+            env, 'AGENT_SANDBOX_CONTAINER_KILL_GRACE_SECONDS',
+            int(data.get('container_kill_grace_seconds',
+                         DEFAULT_CONTAINER_KILL_GRACE_SECONDS)),
+        ),
+        # 宿主目录允许根与 T1 共用同一个配置项（runner 侧唯一口径）。
+        work_roots=parse_work_roots(env.get(WORK_ROOT_ENV)),
     )

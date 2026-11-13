@@ -48,13 +48,19 @@ from agent_service.application.sandbox_runner import (
     UntrustedCodeExecutor,
     assert_env_is_credential_free,
     assert_no_docker_socket,
+    parse_container_identity,
 )
 from agent_service.infrastructure.sandbox.docker_runner import (
     DOCKER_START_FAILURE_EXIT_CODE,
+    DEFAULT_CONTAINER_KILL_GRACE_SECONDS,
+    TIMEOUT_BINARY,
     DockerRunnerMode,
     execute_docker_container,
     execution_from_dict,
     run_docker_admin,
+    validate_allowed_image,
+    validate_limits_within,
+    validate_path_within_roots,
     validate_runner_url,
 )
 from agent_service.infrastructure.sandbox.policy import (
@@ -191,9 +197,18 @@ def validate_t2_invocation(
     invocation: T2ContainerInvocation,
     policy: T2Policy,
 ) -> None:
-    """执行前硬校验：任何一条不满足都拒绝进容器（含防降级）。"""
+    """执行前硬校验：任何一条不满足都拒绝进容器（含防降级）。
+
+    runner 是唯一持有 Docker/runsc 的安全边界，payload 里的一切（宿主目录、
+    镜像、限额、身份、超时）都在这里按 runner 自身配置复核，不依赖调用方自律
+    （INT-2518 P1-1 / P1-1b / P1-4）。
+    """
     input_root = Path(_normalize_mount_path(invocation.input_root, 'input_root'))
     work_dir = Path(_normalize_mount_path(invocation.work_dir, 'work_dir'))
+    # 允许根：输入卷 / 产物卷只能是 runner 配置的宿主目录（resolve 后判定，
+    # ``..`` 拼接与根外符号链接都会被解析到真实位置后拒绝）。
+    validate_path_within_roots(input_root, policy.effective_work_roots, 'input_root')
+    validate_path_within_roots(work_dir, policy.effective_work_roots, 'work_dir')
     if (
         input_root == work_dir
         or input_root in work_dir.parents
@@ -212,10 +227,21 @@ def validate_t2_invocation(
         raise SandboxConfigurationError('T2 命令不能为空')
     if any('\x00' in arg for arg in invocation.command):
         raise SandboxConfigurationError('T2 命令参数含 NUL 字节')
-    if not invocation.limits.image:
-        raise SandboxConfigurationError('T2 沙箱镜像未配置')
-    if invocation.limits.container_user in ('0', '0:0', 'root'):
-        raise SandboxConfigurationError('T2 沙箱容器禁止以 root 运行')
+    # 镜像：格式（含不得以 - 开头，防参数注入）+ 必须在 runner 允许集合内。
+    validate_allowed_image(invocation.limits.image, policy.allowed_image_set)
+    # 限额唯一口径 = runner 配置：payload 只允许更严格，放大一律 400 不 clamp。
+    validate_limits_within(policy.container_limits, invocation.limits)
+    if invocation.timeout_seconds < 0:
+        raise SandboxConfigurationError(
+            f'T2 超时不能为负数：{invocation.timeout_seconds}'
+        )
+    if invocation.timeout_seconds > policy.container_limits.timeout_seconds:
+        raise SandboxConfigurationError(
+            f'T2 阶段超时 {invocation.timeout_seconds}s 超过 runner 配置上限 '
+            f'{policy.container_limits.timeout_seconds}s'
+        )
+    # 按数值判定非 root：``000`` / ``0:65534`` / ``root`` 全部拒绝（与 T1 同口径）。
+    parse_container_identity(invocation.limits.container_user)
     if invocation.network != 'none':
         if not (policy.egress.enabled and invocation.network == policy.egress.network):
             raise SandboxConfigurationError(
@@ -227,6 +253,7 @@ def validate_t2_invocation(
 def build_t2_run_argv(
     invocation: T2ContainerInvocation,
     docker_binary: str = 'docker',
+    container_kill_grace_seconds: int = DEFAULT_CONTAINER_KILL_GRACE_SECONDS,
 ) -> list[str]:
     """构造 ``docker run`` 参数 — T2 加固参数集中在这里，测试逐条断言。"""
     limits = invocation.limits
@@ -264,6 +291,14 @@ def build_t2_run_argv(
         argv.extend(['--env', f'{key}={value}'])
 
     argv.append(limits.image)
+    # 容器内自限（与 T1 同口径）：runner 进程消失时容器到点自己退出，
+    # 退出码 124 由应用层判 BUDGET_EXCEEDED/TIMEOUT，不落成普通非零退出。
+    effective_timeout = int(invocation.timeout_seconds or limits.timeout_seconds)
+    argv.extend([
+        TIMEOUT_BINARY,
+        '--kill-after', str(int(container_kill_grace_seconds)),
+        str(effective_timeout),
+    ])
     argv.extend(invocation.command)
     return argv
 
@@ -329,7 +364,11 @@ class T2DockerExecutor(UntrustedCodeExecutor):
             )
         try:
             validate_t2_invocation(invocation, self._policy)
-            argv = build_t2_run_argv(invocation, self._policy.docker_binary)
+            argv = build_t2_run_argv(
+                invocation,
+                self._policy.docker_binary,
+                container_kill_grace_seconds=self._policy.container_kill_grace_seconds,
+            )
         except SandboxConfigurationError as exc:
             return ContainerExecution(
                 exit_code=-1, error=str(exc), runtime=self.runtime
@@ -342,6 +381,9 @@ class T2DockerExecutor(UntrustedCodeExecutor):
             self._policy.docker_binary,
             timeout_seconds=invocation.timeout_seconds or self.limits.timeout_seconds,
             runtime=self.runtime,
+            # 运行中 /work 容量门禁（与 T1 同一套巡检，阈值取 T2 自己的配置）。
+            work_dir=invocation.work_dir,
+            work_limit_bytes=self._policy.work_limit_bytes,
         )
         # 极端情况下 runtime 注册后仍可能启动失败（二进制缺失/内核不支持）：
         # 125 + 运行时字样同样按运行时不可用上报，避免被误解成代码失败。

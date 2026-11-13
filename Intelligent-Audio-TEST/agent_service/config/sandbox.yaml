@@ -6,7 +6,10 @@
 #   _PIDS_LIMIT / _TMPFS_SIZE / _TIMEOUT_SECONDS / _TOTAL_TIMEOUT_SECONDS /
 #   _OUTPUT_LIMIT_BYTES / _CONTAINER_USER / _MAX_ARTIFACTS /
 #   _MAX_ARTIFACT_BYTES / _MAX_TOTAL_ARTIFACT_BYTES / _MAX_INPUT_* /
+#   _ALLOWED_IMAGES / _WORK_LIMIT_BYTES /
 #   _EGRESS_ENABLED / _EGRESS_NETWORK / _EGRESS_PROXY_URL / _EGRESS_ALLOWED_HOSTS
+# 另有 T1/T2 共用：AGENT_SANDBOX_WORK_ROOT（宿主目录允许根）、
+#   AGENT_SANDBOX_CONTAINER_KILL_GRACE_SECONDS、AGENT_SANDBOX_ORPHAN_GRACE_SECONDS。
 #
 # 运行时：gvisor（docker --runtime=runsc，首选）。runsc 不可用时执行层明确返回
 # T2_RUNTIME_UNAVAILABLE，**绝不**降级到 T1。Firecracker 本期只保留配置开关与
@@ -31,6 +34,14 @@ t2:
   timeout_seconds: 120
   total_timeout_seconds: 300
   output_limit_bytes: 1048576
+  # 允许镜像集合：留空 = 只允许 image 本身；payload 指定别的镜像一律 400。
+  # 可用 AGENT_SANDBOX_T2_ALLOWED_IMAGES（逗号分隔）追加信任镜像。
+  allowed_images: []
+  # 运行中 /work 容量门禁（AGENT_SANDBOX_T2_WORK_LIMIT_BYTES）：不可小于
+  # artifact.max_total_bytes，否则合法产物会被运行中巡检误杀。
+  work_limit_bytes: 33554432
+  # 容器内 `timeout -k <grace>` 的宽限秒数（与 T1 共用 AGENT_SANDBOX_CONTAINER_KILL_GRACE_SECONDS）。
+  container_kill_grace_seconds: 5
   # 非 root（nobody）；禁止 0/root，配置层会拦截。
   container_user: "65534:65534"
 
