@@ -156,18 +156,19 @@ def test_skills_endpoint_exposes_load_summary(tmp_path, skills_root):
         assert body['l1_tokens'] > 0
 
 
-def test_skills_endpoint_surfaces_directory_level_issue(tmp_path):
-    """INT-2506：skills 根目录不存在时 /skills 能看出原因码，而不是 200 全绿。"""
-    stack = _stack(tmp_path, tmp_path / 'missing-skills')
-    with stack.client as client:
-        body = client.get('/api/v1/agent/skills', headers=OWNER).json()
-        assert body['items'] == []
-        assert body['skills_count'] == 0
-        assert body['issues_count'] == 1
-        issue = body['issues'][0]
-        assert issue['code'] == 'SKILLS_ROOT_MISSING'
-        assert issue['severity'] == 'ERROR'
-        assert issue['skill'] == '' and issue['path']
+def test_skills_root_missing_fails_startup_with_reason_code(tmp_path):
+    """INT-2506 + INT-2529：根目录不存在时带原因码启动失败，不再 200 全绿。
+
+    合并契约（INT-2529）：零 Skill 是部署级故障，装配阶段直接抛
+    ``SkillValidationError``，进程不进入可服务状态 —— 因此 /skills 与
+    /health 在这个场景下本来就不该有响应可查。
+    """
+    from agent_service.domain.exceptions import SkillValidationError
+
+    with pytest.raises(SkillValidationError) as exc:
+        _stack(tmp_path, tmp_path / 'missing-skills')
+    assert [i.code.value for i in exc.value.issues] == [
+        'SKILLS_ROOT_MISSING', 'EMPTY_SKILLS_ROOT']
 
 
 def test_health_reports_skill_load_summary(tmp_path, skills_root, monkeypatch):
@@ -193,16 +194,21 @@ def test_health_reports_skill_load_summary(tmp_path, skills_root, monkeypatch):
         assert health['skills']['issue_codes'] == []
 
 
-def test_health_surfaces_missing_skills_root(tmp_path):
-    """INT-2506：错挂载到不存在的目录时 /health 不再与正常态无差别。"""
+def test_health_surfaces_per_skill_issue_codes(tmp_path):
+    """INT-2506：可装载 Skill 之外仍有目录级问题时，/health 仍与正常态有差别。"""
     work = tmp_path / 'degraded'
     work.mkdir()
-    stack = _stack(work, tmp_path / 'missing-skills')
+    skills = work / 'skills'
+    skills.mkdir()
+    shutil.copytree(os.path.join(SKILLS_ROOT, 'platform-reference'),
+                    skills / 'platform-reference')
+    os.makedirs(str(skills / 'no-skill-md'))
+    stack = _stack(work, skills)
     with stack.client as client:
         health = client.get('/health').json()
-        assert health['skills']['loaded'] == 0
+        assert health['skills']['loaded'] == 1
         assert health['skills']['issues'] == 1
-        assert health['skills']['issue_codes'] == ['SKILLS_ROOT_MISSING']
+        assert health['skills']['issue_codes'] == ['SKILL_FILE_MISSING']
 
 
 # ---------------------------------------------------------------- activation

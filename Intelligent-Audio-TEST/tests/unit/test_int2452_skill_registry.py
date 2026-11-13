@@ -144,7 +144,9 @@ def test_missing_skills_root_reports_reason_code_and_fails_fast(tmp_path):
     with pytest.raises(SkillValidationError) as exc:
         _registry(tmp_path / 'nope')
     issues = exc.value.issues
-    assert [i.code for i in issues] == [SkillIssueCode.SKILLS_ROOT_MISSING]
+    assert [i.code for i in issues] == [
+        SkillIssueCode.SKILLS_ROOT_MISSING,
+        SkillIssueCode.EMPTY_SKILLS_ROOT]
     issue = issues[0]
     assert issue.severity is SkillIssueSeverity.ERROR
     assert issue.skill == ''
@@ -158,7 +160,9 @@ def test_empty_skills_root_reports_reason_code_and_fails_fast(tmp_path):
     with pytest.raises(SkillValidationError) as exc:
         _registry(root)
     issues = exc.value.issues
-    assert [i.code for i in issues] == [SkillIssueCode.SKILLS_ROOT_EMPTY]
+    assert [i.code for i in issues] == [
+        SkillIssueCode.SKILLS_ROOT_EMPTY,
+        SkillIssueCode.EMPTY_SKILLS_ROOT]
     assert issues[0].path == str(root)
 
 
@@ -201,7 +205,8 @@ def test_unreadable_skills_root_reports_reason_code(tmp_path, monkeypatch):
     with pytest.raises(SkillValidationError) as exc:
         _registry(tmp_path)
     assert [i.code for i in exc.value.issues] == [
-        SkillIssueCode.SKILLS_ROOT_UNREADABLE]
+        SkillIssueCode.SKILLS_ROOT_UNREADABLE,
+        SkillIssueCode.EMPTY_SKILLS_ROOT]
 
 
 def test_directory_level_issue_fails_startup_in_strict_mode(tmp_path):

@@ -81,6 +81,16 @@ class SkillRegistry:
                 code=scan_issue.code,
                 severity=SkillIssueSeverity.ERROR,
                 skill='', path=scan_issue.path, message=scan_issue.message))
+        if not scan.skills:
+            # 零 Skill 的聚合原因码（INT-2529）：上面几条是目录级细节
+            # （缺失 / 不可读 / 空 / 缺 SKILL.md），这条让运维一眼看到
+            # 「一个 Skill 都没装到」，且与启动失败一一对应。
+            issues.append(SkillIssue(
+                code=SkillIssueCode.EMPTY_SKILLS_ROOT,
+                severity=SkillIssueSeverity.ERROR,
+                skill='', path=str(getattr(self._repository, 'root', '') or ''),
+                message=('skills 目录未装载到任何 Skill（空目录或缺少 '
+                         'SKILL.md）：检查只读挂载是否指向真实技能目录')))
         for skill in scan.skills:
             found = self._validate(skill)
             fatal = [i for i in found if i.severity is SkillIssueSeverity.ERROR]
