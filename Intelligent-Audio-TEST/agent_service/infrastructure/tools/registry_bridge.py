@@ -25,7 +25,7 @@ from agent_service.domain.ports.tool_gateway import ToolDescriptor
 from agent_service.domain.ports.tool_registry import (
     RunCredentialPort, ToolRegistryPort, ToolTransportPort, ToolTransportResult,
 )
-from shared.agent_tools import intent_tools, mcp_registry
+from shared.agent_tools import diagnostics, intent_tools, mcp_registry
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +187,22 @@ class SharedToolRegistryBridge(ToolRegistryPort):
 
     def platform_contract(self, query: str, section: str) -> dict:
         return intent_tools.platform_contract(query, section)
+
+    def diagnosis_log_levels(self) -> Tuple[str, ...]:
+        return tuple(diagnostics.DIAGNOSIS_LOG_LEVELS)
+
+    def diagnosis_sample_limit(self) -> int:
+        return int(diagnostics.DEFAULT_LOG_ROWS)
+
+    def action_arguments(self, name: str, action: str
+                         ) -> Optional[Tuple[str, ...]]:
+        return intent_tools.action_params(name, action)
+
+    def diagnose_task(self, sources: Dict[str, Any]) -> Dict[str, Any]:
+        return diagnostics.build_task_diagnosis(**sources)
+
+    def diagnose_logs(self, sources: Dict[str, Any]) -> Dict[str, Any]:
+        return diagnostics.build_log_diagnosis(**sources)
 
     def index_size(self) -> int:
         return len(intent_tools.TOOL_INDEX)

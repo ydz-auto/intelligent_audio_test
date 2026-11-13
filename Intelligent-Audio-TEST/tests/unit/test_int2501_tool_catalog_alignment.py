@@ -125,12 +125,14 @@ def test_pending_permission_spec_is_exactly_the_two_known_tools():
 
 def test_fixed_tools_use_fact_source_permission_codes():
     rbac = _rbac_codes()
+    # INT-2461 启用了 dashboard_query（首页只读），其余本卡修正项仍停用
+    enabled_later = {'dashboard_query'}
     for name, expected in _EXPECTED_PERMISSIONS.items():
         tool = intent_tools.INTENT_TOOL_BY_NAME[name]
         assert set(tool.permissions) == expected, name
         assert set(tool.permissions) <= rbac, name
-        # 本卡只改码，不动启用状态（M0 仍未启用）
-        assert tool.enabled is False, name
+        # 本卡（INT-2501）只改码，不动启用状态；后续卡启用需在此显式登记
+        assert tool.enabled is (name in enabled_later), name
 
 
 def test_platform_contract_reports_aligned_permissions():

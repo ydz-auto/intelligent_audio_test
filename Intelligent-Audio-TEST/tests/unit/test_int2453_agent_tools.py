@@ -2,7 +2,8 @@
 """INT-2453 工具层：单一事实源 / 31 意图工具 / tool_search / platform_contract。
 
 验收锚点（卡面可测标准 1、3、5）：
-1. 205 个 MCP 工具的 name/description/inputSchema/permissions 快照迁移前后一致；
+1. MCP 工具（M0 迁移时 205 个；INT-2461 追加 2 个首页只读工具 = 207 个）的
+   name/description/inputSchema/permissions 快照迁移前后一致；
 2. tool_search 对关键词命中正确工具，返回可直接调用的 Schema，权限不足不返回；
 3. 注册表 31 个意图工具无重复，5 个预留名称（memory_* / ui_* / api_spec）在索引内。
 """
@@ -22,6 +23,9 @@ from shared.agent_tools.intent_tools import (
     ENABLED_TOOLS, INTENT_TOOLS, TOOL_INDEX,
 )
 
+# MCP 工具数（INT-2461：INT-2453 谱的 205 + 首页 2 个只读工具）
+MCP_TOOL_COUNT = 207
+
 
 def _snapshot(tools):
     payload = [
@@ -36,8 +40,8 @@ def _snapshot(tools):
 
 # ---------------------------------------------------------------- 单一事实源
 
-def test_mcp_registry_has_205_tools_and_no_duplicates():
-    assert len(mcp_registry.TOOLS) == 205
+def test_mcp_registry_has_expected_tools_and_no_duplicates():
+    assert len(mcp_registry.TOOLS) == MCP_TOOL_COUNT
     names = [t['name'] for t in mcp_registry.TOOLS]
     assert len(names) == len(set(names))
     for tool in mcp_registry.TOOLS:
@@ -53,7 +57,7 @@ def test_gateway_reexports_same_single_source():
     assert tools_registry.get_tool is mcp_registry.get_tool
     assert _snapshot(tools_registry.TOOLS) == _snapshot(mcp_registry.TOOLS)
     listed = tools_registry.list_tools()
-    assert len(listed) == 205
+    assert len(listed) == MCP_TOOL_COUNT
     assert set(listed[0]) == {'name', 'description', 'inputSchema'}
 
 
@@ -62,7 +66,7 @@ def test_mcp_tools_list_snapshot_is_stable():
     digest = hashlib.sha256(_snapshot(mcp_registry.TOOLS).encode('utf-8')).hexdigest()
     assert len(digest) == 64
     listed = mcp_handler._handle_tools_list()
-    assert len(listed['tools']) == 205
+    assert len(listed['tools']) == MCP_TOOL_COUNT
     assert listed['tools'] == mcp_registry.list_tools()
 
 
@@ -89,11 +93,13 @@ def test_intent_registry_has_31_unique_tools():
     names = [t.name for t in INTENT_TOOLS]
     assert len(names) == len(set(names))
     # M0 四项常驻 + M1 各域卡按域追加
-    # （INT-2458 audio_query / INT-2462 evaluation_query / INT-2464 algorithm_query）
+    # （INT-2458 audio_query / INT-2462 evaluation_query / INT-2464 algorithm_query /
+    #   INT-2461 task_diagnose + log_diagnose + dashboard_query）
     # 精确等值：新增启用工具必须在本卡同步更新该集合，避免无意多启用。
     assert ENABLED_TOOLS == {'platform_contract', 'tool_search', 'task_query',
                              'report_query', 'audio_query', 'evaluation_query',
-                             'algorithm_query'}
+                             'algorithm_query', 'task_diagnose', 'log_diagnose',
+                             'dashboard_query'}
 
 
 def test_reserved_tool_names_present_and_disabled():
@@ -190,7 +196,7 @@ def test_tool_search_index_includes_reserved_names():
     names = {t['name'] for t in TOOL_INDEX}
     assert {'memory_search', 'memory_write', 'ui_tree', 'ui_action',
             'api_spec'} <= names
-    assert len(TOOL_INDEX) == (205 - 1) + 31 - 2  # 两个同名项去重 + 排除 audio_get_by_ids（INT-2530 宿主语境）
+    assert len(TOOL_INDEX) == (MCP_TOOL_COUNT - 1) + 31 - 2  # 两个同名项去重 + 排除 audio_get_by_ids（INT-2530 宿主语境）
 
 
 def test_tool_search_limit_is_bounded():
