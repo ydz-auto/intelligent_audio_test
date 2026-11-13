@@ -12,6 +12,7 @@ from starlette.responses import JSONResponse
 
 from api_gateway.infrastructure.request_adapter import set_current_request
 from shared.infrastructure.config import BaseConfig
+from shared.utils.secret_mask import mask_text
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +66,17 @@ class RequestAdapterMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        # 错误响应(>=400)记录响应体，方便排查问题
+        # 错误响应(>=400)记录响应体，方便排查问题。
+        # INT-2509：上游可能把请求体（含供应商明文 API Key）回显在 422 里，
+        # 落日志前统一走 shared 脱敏（同一事实源，§6.4-2 / §13-4）；
+        # 只脱敏日志文本，回给调用方的响应体原样透传。
         if response.status_code >= 400:
             try:
                 resp_body = b""
                 async for chunk in response.body_iterator:
                     resp_body += chunk
-                resp_text = resp_body.decode('utf-8', errors='replace')[:500]
+                resp_text = mask_text(
+                    resp_body.decode('utf-8', errors='replace'))[:500]
                 logger.info(
                     f"API Response - URL: {request.url.path} | Method: {request.method} | "
                     f"Status: {response.status_code} | Body: {resp_text}"

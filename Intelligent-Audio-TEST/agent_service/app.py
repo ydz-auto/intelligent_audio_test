@@ -22,6 +22,7 @@ except ImportError:
     logging.getLogger(__name__).debug('python-dotenv 未安装，跳过 .env 加载')
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from agent_service.config.config import Config
@@ -38,6 +39,25 @@ logger = logging.getLogger(__name__)
 
 
 def _register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(RequestValidationError)
+    async def _request_validation_error(_request: Request,
+                                        exc: RequestValidationError):
+        # INT-2509：FastAPI 默认处理器把整份请求体放进 detail[].input，
+        # 供应商接口缺字段时会把明文 api_key 回显给调用方、再由网关抄进
+        # 服务日志（违反落地方案 §6.4-2 / §13-4）。这里只回字段定位信息，
+        # 任何字段值（input / ctx）一律不回显。
+        return JSONResponse(
+            status_code=422,
+            content={'detail': [
+                {
+                    'type': str(error.get('type', '')),
+                    'loc': list(error.get('loc', ())),
+                    'msg': str(error.get('msg', '')),
+                }
+                for error in exc.errors()
+            ]},
+        )
+
     @app.exception_handler(SessionNotFound)
     async def _session_not_found(_request: Request, _exc: SessionNotFound):
         return JSONResponse(status_code=404, content={'detail': 'not found'})
