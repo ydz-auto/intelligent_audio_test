@@ -74,9 +74,13 @@ class SharedToolGateway(ToolGateway):
         wanted = set(names or ())
         return tuple(t for t in self.all_tools() if t.name in wanted)
 
-    def risk_of(self, name: str) -> ToolRisk:
-        """工具风险（含 tool_search 命中的长尾 MCP 工具）。"""
-        return self._bridge.risk_of(name) or ToolRisk.READ
+    def risk_of(self, name: str) -> Optional[ToolRisk]:
+        """工具风险（意图工具 + tool_search 命中的长尾 MCP 工具）。
+
+        两份注册表都查不到返回 ``None``；绝不把未知工具降级成 READ —— 那会让
+        写操作绕过 M0 只读门禁（INT-2487 / INT-2500）。
+        """
+        return self._bridge.risk_of(name)
 
     # ------------------------------------------------------------ execute
 
@@ -104,7 +108,11 @@ class SharedToolGateway(ToolGateway):
 
         # M0 只读：写 / 破坏性工具在网关层也拒绝（Loop 层已先行拦截，
         # 这里再做一次防御，避免绕过 Loop 直接调用时执行写操作）。
-        if self.risk_of(name) is not ToolRisk.READ:
+        # 两份注册表都查不到（None）按未知工具拒绝，不降级成 READ。
+        risk = self.risk_of(name)
+        if risk is None:
+            return self._fail(call, UNKNOWN_TOOL, f'工具不存在：{name}')
+        if risk is not ToolRisk.READ:
             return self._fail(
                 call, 'APPROVAL_REQUIRED',
                 '写操作需要审批，M0 未启用审批执行。')
