@@ -287,3 +287,9 @@ Intelligent-Audio-TEST/_int*_probe*
 Intelligent-Audio-TEST/_int*_shots*/
 Intelligent-Audio-TEST/_int[0-9]*_*.py
 Intelligent-Audio-TEST/scratch/
+
+# Agent 长期记忆运行期数据（INT-2490）：文件树只跟踪 memory/README.md
+Intelligent-Audio-TEST/memory/tenants/
+Intelligent-Audio-TEST/memory/.proposals/
+Intelligent-Audio-TEST/memory/.audit/
+Intelligent-Audio-TEST/memory/.write_probe

@@ -14,6 +14,9 @@
 - ``audio_query``：音频只读子集（映射 MCP ``audio_*`` 只读工具）；
 - ``evaluation_query``：评估维度 / 分类只读子集（映射 MCP ``evaluation_*`` 只读工具）；
 - ``algorithm_query``：算法定义 / 参数 / 映射 / 表单 Schema 只读子集（映射 MCP ``algorithm_*`` 只读工具）；
+- ``memory_search`` / ``memory_write``：文件式长期记忆（INT-2490，§8.6）；
+  检索走 ``rg``、写入需审批，路径由服务端按 tenant/owner 构造；两项都是
+  ``kind='local'``，不经 REST 回源；
 - ``tool_search``：对 205 个 MCP 工具 + 意图工具建索引，按关键词返回 Schema。
   其中宿主语境专用工具（``AGENT_UNEXPOSED_MCP_TOOLS``，当前为
   ``audio_get_by_ids``）不进索引、不可被 Agent 调用（INT-2530）。
@@ -29,6 +32,8 @@ allowed-tools 校验与 tool_search 索引，启动时不会出现 ``UNKNOWN_TOO
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -418,28 +423,41 @@ INTENT_TOOLS: List[IntentTool] = [
             'endpoint': _prop('string', '只看某个端点'),
         }),
         risk='READ', permissions=('api_config:read',), enabled=False, kind='reserved'),
+    # ---------------- M1 已实现（INT-2490 长期记忆：文件树 + rg，无向量 RAG） ----------------
+    # 权限口径：记忆域没有 RBAC 权限码（INT-2501 待规格名单），且隔离由服务端
+    # 按登录身份构造路径 + 审批占位保证，因此两项都只要求登录（permissions 为空）。
+    # 模型入参里没有任何 tenant / owner / 路径字段（§8.6.1）。
     IntentTool(
         name='memory_search',
-        description=('检索用户 / 项目长期记忆与 Skill references（rg 封装，'
-                     'tenant / owner 严格隔离，无向量 RAG）。实现见 M1（INT-2490），当前未启用。'),
+        description=('检索长期记忆与 Skill references（rg 关键词检索，'
+                     'tenant / owner 严格隔离，无向量 RAG）。只能看到调用者自己的'
+                     '用户偏好与项目记忆；跨用户 / 跨租户返回空。细节一律以检索结果为准，'
+                     '不编造记忆内容。'),
         parameters=_schema({
-            'query': _prop('string', '检索关键词', required=True),
-            'scope': _prop('string', '检索范围', enum=['user', 'project']),
-            'limit': _prop('integer', '返回条数上限'),
+            'query': _prop('string', '检索关键词（按字面匹配，不是正则）',
+                           required=True),
+            'scope': _prop('string', '检索范围：USER 全部个人记忆 / '
+                                     'PROJECT 单个项目 / SKILL_REFERENCES 共享只读知识',
+                           enum=['USER', 'PROJECT', 'SKILL_REFERENCES']),
+            'project_id': _prop('string', '项目标识（scope=PROJECT 必填）'),
+            'limit': _prop('integer', '返回条数上限（受服务端上限约束）'),
         }, required=('query',)),
-        risk='READ', permissions=(), enabled=False, kind='reserved'),
+        risk='READ', permissions=(), enabled=True, kind='local'),
     IntentTool(
         name='memory_write',
-        description=('写入用户偏好或项目规则；需要审批。'
-                     '实现见 M1（INT-2490），当前未启用。'),
+        description=('写入用户偏好或项目规则（需审批）。只生成待审批提案，'
+                     '审批通过后才会落盘；敏感信息（Key / 密码 / token / PII）'
+                     '会被拦截或脱敏。只能写调用者自己的记忆目录。'),
         parameters=_schema({
-            'content': _prop('string', '要记住的内容', required=True),
-            'kind': _prop('string', '记忆类型', enum=['preference', 'project_rule'],
-                          required=True),
-            'scope': _prop('string', '写入范围', enum=['user', 'project']),
-        }, required=('content', 'kind')),
-        risk='WRITE', permissions=('memory:write',),  # 待规格（INT-2501）：RBAC 无 memory 域
-        enabled=False, kind='reserved'),
+            'section': _prop('string', '写入区段：用户偏好 / 项目规则 / 话题记录',
+                             required=True,
+                             enum=['USER_PROFILE', 'PROJECT_MEMORY', 'TOPIC']),
+            'content': _prop('string', '要记住的内容（用户明确要求记住的事实，'
+                                       '不得写入模型猜测）', required=True),
+            'project_id': _prop('string', '项目标识（PROJECT_MEMORY / TOPIC 必填）'),
+            'reason': _prop('string', '为什么值得长期记住（进审批信息，不落正文）'),
+        }, required=('section', 'content')),
+        risk='WRITE', permissions=(), enabled=True, kind='local'),
 
     # ---------------- 其余业务意图工具（预留，M1 / M2 实现） ----------------
     IntentTool(
@@ -668,6 +686,12 @@ INTENT_TOOL_BY_NAME: Dict[str, IntentTool] = {t.name: t for t in INTENT_TOOLS}
 # 已启用的工具集合（执行前判定；预留工具返回 TOOL_NOT_ENABLED）
 ENABLED_TOOLS = frozenset(t.name for t in INTENT_TOOLS if t.enabled)
 
+# Harness 级常驻工具：与具体 Skill 无关，激活任何 Skill 都保持可用
+# （长期记忆读写只作用于调用者自己的私有记忆，不改变平台业务能力）。
+# 组装与执行期范围校验都并上这个集合，否则「先激活业务 Skill 再用记忆」会被
+# allowed-tools 拦掉。
+ALWAYS_AVAILABLE_TOOLS = frozenset({'memory_search', 'memory_write'})
+
 # 宿主语境专用工具：REST 端点在用（用例回填 / 批量标注匹配），但 Agent 侧
 # 一律不暴露 —— 不进 tool_search 索引、platform_contract 不返回、解析层拒绝。
 # 理由见 AUDIO_QUERY_ACTIONS 上方注释（INT-2530 / INT-2523 P1-1）：这类批量
@@ -675,6 +699,33 @@ ENABLED_TOOLS = frozenset(t.name for t in INTENT_TOOLS if t.enabled)
 AGENT_UNEXPOSED_MCP_TOOLS: Dict[str, str] = {
     'audio_get_by_ids': '按 ID 批量读是宿主语境通道（不做归属校验），Agent 侧不可调用',
 }
+
+# 审计脱敏：这些工具的参数正文不落 agent_tool_call / 事件（§8.6：审计不落记忆
+# 正文）。值替换成 {redacted, sha256, length}，模型侧仍有 args_hash 可追溯。
+AUDIT_REDACTED_ARGUMENTS: Dict[str, Tuple[str, ...]] = {
+    'memory_write': ('content',),
+}
+
+
+def redact_for_audit(name: str,
+                     arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """按工具名脱敏审计参数；未登记的工具原样返回。"""
+    payload = dict(arguments or {})
+    keys = AUDIT_REDACTED_ARGUMENTS.get(name)
+    if not keys:
+        return payload
+    for key in keys:
+        if key not in payload:
+            continue
+        value = payload[key]
+        raw = value if isinstance(value, str) else json.dumps(
+            value, ensure_ascii=False, sort_keys=True, default=str)
+        payload[key] = {
+            'redacted': True,
+            'sha256': hashlib.sha256(raw.encode('utf-8')).hexdigest(),
+            'length': len(raw),
+        }
+    return payload
 
 # tool_search 索引：205 个 MCP 工具 + 意图工具（含 5 个预留名称）。
 # MCP 与意图工具存在同名项（report_compare / report_export）：保留 MCP 条目
@@ -984,11 +1035,12 @@ def _serialize_intent(tool: IntentTool) -> dict:
 
 __all__ = [
     'ACTION_REQUIRED', 'AGENT_UNEXPOSED_MCP_TOOLS', 'ALGORITHM_QUERY_ACTIONS',
-    'AUDIO_QUERY_ACTIONS',
+    'ALWAYS_AVAILABLE_TOOLS',
+    'AUDIO_QUERY_ACTIONS', 'AUDIT_REDACTED_ARGUMENTS',
     'CONDITIONAL_REQUIRED', 'ENABLED_TOOLS', 'EVALUATION_QUERY_ACTIONS',
     'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool', 'MCP_TOOLS',
     'REPORT_QUERY_ACTIONS', 'TASK_QUERY_ACTIONS', 'TOOL_INDEX',
     'TOOL_INDEX_BY_NAME', 'conditional_required', 'platform_contract',
-    'required_for_action', 'resolve_rest_call', 'risk_of', 'tool_search',
-    'validate_arguments',
+    'redact_for_audit', 'required_for_action', 'resolve_rest_call',
+    'risk_of', 'tool_search', 'validate_arguments',
 ]

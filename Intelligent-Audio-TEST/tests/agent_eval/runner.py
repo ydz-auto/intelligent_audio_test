@@ -115,6 +115,9 @@ class EvalReport:
             f'| 未知回答 | {self.baseline.unknown} | {self.compressed.unknown} |',
             f'| run 失败 | {self.baseline.run_failures} '
             f'| {self.compressed.run_failures} |',
+            f'| 记忆检索命中率（{self.compressed.memory_rounds} 轮） '
+            f'| {self.baseline.memory_hit_rate:.1%} '
+            f'| {self.compressed.memory_hit_rate:.1%} |',
             '',
             f'压缩前后成功率差：**{self.success_delta_points:.2f} 个百分点**'
             '（门槛 ≤ 5）',
@@ -240,7 +243,8 @@ class AgentEvalRunner:
                     fact_key=item['fact_key'],
                     expected=item['expected_value'], answer=answer,
                     status=status,
-                    requery=stats.requery_count > before))
+                    requery=stats.requery_count > before,
+                    domain=str(item.get('domain') or '')))
             levels = _snapshot_levels(container, session)
         finally:
             container.shutdown()
@@ -258,6 +262,11 @@ class AgentEvalRunner:
             'fact_recall_ge_95': compressed.fact_recall_rate >= 0.95,
             'success_delta_le_5_points': delta <= 5.0,
             'compaction_observed': compressed.compaction_count > 0,
+            # INT-2490：50+ 轮里记忆子集的召回命中率，且不得编造（correct 之外
+            # 的答案在 golden 的 no_fabricated 口径之外这里单独计）
+            'memory_recall_ge_95': (
+                compressed.memory_rounds >= 8
+                and compressed.memory_hit_rate >= 0.95),
         }
         acceptance['passed'] = all(acceptance.values())
         return EvalReport(

@@ -14,6 +14,9 @@ from agent_service.application.context_assembler import (
     CompactionSettings, ContextAssembler,
 )
 from agent_service.application.event_stream import EventStreamService
+from agent_service.application.memory_service import (
+    MemoryService, MemoryServiceSettings,
+)
 from agent_service.application.provider_service import ProviderService
 from agent_service.application.recovery_service import RecoveryService
 from agent_service.application.run_orchestrator import (
@@ -52,6 +55,10 @@ from agent_service.infrastructure.artifacts.oss_artifact_store import (
 from agent_service.infrastructure.llm.credential_store import CredentialStore
 from agent_service.infrastructure.llm.provider_registry import ProviderRegistry
 from agent_service.infrastructure.llm.verifier import HttpProviderVerifier
+from agent_service.infrastructure.memory import (
+    FileMemoryStore, MemoryStoreSettings, load_sensitive_rules,
+)
+from agent_service.infrastructure.memory.paths import AUDIT_DIR
 from agent_service.infrastructure.persistence.repositories import (
     SqlArtifactRepository, SqlContextSnapshotRepository, SqlEventRepository,
     SqlLlmProviderRepository, SqlRunRepository, SqlSessionRepository,
@@ -88,6 +95,7 @@ class AgentContainer:
     sandbox: SandboxToolExecutor = None
     budget_policy: Optional[ContextBudgetPolicy] = None
     compaction_settings: Optional[CompactionSettings] = None
+    memory_service: Optional[MemoryService] = None
     repositories: dict = field(default_factory=dict)
 
     def shutdown(self) -> None:
@@ -161,8 +169,37 @@ def _skill_script_locator(skills: Optional[SkillRegistry]):
     return locate
 
 
-def build_sandbox_tool_executor(
-        skills: Optional[SkillRegistry] = None,
+def build_memory_service() -> MemoryService:
+    """装配文件式长期记忆（INT-2490，§8.6 / §8.6.1）。
+
+    敏感信息规则缺失 / 非法即启动失败：没有扫描规则就绝不放行
+    ``memory_write``（防静默无扫描写入）。
+    """
+    rules = load_sensitive_rules(Config.MEMORY_SENSITIVE_RULES_PATH)
+    store = FileMemoryStore(MemoryStoreSettings(
+        root=Config.MEMORY_ROOT,
+        skills_root=Config.SKILLS_ROOT,
+        rg_binary=Config.MEMORY_RG_BIN,
+        rg_timeout_seconds=Config.MEMORY_RG_TIMEOUT_SECONDS,
+        search_default_limit=Config.MEMORY_SEARCH_DEFAULT_LIMIT,
+        search_max_limit=Config.MEMORY_SEARCH_MAX_LIMIT,
+        max_query_chars=Config.MEMORY_SEARCH_MAX_QUERY_CHARS,
+        snippet_chars=Config.MEMORY_SNIPPET_CHARS,
+        summary_max_tokens=Config.MEMORY_INJECT_MAX_TOKENS,
+        summary_max_projects=Config.MEMORY_SUMMARY_MAX_PROJECTS,
+        summary_lines_per_file=Config.MEMORY_SUMMARY_LINES_PER_FILE,
+        user_quota_bytes=Config.MEMORY_USER_QUOTA_BYTES,
+        sensitive_rules=rules,
+    ))
+    return MemoryService(
+        store,
+        settings=MemoryServiceSettings(
+            inject_max_tokens=Config.MEMORY_INJECT_MAX_TOKENS,
+            search_default_limit=Config.MEMORY_SEARCH_DEFAULT_LIMIT),
+        audit_path=str(Path(Config.MEMORY_ROOT) / AUDIT_DIR))
+
+
+def build_sandbox_tool_executor(        skills: Optional[SkillRegistry] = None,
         *, runner: Optional[SandboxRunner] = None,
         output_summary_chars: Optional[int] = None,
         max_result_chars: Optional[int] = None) -> SandboxScriptDispatcher:
@@ -228,6 +265,7 @@ def build_container(session_factory,
                     compaction_settings: Optional[CompactionSettings] = None,
                     budget_ratios: Optional[SectionRatios] = None,
                     context_debug: Optional[bool] = None,
+                    memory_service: Optional[MemoryService] = None,
                     ) -> AgentContainer:
     """组合根。``budget_defaults`` / ``terminal_grace_seconds`` /
     ``skill_registry`` / ``skills_root`` 与 ``provider_resolver`` /
@@ -262,12 +300,14 @@ def build_container(session_factory,
     cancel_registry = CancelRegistry()
     side_effects = ReadOnlySideEffectChecker()
     tool_credentials = RunCredentialRegistry(Config.TOOL_CREDENTIAL_TTL_SECONDS)
+    memory = memory_service or build_memory_service()
     gateway = tool_gateway or SharedToolGateway(
         bridge=SharedToolRegistryBridge(),
         rest=RestToolClient(
             Config.TOOL_GATEWAY_BASE_URL,
             timeout_seconds=Config.TOOL_HTTP_TIMEOUT_SECONDS),
         credentials=tool_credentials,
+        memory=memory,
     )
     skills = skill_registry or build_skill_registry(gateway, skills_root)
     sandbox_executor = sandbox or build_sandbox_tool_executor(skills)
@@ -298,7 +338,7 @@ def build_container(session_factory,
         event_fetch_limit=Config.EVENT_SCAN_LIMIT,
         skills=skills, snapshots=snapshots, artifacts=artifacts,
         artifact_store=artifact_store or OssArtifactStore(),
-        settings=compaction)
+        settings=compaction, memory=memory)
 
     ratios = budget_ratios or SectionRatios.from_dict(
         Config.context_section_ratios())
@@ -364,6 +404,7 @@ def build_container(session_factory,
         tool_gateway=gateway, credentials=tool_credentials,
         sandbox=sandbox_executor,
         budget_policy=budget_policy, compaction_settings=compaction,
+        memory_service=memory,
         repositories={
             'sessions': sessions, 'runs': runs, 'events': events,
             'steps': steps, 'tool_calls': tool_calls,

@@ -142,7 +142,8 @@ NAMING_RULES: List[str] = [
 CONVENTIONS: List[str] = [
     '外部访问只走 api_gateway（/api/v1 前缀）；业务服务之间才用 gRPC。',
     '外部 MCP 与内部 Agent 共用工具 Schema（shared/agent_tools），不要复制两份。',
-    'M0 阶段写操作不可执行：写工具调用返回 APPROVAL_REQUIRED。',
+    '写操作一律需要审批：M0/M1 阶段写工具调用返回 APPROVAL_REQUIRED；'
+    'memory_write 只生成待审批提案（不落盘），审批通过后才生效。',
     'GET /api/v1/agent/skill（单数）是 Skill 包 zip 下载；/api/v1/agent/skills（复数）是可见 Skill 列表。',
     '报告 status 只表达 draft / published；生成进度看 GET /api/v1/reports/{id}/progress。',
     '回收站没有独立前缀：恢复是 POST /api/v1/{tasks|testcases|reports}/{id}/restore、'

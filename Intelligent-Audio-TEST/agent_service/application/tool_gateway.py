@@ -9,7 +9,9 @@
    模型可读的普通拒绝文本，不抛内部异常、不泄漏资源是否存在；
 3. 参数 Schema：必填 / 类型 / 枚举先校验，目标端点仍做 pydantic 二次校验；
 4. 实时状态：目标 REST 的 403/404 统一收敛为「无权访问 / 资源不存在或无权访问」；
-5. 预留工具（ui_tree / memory_* 等）返回 ``TOOL_NOT_ENABLED``；
+5. 本地工具：``memory_search`` / ``memory_write``（INT-2490）走文件式长期记忆，
+   身份由调用上下文给定、不经模型传路径；写操作只生成待审批提案；
+   其余预留工具（ui_tree / ui_action / api_spec 等）返回 ``TOOL_NOT_ENABLED``；
 6. 长尾 MCP 工具（tool_search 命中后直接调用）同样在此做权限与 Schema 校验。
 
 审计（run_id / tool / args_hash / decision / latency / result_code）由
@@ -22,7 +24,11 @@ import json
 import logging
 from typing import Any, Dict, Optional, Sequence
 
+from agent_service.application.memory_service import (
+    APPROVAL_REQUIRED, MemoryService, tool_error_code,
+)
 from agent_service.domain.enums import ToolRisk
+from agent_service.domain.exceptions import MemoryError
 from agent_service.domain.model.entities import ToolCallRequest, ToolResult
 from agent_service.domain.ports.tool_gateway import (
     ToolDescriptor, ToolGateway, ToolInvocationContext,
@@ -40,6 +46,9 @@ UNKNOWN_TOOL = 'UNKNOWN_TOOL'
 RESOURCE_NOT_FOUND = 'NOT_FOUND'
 UPSTREAM_ERROR = 'UPSTREAM_ERROR'
 UPSTREAM_UNAVAILABLE = 'UPSTREAM_UNAVAILABLE'
+
+# 默认不启用记忆工具（无记忆服务时按「未启用」fail-closed）
+MEMORY_TOOLS = frozenset({'memory_search', 'memory_write'})
 
 # 不泄漏存在性的统一文案（403/404 同一口径）
 _DENIED_TEXT = '无权访问该资源，或该资源不存在。'
@@ -61,10 +70,12 @@ class SharedToolGateway(ToolGateway):
 
     def __init__(self, *, bridge: ToolRegistryPort,
                  rest: ToolTransportPort,
-                 credentials: RunCredentialPort):
+                 credentials: RunCredentialPort,
+                 memory: Optional[MemoryService] = None):
         self._bridge = bridge
         self._rest = rest
         self._credentials = credentials
+        self._memory = memory
 
     # ------------------------------------------------------------ catalog
 
@@ -74,6 +85,14 @@ class SharedToolGateway(ToolGateway):
     def describe(self, names: Sequence[str]) -> Sequence[ToolDescriptor]:
         wanted = set(names or ())
         return tuple(t for t in self.all_tools() if t.name in wanted)
+
+    def proposal_capable(self, name: str) -> bool:
+        """写工具是否支持「提案 → 审批 → 落盘」（当前仅 memory_write）。
+
+        审批链（M2 / INT-2466）未合入时，记忆写入用 2453 预留的提案占位：
+        工具调用会生成待审批提案，但审批前不产生任何文件副作用。
+        """
+        return name == 'memory_write' and self._memory is not None
 
     def risk_of(self, name: str) -> Optional[ToolRisk]:
         """工具风险（意图工具 + tool_search 命中的长尾 MCP 工具）。
@@ -106,6 +125,11 @@ class SharedToolGateway(ToolGateway):
             return self._fail(
                 call, TOOL_NOT_ENABLED,
                 f'工具 {name} 尚未启用（当前阶段为预留 Schema），请改用已启用工具。')
+
+        # 本地记忆工具（不访问 REST）：记忆服务未装配时按「未启用」拒绝，
+        # 绝不放行成「空结果 / 无副作用成功」。
+        if name in MEMORY_TOOLS:
+            return self._run_memory_tool(call, name, arguments, context)
 
         # M0 只读：写 / 破坏性工具在网关层也拒绝（Loop 层已先行拦截，
         # 这里再做一次防御，避免绕过 Loop 直接调用时执行写操作）。
@@ -152,6 +176,46 @@ class SharedToolGateway(ToolGateway):
             str(arguments.get('query') or '').strip(),
             str(arguments.get('section') or 'all').strip() or 'all')
         return self._ok(call, json.dumps(payload, ensure_ascii=False))
+
+    def _run_memory_tool(self, call: ToolCallRequest, name: str,
+                         arguments: Dict[str, Any],
+                         context: ToolInvocationContext) -> ToolResult:
+        """记忆工具：路径由服务端身份构造，模型只能传关键词 / 区段。"""
+        if self._memory is None:
+            return self._fail(
+                call, TOOL_NOT_ENABLED,
+                f'工具 {name} 需要记忆服务，当前未装配。')
+        try:
+            if name == 'memory_search':
+                payload = self._memory.search(
+                    tenant_id=context.tenant_id, owner_id=context.owner_id,
+                    run_id=context.run_id,
+                    query=str(arguments.get('query') or '').strip(),
+                    scope=str(arguments.get('scope') or 'USER'),
+                    project_id=(str(arguments['project_id'])
+                                if arguments.get('project_id') else None),
+                    limit=(int(arguments['limit'])
+                           if arguments.get('limit') is not None else None))
+                return self._ok(call, json.dumps(payload, ensure_ascii=False))
+            payload = self._memory.propose_write(
+                tenant_id=context.tenant_id, owner_id=context.owner_id,
+                run_id=context.run_id,
+                section=str(arguments.get('section') or ''),
+                content=str(arguments.get('content') or ''),
+                project_id=(str(arguments['project_id'])
+                            if arguments.get('project_id') else None),
+                reason=str(arguments.get('reason') or ''))
+            # 提案不携带正文预览：模型拿到的只是审批单号与目标路径，
+            # 真正的内容在审批端可见，且审计不落正文。
+            payload['message'] = '已生成待审批提案（未落盘）；批准后才会写入长期记忆。'
+            return ToolResult(
+                tool_call_id=call.tool_call_id, tool=call.name, ok=False,
+                content=json.dumps(payload, ensure_ascii=False),
+                error_code=APPROVAL_REQUIRED)
+        except MemoryError as exc:
+            return self._fail(call, tool_error_code(exc.code), str(exc))
+        except (TypeError, ValueError) as exc:
+            return self._fail(call, INVALID_ARGUMENTS, f'记忆工具参数非法：{exc}')
 
     # ------------------------------------------------------------ rest
 

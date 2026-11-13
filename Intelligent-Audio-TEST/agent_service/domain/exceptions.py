@@ -91,3 +91,53 @@ class SkillValidationError(AgentDomainError):
         self.issues = tuple(issues)
         detail = '; '.join(f'{i.code.value}:{i.skill or i.path}' for i in issues)
         super().__init__(f'Skill 校验失败（{len(self.issues)} 项）: {detail}')
+
+
+# ---------------------------------------------------------------- 长期记忆（INT-2490）
+
+
+class MemoryError(AgentDomainError):
+    """记忆域异常基类：``code`` 直接作为工具 / 审计的 result_code。"""
+
+    code = 'MEMORY_ERROR'
+
+    def __init__(self, message: str, *, code: str = ''):
+        if code:
+            self.code = code
+        super().__init__(message)
+
+
+class MemoryPathRejected(MemoryError):
+    """路径越界 / 非法（``..``、绝对路径、``~``、软链穿越）。"""
+
+    code = 'MEMORY_PATH_REJECTED'
+
+
+class MemorySensitiveRejected(MemoryError):
+    """命中拦截级敏感信息规则：整笔写入拒绝，不产生提案。"""
+
+    code = 'MEMORY_SENSITIVE_CONTENT'
+
+
+class MemoryProposalNotFound(MemoryError):
+    """提案不存在，或不属于当前用户 / 租户（对外统一 404，不泄漏存在性）。"""
+
+    code = 'MEMORY_PROPOSAL_NOT_FOUND'
+
+
+class MemoryProposalConflict(MemoryError):
+    """批准时目标文件已被改动：拒绝覆盖，保留本次提案。"""
+
+    code = 'MEMORY_WRITE_CONFLICT'
+
+
+class MemoryBackendUnavailable(MemoryError):
+    """检索后端（``rg``）不可用：显式失败，不静默返回空结果。"""
+
+    code = 'MEMORY_BACKEND_UNAVAILABLE'
+
+
+class MemoryPermissionDenied(MemoryError):
+    """管理端 / break-glass 权限不足。"""
+
+    code = 'MEMORY_PERMISSION_DENIED'

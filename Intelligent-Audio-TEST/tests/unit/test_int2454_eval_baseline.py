@@ -30,13 +30,22 @@ def test_eval_baseline_acceptance(tmp_path):
     assert report.success_delta_points <= 5.0
     assert report.acceptance['passed'] is True
 
+    # INT-2490：50+ 轮会话里的长期记忆召回命中率（8 轮跨会话记忆事实），
+    # 命中即答案与工具返回逐字段一致，不存在编造数值。
+    assert compressed.memory_rounds >= 8
+    assert compressed.memory_correct == compressed.memory_rounds
+    assert compressed.memory_hit_rate >= 0.95
+    assert report.acceptance['memory_recall_ge_95'] is True
+
     paths = report.write(str(tmp_path / 'out'))
     payload = json.load(open(paths['json'], encoding='utf-8'))
     assert payload['long_task']['compressed']['compaction_count'] > 0
+    assert payload['long_task']['compressed']['memory_hit_rate'] >= 0.95
     assert payload['acceptance']['passed'] is True
     markdown = open(paths['markdown'], encoding='utf-8').read()
     assert '压缩前后成功率差' in markdown
     assert '事实召回率' in markdown
+    assert '记忆检索命中率' in markdown
 
 
 def test_dataset_truth_matches_tool_data():

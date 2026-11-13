@@ -6,8 +6,9 @@
 1. ``ENDPOINT_PREFIXES`` 只列网关真实注册的前缀，不再返回不存在的
    ``/api/v1/trash``；回收站按「各实体路由下的 restore / purge 动作」表述。
 2. 意图工具声明的权限码必须出自 RBAC 事实源（``seed_rbac.PERMISSIONS``）
-   或同能力 MCP 工具实际使用的码；M0 暂未定码的 2 项（memory_write /
-   driver_propose）固定为「待规格」白名单，防止它们被静默启用。
+   或同能力 MCP 工具实际使用的码；M0 暂未定码的 1 项（driver_propose）
+   固定为「待规格」白名单，防止它被静默启用。记忆工具（INT-2490）只要求
+   登录：记忆域没有 RBAC 权限码，隔离由服务端按身份构造路径 + 审批保证。
 """
 import ast
 import os
@@ -23,7 +24,8 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
 
 # 「待规格」白名单：RBAC 里确实还没有对应权限码，等需求规划师定码（INT-2501）
-_PENDING_PERMISSION_SPEC = {'memory_write', 'driver_propose'}
+# INT-2490：memory_write 改为只要求登录（permissions 为空），从名单移出。
+_PENDING_PERMISSION_SPEC = {'driver_propose'}
 
 # 本卡按 RBAC / MCP 事实源改正的 7 个预留工具
 _EXPECTED_PERMISSIONS = {
@@ -116,7 +118,7 @@ def test_intent_tool_permissions_all_exist_in_rbac():
             f'{tool.name} 声明了 RBAC 里不存在的权限码：{unknown}'
 
 
-def test_pending_permission_spec_is_exactly_the_two_known_tools():
+def test_pending_permission_spec_is_exactly_the_known_tools():
     rbac = _rbac_codes()
     pending = {t.name for t in intent_tools.INTENT_TOOLS
                if set(t.permissions) - rbac}

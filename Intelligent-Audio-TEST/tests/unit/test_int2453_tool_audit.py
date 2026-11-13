@@ -91,7 +91,10 @@ def test_active_skill_only_exposes_declared_tools(tmp_path):
     container, _, _ = _stack(tmp_path, llm, FakeRestClient())
     _run(container, permissions=['*'], active_skill='platform-reference')
     names = _tool_names(llm.requests[0])
-    assert names == ['platform_contract', 'tool_search']
+    # Skill 声明 tools + harness 级常驻的记忆工具（INT-2490：长期记忆不属于
+    # 任何业务域，激活 Skill 时仍可用）
+    assert names == ['platform_contract', 'tool_search',
+                     'memory_search', 'memory_write']
 
 
 def test_no_skill_exposes_tools_intersect_permissions(tmp_path):
@@ -244,11 +247,12 @@ def test_skills_endpoint_lists_31_tools_without_duplicates(tmp_path):
         assert body['tools_count'] == 31
         enabled = {t['name'] for t in body['tools'] if t['enabled']}
         # M0 四项常驻；M1 各域卡按域追加
-        # （INT-2458 audio_query / INT-2462 evaluation_query / INT-2464 algorithm_query）
+        # （INT-2458 audio_query / INT-2462 evaluation_query / INT-2464 algorithm_query /
+        #   INT-2490 memory_search + memory_write）
         # 精确等值：新增启用工具必须在本卡同步更新该集合，避免无意多启用。
         assert enabled == {'platform_contract', 'tool_search', 'task_query',
                            'report_query', 'audio_query', 'evaluation_query',
-                           'algorithm_query'}
+                           'algorithm_query', 'memory_search', 'memory_write'}
 
         low = client.get('/api/v1/agent/skills',
                          headers={'X-User-Id': '8', 'X-Tenant-Id': 't1',
@@ -260,8 +264,9 @@ def test_skills_endpoint_lists_31_tools_without_duplicates(tmp_path):
 
 
 def test_reserved_tool_returns_not_enabled_through_loop(tmp_path):
+    # INT-2490：memory_* 已启用，改用仍未实现的探索工具验证同一条链路
     llm = FakeLlm([
-        tool_turn([ToolCallRequest('c1', 'memory_search', {'query': 'x'})]),
+        tool_turn([ToolCallRequest('c1', 'ui_tree', {'device_id': 1})]),
         text_turn('未启用'),
     ])
     container, _, _ = _stack(tmp_path, llm, FakeRestClient())
