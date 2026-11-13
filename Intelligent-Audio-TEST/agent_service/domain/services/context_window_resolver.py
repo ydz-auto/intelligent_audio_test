@@ -8,7 +8,8 @@
 数值口径：
 - 覆盖值必须落在 ``bounds``（默认 8k–2M）且按 ``alignment``（默认 1024）对齐；
 - 覆盖值高于目录默认值时允许保存，但返回告警（预算仍按覆盖值计算）；
-- 单轮输出预留 = ``min(cap, floor(10% × W, alignment))``；
+- 单轮输出预留 = ``min(cap, floor(10% × W, alignment))``；不足一个 alignment
+  单位时取原值（8k 窗口 → 819），不因对齐归零；
 - 压缩阈值按「可用窗口 = W − 输出预留」的 60% / 80% 计算，只产出数值，
   压缩动作由 INT-2454 落地。
 """
@@ -212,10 +213,16 @@ class ContextWindowResolver:
 
         目录给出的 ``max_output_tokens`` 是模型能力上限，超出的预留没有意义，
         因此同时取 min；结果至少为 1。
+
+        对齐只用于把较大的预留归整到 round 值：当 ``ratio × W`` 不足一个
+        alignment 单位（如卡面允许的最小窗口 8k → 819 token）时直接取原值，
+        不能对齐下取整成 0 再抬成 1——那会让上游只肯回 1 个 token。
         """
         if window <= 0:
             return 0
-        candidate = min(int(cap), self.align_down(max(1, int(window * ratio))))
+        raw = min(int(cap), max(1, int(window * ratio)))
+        aligned = self.align_down(raw)
+        candidate = aligned if aligned > 0 else raw
         entry = self.match(protocol, model) if protocol else None
         if entry is not None and entry.max_output_tokens > 0:
             candidate = min(candidate, entry.max_output_tokens)

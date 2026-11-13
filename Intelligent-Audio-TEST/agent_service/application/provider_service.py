@@ -122,7 +122,14 @@ class ProviderService:
         provider_id = str(uuid.uuid4())
         secret = self._credentials.encrypt(
             api_key, owner_id=owner_id, provider_id=provider_id)
-        is_default = not self._providers.list_for_owner(owner_id, tenant_id)
+        # 默认项口径与 get_default 一致：只有「存在 ACTIVE 默认」时才另起默认，
+        # 旧默认已失效（INVALID）时新建的可用供应商直接顶上，否则 run 会一直
+        # 报 LLM_PROVIDER_NOT_CONFIGURED。
+        is_default = self._providers.get_default(owner_id, tenant_id) is None
+        if is_default:
+            # 失效（INVALID）的旧默认项仍占着 is_default=True，部分唯一索引
+            # (owner_id, tenant_id) WHERE is_default 会挡住新默认，先收回。
+            self._providers.clear_default(owner_id, tenant_id)
         now = utcnow()
         provider = AgentLlmProvider(
             id=provider_id, owner_id=owner_id, tenant_id=tenant_id,
@@ -188,8 +195,6 @@ class ProviderService:
         changes['context_window_source'] = resolution.source
 
         self._providers.update(provider_id, owner_id, tenant_id, **changes)
-        if changes.get('is_default') is True:
-            self._providers.set_default(provider_id, owner_id, tenant_id)
         return self.get(provider_id, owner_id, tenant_id)
 
     def delete(self, provider_id: str, owner_id: int, tenant_id: str) -> None:
@@ -225,7 +230,13 @@ class ProviderService:
                 protocol=provider.protocol, base_url=provider.base_url,
                 model=provider.model, api_key=api_key)
             outcome_ok, code, message = outcome.ok, outcome.code, outcome.message
-            if not outcome.ok and outcome.auth_failed:
+            if outcome.ok:
+                # 一次瞬时 401 之后 verify 明确成功必须恢复 ACTIVE，
+                # 否则 get_default 永远取不到它、run 一直报未配置。
+                self._providers.update(
+                    provider_id, owner_id, tenant_id,
+                    status=ProviderStatus.ACTIVE)
+            elif outcome.auth_failed:
                 self._providers.update(
                     provider_id, owner_id, tenant_id,
                     status=ProviderStatus.INVALID)

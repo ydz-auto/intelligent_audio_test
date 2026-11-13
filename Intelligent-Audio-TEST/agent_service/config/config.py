@@ -54,7 +54,8 @@ class Config(BaseConfig):
     MODEL_CATALOG_PATH = os.environ.get('AGENT_MODEL_CATALOG_PATH', '').strip()
     PROVIDER_VERIFY_TIMEOUT_SECONDS = _get_float(
         'AGENT_PROVIDER_VERIFY_TIMEOUT_SECONDS', 10.0)
-    # 预算与压缩阈值按有效窗口 W 派生（§8.3），不写死 128k
+    # 预算与压缩阈值按有效窗口 W 派生（§8.3），不写死 128k。
+    # AUTO 乘数只保留配置位：run 的 Auto 模式属 M1（INT-2477），M0 尚未接线。
     TOKEN_BUDGET_MULTIPLIER_DEFAULT = _get_int(
         'AGENT_TOKEN_BUDGET_MULTIPLIER_DEFAULT', 2)
     TOKEN_BUDGET_MULTIPLIER_AUTO = _get_int(

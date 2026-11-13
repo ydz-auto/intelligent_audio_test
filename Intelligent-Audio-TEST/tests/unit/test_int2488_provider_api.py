@@ -295,3 +295,51 @@ def test_verify_success_records_last_verified(tmp_path):
         assert body['code'] == 'PROVIDER_VERIFIED'
         assert body['status'] == ProviderStatus.ACTIVE.value
         assert body['last_verified_at']
+
+
+def test_verify_success_restores_active_after_transient_auth_failure(tmp_path):
+    """一次瞬时 401 判 INVALID 后，verify 成功必须恢复 ACTIVE 并重新可用。"""
+    state = {'fail': True}
+
+    def handler(request):
+        if state['fail']:
+            return httpx.Response(401, json={'error': 'invalid key'})
+        return httpx.Response(200, json={'data': []})
+
+    client, container, _engine = _make_client(tmp_path, handler)
+    with client:
+        provider_id = _create(client).json()['id']
+        url = f'/api/v1/agent/providers/{provider_id}/verify'
+
+        failed = client.post(url, headers=OWNER_A).json()
+        assert failed['ok'] is False
+        assert failed['status'] == ProviderStatus.INVALID.value
+
+        state['fail'] = False
+        restored = client.post(url, headers=OWNER_A).json()
+        assert restored['ok'] is True
+        assert restored['status'] == ProviderStatus.ACTIVE.value
+        # 恢复后默认解析重新可用（run 不会再报未配置）
+        row = container.repositories['providers'].get_default(7, 't1')
+        assert row is not None and row.id == provider_id
+
+
+def test_new_provider_is_default_when_old_default_invalid(tmp_path):
+    """旧默认被判 INVALID 后，新建的可用供应商直接成为默认。"""
+    client, container, _engine = _make_client(tmp_path)
+    with client:
+        stale = _create(client, base_url='http://bad-provider.local/v1')
+        stale_id = stale.json()['id']
+        assert stale.json()['is_default'] is True
+        client.post(f'/api/v1/agent/providers/{stale_id}/verify',
+                    headers=OWNER_A)  # 401 → INVALID
+
+        fresh = _create(client, name='fresh', api_key='sk-fresh-0000003333',
+                        base_url='https://api.deepseek.com/v1')
+        assert fresh.json()['is_default'] is True
+        listing = client.get('/api/v1/agent/providers',
+                             headers=OWNER_A).json()['items']
+        defaults = [item['id'] for item in listing if item['is_default']]
+        assert defaults == [fresh.json()['id']]
+        resolved = container.repositories['providers'].get_default(7, 't1')
+        assert resolved is not None and resolved.id == fresh.json()['id']

@@ -187,3 +187,39 @@ def test_verifier_unreachable():
     assert outcome.ok is False
     assert outcome.code == UNREACHABLE
     assert 'sk-secret-key-123456' not in outcome.message
+
+
+# ---------------------------------------------------------------- 脱敏
+
+def test_sanitize_upstream_body_strips_credentials():
+    from agent_service.infrastructure.llm.sanitize import (
+        sanitize_upstream_body,
+    )
+
+    raw = ('{"error":"invalid api key",'
+           '"Authorization":"Bearer sk-abcdef1234567890",'
+           '"api_key":"sk-anothersecret987654321",'
+           '"x-api-key":"sk-thirdsecret000111222"}')
+    cleaned = sanitize_upstream_body(raw)
+    for token in ('sk-abcdef1234567890', 'sk-anothersecret987654321',
+                  'sk-thirdsecret000111222'):
+        assert token not in cleaned
+    assert 'invalid api key' in cleaned
+    assert len(sanitize_upstream_body('x' * 900)) == 500
+
+
+def test_http_error_message_does_not_echo_upstream_key():
+    secret = 'sk-leaked-by-custom-gateway-1234'
+
+    def handler(request):
+        return httpx.Response(
+            500, json={'error': 'boom', 'receivedAuthorization':
+                       f'Bearer {secret}'})
+
+    client = AnthropicLlmClient(
+        base_url='http://gw.local', api_key='k', model='m',
+        http_transport=httpx.MockTransport(handler))
+    with pytest.raises(LlmInvocationError) as exc_info:
+        list(client.stream(_request()))
+    assert secret not in str(exc_info.value)
+    assert 'boom' in str(exc_info.value)

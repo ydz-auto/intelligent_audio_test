@@ -97,6 +97,19 @@ def test_output_limit_is_min_cap_and_10_percent_aligned(resolver):
         model='claude-3-opus-20240229') == 4096
 
 
+def test_output_limit_does_not_collapse_at_minimum_window(resolver):
+    # 卡面允许的最小窗口 8k：10% = 819 不足一个 1024 对齐单位，
+    # 不能对齐下取整成 0 再抬成 1（那会向上游发 max_tokens=1）。
+    assert resolver.output_token_limit(8192, cap=8192, ratio=0.10) == 819
+    assert resolver.output_token_limit(9216, cap=8192, ratio=0.10) == 921
+    # 达到一个对齐单位后仍按对齐下取整
+    assert resolver.output_token_limit(10240, cap=8192, ratio=0.10) == 1024
+    # 全部满足「≤ min(cap, 10% × W)」
+    for window in (8192, 9216, 10240):
+        limit = resolver.output_token_limit(window, cap=8192, ratio=0.10)
+        assert 1 < limit <= min(8192, int(window * 0.10))
+
+
 def test_compaction_thresholds_based_on_available_window(resolver):
     soft, hard = resolver.compaction_thresholds(
         32768, 3072, soft_ratio=0.60, hard_ratio=0.80)

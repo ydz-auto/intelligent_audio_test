@@ -26,6 +26,7 @@ from agent_service.domain.ports.llm import (
     CancelCheck, LlmClient, LlmFinished, LlmRequest, LlmTextDelta,
     LlmToolCalls, LlmUsage,
 )
+from agent_service.infrastructure.llm.sanitize import sanitize_upstream_body
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +192,8 @@ class AnthropicLlmClient(LlmClient):
                 with client.stream('POST', self._endpoint(),
                                    json=self._payload(request)) as response:
                     if response.status_code >= 400:
-                        body = response.read().decode('utf-8', errors='replace')[:500]
+                        body = sanitize_upstream_body(
+                            response.read().decode('utf-8', errors='replace'))
                         raise LlmInvocationError(
                             f'模型上游返回 {response.status_code}: {body}',
                             code=f'LLM_HTTP_{response.status_code}',

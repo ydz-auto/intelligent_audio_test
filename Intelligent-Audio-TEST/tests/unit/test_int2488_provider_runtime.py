@@ -259,3 +259,25 @@ def test_key_rotation_old_record_still_usable(tmp_path):
     assert recorder.calls[-1]['authorization'] == f'Bearer {KEY_C}'
     container.shutdown()
     container2.shutdown()
+
+
+def test_run_uses_new_provider_after_old_default_invalidated(tmp_path):
+    """旧默认被判 INVALID 后新建供应商即可直接跑（无需手工改默认）。"""
+    container, _sf, recorder = _stack(tmp_path, 'recover.db')
+    stale = _create_provider(container, key=KEY_A,
+                             base_url='http://a.local/v1', name='stale')
+    container.repositories['providers'].update(
+        stale.id, 7, 't1', status='INVALID')  # verify 401 后的真实状态
+
+    fresh = _create_provider(container, key=KEY_B,
+                             base_url='http://b.local/v1', name='fresh')
+    assert fresh.is_default is True
+
+    _session, run = _run(container)
+    assert run.status is RunStatus.SUCCEEDED, run.error
+    assert recorder.calls[-1]['authorization'] == f'Bearer {KEY_B}'
+    assert recorder.calls[-1]['url'].startswith('http://b.local')
+    assert KEY_A not in json.dumps(
+        [event.payload for event in _events(container, run.id)],
+        ensure_ascii=False)
+    container.shutdown()
