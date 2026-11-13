@@ -951,13 +951,43 @@ TOOLS: List[dict] = [
           path_params=['doc_id']),
 
     # ---------------- 日志只读 log:read（倾向覆盖，负责人验收核对） ----------------
-    _tool('log_list', '查看测试执行日志',
+    # INT-2461：过滤参数对齐网关 LogListQuery 的真实字段——未声明的参数会被
+    # pydantic 基类 ``extra='ignore'`` 静默丢弃，模型会把「全量」当成过滤结果。
+    _tool('log_list', '查看测试执行日志（级别 / 模块 / 任务 / 用例 / 时间过滤）',
           {'page': _int('页码'), 'per_page': _int('每页条数'),
-           'keyword': _str('关键词过滤'), 'level': _str('日志级别过滤')},
+           'keyword': _str('关键词过滤'),
+           'level': _str('日志级别过滤（可逗号分隔多级别，如 error,critical）'),
+           'module': _str('模块过滤（all = 不过滤）'),
+           'category': _str('分类过滤（all = 不过滤）'),
+           'task_id': _int('任务 ID'),
+           'test_case_id': _str('用例 ID'),
+           'start_time': _str('开始时间（ISO 8601）'),
+           'end_time': _str('结束时间（ISO 8601）')},
           ['log:read'], 'GET', '/api/v1/logs',
-          query_params=['page', 'per_page', 'keyword', 'level']),
-    _tool('log_stats', '日志统计',
-          {}, ['log:read'], 'GET', '/api/v1/logs/stats'),
+          query_params=['page', 'per_page', 'keyword', 'level', 'module',
+                        'category', 'task_id', 'test_case_id',
+                        'start_time', 'end_time']),
+    _tool('log_stats', '日志级别统计（total / debug / info / warning / error / critical）',
+          {'keyword': _str('关键词过滤'),
+           'level': _str('日志级别过滤（可逗号分隔多级别）'),
+           'module': _str('模块过滤（all = 不过滤）'),
+           'category': _str('分类过滤（all = 不过滤）'),
+           'task_id': _int('任务 ID'),
+           'start_time': _str('开始时间（ISO 8601）'),
+           'end_time': _str('结束时间（ISO 8601）')},
+          ['log:read'], 'GET', '/api/v1/logs/stats',
+          query_params=['keyword', 'level', 'module', 'category', 'task_id',
+                        'start_time', 'end_time']),
+
+    # ---------------- 首页统计 home（/api/v1/home，只读） ----------------
+    # INT-2461：dashboard_query 的两个只读动作。缓存刷新
+    # （POST /api/v1/home/stats/refresh）是写侧（home:refresh），留 M2。
+    _tool('home_stats_details',
+          '首页统计详情（用例 / 任务 / 设备 / 音频 / API / 报告 / 维度汇总）',
+          {}, ['home:read'], 'GET', '/api/v1/home/stats/details'),
+    _tool('home_stats_summary',
+          '首页统计摘要（最近任务 / TOP 分组 / 设备在线状态）',
+          {}, ['home:read'], 'GET', '/api/v1/home/stats/summary'),
 ]
 
 # 注册表索引（name → tool）

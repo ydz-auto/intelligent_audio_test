@@ -117,7 +117,9 @@ def test_audio_list_and_playback_history_expose_real_filters():
 
 
 def test_mcp_tool_count_unchanged():
-    assert len(mcp_registry.TOOLS) == 205
+    # INT-2461 追加 2 个首页只读工具（home_stats_details / home_stats_summary），
+    # 其余 MCP 工具（INT-2453 谱的 205 个）逐项不变。
+    assert len(mcp_registry.TOOLS) == 207
 
 
 # ---------------------------------------------------------------- 参数解析

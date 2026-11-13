@@ -1,0 +1,145 @@
+{
+  "domain": "task",
+  "skills": ["task-operations", "log-diagnostics"],
+  "tools": ["task_query", "log_diagnose", "dashboard_query"],
+  "cases": [
+    {
+      "id": "task-01",
+      "tool": "task_query",
+      "skill": "task-operations",
+      "utterance": "任务列表里执行中的有哪些",
+      "action": "list",
+      "arguments": {"action": "list", "execution_status": "running"},
+      "expected_tool": "task_list",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/tasks?execution_status=running"
+    },
+    {
+      "id": "task-02",
+      "tool": "task_query",
+      "skill": "task-operations",
+      "utterance": "任务 128 的任务详情和用例清单发我",
+      "action": "detail",
+      "arguments": {"action": "detail", "task_id": 128},
+      "expected_tool": "task_get",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/tasks/128"
+    },
+    {
+      "id": "task-03",
+      "tool": "task_query",
+      "skill": "task-operations",
+      "utterance": "任务 128 的执行进度到哪一步了",
+      "action": "progress",
+      "arguments": {"action": "progress", "task_id": 128},
+      "expected_tool": "task_get_progress",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/tasks/128/progress"
+    },
+    {
+      "id": "task-04",
+      "tool": "task_query",
+      "skill": "task-operations",
+      "utterance": "任务 128 的通过率和失败数是多少",
+      "action": "stats",
+      "arguments": {"action": "stats", "task_id": 128},
+      "expected_tool": "task_get_stats",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/tasks/128/stats"
+    },
+    {
+      "id": "task-05",
+      "tool": "task_query",
+      "skill": "task-operations",
+      "utterance": "任务 128 里用例 case-abc 的用例结果给我看看",
+      "action": "case_results",
+      "arguments": {"action": "case_results", "task_id": 128,
+                    "case_id": "case-abc"},
+      "expected_tool": "task_get_case_results",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/tasks/128/cases/case-abc/results"
+    },
+    {
+      "id": "log-01",
+      "tool": "log_diagnose",
+      "skill": "log-diagnostics",
+      "utterance": "查一下任务 128 的错误日志",
+      "action": "search",
+      "arguments": {"action": "search", "task_id": 128, "level": "error"},
+      "expected_tool": "log_list",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/logs?task_id=128&level=error"
+    },
+    {
+      "id": "log-02",
+      "tool": "log_diagnose",
+      "skill": "log-diagnostics",
+      "utterance": "给我日志统计：各错误级别有多少行",
+      "action": "stats",
+      "arguments": {"action": "stats"},
+      "expected_tool": "log_stats",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/logs/stats"
+    },
+    {
+      "id": "log-03",
+      "tool": "log_diagnose",
+      "skill": "log-diagnostics",
+      "utterance": "诊断一下任务 128 为什么失败，给出日志来源",
+      "action": "diagnose",
+      "arguments": {"action": "diagnose", "task_id": 128, "max_rows": 30},
+      "local": true,
+      "expected_tool": "log_diagnose",
+      "expected_method": "LOCAL",
+      "expected_path": null
+    },
+    {
+      "id": "home-01",
+      "tool": "dashboard_query",
+      "skill": null,
+      "utterance": "首页统计详情里的任务数量和音频数量",
+      "action": "details",
+      "arguments": {"action": "details"},
+      "expected_tool": "home_stats_details",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/home/stats/details"
+    },
+    {
+      "id": "home-02",
+      "tool": "dashboard_query",
+      "skill": null,
+      "utterance": "首页最近任务和 TOP 分组",
+      "action": "summary",
+      "arguments": {"action": "summary"},
+      "expected_tool": "home_stats_summary",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/home/stats/summary"
+    }
+  ],
+  "negatives": {
+    "task-operations": [
+      "查一下任务 128 的错误日志",
+      "给我日志统计：各错误级别有多少行",
+      "诊断一下任务 128 为什么失败，给出日志来源",
+      "首页统计详情里的任务数量和音频数量",
+      "首页最近任务和 TOP 分组",
+      "把这次任务的报告导出成 PDF",
+      "导入一批音频并打上标注",
+      "评估维度的分类怎么配置",
+      "SPL 校准怎么做",
+      "这份报告里的 WER 指标是多少"
+    ],
+    "log-diagnostics": [
+      "任务列表里执行中的有哪些",
+      "任务 128 的任务详情和用例清单发我",
+      "任务 128 的执行进度到哪一步了",
+      "任务 128 的通过率和失败数是多少",
+      "任务 128 里用例 case-abc 的用例结果给我看看",
+      "首页统计详情里的任务数量和音频数量",
+      "首页最近任务和 TOP 分组",
+      "把这次任务的报告导出成 PDF",
+      "导入一批音频并打上标注",
+      "评估维度的分类怎么配置"
+    ]
+  }
+}

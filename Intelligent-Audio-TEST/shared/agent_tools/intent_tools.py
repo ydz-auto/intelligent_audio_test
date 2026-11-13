@@ -22,11 +22,16 @@
 M1 各域卡按域启用自己的只读意图工具（已完成：``audio_query`` INT-2458、
 ``evaluation_query`` INT-2462、``algorithm_query`` INT-2464、
 ``device_query`` INT-2459 —— 含 SPL 只读子集、
-``testcase_query`` / ``testcase_generate`` INT-2460）；
-每个域工具 = 动作 → MCP 只读工具的映射，REST 路径 / 查询参数仍由
-``mcp_registry`` 的共享构造器决定，不复制 Schema。
+``testcase_query`` / ``testcase_generate`` INT-2460、
+``task_query`` / ``task_diagnose`` / ``log_diagnose`` / ``dashboard_query``
+INT-2461）；每个域工具 = 动作 → MCP 只读工具的映射，REST 路径 / 查询参数
+仍由 ``mcp_registry`` 的共享构造器决定，不复制 Schema。
 用例域少量只读路由（统计 / 轮次参考参数 / 导出作业状态 / 刷新状态）不在
 外部 MCP 表里，映射到 ``testcase_tools.TESTCASE_READ_TOOLS``（同形工具项）。
+
+``task_diagnose`` / ``log_diagnose.diagnose`` 是本地只读聚合：由 ToolGateway
+用同一份 MCP 定义组合多个只读接口，纯函数汇总在
+``shared/agent_tools/diagnostics.py``，输出带来源 ID，不估算数值。
 
 其余意图工具在本注册表**预留名称与 Schema**（``enabled=False``），调用返回
 ``TOOL_NOT_ENABLED``；实现分别归 M1 / M2 各域卡。预留名称进入 Skill
@@ -40,6 +45,10 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from shared.agent_tools import contract as platform_contract_catalog
 from shared.agent_tools import device_tools
 from shared.agent_tools import testcase_tools as case_tools
+from shared.agent_tools.diagnostics import (
+    DEFAULT_LOG_ROWS as LOG_DIAGNOSE_DEFAULT_MAX_ROWS,
+    MAX_LOG_ROWS as LOG_DIAGNOSE_MAX_ROWS,
+)
 from shared.agent_tools.mcp_registry import TOOLS as MCP_TOOLS, get_tool
 from shared.models.common_enums import DeviceType
 
@@ -48,7 +57,9 @@ from shared.models.common_enums import DeviceType
 
 def _prop(kind, description: str, *, required: bool = False,
           enum: Optional[Sequence[str]] = None,
-          items: Optional[dict] = None) -> dict:
+          items: Optional[dict] = None,
+          minimum: Optional[int] = None,
+          maximum: Optional[int] = None) -> dict:
     """构造参数 Schema；``kind`` 可以是单个类型或类型元组（联合类型）。"""
     prop_type = list(kind) if isinstance(kind, (list, tuple)) else kind
     prop: Dict[str, Any] = {'type': prop_type, 'description': description}
@@ -56,6 +67,10 @@ def _prop(kind, description: str, *, required: bool = False,
         prop['enum'] = list(enum)
     if items:
         prop['items'] = items
+    if minimum is not None:
+        prop['minimum'] = minimum
+    if maximum is not None:
+        prop['maximum'] = maximum
     if required:
         prop['x-required'] = True
     return prop
@@ -103,6 +118,70 @@ TASK_QUERY_ACTIONS: Dict[str, str] = {
     'case_detail': 'task_get_case_detail',
     'case_results': 'task_get_case_results',
     'labs': 'task_get_labs',
+}
+
+# 各动作可用的可选参数（动作独立口径，INT-2461）。
+# 网关查询 Schema 基类 APIModel 是 ``extra='ignore'``：未声明的参数被静默
+# 丢弃，放过去会让模型把「全量」当成「过滤结果」，因此在工具层直接拒绝。
+# list 的过滤字段与网关 TaskListQuery 逐字一致（api_gateway/schemas/task.py）。
+TASK_QUERY_PARAMS: Dict[str, Tuple[str, ...]] = {
+    'list': ('search', 'status', 'execution_status', 'evaluation_status',
+             'algorithm_type', 'start_date', 'end_date', 'favorite', 'deleted',
+             'merged', 'cherry_pick', 'merge_type', 'visibility', 'stats',
+             'page', 'per_page'),
+    'detail': (),
+    'progress': (),
+    'stats': (),
+    # GET /api/v1/tasks/stats 的 TaskDomainStatsQuery 只有 granularity
+    'domain_stats': ('granularity',),
+    'case_detail': (),
+    'case_results': (),
+    'labs': (),
+}
+
+# 任务域聚合统计的分桶粒度（TaskDomainStatsQuery.granularity 的接口取值，
+# 非法值由 task_service 返回 400）。
+TASK_DOMAIN_STATS_GRANULARITIES: Tuple[str, ...] = (
+    'day', 'week', 'month', 'year')
+
+# 日志诊断动作 → MCP 只读工具（INT-2461）。
+# ``diagnose`` 不映射 REST：它是本地聚合（日志统计 + 错误日志行 → 来源归因），
+# 由 ToolGateway 组合执行，见 ``LOG_DIAGNOSE_LOCAL_ACTIONS``。
+LOG_DIAGNOSE_ACTIONS: Dict[str, str] = {
+    'search': 'log_list',
+    'stats': 'log_stats',
+}
+LOG_DIAGNOSE_LOCAL_ACTIONS: Tuple[str, ...] = ('diagnose',)
+LOG_DIAGNOSE_ALL_ACTIONS: Tuple[str, ...] = (
+    tuple(LOG_DIAGNOSE_ACTIONS) + LOG_DIAGNOSE_LOCAL_ACTIONS)
+# 各动作可用的可选参数（对齐 LogListQuery / LogStatsQuery 的真实字段）。
+# stats 端点没有 test_case_id / page / per_page，工具层不声明。
+# diagnose 额外接受取样上限（默认 / 上限取自 diagnostics 模块，Schema 用
+# minimum / maximum 校验，不支持静默截断）。
+LOG_DIAGNOSE_PARAMS: Dict[str, Tuple[str, ...]] = {
+    'search': ('keyword', 'level', 'module', 'category', 'task_id',
+               'test_case_id', 'start_time', 'end_time', 'page', 'per_page'),
+    'stats': ('keyword', 'level', 'module', 'category', 'task_id',
+              'start_time', 'end_time'),
+    'diagnose': ('keyword', 'level', 'module', 'category', 'task_id',
+                 'test_case_id', 'start_time', 'end_time', 'max_rows'),
+}
+
+# ``diagnose`` 里只作用于日志取样、不能进入级别统计的参数（INT-2461 P2）：
+# ``GET /api/v1/logs/stats`` 的 ``LogStatsQuery`` 没有 ``test_case_id``
+# （``APIModel`` 是 ``extra='ignore'``，会静默丢弃）。若整体带进
+# ``stats_filters``，统计值会被误标成「按用例过滤」，实际是任务 / 全局口径；
+# 因此该参数只进 ``list_filters``，诊断输出的 ``notes`` 写明统计口径。
+LOG_DIAGNOSE_STATS_UNSUPPORTED_PARAMS: Tuple[str, ...] = ('test_case_id',)
+
+# 首页统计只读动作 → MCP 工具名（INT-2461；缓存刷新是写侧，留 M2）
+DASHBOARD_QUERY_ACTIONS: Dict[str, str] = {
+    'details': 'home_stats_details',
+    'summary': 'home_stats_summary',
+}
+DASHBOARD_QUERY_PARAMS: Dict[str, Tuple[str, ...]] = {
+    'details': (),
+    'summary': (),
 }
 
 # 报告只读动作 → MCP 工具名
@@ -340,19 +419,87 @@ INTENT_TOOLS: List[IntentTool] = [
         risk='READ', permissions=(), enabled=True, kind='local'),
     IntentTool(
         name='task_query',
-        description=('任务只读查询：列表、详情、进度、统计、用例详情 / 结果、实验室关系。'
-                     '字段口径与 REST /api/v1/tasks 一致，不编造数值。'),
+        description=('任务只读查询：列表（状态 / 执行状态 / 评估状态 / 时间 / 可见性 / '
+                     '收藏 / 回收站 / 合并容器过滤）、详情、进度、用例统计、任务域聚合'
+                     '统计、用例详情 / 结果、实验室关系。字段口径与 REST /api/v1/tasks '
+                     '一致，不估算、不编造数值。'),
         parameters=_schema({
             'action': _prop('string', '查询动作', required=True,
                             enum=list(TASK_QUERY_ACTIONS)),
-            'task_id': _prop('integer', '任务 ID（detail / progress / stats / 用例动作必填）'),
+            'task_id': _prop('integer', '任务 ID（detail / progress / stats / 用例动作 / labs 必填）'),
             'case_id': _prop('string', '用例 ID（用例详情 / 结果动作必填）'),
             'search': _prop('string', '关键词过滤（list）'),
-            'status': _prop('string', '任务状态过滤（list）'),
+            'status': _prop('string', '任务状态过滤（list，取值见 platform_contract 的 task_status）'),
+            'execution_status': _prop('string', '执行状态过滤（list）'),
+            'evaluation_status': _prop('string', '评估状态过滤（list）'),
+            'algorithm_type': _prop('string', '算法类型过滤（list）'),
+            'start_date': _prop('string', '创建时间下界（list，ISO 8601）'),
+            'end_date': _prop('string', '创建时间上界（list，ISO 8601）'),
+            'favorite': _prop('boolean', '仅当前用户收藏（list）'),
+            'deleted': _prop('boolean', '仅回收站（list）'),
+            'merged': _prop('boolean', '仅合并容器任务（list）'),
+            'cherry_pick': _prop('boolean', '仅挑选合并容器任务（list）'),
+            'merge_type': _prop('string', '合并方式快捷筛选（list）',
+                                enum=['whole', 'picked']),
+            'visibility': _prop('string', '可见性过滤（list）',
+                                enum=['shared', 'private']),
+            'stats': _prop('boolean', '返回合并容器统计块（list）'),
+            'granularity': _prop('string', '趋势分桶粒度（domain_stats，默认 day）',
+                                 enum=list(TASK_DOMAIN_STATS_GRANULARITIES)),
             'page': _prop('integer', '页码（list，默认 1）'),
             'per_page': _prop('integer', '每页条数（list）'),
         }, required=('action',)),
         risk='READ', permissions=('task:read',), enabled=True, kind='intent_rest'),
+    IntentTool(
+        name='task_diagnose',
+        description=('任务失败诊断（只读聚合）：读真实执行进度 / 用例统计 / 失败用例，'
+                     '并按任务拉取 ERROR / CRITICAL 日志做来源归因，输出带来源 ID 的'
+                     '失败清单、日志行与重测建议。只读，不触发重跑、不改任务状态。'),
+        parameters=_schema({
+            'task_id': _prop('integer', '任务 ID', required=True),
+            'case_id': _prop('string', '只诊断该用例（可选；不给则诊断全部失败用例）'),
+            'keyword': _prop('string', '日志关键词过滤（可选）'),
+        }, required=('task_id',)),
+        risk='READ', permissions=('task:read', 'log:read'), enabled=True,
+        kind='local'),
+    IntentTool(
+        name='log_diagnose',
+        description=('日志只读查询与诊断：search 按级别 / 模块 / 任务 / 用例 / 时间'
+                     '检索日志行，stats 取真实级别统计，diagnose 聚合错误日志的来源与'
+                     '样本（带日志 ID）。不导出、不清除、不刷新。'),
+        parameters=_schema({
+            'action': _prop('string', '动作', required=True,
+                            enum=list(LOG_DIAGNOSE_ALL_ACTIONS)),
+            'keyword': _prop('string', '关键词过滤（三个动作都支持）'),
+            'level': _prop('string', '日志级别（可逗号分隔多级别，如 error,critical）'),
+            'module': _prop('string', '模块过滤（all = 不过滤）'),
+            'category': _prop('string', '分类过滤（all = 不过滤）'),
+            'task_id': _prop('integer', '任务 ID 过滤'),
+            'test_case_id': _prop(
+                'string', '用例 ID 过滤（search；按用例检索需同时带 task_id。'
+                          'diagnose 只用它取样，级别统计不支持按用例过滤）'),
+            'start_time': _prop('string', '开始时间（ISO 8601）'),
+            'end_time': _prop('string', '结束时间（ISO 8601）'),
+            'page': _prop('integer', '页码（search，默认 1）'),
+            'per_page': _prop('integer', '每页条数（search，默认 50）'),
+            'max_rows': _prop('integer',
+                              f'diagnose 取样行数上限（默认 '
+                              f'{LOG_DIAGNOSE_DEFAULT_MAX_ROWS}，最大 '
+                              f'{LOG_DIAGNOSE_MAX_ROWS}）',
+                              minimum=1, maximum=LOG_DIAGNOSE_MAX_ROWS),
+        }, required=('action',)),
+        risk='READ', permissions=('log:read',), enabled=True, kind='local'),
+    IntentTool(
+        name='dashboard_query',
+        description=('首页统计只读查询：details 取用例 / 任务 / 设备 / 音频 / API / '
+                     '报告 / 评估维度汇总，summary 取最近任务 / TOP 分组 / 设备在线'
+                     '状态。数值原样来自接口；缓存刷新是写侧（M2），本工具不刷新。'),
+        parameters=_schema({
+            'action': _prop('string', '统计动作', required=True,
+                            enum=list(DASHBOARD_QUERY_ACTIONS)),
+        }, required=('action',)),
+        risk='READ', permissions=('home:read',), enabled=True,
+        kind='intent_rest'),
     IntentTool(
         name='report_query',
         description=('报告只读查询：列表、详情、按任务查、标签计数、统计 / 趋势、'
@@ -713,14 +860,6 @@ INTENT_TOOLS: List[IntentTool] = [
         }, required=('action',)),
         risk='WRITE', permissions=('task:execute',), enabled=False, kind='reserved'),
     IntentTool(
-        name='task_diagnose', description='失败用例、日志、归因、重测建议（只读）。',
-        parameters=_schema({
-            'task_id': _prop('integer', '任务 ID', required=True),
-            'case_id': _prop('string', '用例 ID'),
-            'keyword': _prop('string', '日志关键词'),
-        }, required=('task_id',)),
-        risk='READ', permissions=('task:read', 'log:read'), enabled=False, kind='reserved'),
-    IntentTool(
         name='spl_calibrate', description='SPL 映射、校准、测试音、历史（写）。',
         parameters=_schema({
             'action': _prop('string', '动作', required=True,
@@ -769,18 +908,6 @@ INTENT_TOOLS: List[IntentTool] = [
         }, required=('report_id', 'format')),
         risk='WRITE', permissions=('report:read',), enabled=False, kind='reserved'),
     IntentTool(
-        name='log_diagnose', description='日志搜索、统计、诊断（只读）。',
-        parameters=_schema({
-            'action': _prop('string', '动作', required=True,
-                            enum=['search', 'stats', 'diagnose']),
-            'keyword': _prop('string', '关键词'),
-            'level': _prop('string', '日志级别'),
-            'task_id': _prop('integer', '任务 ID'),
-            'page': _prop('integer', '页码'),
-            'per_page': _prop('integer', '每页条数'),
-        }, required=('action',)),
-        risk='READ', permissions=('log:read',), enabled=False, kind='reserved'),
-    IntentTool(
         name='driver_propose',
         description=('生成设备驱动（AppDriver）+ 厂商 API 适配器（ApiVendorAdapter）代码提案；'
                      '不执行、不注册、不发布。target_kind = DEVICE_DRIVER / API_ADAPTER / PAIR。'),
@@ -794,13 +921,6 @@ INTENT_TOOLS: List[IntentTool] = [
         }, required=('target_kind',)),
         risk='WRITE', permissions=('algorithm:update',),  # 待规格（INT-2501）：RBAC 无对应码
         enabled=False, kind='reserved'),
-    IntentTool(
-        name='dashboard_query', description='首页统计（只读；缓存刷新留 M2）。',
-        parameters=_schema({
-            'action': _prop('string', '统计动作', required=True,
-                            enum=['summary', 'trend', 'recent_tasks']),
-        }, required=('action',)),
-        risk='READ', permissions=('home:read',), enabled=False, kind='reserved'),
 ]
 
 INTENT_TOOL_BY_NAME: Dict[str, IntentTool] = {t.name: t for t in INTENT_TOOLS}
@@ -882,6 +1002,13 @@ def validate_arguments(schema: dict, arguments: Any) -> Optional[str]:
         enum = spec.get('enum')
         if enum and value not in enum:
             return f'参数 {name} 取值必须是 {"/".join(map(str, enum))} 之一'
+        minimum = spec.get('minimum')
+        maximum = spec.get('maximum')
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if minimum is not None and value < minimum:
+                return f'参数 {name} 不能小于 {minimum}'
+            if maximum is not None and value > maximum:
+                return f'参数 {name} 不能大于 {maximum}'
     return None
 
 
@@ -912,7 +1039,22 @@ _REST_ACTION_MAP: Dict[str, Dict[str, str]] = {
     'evaluation_query': EVALUATION_QUERY_ACTIONS,
     'algorithm_query': ALGORITHM_QUERY_ACTIONS,
     'testcase_query': TESTCASE_QUERY_ACTIONS,
+    # log_diagnose 只有 search / stats 走 REST；diagnose 是本地下游聚合
+    'log_diagnose': LOG_DIAGNOSE_ACTIONS,
+    'dashboard_query': DASHBOARD_QUERY_ACTIONS,
 }
+
+# 动作级参数白名单：动作不支持的参数在工具层直接报错（服务端静默忽略）。
+_ACTION_PARAM_TABLE: Dict[str, Dict[str, Tuple[str, ...]]] = {
+    'task_query': TASK_QUERY_PARAMS,
+    'log_diagnose': LOG_DIAGNOSE_PARAMS,
+    'dashboard_query': DASHBOARD_QUERY_PARAMS,
+}
+
+# 本地工具：不直接解析为目标 REST（tool_search / platform_contract 纯本地；
+# task_diagnose 与 log_diagnose.diagnose 组合多个只读接口，由 ToolGateway 执行）。
+LOCAL_TOOL_NAMES = frozenset({'tool_search', 'platform_contract',
+                              'task_diagnose', 'log_diagnose'})
 
 
 def _lookup_rest_tool(name: str) -> Optional[dict]:
@@ -1096,6 +1238,53 @@ def _normalize_testcase_query_arguments(action: str,
     return None
 
 
+def _normalize_action_arguments(name: str, action: str,
+                               merged: Dict[str, Any]) -> Optional[str]:
+    """按动作参数白名单拒绝「传了但不会生效」的参数。
+
+    网关查询 Schema 基类 ``extra='ignore'``：不认识的参数被静默丢弃，
+    不会报错。放过去会让模型把全量结果当成过滤结果（INT-2461）。
+    """
+    allowed = set(action_params(name, action) or ())
+    unknown = sorted(key for key in merged if key not in allowed)
+    if unknown:
+        return (f'action={action} 不支持参数：{"、".join(unknown)}'
+                '（网关会静默忽略这些参数）')
+    return None
+
+
+def action_params(name: str, action: str) -> Optional[Tuple[str, ...]]:
+    """动作级参数白名单（含该动作的必填参数）；无此工具 / 动作返回 None。
+
+    没有白名单的意图工具（audio_query / algorithm_query / report_query 等）
+    返回 None，由各自的归一函数处理。
+    """
+    table = _ACTION_PARAM_TABLE.get(name)
+    if table is None or action not in table:
+        return None
+    return tuple(table[action]) + required_for_action(name, action)
+
+
+def _normalize_task_query_arguments(action: str,
+                                    merged: Dict[str, Any]) -> Optional[str]:
+    error = _normalize_action_arguments('task_query', action, merged)
+    if error:
+        return error
+    granularity = merged.get('granularity')
+    if granularity is not None and \
+            granularity not in TASK_DOMAIN_STATS_GRANULARITIES:
+        return (f'参数 granularity 取值必须是 '
+                f'{"/".join(TASK_DOMAIN_STATS_GRANULARITIES)} 之一')
+    return None
+
+
+def _normalize_log_diagnose_arguments(action: str,
+                                      merged: Dict[str, Any]) -> Optional[str]:
+    """动作参数白名单；``max_rows`` 的上下界由参数 Schema 的
+    minimum / maximum 统一校验（validate_arguments，本地 diagnose 同样经过）。"""
+    return _normalize_action_arguments('log_diagnose', action, merged)
+
+
 def resolve_rest_call(name: str, arguments: Dict[str, Any]
                       ) -> Tuple[Optional[dict], Optional[dict], Optional[str]]:
     """把意图工具 / 长尾 MCP 工具解析为 ``(MCP 工具, 合并参数, 错误文本)``。
@@ -1113,6 +1302,10 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
     mapping = _REST_ACTION_MAP.get(name)
     if mapping is not None:
         action = arguments.get('action')
+        if name == 'log_diagnose' and action in LOG_DIAGNOSE_LOCAL_ACTIONS:
+            return None, None, (
+                'action=diagnose 由本地日志聚合执行（ToolGateway 组合 log_stats + '
+                'log_list），不解析为目标 REST')
         if action not in mapping:
             return None, None, (
                 f'action 取值必须是 {"/".join(mapping)} 之一')
@@ -1139,6 +1332,18 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
                 return None, None, normalize_error
         if name == 'testcase_query':
             normalize_error = _normalize_testcase_query_arguments(action, merged)
+            if normalize_error:
+                return None, None, normalize_error
+        if name == 'task_query':
+            normalize_error = _normalize_task_query_arguments(action, merged)
+            if normalize_error:
+                return None, None, normalize_error
+        if name == 'log_diagnose':
+            normalize_error = _normalize_log_diagnose_arguments(action, merged)
+            if normalize_error:
+                return None, None, normalize_error
+        if name == 'dashboard_query':
+            normalize_error = _normalize_action_arguments(name, action, merged)
             if normalize_error:
                 return None, None, normalize_error
         return mcp, merged, None
@@ -1193,12 +1398,18 @@ def _serialize_intent(tool: IntentTool) -> dict:
 
 __all__ = [
     'ACTION_REQUIRED', 'AGENT_UNEXPOSED_MCP_TOOLS', 'ALGORITHM_QUERY_ACTIONS',
-    'AUDIO_QUERY_ACTIONS',
-    'CONDITIONAL_REQUIRED', 'ENABLED_TOOLS', 'EVALUATION_QUERY_ACTIONS',
-    'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool', 'MCP_TOOLS',
-    'REPORT_QUERY_ACTIONS', 'TASK_QUERY_ACTIONS', 'TESTCASE_QUERY_ACTIONS',
+    'AUDIO_QUERY_ACTIONS', 'CONDITIONAL_REQUIRED', 'DASHBOARD_QUERY_ACTIONS',
+    'DASHBOARD_QUERY_PARAMS', 'ENABLED_TOOLS', 'EVALUATION_QUERY_ACTIONS',
+    'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool',
+    'LOCAL_TOOL_NAMES', 'LOG_DIAGNOSE_ACTIONS', 'LOG_DIAGNOSE_ALL_ACTIONS',
+    'LOG_DIAGNOSE_DEFAULT_MAX_ROWS', 'LOG_DIAGNOSE_LOCAL_ACTIONS',
+    'LOG_DIAGNOSE_MAX_ROWS', 'LOG_DIAGNOSE_PARAMS',
+    'LOG_DIAGNOSE_STATS_UNSUPPORTED_PARAMS', 'MCP_TOOLS',
+    'REPORT_QUERY_ACTIONS', 'TASK_DOMAIN_STATS_GRANULARITIES',
+    'TASK_QUERY_ACTIONS', 'TASK_QUERY_PARAMS', 'TESTCASE_QUERY_ACTIONS',
     'TESTCASE_QUERY_PARAMS', 'TESTCASE_VISIBILITY_VALUES', 'TOOL_INDEX',
-    'TOOL_INDEX_BY_NAME', 'conditional_required', 'permissions_for',
+    'TOOL_INDEX_BY_NAME', 'action_params', 'conditional_required',
+    'permissions_for',
     'platform_contract',
     'required_for_action', 'resolve_rest_call', 'risk_of', 'tool_search',
     'validate_arguments',

@@ -75,6 +75,31 @@ class ToolRegistryPort(ABC):
     def platform_contract(self, query: str, section: str) -> dict:
         """platform_contract：平台口径事实查询。"""
 
+    @abstractmethod
+    def diagnosis_log_levels(self) -> Tuple[str, ...]:
+        """失败诊断关注的日志级别（与诊断聚合模块同一事实源）。"""
+
+    @abstractmethod
+    def diagnosis_sample_limit(self) -> int:
+        """失败诊断默认取样的日志行数（同一事实源，禁止应用层写死）。"""
+
+    @abstractmethod
+    def action_arguments(self, name: str, action: str
+                         ) -> Optional[Tuple[str, ...]]:
+        """动作级参数白名单；没有白名单的工具 / 动作返回 None。"""
+
+    @abstractmethod
+    def log_diagnose_stats_unsupported(self) -> Tuple[str, ...]:
+        """diagnose 中只作用于取样、级别统计接口不支持的参数（INT-2461）。"""
+
+    @abstractmethod
+    def diagnose_task(self, sources: Dict[str, Any]) -> Dict[str, Any]:
+        """任务失败诊断聚合（纯函数；输入是已取回的真实接口数据）。"""
+
+    @abstractmethod
+    def diagnose_logs(self, sources: Dict[str, Any]) -> Dict[str, Any]:
+        """日志诊断聚合（纯函数；输入是已取回的真实接口数据）。"""
+
 
 class ToolTransportPort(ABC):
     """只读工具回源传输端口（网关 REST）。"""
