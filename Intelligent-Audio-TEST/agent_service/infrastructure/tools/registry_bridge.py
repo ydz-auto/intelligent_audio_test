@@ -169,10 +169,22 @@ class SharedToolRegistryBridge(ToolRegistryPort):
         return ToolRisk(value) if value else None
 
     def validate(self, name: str, arguments: Any) -> Optional[str]:
-        """意图工具用自身 Schema；长尾 MCP 工具用共享 MCP Schema。"""
+        """意图工具用自身 Schema；长尾 MCP 工具用共享 MCP Schema。
+
+        ``report_compare`` 是本地组合工具（INT-2463）：除 Schema 外还要校验
+        跨参数规则（报告 ID 数量 / 正负 / 去重、trend 动作只收趋势参数），
+        否则会把「1 个报告」「负数 ID」这类调用当成合法对比发给模型。
+        """
         tool = intent_tools.INTENT_TOOL_BY_NAME.get(name)
         if tool is not None:
-            return intent_tools.validate_arguments(tool.parameters, arguments)
+            schema_error = intent_tools.validate_arguments(
+                tool.parameters, arguments)
+            if schema_error:
+                return schema_error
+            if name == 'report_compare':
+                return intent_tools.validate_report_compare(
+                    str((arguments or {}).get('action') or ''), arguments or {})
+            return None
         mcp = mcp_registry.get_tool(name)
         if mcp is None:
             return f'未知工具：{name}'

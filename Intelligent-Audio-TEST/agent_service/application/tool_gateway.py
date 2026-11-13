@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from agent_service.domain.enums import ToolRisk
 from agent_service.domain.model.entities import ToolCallRequest, ToolResult
@@ -30,6 +30,7 @@ from agent_service.domain.ports.tool_gateway import (
 from agent_service.domain.ports.tool_registry import (
     RunCredentialPort, ToolRegistryPort, ToolTransportPort,
 )
+from shared.models.common_enums import ReportType
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,51 @@ UPSTREAM_UNAVAILABLE = 'UPSTREAM_UNAVAILABLE'
 # 不泄漏存在性的统一文案（403/404 同一口径）
 _DENIED_TEXT = '无权访问该资源，或该资源不存在。'
 _NOT_FOUND_TEXT = '资源不存在或无权访问。'
+
+# report_compare 组合实现用到的只读 MCP 工具（共享注册表里的 1:1 映射）
+REPORT_DETAIL_TOOL = 'report_get'
+REPORT_TREND_TOOL = 'report_statistics_trend'
+
+# 二次对比只接受「对比 / 二次对比」报告（平台语义：对已有对比结论再做一次对比）
+REPORT_COMPARABLE_TYPES = frozenset({
+    ReportType.COMPARISON.value, ReportType.SECONDARY_COMPARISON.value})
+
+# 并排返回的字段：全部是 GET /reports/{id} 的原文数值，工具层不重算、不聚合。
+# 刻意不含 raw_data（逐用例原始取值，体量大且对比不需要）与 cases（用例明细
+# 走 report_query 的 cases / cases_search 动作按需取）。
+_REPORT_SUMMARY_FIELDS = (
+    'total_cases', 'completed_cases', 'failed_cases', 'pass_rate')
+_REPORT_MATRIX_FIELDS = (
+    'resources', 'resource_headers', 'all_metrics', 'metric_data',
+    'tag_metric_data', 'case_type_stats', 'device_stats', 'api_stats')
+
+
+def _project_report(report_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    """把报告详情压成对比需要的权威字段（数值原样搬运）。"""
+    summary = data.get('summary') if isinstance(data.get('summary'), dict) else {}
+    projected: Dict[str, Any] = {
+        'report_id': data.get('id') or report_id,
+        'name': data.get('name'),
+        'type': data.get('type') or data.get('report_type'),
+        'status': data.get('status'),
+        'task_id': data.get('task_id'),
+        'task_name': data.get('task_name'),
+        'created_at': data.get('created_at'),
+        'visibility': data.get('visibility'),
+        'summary': {name: summary.get(name) for name in _REPORT_SUMMARY_FIELDS},
+    }
+    for name in _REPORT_MATRIX_FIELDS:
+        projected[name] = summary.get(name) if summary.get(name) is not None else []
+    # 二次对比报告：源任务集合来自 summaries[].metadata.task_ids
+    source_task_ids: List[Any] = []
+    for item in data.get('summaries') or ():
+        metadata = item.get('metadata') if isinstance(item, dict) else None
+        if isinstance(metadata, dict) and metadata.get('task_ids'):
+            source_task_ids = list(metadata['task_ids'])
+            break
+    if source_task_ids:
+        projected['source_task_ids'] = source_task_ids
+    return projected
 
 
 def _granted(granted: Sequence[str], required: Sequence[str]) -> bool:
@@ -118,11 +164,13 @@ class SharedToolGateway(ToolGateway):
                 call, 'APPROVAL_REQUIRED',
                 '写操作需要审批，M0 未启用审批执行。')
 
-        # 本地工具（不访问 REST）
+        # 本地工具（不访问 REST 或自行组合只读 REST）
         if name == 'tool_search':
             return self._run_tool_search(call, arguments, context)
         if name == 'platform_contract':
             return self._run_platform_contract(call, arguments)
+        if name == 'report_compare':
+            return self._run_report_compare(call, arguments, context)
 
         mcp_tool, merged, resolve_error = self._bridge.resolve_rest(
             name, arguments)
@@ -152,6 +200,125 @@ class SharedToolGateway(ToolGateway):
             str(arguments.get('query') or '').strip(),
             str(arguments.get('section') or 'all').strip() or 'all')
         return self._ok(call, json.dumps(payload, ensure_ascii=False))
+
+    # ------------------------------------------------------------ composite
+
+    def _run_report_compare(self, call: ToolCallRequest,
+                            arguments: Dict[str, Any],
+                            context: ToolInvocationContext) -> ToolResult:
+        """``report_compare`` 只读组合实现（INT-2463）。
+
+        平台的对比接口（``POST /reports/compare`` / ``secondary-compare``）会
+        **落库生成新报告**，属写操作，不能挂在只读工具背后；这里改为逐报告读
+        ``GET /reports/{id}`` 的权威字段并排返回，对比结论由模型基于返回原文
+        叙述，数值不重算、不落报告。大结果由上下文压缩落 ``context_tool_result``
+        artifact（§8.5），不进下一轮常驻上下文。
+        """
+        action = str(arguments.get('action') or '').strip()
+        if action == 'trend':
+            return self._run_report_trend(call, arguments, context)
+        return self._run_report_matrix(call, action, arguments, context)
+
+    def _run_report_trend(self, call: ToolCallRequest,
+                          arguments: Dict[str, Any],
+                          context: ToolInvocationContext) -> ToolResult:
+        """趋势序列：单次 GET，参数由 Schema 校验保证只含 trend 字段。"""
+        params = {name: value for name, value in arguments.items()
+                  if name != 'action' and value is not None}
+        mcp_tool, merged, error = self._bridge.resolve_rest(
+            REPORT_TREND_TOOL, params)
+        if error or mcp_tool is None:
+            return self._fail(call, INVALID_ARGUMENTS, error or '工具映射不可用')
+        return self._call_rest(call, mcp_tool, merged, context)
+
+    def _run_report_matrix(self, call: ToolCallRequest, action: str,
+                           arguments: Dict[str, Any],
+                           context: ToolInvocationContext) -> ToolResult:
+        report_ids = [int(value) for value in arguments.get('report_ids') or ()]
+        reports: List[Dict[str, Any]] = []
+        failures: List[Dict[str, Any]] = []
+        incompatible: List[str] = []
+        for report_id in report_ids:
+            status, payload, error_text = self._fetch_report(report_id, context)
+            if status != 200 or not isinstance(payload, dict):
+                failures.append({
+                    'report_id': report_id,
+                    'status': status,
+                    'message': error_text or _NOT_FOUND_TEXT,
+                })
+                continue
+            data = payload.get('data')
+            if payload.get('success') is False or not isinstance(data, dict):
+                failures.append({
+                    'report_id': report_id,
+                    'status': status,
+                    'message': str(payload.get('message') or _NOT_FOUND_TEXT),
+                })
+                continue
+            report_type = str(data.get('type') or data.get('report_type') or '')
+            if action == 'secondary_compare' and \
+                    report_type not in REPORT_COMPARABLE_TYPES:
+                incompatible.append(f'{report_id}({report_type or "unknown"})')
+                continue
+            reports.append(_project_report(report_id, data))
+
+        # 类型不符比「取不到」更具体：先给出可行动的报错，不要退化成「不存在」
+        if incompatible:
+            return self._fail(
+                call, INVALID_ARGUMENTS,
+                'action=secondary_compare 只接受对比 / 二次对比报告，以下报告类型'
+                f'不符：{"、".join(incompatible)}；对任务报告请用 action=compare')
+
+        if not reports:
+            return self._report_compare_failure(call, failures)
+
+        payload = {
+            'action': action,
+            'report_count': len(reports),
+            'reports': reports,
+            'missing': failures,
+        }
+        return self._ok(call, json.dumps(payload, ensure_ascii=False))
+
+    def _fetch_report(self, report_id: int,
+                      context: ToolInvocationContext
+                      ) -> Tuple[int, Any, Optional[str]]:
+        """读一份报告详情，返回 ``(status, payload, 统一文案)``。
+
+        403 / 404 一律收敛为同一句「不存在或无权访问」，不泄漏资源存在性。
+        """
+        mcp_tool, merged, error = self._bridge.resolve_rest(
+            REPORT_DETAIL_TOOL, {'report_id': report_id})
+        if error or mcp_tool is None:
+            return 0, None, error or '工具映射不可用'
+        result = self._rest.call(
+            mcp_tool, merged,
+            authorization=self._credentials.get(context.run_id),
+            user_id=context.owner_id, tenant_id=context.tenant_id,
+            permissions=context.permissions)
+        if result.status == 0:
+            return 0, None, f'目标服务不可用：{result.error}'
+        if result.status in (401, 403):
+            return result.status, None, _DENIED_TEXT
+        if result.status == 404:
+            return result.status, None, _NOT_FOUND_TEXT
+        if result.status >= 400:
+            return result.status, None, f'目标接口返回 {result.status}'
+        return result.status, result.payload, None
+
+    def _report_compare_failure(self, call: ToolCallRequest,
+                                failures: Sequence[Dict[str, Any]]) -> ToolResult:
+        """全部报告都取不到时按失败原因收敛错误码（不返回空对比）。"""
+        statuses = {item.get('status') for item in failures}
+        if statuses and statuses <= {401, 403}:
+            return self._fail(call, PERMISSION_DENIED, _DENIED_TEXT)
+        if 0 in statuses:
+            return self._fail(
+                call, UPSTREAM_UNAVAILABLE, '目标服务不可用：报告详情读取失败',
+                ok=False)
+        return self._fail(
+            call, RESOURCE_NOT_FOUND,
+            '参与对比的报告均不可访问（不存在或无权访问）')
 
     # ------------------------------------------------------------ rest
 
@@ -195,7 +362,8 @@ class SharedToolGateway(ToolGateway):
 
 
 __all__ = [
-    'INVALID_ARGUMENTS', 'PERMISSION_DENIED', 'RESOURCE_NOT_FOUND',
+    'INVALID_ARGUMENTS', 'PERMISSION_DENIED', 'REPORT_COMPARABLE_TYPES',
+    'REPORT_DETAIL_TOOL', 'REPORT_TREND_TOOL', 'RESOURCE_NOT_FOUND',
     'SharedToolGateway', 'TOOL_NOT_ENABLED', 'UNKNOWN_TOOL', 'UPSTREAM_ERROR',
     'UPSTREAM_UNAVAILABLE',
 ]
