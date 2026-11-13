@@ -11,16 +11,22 @@ import {
   AGENT_EVENT_TYPE,
   AGENT_RUN_STATUS,
   AGENT_TOOL_RESULT_STATUS,
+  AGENT_TOOL_RISK,
   isRecoverableAgentErrorCode,
   normalizeRunStatus,
   normalizeToolRisk,
   type AgentApproval,
+  type AgentApprovalDecisionResult,
+  type AgentApprovalProposal,
+  type AgentApprovalStatus,
   type AgentEventSourceRef,
   type AgentRun,
+  type AgentRunBudget,
   type AgentRunEvent,
   type AgentRunInput,
   type AgentSession,
   type AgentSessionDetail,
+  type AgentToolRisk,
 } from '@/domain/models/agent'
 
 /**
@@ -92,13 +98,15 @@ export interface AgentRunDto {
   model?: string
   token_in?: number
   token_out?: number
+  /** 预算上限（agent_run.budget；键与 agent_defaults.json 一致） */
+  budget?: Record<string, unknown>
   created_at?: string
   started_at?: string
   finished_at?: string
   error?: string
 }
 
-/** GET /agent/runs/{id}/approvals 列表项（agent_approval 表字段；M2 审批卡用） */
+/** GET /agent/runs/{id}/approvals 列表项（agent_approval 表字段） */
 export interface AgentApprovalDto {
   id: string
   run_id?: string
@@ -107,6 +115,20 @@ export interface AgentApprovalDto {
   proposal?: unknown
   diff?: unknown
   expires_at?: string
+  decided_by?: number
+  decided_at?: string
+  created_at?: string
+}
+
+/** POST /agent/approvals/{id}/decision 请求体（后端 ApprovalDecisionRequest） */
+export interface AgentApprovalDecisionDto {
+  decision: string
+}
+
+/** POST /agent/approvals/{id}/decision 响应（后端 ApprovalDecisionResponse） */
+export interface AgentApprovalDecisionResponseDto {
+  approval: AgentApprovalDto
+  run_status?: string
 }
 
 /** sourceRefs 原始形态（报告七表：报告 ID + 指标 ID + 数据版本） */
@@ -140,6 +162,36 @@ function toFiniteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
+/** 无时区后缀的 ISO 时间戳（后端 `datetime.utcnow().isoformat()`）按 UTC 解释 */
+const NAIVE_ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/
+
+/**
+ * 时间戳归一为带时区的 ISO。
+ * 后端 agent_service 全部用 naive UTC（`utcnow().isoformat()` 无 `Z`），
+ * 直接交给 `Date.parse` 会按**浏览器本地时区**解释 —— 在 UTC+8 会把审批单
+ * 判成早 8 小时过期（INT-2472 实测：提案刚生成就显示「已过期」）。
+ */
+export function toUtcIso(value: unknown): string | undefined {
+  const text = toStringValue(value)
+  if (!text) return undefined
+  return NAIVE_ISO_UTC.test(text) ? `${text}Z` : text
+}
+
+/** agent_run.budget（snake_case 上限键）→ 领域预算对象；全缺省返回 undefined */
+export function toAgentBudget(value: unknown): AgentRunBudget | undefined {
+  if (!isObject(value)) return undefined
+  const budget: AgentRunBudget = {
+    maxRounds: toFiniteNumber(value['max_rounds']),
+    maxToolCalls: toFiniteNumber(value['max_tool_calls']),
+    maxTokens: toFiniteNumber(value['max_tokens']),
+    maxDurationSeconds: toFiniteNumber(value['max_duration_seconds']),
+    maxOutputBytes: toFiniteNumber(value['max_output_bytes']),
+  }
+  return Object.values(budget).some((item) => item !== undefined)
+    ? budget
+    : undefined
+}
+
 /** snake_case sourceRefs → camelCase 域对象（非数组/字段缺失返回 undefined） */
 export function toAgentSourceRefs(value: unknown): AgentEventSourceRef[] | undefined {
   if (!Array.isArray(value)) return undefined
@@ -168,8 +220,8 @@ export function toAgentSession(dto: AgentSessionDto): AgentSession {
     title: dto.title ?? '',
     activeSkill: dto.active_skill,
     model: dto.model,
-    createdAt: dto.created_at,
-    updatedAt: dto.updated_at,
+    createdAt: toUtcIso(dto.created_at),
+    updatedAt: toUtcIso(dto.updated_at),
   }
 }
 
@@ -181,8 +233,9 @@ export function toAgentRun(dto: AgentRunDto): AgentRun {
     model: dto.model,
     tokenIn: toFiniteNumber(dto.token_in),
     tokenOut: toFiniteNumber(dto.token_out),
-    startedAt: dto.started_at,
-    finishedAt: dto.finished_at,
+    budget: toAgentBudget(dto.budget),
+    startedAt: toUtcIso(dto.started_at),
+    finishedAt: toUtcIso(dto.finished_at),
     error: dto.error,
   }
 }
@@ -229,8 +282,33 @@ export function toAgentApprovals(dto: AgentApprovalsResponseDto): AgentApproval[
   return dto.items.map(toAgentApproval)
 }
 
+/** 审批提案 snake_case → 领域对象（risk 缺失不降级为 READ：未知风险必须显式保留） */
+export function toAgentApprovalProposal(
+  value: unknown
+): AgentApprovalProposal | undefined {
+  if (!isObject(value)) return undefined
+  const tool = toStringValue(value['tool'])
+  if (!tool) return undefined
+  const rawRisk = toStringValue(value['risk'])
+  const risk: AgentToolRisk | undefined =
+    rawRisk && rawRisk in AGENT_TOOL_RISK ? (rawRisk as AgentToolRisk) : undefined
+  return {
+    tool,
+    risk,
+    arguments: isObject(value['arguments'])
+      ? (value['arguments'] as Record<string, unknown>)
+      : undefined,
+    argsHash: toStringValue(value['args_hash']),
+    idempotencyKey: toStringValue(value['idempotency_key']),
+    stepId: toStringValue(value['step_id']),
+    turn: toFiniteNumber(value['turn']),
+    requestedBy: toFiniteNumber(value['requested_by']),
+    sessionId: toStringValue(value['session_id']),
+  }
+}
+
 export function toAgentApproval(dto: AgentApprovalDto): AgentApproval {
-  const status =
+  const status: AgentApprovalStatus =
     dto.status === 'APPROVED' ||
     dto.status === 'REJECTED' ||
     dto.status === 'EXPIRED'
@@ -241,9 +319,36 @@ export function toAgentApproval(dto: AgentApprovalDto): AgentApproval {
     runId: dto.run_id ?? '',
     toolCallId: dto.tool_call_id,
     status,
-    proposal: dto.proposal,
+    proposal: toAgentApprovalProposal(dto.proposal),
     diff: dto.diff,
-    expiresAt: dto.expires_at,
+    expiresAt: toUtcIso(dto.expires_at),
+    decidedBy: toFiniteNumber(dto.decided_by),
+    decidedAt: toUtcIso(dto.decided_at),
+    createdAt: toUtcIso(dto.created_at),
+  }
+}
+
+export function toAgentApprovalDecisionDto(
+  decision: string
+): AgentApprovalDecisionDto {
+  return { decision }
+}
+
+/**
+ * POST /agent/approvals/{id}/decision 响应解信封：`{approval, run_status}`
+ * （后端 routes.py::decide_approval）。缺 approval 视为契约错误，不回退。
+ */
+export function toAgentApprovalDecisionResult(
+  dto: AgentApprovalDecisionResponseDto
+): AgentApprovalDecisionResult {
+  if (!isObject(dto) || !isObject(dto.approval)) {
+    throw new AgentContractError(
+      '审批决策响应缺少 approval 信封（期望 {approval, run_status}）'
+    )
+  }
+  return {
+    approval: toAgentApproval(dto.approval as AgentApprovalDto),
+    runStatus: normalizeRunStatus(dto.run_status),
   }
 }
 
@@ -298,7 +403,7 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
   const base = {
     runId: toStringValue(dto['run_id']) ?? '',
     sequence,
-    timestamp: toStringValue(dto['timestamp']) ?? '',
+    timestamp: toUtcIso(dto['timestamp']) ?? '',
   }
 
   switch (type) {
@@ -310,6 +415,7 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
         type: AGENT_EVENT_TYPE.RUN_STARTED,
         status: normalizeRunStatus(dto['status']),
         model: toStringValue(dto['model']),
+        budget: toAgentBudget(dto['budget']),
       }
     case AGENT_EVENT_TYPE.MESSAGE_DELTA: {
       const messageId = toStringValue(dto['message_id'])
@@ -364,19 +470,33 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
     case AGENT_EVENT_TYPE.APPROVAL_REQUIRED: {
       const approvalId = toStringValue(dto['approval_id'])
       if (!approvalId) return null
+      const rawRisk = toStringValue(dto['risk'])
       return {
         ...base,
         type: AGENT_EVENT_TYPE.APPROVAL_REQUIRED,
         approvalId,
         toolCallId: toStringValue(dto['tool_call_id']),
-        proposal: dto['proposal'],
+        tool: toStringValue(dto['tool']),
+        risk:
+          rawRisk && rawRisk in AGENT_TOOL_RISK
+            ? (rawRisk as AgentToolRisk)
+            : undefined,
+        expiresAt: toUtcIso(dto['expires_at']),
+        proposal: toAgentApprovalProposal(dto['proposal']),
       }
     }
     case AGENT_EVENT_TYPE.CONTEXT_COMPACTED:
+      // 真实载荷（context_assembler）：level / snapshot_version / token_count_before /
+      // token_count_after / dropped_count / debug；debug 开启才附被裁消息与备忘。
       return {
         ...base,
         type: AGENT_EVENT_TYPE.CONTEXT_COMPACTED,
         level: toStringValue(dto['level']),
+        snapshotVersion: toFiniteNumber(dto['snapshot_version']),
+        tokenCountBefore: toFiniteNumber(dto['token_count_before']),
+        tokenCountAfter: toFiniteNumber(dto['token_count_after']),
+        droppedCount: toFiniteNumber(dto['dropped_count']),
+        debug: dto['debug'] === true,
       }
     case AGENT_EVENT_TYPE.RUN_FINISHED: {
       // 真实载荷 {status, reason, error}：status 必填；异常缺失时按 error 判定，

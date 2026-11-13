@@ -172,6 +172,14 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     isGenerating,
     isCancelling,
     runPhase,
+    run,
+    approvals,
+    approvalsLoading,
+    approvalsError,
+    decidingApprovalIds,
+    timeline,
+    decideApproval,
+    refreshApprovals,
     resetChat,
   } = useChatHandler({
     channel,
@@ -278,6 +286,14 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                   onSaveEditAndSubmit={(content) => applyEdit(content, true)}
                   onUndoMessage={handleUndoMessage}
                   runPhase={runPhase}
+                  approvals={approvals}
+                  approvalsError={approvalsError}
+                  approvalsLoading={approvalsLoading}
+                  decidingApprovalIds={decidingApprovalIds}
+                  onDecideApproval={decideApproval}
+                  onRetryApprovals={() => void refreshApprovals()}
+                  run={run}
+                  timeline={timeline}
                 />
               </div>
               <div className='shrink-0'>
@@ -331,6 +347,14 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
               onSaveEditAndSubmit={(content) => applyEdit(content, true)}
               onUndoMessage={handleUndoMessage}
               runPhase={runPhase}
+              approvals={approvals}
+              approvalsError={approvalsError}
+              approvalsLoading={approvalsLoading}
+              decidingApprovalIds={decidingApprovalIds}
+              onDecideApproval={decideApproval}
+              onRetryApprovals={() => void refreshApprovals()}
+              run={run}
+              timeline={timeline}
             />
           </div>
 

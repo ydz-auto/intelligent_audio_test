@@ -38,6 +38,17 @@ export const AGENT_RUN_STATUS = {
 export type AgentRunStatus =
   (typeof AGENT_RUN_STATUS)[keyof typeof AGENT_RUN_STATUS]
 
+/** RunStatus → 中文徽标（消息终态徽标与运行时间线共用，单一事实源） */
+export const AGENT_RUN_STATUS_LABELS: Record<AgentRunStatus, string> = {
+  QUEUED: '排队中',
+  RUNNING: '运行中',
+  WAITING_APPROVAL: '等待审批',
+  SUCCEEDED: '已完成',
+  FAILED: '失败',
+  CANCELLED: '已取消',
+  BUDGET_EXCEEDED: '超出预算',
+}
+
 /** 终态集合（§9.1 状态机；进入终态后事件流可关闭，不再重连） */
 const TERMINAL_RUN_STATUSES: ReadonlySet<string> = new Set([
   AGENT_RUN_STATUS.SUCCEEDED,
@@ -83,6 +94,13 @@ export const AGENT_TOOL_RISK = {
 export type AgentToolRisk =
   (typeof AGENT_TOOL_RISK)[keyof typeof AGENT_TOOL_RISK]
 
+/** 风险等级中文名（审批卡 / 工具卡共用；§9.4：DESTRUCTIVE 永远单条） */
+export const AGENT_TOOL_RISK_LABELS: Record<AgentToolRisk, string> = {
+  READ: '只读',
+  WRITE: '写操作',
+  DESTRUCTIVE: '高危操作',
+}
+
 export function normalizeToolRisk(value: unknown): AgentToolRisk {
   if (typeof value === 'string' && value in AGENT_TOOL_RISK) {
     return value as AgentToolRisk
@@ -119,6 +137,8 @@ export interface AgentRun {
   model?: string
   tokenIn?: number
   tokenOut?: number
+  /** 本轮预算上限（§9.3；时间线展示预算消耗用） */
+  budget?: AgentRunBudget
   startedAt?: string
   finishedAt?: string
   error?: string
@@ -138,15 +158,96 @@ export interface AgentSessionDetail {
   runs: AgentRun[]
 }
 
-/** 待审批提案（§10 agent_approval；M2 审批卡实现，本卡只接空列表契约） */
+/** 审批单状态（§10 agent_approval.status；后端原值即大写字符串） */
+export const AGENT_APPROVAL_STATUS = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  EXPIRED: 'EXPIRED',
+} as const
+
+export type AgentApprovalStatus =
+  (typeof AGENT_APPROVAL_STATUS)[keyof typeof AGENT_APPROVAL_STATUS]
+
+export function isPendingApprovalStatus(status: AgentApprovalStatus): boolean {
+  return status === AGENT_APPROVAL_STATUS.PENDING
+}
+
+/**
+ * 审批单是否已过期（本地倒计时口径）。
+ * 服务端到点也会拒绝决策（409），这里只用于「到点即禁用按钮 / 卡片失效」的即时反馈；
+ * 状态字段仍以服务端列表为准。
+ */
+export function isApprovalExpired(
+  approval: Pick<AgentApproval, 'status' | 'expiresAt'>,
+  now: number = Date.now()
+): boolean {
+  if (approval.status !== AGENT_APPROVAL_STATUS.PENDING) return false
+  if (!approval.expiresAt) return false
+  const expiresAt = Date.parse(approval.expiresAt)
+  return Number.isFinite(expiresAt) && expiresAt <= now
+}
+
+/** 审批决议（POST /agent/approvals/{id}/decision；后端大小写不敏感，这里恒发大写） */
+export const AGENT_APPROVAL_DECISION = {
+  APPROVE: 'APPROVE',
+  REJECT: 'REJECT',
+} as const
+
+export type AgentApprovalDecision =
+  (typeof AGENT_APPROVAL_DECISION)[keyof typeof AGENT_APPROVAL_DECISION]
+
+/**
+ * 审批提案（后端 ApprovalService.propose 落库形态）：
+ * `tool` / `risk` / `arguments` / `args_hash` / `idempotency_key` / `step_id` /
+ * `turn` / `requested_by` / `session_id`。arguments 已由后端脱敏，前端只展示不执行。
+ */
+export interface AgentApprovalProposal {
+  tool: string
+  /** 风险等级（后端缺省时 undefined：不能把未知风险降级成 READ） */
+  risk?: AgentToolRisk
+  arguments?: Record<string, unknown>
+  argsHash?: string
+  idempotencyKey?: string
+  /** 归属步骤 id：计划级批量展示按它分组（§9.4） */
+  stepId?: string
+  turn?: number
+  requestedBy?: number
+  sessionId?: string
+}
+
+/** 待审批提案（§10 agent_approval；M2 审批卡实现） */
 export interface AgentApproval {
   id: string
   runId: string
   toolCallId?: string
-  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED'
-  proposal?: unknown
+  status: AgentApprovalStatus
+  /** 提案正文（含工具、风险、脱敏参数） */
+  proposal?: AgentApprovalProposal
+  /** 变更预览（REST 写工具为 {kind:'rest_request',method,path,arguments}；域写工具可覆盖） */
   diff?: unknown
+  /** 过期时间（ISO；到点即不可再批准，服务端 409 兜底） */
   expiresAt?: string
+  /** 决策人（用户 id；后端 decided_by） */
+  decidedBy?: number
+  /** 决策时间（ISO；后端 decided_at） */
+  decidedAt?: string
+  createdAt?: string
+}
+
+/** Run 预算（§9.3/§9.4；后端 agent_run.budget，字段名与配置一致） */
+export interface AgentRunBudget {
+  maxRounds?: number
+  maxToolCalls?: number
+  maxTokens?: number
+  maxDurationSeconds?: number
+  maxOutputBytes?: number
+}
+
+/** 审批决策结果（POST /agent/approvals/{id}/decision 的 {approval, run_status}） */
+export interface AgentApprovalDecisionResult {
+  approval: AgentApproval
+  runStatus: AgentRunStatus
 }
 
 /** 事件来源引用（sourceRefs；报告 ID + 指标 ID + 数据版本） */
@@ -169,6 +270,8 @@ export interface AgentRunStartedEvent extends AgentRunEventBase {
   type: typeof AGENT_EVENT_TYPE.RUN_STARTED
   status: AgentRunStatus
   model?: string
+  /** 本次 run 的预算上限（后端 run_started 载荷 budget） */
+  budget?: AgentRunBudget
 }
 
 export interface AgentMessageDeltaEvent extends AgentRunEventBase {
@@ -201,13 +304,25 @@ export interface AgentApprovalRequiredEvent extends AgentRunEventBase {
   type: typeof AGENT_EVENT_TYPE.APPROVAL_REQUIRED
   approvalId: string
   toolCallId?: string
-  proposal?: unknown
+  /** 工具名与风险等级（后端 approval_required 载荷 tool / risk） */
+  tool?: string
+  risk?: AgentToolRisk
+  /** 过期时间（ISO；UI 本地倒计时，服务端 409 兜底） */
+  expiresAt?: string
+  /** 提案正文（approval_required 载荷 proposal，已由 DTO 转 camelCase） */
+  proposal?: AgentApprovalProposal
 }
 
 export interface AgentContextCompactedEvent extends AgentRunEventBase {
   type: typeof AGENT_EVENT_TYPE.CONTEXT_COMPACTED
   /** 压缩层级（§8.2 L1_TRIM / L2_DEDUPE / L3_MEMO / L4_REBUILD） */
   level?: string
+  snapshotVersion?: number
+  tokenCountBefore?: number
+  tokenCountAfter?: number
+  droppedCount?: number
+  /** 调试模式开关（AGENT_CONTEXT_DEBUG）；关闭时不下发被裁消息 */
+  debug?: boolean
 }
 
 export interface AgentRunFinishedEvent extends AgentRunEventBase {
@@ -293,4 +408,46 @@ export const AGENT_ERROR_COPY = {
   cancelFailed: '取消请求失败，请稍后重试',
   /** 空响应（run 既无事件也无终态） */
   emptyRun: 'Agent 未返回任何事件，请重试',
+} as const
+
+/**
+ * 审批卡文案（§9.4 / §12.2；application 的决策错误归一与 features 的卡片共用，
+ * 归 domain 避免 application 反向依赖 features）。
+ */
+export const AGENT_APPROVAL_COPY = {
+  title: '写操作审批',
+  planTitle: '本步骤写操作',
+  pending: '待审批',
+  approved: '已批准',
+  rejected: '已拒绝',
+  expired: '已过期',
+  approve: '批准执行',
+  reject: '拒绝',
+  approving: '正在批准…',
+  rejecting: '正在拒绝…',
+  /** 决策成功后服务端继续执行写操作（决策本身不执行业务写） */
+  approvedHint: '已批准，Agent 将在服务端执行该写操作',
+  rejectedHint: '已拒绝，该写操作不会执行',
+  expiredHint: '提案已过期，写操作未执行且不可再批准',
+  /** 过期倒计时前缀（剩余 mm:ss） */
+  expiresIn: '剩余',
+  expiresAt: '有效期至',
+  decidedBy: '决策人',
+  decidedAt: '决策时间',
+  arguments: '参数（已脱敏）',
+  diff: '变更预览',
+  diffRequest: '将发起的请求',
+  /** 本步骤其余写操作的折叠标题 */
+  moreInStep: '本步骤其余写操作',
+  /** 决策失败文案 */
+  conflict: '审批已失效或已被处理，已刷新最新状态',
+  notFound: '审批单不存在或无权访问',
+  decisionFailed: '审批请求失败，请稍后重试',
+  loadFailed: '待审批状态加载失败',
+  loading: '正在同步审批状态…',
+  retry: '重试',
+  empty: '当前没有待审批的写操作',
+  /** 计数徽标（与工具卡计数同源） */
+  pendingCount: '待审批',
+  toolCallCount: '工具调用',
 } as const

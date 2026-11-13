@@ -306,10 +306,12 @@ export const CHAT_CHANNEL_COPY = {
   switchToProvider: '切换到自带供应商',
 } as const
 
-/** Run 生命周期提示（§12.2「SSE 重连不重复渲染」+ 取消态） */
+/** Run 生命周期提示（§12.2「SSE 重连不重复渲染」+ 取消态 + 审批等待态） */
 export const AGENT_RUN_PHASE_COPY = {
   preparing: '正在准备会话…',
   running: 'Agent 正在处理…',
+  /** 写操作提案待审批（§9.4；审批卡在会话区下方） */
+  waitingApproval: '等待你审批写操作…',
   reconnecting: '连接中断，正在重连…',
   cancelling: '正在取消…',
   /** 取消后终态提示（消息尾部徽标同文案） */
@@ -318,16 +320,8 @@ export const AGENT_RUN_PHASE_COPY = {
   budgetExceeded: '超出预算',
 } as const
 
-/** RunStatus → 中文徽标（只用于终态展示） */
-export const AGENT_RUN_STATUS_LABELS = {
-  QUEUED: '排队中',
-  RUNNING: '运行中',
-  WAITING_APPROVAL: '等待审批',
-  SUCCEEDED: '已完成',
-  FAILED: '失败',
-  CANCELLED: '已取消',
-  BUDGET_EXCEEDED: '超出预算',
-} as const
+/** RunStatus → 中文徽标（单一事实源在 domain；运行时间线与消息终态徽标共用） */
+export { AGENT_RUN_STATUS_LABELS } from '@/domain/models/agent'
 
 /** 供应商管理弹窗文案（§3.11/§6；INT-2493：本机供应商降级为「直连 Demo」） */
 export const PROVIDER_MANAGER_COPY = {

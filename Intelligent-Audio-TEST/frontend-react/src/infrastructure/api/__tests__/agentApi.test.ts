@@ -13,6 +13,7 @@ import {
   AGENT_API_PATHS,
   cancelAgentRun,
   createAgentRun,
+  decideAgentApproval,
   getAgentSession,
   listAgentApprovals,
   subscribeAgentRunEvents,
@@ -364,4 +365,84 @@ describe('agentApi', () => {
     await new Promise((resolve) => setTimeout(resolve, 1_200))
     expect(fetchMock).toHaveBeenCalledTimes(1)
   }, 10_000)
+})
+
+describe('agentApi 审批决策（INT-2472）', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('decideAgentApproval：POST /agent/approvals/{id}/decision，body {decision}，解 {approval, run_status}', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        approval: {
+          id: 'ap-1',
+          run_id: 'r-1',
+          tool_call_id: 'tc-1',
+          status: 'APPROVED',
+          proposal: { tool: 'memory_write', risk: 'WRITE' },
+          decided_by: 7,
+          decided_at: '2026-11-14T02:03:00Z',
+        },
+        run_status: 'RUNNING',
+      })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await decideAgentApproval('ap-1', 'APPROVE')
+
+    expect(result.approval.status).toBe('APPROVED')
+    expect(result.approval.decidedBy).toBe(7)
+    expect(result.runStatus).toBe('RUNNING')
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain(AGENT_API_PATHS.approvalDecision('ap-1'))
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(String(init.body))).toEqual({ decision: 'APPROVE' })
+  })
+
+  it('decideAgentApproval：409（过期 / 并发）上抛 ApiError，由 store 刷新审批状态', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          { detail: '审批单已过期，写操作未执行', code: 'APPROVAL_EXPIRED' },
+          409
+        )
+      )
+    )
+    await expect(decideAgentApproval('ap-1', 'APPROVE')).rejects.toMatchObject({
+      httpStatus: 409,
+    })
+  })
+
+  it('listAgentApprovals：真实列表项带 proposal / diff / decided_*，转 camelCase', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          items: [
+            {
+              id: 'ap-1',
+              run_id: 'r-1',
+              tool_call_id: 'tc-1',
+              status: 'PENDING',
+              proposal: { tool: 'memory_write', risk: 'WRITE', step_id: 'step-1' },
+              diff: { kind: 'rest_request', method: 'POST', path: '/x' },
+              expires_at: '2026-11-14T02:15:00Z',
+            },
+          ],
+        })
+      )
+    )
+    const items = await listAgentApprovals('r-1')
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      id: 'ap-1',
+      status: 'PENDING',
+      proposal: { tool: 'memory_write', risk: 'WRITE', stepId: 'step-1' },
+      diff: { kind: 'rest_request', method: 'POST', path: '/x' },
+      expiresAt: '2026-11-14T02:15:00Z',
+    })
+  })
 })

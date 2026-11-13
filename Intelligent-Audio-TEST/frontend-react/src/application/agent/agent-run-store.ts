@@ -26,11 +26,16 @@ import { create } from 'zustand'
 import { toast } from 'sonner'
 
 import {
+  AGENT_APPROVAL_COPY,
+  AGENT_APPROVAL_STATUS,
   AGENT_ERROR_COPY,
   AGENT_EVENT_TYPE,
   AGENT_RUN_STATUS,
   AGENT_TOOL_LABELS,
+  isPendingApprovalStatus,
   isTerminalRunStatus,
+  type AgentApproval,
+  type AgentApprovalDecision,
   type AgentRun,
   type AgentRunEvent,
   type AgentRunStatus,
@@ -50,8 +55,10 @@ import {
   cancelAgentRun,
   createAgentRun,
   createAgentSession,
+  decideAgentApproval,
   getAgentRun,
   getAgentSession,
+  listAgentApprovals,
   subscribeAgentRunEvents,
   toAgentErrorMessage,
   type AgentStreamStatus,
@@ -59,11 +66,19 @@ import {
 import { ApiError } from '@/infrastructure/api/api-error'
 import { useAiChatSession } from '@/infrastructure/stores/aiChatSessionStore'
 
+import {
+  appendTimelineEntry,
+  applyApprovalToTimeline,
+  type AgentTimelineEntry,
+} from './agent-timeline'
+
 /** Run 生命周期阶段（idle 未开始；cancelling 已发取消请求等终态） */
 export const AGENT_RUN_PHASE = {
   IDLE: 'idle',
   PREPARING: 'preparing',
   RUNNING: 'running',
+  /** 写操作提案待审批（§9.4：run 在服务端 WAITING_APPROVAL，事件流仍开着） */
+  WAITING_APPROVAL: 'waiting_approval',
   RECONNECTING: 'reconnecting',
   CANCELLING: 'cancelling',
   FINISHED: 'finished',
@@ -100,6 +115,7 @@ export const AGENT_RUN_UNMOUNT_CANCEL_COPY =
 const IN_FLIGHT_PHASES: readonly AgentRunPhase[] = [
   AGENT_RUN_PHASE.PREPARING,
   AGENT_RUN_PHASE.RUNNING,
+  AGENT_RUN_PHASE.WAITING_APPROVAL,
   AGENT_RUN_PHASE.RECONNECTING,
 ]
 
@@ -114,6 +130,7 @@ export function isAgentRunActive(phase: AgentRunPhase): boolean {
   return (
     phase === AGENT_RUN_PHASE.PREPARING ||
     phase === AGENT_RUN_PHASE.RUNNING ||
+    phase === AGENT_RUN_PHASE.WAITING_APPROVAL ||
     phase === AGENT_RUN_PHASE.RECONNECTING ||
     phase === AGENT_RUN_PHASE.CANCELLING
   )
@@ -202,10 +219,37 @@ type AgentRunStoreState = {
   /** 事件流连接状态（reconnecting 时页面提示重连中） */
   streamStatus: AgentStreamStatus | null
   error: string | null
+  /** 本 run 的审批单（待审批 + 已决；重连 / 刷新后按服务端列表还原） */
+  approvals: AgentApproval[]
+  /** 审批列表同步中（重连后显示「正在同步审批状态…」） */
+  approvalsLoading: boolean
+  /** 审批列表加载失败（中文；面板落错误态并可重试） */
+  approvalsError: string | null
+  /** 决策请求在途的审批单 id（按钮防重复：同一条只发一次） */
+  decidingApprovalIds: string[]
+  /** Run 时间线（事件流有序投影；重连回放不重复） */
+  timeline: AgentTimelineEntry[]
   /** 发起一轮对话（内部保证会话 + run + 订阅；失败落 error 态，不抛出） */
   send: (text: string, options?: SendAgentRunOptions) => Promise<void>
   /** 取消当前 run；成功返回 null，失败返回中文文案（同一 run 只发一次请求） */
   cancel: () => Promise<string | null>
+  /**
+   * 审批决策（§9.4）：批准 / 拒绝一条写操作提案。
+   * 同一审批单连点只发一次请求；成功返回 null，失败返回卡片可展示的中文文案。
+   */
+  decideApproval: (
+    approvalId: string,
+    decision: AgentApprovalDecision
+  ) => Promise<string | null>
+  /**
+   * 同步本 run 的审批单（重连 / 恢复 / 决策 409 后）。
+   * 服务端列表是权威：已决状态覆盖本地，未在列表中的本地条目保留（不丢待审批卡）。
+   */
+  refreshApprovals: (options?: {
+    runId?: string
+    /** 是否按待审批状态切换生命周期阶段（无事件流的恢复场景传 false） */
+    syncPhase?: boolean
+  }) => Promise<void>
   /** 复位（keepSession=true 保留会话上下文，仅清空本轮状态） */
   reset: (options?: { keepSession?: boolean }) => void
   /**
@@ -248,6 +292,12 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
   let hostDetachTimer: ReturnType<typeof setTimeout> | null = null
   /** 最后一个宿主按 cancel 语义离场时建 run 请求仍在途：响应返回后补发取消（INT-2521） */
   let detachCancelPending = false
+  /** 决策请求在途的审批单 id（连点防重的唯一闸门；与渲染态 decidingApprovalIds 同步） */
+  const decidingApprovals = new Set<string>()
+  /** 审批列表请求令牌：复位 / 新一轮后旧响应一律丢弃 */
+  let approvalRefreshToken = 0
+  /** run 快照请求令牌（终态补 token / 预算消耗，晚到的旧响应不覆盖新 run） */
+  let runSnapshotToken = 0
 
   const session = () => useAiChatSession.getState()
 
@@ -322,6 +372,83 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     )
   }
 
+  const currentRunId = (): string | null =>
+    get().run?.id ?? session().agentRunId
+
+  /**
+   * 审批单状态 → 对应工具卡（审批卡与工具卡计数同源：同一条审批单只对应一张工具卡，
+   * 工具卡显示「等待审批 / 已批准 / 已拒绝 / 已过期」，面板计数直接取自 approvals）。
+   */
+  const patchToolCallApproval = (approval: AgentApproval) => {
+    patchAssistant((message) => {
+      const calls = message.toolCalls
+      if (!calls || calls.length === 0) return message
+      const next = calls.map((call) =>
+        call.id === approval.toolCallId || call.approvalId === approval.id
+          ? {
+              ...call,
+              approvalId: approval.id,
+              approvalStatus: approval.status,
+              risk: approval.proposal?.risk ?? call.risk,
+              status:
+                approval.status === AGENT_APPROVAL_STATUS.APPROVED
+                  ? ('running' as const)
+                  : approval.status === AGENT_APPROVAL_STATUS.PENDING
+                    ? ('pending' as const)
+                    : call.status,
+            }
+          : call
+      )
+      return { ...message, toolCalls: next }
+    })
+  }
+
+  /** 审批单合并：服务端条目覆盖同 id 的本地条目，未在列表中的本地条目保留 */
+  const mergeApprovals = (incoming: AgentApproval[]): AgentApproval[] => {
+    const current = get().approvals
+    const merged = incoming.map((item) => {
+      const local = current.find((approval) => approval.id === item.id)
+      if (!local) return item
+      return {
+        ...local,
+        ...item,
+        proposal: item.proposal ?? local.proposal,
+        diff: item.diff ?? local.diff,
+      }
+    })
+    const extra = current.filter(
+      (approval) => !incoming.some((item) => item.id === approval.id)
+    )
+    return [...merged, ...extra]
+  }
+
+  /** 审批单落状态（事件 / 决策响应 / 列表同步共用），并回填工具卡与时间线 */
+  const upsertApproval = (approval: AgentApproval) => {
+    const current = get().approvals
+    const exists = current.some((item) => item.id === approval.id)
+    set({
+      approvals: exists
+        ? current.map((item) =>
+            item.id === approval.id
+              ? {
+                  ...item,
+                  ...approval,
+                  proposal: approval.proposal ?? item.proposal,
+                  diff: approval.diff ?? item.diff,
+                }
+              : item
+          )
+        : [...current, approval],
+    })
+    set((state) => ({
+      timeline: applyApprovalToTimeline(state.timeline, approval),
+    }))
+    patchToolCallApproval(approval)
+  }
+
+  const hasPendingApprovals = (approvals: AgentApproval[]): boolean =>
+    approvals.some((approval) => isPendingApprovalStatus(approval.status))
+
   const finishRun = (status: AgentRunStatus, message?: string) => {
     const current = get().run
     set({
@@ -386,6 +513,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
             label: AGENT_TOOL_LABELS[event.tool] ?? event.tool,
             status: 'running' as const,
             summary: event.summary,
+            risk: event.risk,
           }
           const next = existing.some((item) => item.id === call.id)
             ? existing.map((item) =>
@@ -448,6 +576,9 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         })
         assistantKey = null
         finishRun(event.status, event.error)
+        // 终态后补 token / 预算消耗（run_finished 不带 token 统计；失败不影响展示）
+        void refreshRunSnapshot(get().run?.id ?? event.runId)
+        void get().refreshApprovals({ syncPhase: false })
         return
       }
       case AGENT_EVENT_TYPE.ERROR: {
@@ -462,13 +593,51 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         failRun(event.errorMessage || AGENT_ERROR_COPY.runFailed, event.errorCode)
         return
       }
+      case AGENT_EVENT_TYPE.APPROVAL_REQUIRED: {
+        // 写操作提案（§9.4）：卡片数据来自事件本身（approval_required 载荷已含
+        // tool / risk / proposal / expires_at），重连 / 刷新再用列表接口对齐。
+        upsertApproval({
+          id: event.approvalId,
+          runId: event.runId,
+          toolCallId: event.toolCallId,
+          status: AGENT_APPROVAL_STATUS.PENDING,
+          proposal:
+            event.proposal ??
+            (event.tool
+              ? {
+                  tool: event.tool,
+                  risk: event.risk,
+                }
+              : undefined),
+          expiresAt: event.expiresAt,
+        })
+        if (get().phase !== AGENT_RUN_PHASE.CANCELLING) {
+          setPhase(AGENT_RUN_PHASE.WAITING_APPROVAL)
+        }
+        // approval_required 事件不带 diff（只有列表接口有）：立刻按列表补齐
+        // 「变更预览 / 决策人」，卡片首屏就能看到提案将发起的请求。
+        void get().refreshApprovals({
+          runId: event.runId,
+          syncPhase: false,
+        })
+        return
+      }
       case AGENT_EVENT_TYPE.RUN_STARTED: {
         const current = get().run
-        if (current) set({ run: { ...current, status: event.status } })
+        if (current) {
+          set({
+            run: {
+              ...current,
+              status: event.status,
+              model: event.model ?? current.model,
+              budget: event.budget ?? current.budget,
+            },
+          })
+        }
         return
       }
       default:
-        // approval_required（M2）/ context_compacted：不改变消息正文
+        // context_compacted：只进时间线，不改变消息正文
         return
     }
   }
@@ -489,6 +658,10 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       lastSequence = event.sequence
       lastEventId = String(event.sequence)
     }
+    // 时间线与消息补丁同源：先入时间线（保留后端 sequence），再落状态 / 正文
+    set((state) => ({
+      timeline: appendTimelineEntry(state.timeline, event),
+    }))
     applyEvent(event)
   }
 
@@ -518,6 +691,8 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     closeStream()
     const controller = new AbortController()
     streamAbort = controller
+    /** 是否已经历过一次 OPEN（之后的 OPEN 都是断线重连，需要对齐审批状态） */
+    let sawOpen = false
     streamClose = subscribeAgentRunEvents(runId, {
       lastEventId,
       signal: controller.signal,
@@ -526,12 +701,22 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         set({ streamStatus: status })
         if (status === AGENT_STREAM_STATUS.RECONNECTING) {
           setPhase(AGENT_RUN_PHASE.RECONNECTING)
-        } else if (
-          status === AGENT_STREAM_STATUS.OPEN &&
-          get().phase !== AGENT_RUN_PHASE.CANCELLING
-        ) {
-          setPhase(AGENT_RUN_PHASE.RUNNING)
+          return
         }
+        if (status !== AGENT_STREAM_STATUS.OPEN) return
+        if (get().phase !== AGENT_RUN_PHASE.CANCELLING) {
+          setPhase(
+            hasPendingApprovals(get().approvals)
+              ? AGENT_RUN_PHASE.WAITING_APPROVAL
+              : AGENT_RUN_PHASE.RUNNING
+          )
+        }
+        // 断线重连（§12.2）：审批等待中重连要恢复待审批卡 —— SSE 只回放游标之后
+        // 的事件，等待期间新增 / 已决的提案用列表接口对齐，已决的不再可操作。
+        if (sawOpen) {
+          void get().refreshApprovals()
+        }
+        sawOpen = true
       },
       onEvent: (event) => {
         if (runToken !== token) return
@@ -555,7 +740,19 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     lastSequence = -1
     lastDeltaSequences.clear()
     assistantContent = ''
-    set({ error: null, streamStatus: null, phase: AGENT_RUN_PHASE.PREPARING })
+    approvalRefreshToken += 1
+    runSnapshotToken += 1
+    decidingApprovals.clear()
+    set({
+      error: null,
+      streamStatus: null,
+      phase: AGENT_RUN_PHASE.PREPARING,
+      approvals: [],
+      approvalsLoading: false,
+      approvalsError: null,
+      decidingApprovalIds: [],
+      timeline: [],
+    })
 
     // user 气泡 + assistant 占位落共享消息列表：两宿主读同一份，切换形态不丢
     const userKey = `user-${Date.now()}`
@@ -624,6 +821,129 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     }
   }
 
+  /**
+   * 终态后补 run 快照（token_in / token_out / budget）：run_finished 不带统计字段，
+   * 时间线的「预算消耗」需要它们。best-effort：失败保留已有值，不影响终态展示。
+   */
+  const refreshRunSnapshot = async (runId: string | undefined) => {
+    if (!runId) return
+    const snapshotToken = runSnapshotToken
+    try {
+      const latest = await getAgentRun(runId)
+      if (snapshotToken !== runSnapshotToken) return
+      const current = get().run
+      if (!current || current.id !== latest.id) return
+      // 只补统计字段：run_finished 已给出权威终态，快照不得把 CANCELLED /
+      // FAILED 覆盖回 RUNNING（取消后立刻取快照的竞态）
+      set({
+        run: {
+          ...current,
+          tokenIn: latest.tokenIn ?? current.tokenIn,
+          tokenOut: latest.tokenOut ?? current.tokenOut,
+          budget: latest.budget ?? current.budget,
+          startedAt: latest.startedAt ?? current.startedAt,
+          finishedAt: latest.finishedAt ?? current.finishedAt,
+        },
+      })
+    } catch {
+      // 快照补失败不改变 run 终态（页面已有终态徽标；预算消耗可缺省）
+    }
+  }
+
+  const refreshApprovals = async (options?: {
+    runId?: string
+    syncPhase?: boolean
+  }) => {
+    const runId = options?.runId ?? currentRunId()
+    if (!runId) return
+    const requestToken = ++approvalRefreshToken
+    set({ approvalsLoading: true, approvalsError: null })
+    try {
+      const items = await listAgentApprovals(runId)
+      if (requestToken !== approvalRefreshToken) return
+      const merged = mergeApprovals(items)
+      set({ approvals: merged, approvalsLoading: false })
+      for (const approval of merged) {
+        patchToolCallApproval(approval)
+      }
+      set((state) => ({
+        timeline: merged.reduce(
+          (entries, approval) => applyApprovalToTimeline(entries, approval),
+          state.timeline
+        ),
+      }))
+      if (options?.syncPhase !== false) {
+        const phase = get().phase
+        // 只有本 store 正在跟随的 run 才改阶段（刷新后无事件流的恢复场景不动阶段）
+        if (!isAgentRunActive(phase)) return
+        if (phase === AGENT_RUN_PHASE.CANCELLING) return
+        const run = get().run
+        if (run && isTerminalRunStatus(run.status)) return
+        setPhase(
+          hasPendingApprovals(merged)
+            ? AGENT_RUN_PHASE.WAITING_APPROVAL
+            : AGENT_RUN_PHASE.RUNNING
+        )
+      }
+    } catch (err) {
+      if (requestToken !== approvalRefreshToken) return
+      set({
+        approvalsLoading: false,
+        approvalsError: AGENT_APPROVAL_COPY.loadFailed,
+      })
+      void err
+    }
+  }
+
+  const decideApproval = async (
+    approvalId: string,
+    decision: AgentApprovalDecision
+  ): Promise<string | null> => {
+    // 防重复（§12.2「审批按钮防重复」）：同一审批单的请求在途时直接忽略连点
+    if (decidingApprovals.has(approvalId)) return null
+    const approval = get().approvals.find((item) => item.id === approvalId)
+    if (!approval) return AGENT_APPROVAL_COPY.notFound
+    // 已决 / 已过期不再发请求（过期由服务端 409 兜底，这里先拦住重复点击）
+    if (!isPendingApprovalStatus(approval.status)) return null
+
+    decidingApprovals.add(approvalId)
+    set({ decidingApprovalIds: [...decidingApprovals] })
+    const runToken = token
+    try {
+      const result = await decideAgentApproval(approvalId, decision)
+      if (runToken !== token) return null
+      upsertApproval(result.approval)
+      const current = get().run
+      if (current) {
+        set({ run: { ...current, status: result.runStatus } })
+      }
+      // 只有本 store 正在跟随该 run 时才改阶段（刷新后无事件流的恢复场景不动阶段）
+      if (runToken === token && isAgentRunActive(get().phase)) {
+        if (result.runStatus === AGENT_RUN_STATUS.WAITING_APPROVAL) {
+          setPhase(AGENT_RUN_PHASE.WAITING_APPROVAL)
+        } else if (result.runStatus === AGENT_RUN_STATUS.RUNNING) {
+          setPhase(AGENT_RUN_PHASE.RUNNING)
+        }
+      }
+      return null
+    } catch (err) {
+      if (runToken !== token) return null
+      if (err instanceof ApiError) {
+        if (err.httpStatus === 404) return AGENT_APPROVAL_COPY.notFound
+        if (err.httpStatus === 409) {
+          // 并发 / 过期 / run 已收口：以服务端列表为准刷新卡片，再给出统一文案
+          await get().refreshApprovals()
+          return AGENT_APPROVAL_COPY.conflict
+        }
+        return toAgentErrorMessage(err)
+      }
+      return AGENT_APPROVAL_COPY.decisionFailed
+    } finally {
+      decidingApprovals.delete(approvalId)
+      set({ decidingApprovalIds: [...decidingApprovals] })
+    }
+  }
+
   const cancel = async (): Promise<string | null> => {
     const current = get().run
     if (!current || cancelRequested) return null
@@ -684,6 +1004,9 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     lastEventId = null
     lastSequence = -1
     lastDeltaSequences.clear()
+    approvalRefreshToken += 1
+    runSnapshotToken += 1
+    decidingApprovals.clear()
     closeStream()
     assistantKey = null
     assistantContent = ''
@@ -692,6 +1015,11 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       run: null,
       error: null,
       streamStatus: null,
+      approvals: [],
+      approvalsLoading: false,
+      approvalsError: null,
+      decidingApprovalIds: [],
+      timeline: [],
       phase: AGENT_RUN_PHASE.IDLE,
     })
     if (!options?.keepSession) {
@@ -764,6 +1092,21 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
   }
 
   /**
+   * 刷新 / 换宿主恢复：服务端最新 run 仍在等审批时，用列表接口恢复待审批卡
+   * （§12.2「重连恢复待审批」）。本页没有接事件流，因此不改生命周期阶段
+   * （syncPhase=false）：决策按钮照常可用，决策后由服务端继续执行。
+   */
+  const restorePendingApprovals = (runs: AgentRun[]) => {
+    const waiting = [...runs]
+      .reverse()
+      .find((run) => run.status === AGENT_RUN_STATUS.WAITING_APPROVAL)
+    if (!waiting) return
+    const current = get().run
+    if (!current || current.id !== waiting.id) set({ run: waiting })
+    void get().refreshApprovals({ runId: waiting.id, syncPhase: false })
+  }
+
+  /**
    * 宿主挂载恢复（幂等）：整页 / 浮窗切换与刷新都会调用。只在没有进行中 run 时校验服务端会话，
    * 不会打断正在流式输出的 run。
    */
@@ -782,6 +1125,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         restoredSessionId = sessionId
         hydrateRestoredMessages(detail.messages)
         reconcileInterruptedMessage(detail.runs)
+        restorePendingApprovals(detail.runs)
       } catch (err) {
         if (runToken !== token) return
         if (session().agentSessionId !== sessionId) return
@@ -808,8 +1152,15 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     run: null,
     streamStatus: null,
     error: null,
+    approvals: [],
+    approvalsLoading: false,
+    approvalsError: null,
+    decidingApprovalIds: [],
+    timeline: [],
     send,
     cancel,
+    decideApproval,
+    refreshApprovals,
     reset,
     restore,
     attachHost,

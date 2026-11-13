@@ -27,12 +27,23 @@ import {
   AGENT_RUN_PHASE,
   type AgentRunPhase,
 } from '@/application/agent/use-agent-run'
+import {
+  countTimelineToolCalls,
+  type AgentTimelineEntry,
+} from '@/application/agent/agent-timeline'
+import type {
+  AgentApproval,
+  AgentApprovalDecision,
+  AgentRun,
+} from '@/domain/models/agent'
 import type { ChatMessage } from '@/domain/models/aiChat'
 
 import { AiChatEmptyState } from './ai-chat-empty-state'
 import { AiChatMessageContent } from '@/features/ai-chat/components/message/message-content'
 import { MessageActions } from '@/features/ai-chat/components/message/message-actions'
 import { MessageEditor } from '@/features/ai-chat/components/message/message-editor'
+import { ApprovalPanel } from '@/features/ai-chat/components/approval/approval-panel'
+import { RunTimeline } from '@/features/ai-chat/components/run-timeline/run-timeline'
 
 type AiChatProps = {
   messages: ChatMessage[]
@@ -52,6 +63,20 @@ type AiChatProps = {
   onSaveEditAndSubmit?: (newContent: string) => void
   /** 平台 Agent run 阶段（INT-2457：准备 / 重连 / 取消在会话区顶部提示） */
   runPhase?: AgentRunPhase
+  /** 写操作审批卡（INT-2472）：本 run 的审批单 + 决策回调 */
+  approvals?: AgentApproval[]
+  approvalsLoading?: boolean
+  approvalsError?: string | null
+  /** 决策请求在途的审批单 id（按钮防重复） */
+  decidingApprovalIds?: string[]
+  onDecideApproval?: (
+    approvalId: string,
+    decision: AgentApprovalDecision
+  ) => Promise<string | null>
+  onRetryApprovals?: () => void
+  /** Run 时间线（事件流有序投影）与 run 快照（预算消耗） */
+  timeline?: AgentTimelineEntry[]
+  run?: AgentRun | null
   /** 全局 Agent 工作台浮窗紧凑形态（§3.1B：高度受限更紧凑间距） */
   compact?: boolean
 }
@@ -71,6 +96,14 @@ export function AiChat({
   onSaveEdit,
   onSaveEditAndSubmit,
   runPhase,
+  approvals = [],
+  approvalsLoading = false,
+  approvalsError = null,
+  decidingApprovalIds = [],
+  onDecideApproval,
+  onRetryApprovals,
+  timeline = [],
+  run = null,
   compact = false,
 }: AiChatProps) {
   const [editText, setEditText] = useState('')
@@ -173,7 +206,7 @@ export function AiChat({
     ]
   }
 
-  /** SSE 重连 / 取消 / 准备态提示（§12.2「SSE 重连不重复渲染」：只提示不改消息） */
+  /** SSE 重连 / 取消 / 准备 / 审批等待提示（§12.2：只提示不改消息） */
   const runPhaseHint =
     runPhase === AGENT_RUN_PHASE.RECONNECTING
       ? AGENT_RUN_PHASE_COPY.reconnecting
@@ -181,7 +214,9 @@ export function AiChat({
         ? AGENT_RUN_PHASE_COPY.cancelling
         : runPhase === AGENT_RUN_PHASE.PREPARING
           ? AGENT_RUN_PHASE_COPY.preparing
-          : null
+          : runPhase === AGENT_RUN_PHASE.WAITING_APPROVAL
+            ? AGENT_RUN_PHASE_COPY.waitingApproval
+            : null
 
   if (isLoadingMessages) {
     chatContent = [
@@ -216,6 +251,20 @@ export function AiChat({
             </div>
           )}
           {chatContent}
+          {/* 写操作审批卡（§12.2）：按步骤分组展示提案 / diff / 风险 / 过期；逐条决策 */}
+          {onDecideApproval && (
+            <ApprovalPanel
+              approvals={approvals}
+              decidingApprovalIds={decidingApprovalIds}
+              error={approvalsError}
+              loading={approvalsLoading}
+              onDecide={onDecideApproval}
+              onRetry={onRetryApprovals}
+              toolCallCount={countTimelineToolCalls(timeline)}
+            />
+          )}
+          {/* Run 时间线（§12.2）：事件 sequence 有序投影，默认折叠 */}
+          <RunTimeline entries={timeline} run={run} />
         </div>
       </ConversationContent>
       <ConversationScrollButton />

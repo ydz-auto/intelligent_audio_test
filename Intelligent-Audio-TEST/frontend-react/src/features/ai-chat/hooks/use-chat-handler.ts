@@ -353,6 +353,15 @@ export function useChatHandler({
     runPhase: isPlatformChannel ? agentRun.phase : AGENT_RUN_PHASE.IDLE,
     /** 当前平台 run（终态含 CANCELLED / FAILED）；供应商通道恒为 null */
     run: isPlatformChannel ? agentRun.run : null,
+    /** 审批卡数据与决策（INT-2472；仅平台通道有） */
+    approvals: isPlatformChannel ? agentRun.approvals : [],
+    approvalsLoading: isPlatformChannel && agentRun.approvalsLoading,
+    approvalsError: isPlatformChannel ? agentRun.approvalsError : null,
+    decidingApprovalIds: isPlatformChannel ? agentRun.decidingApprovalIds : [],
+    /** Run 时间线（INT-2472；事件流有序投影） */
+    timeline: isPlatformChannel ? agentRun.timeline : [],
+    decideApproval: agentRun.decideApproval,
+    refreshApprovals: agentRun.refreshApprovals,
     resetChat,
     // Demo 态对话由用户自配 LLM 供应商驱动（§3.11），无平台后端依赖
     pendingRequest: { config },
