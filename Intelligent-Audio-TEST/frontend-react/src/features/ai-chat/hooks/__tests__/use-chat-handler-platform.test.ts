@@ -11,8 +11,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
 import { MESSAGE_STATUS } from '@/features/ai-chat/constants'
 import { AGENT_ERROR_COPY, AGENT_RUN_STATUS } from '@/domain/models/agent'
-import { CHAT_CHANNEL } from '@/domain/models/aiChat'
-import { useAgentRunStore } from '@/application/agent/agent-run-store'
+import {
+  CHAT_CHANNEL,
+  type ChatMessage,
+  type LlmProvider,
+} from '@/domain/models/aiChat'
+import { AGENT_RUN_PHASE, useAgentRunStore } from '@/application/agent/agent-run-store'
 import { useAiChatSession } from '@/infrastructure/stores/aiChatSessionStore'
 import {
   cancelAgentRun,
@@ -44,6 +48,15 @@ const getSessionMock = vi.mocked(getAgentSession)
 const subscribeMock = vi.mocked(subscribeAgentRunEvents)
 
 let streamOptions: SubscribeAgentRunEventsOptions | null = null
+
+/** 供应商通道宿主（评估复核弹窗）用的替身供应商 */
+const REVIEW_PROVIDER: LlmProvider = {
+  id: 'p-review',
+  name: '复核供应商',
+  baseUrl: 'https://api.review.example/v1',
+  apiKey: 'sk-review',
+  models: ['review-model'],
+}
 
 /** 共享消息列表（平台通道由 agent-run-store 直接写入 store，不再经调用方 onMessageUpdate） */
 const messages = () => useAiChatSession.getState().messages
@@ -90,6 +103,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('useChatHandler 平台 Agent 通道', () => {
@@ -305,5 +319,69 @@ describe('useChatHandler 平台 Agent 通道', () => {
     })
     expect(pageHost.result.current.isGenerating).toBe(false)
     expect(floatingHost.result.current.isGenerating).toBe(false)
+  })
+
+  it('通道分流（INT-2507 返工）：平台 run 进行中时，供应商通道宿主（评估复核弹窗）不被禁用/取消', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ choices: [{ message: { content: '复核回复' } }] }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const platformHost = renderPlatformChat()
+    await act(async () => {
+      platformHost.result.current.sendChat('平台长任务')
+    })
+    expect(platformHost.result.current.isGenerating).toBe(true)
+
+    // 第三个宿主：评估复核弹窗（不传 channel → 供应商通道的有界会话）
+    const reviewMessages: { current: ChatMessage[] } = { current: [] }
+    const reviewHost = renderHook(() =>
+      useChatHandler({
+        config: { providerId: REVIEW_PROVIDER.id, modelId: 'review-model' },
+        provider: REVIEW_PROVIDER,
+        messages: [],
+        onMessageUpdate: (updater) => {
+          reviewMessages.current = updater(reviewMessages.current)
+        },
+      })
+    )
+
+    // 平台 run 不牵连复核弹窗：生成态 / 取消态 / 平台生命周期字段均为空
+    expect(reviewHost.result.current.isGenerating).toBe(false)
+    expect(reviewHost.result.current.isCancelling).toBe(false)
+    expect(reviewHost.result.current.runPhase).toBe(AGENT_RUN_PHASE.IDLE)
+    expect(reviewHost.result.current.run).toBeNull()
+
+    // 复核弹窗照常发起自己的供应商对话，不新建平台 run
+    await act(async () => {
+      reviewHost.result.current.sendChat('复核追问')
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(reviewMessages.current).toHaveLength(2)
+    expect(createRunMock).toHaveBeenCalledTimes(1)
+
+    // 弹窗点停止：只中断本地供应商生成，不向平台发取消
+    await act(async () => {
+      reviewHost.result.current.stopGeneration()
+    })
+    expect(cancelRunMock).not.toHaveBeenCalled()
+    expect(platformHost.result.current.isGenerating).toBe(true)
+
+    // 平台侧停止仍只取消平台 run，且复核宿主状态不受影响
+    cancelRunMock.mockResolvedValue({
+      id: 'r-1',
+      sessionId: 's-1',
+      status: AGENT_RUN_STATUS.CANCELLED,
+    })
+    await act(async () => {
+      platformHost.result.current.stopGeneration()
+    })
+    expect(cancelRunMock).toHaveBeenCalledTimes(1)
+    expect(cancelRunMock).toHaveBeenCalledWith('r-1')
+    expect(platformHost.result.current.isGenerating).toBe(false)
+    expect(reviewHost.result.current.isGenerating).toBe(false)
   })
 })

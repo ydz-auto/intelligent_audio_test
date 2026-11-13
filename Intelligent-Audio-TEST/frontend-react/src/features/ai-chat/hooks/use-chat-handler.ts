@@ -140,11 +140,17 @@ export function useChatHandler({
   /** 平台 Agent run（共享单一实例：两宿主读同一 phase / run / 取消闸） */
   const agentRun = useAgentRun()
   const platformActive = isAgentRunActive(agentRun.phase)
+  /**
+   * 通道分流（INT-2507 返工）：平台 run 是平台通道宿主的全局态，只作用于平台通道。
+   * 评估复核弹窗（application/ai-review/use-ai-review-session）不传 channel、走供应商
+   * 通道，是独立有界会话——平台 run 在跑时不得被它禁用输入区，更不得被它取消。
+   */
+  const isPlatformChannel = channelRef.current === CHAT_CHANNEL.PLATFORM
 
   const stopGeneration = useCallback(() => {
-    // 平台 run 在跑（或当前通道是平台）：取消只作用于共享 store 的当前 run；
-    // 两宿主同时点停止也只发一次取消请求（store 内取消闸）。
-    if (channelRef.current === CHAT_CHANNEL.PLATFORM || isAgentRunActive(agentRun.phase)) {
+    // 平台通道：取消只作用于共享 store 的当前 run；两宿主同时点停止也只发一次
+    // 取消请求（store 内取消闸）。供应商通道宿主绝不触碰全局平台 run。
+    if (channelRef.current === CHAT_CHANNEL.PLATFORM) {
       if (!isAgentRunActive(agentRun.phase)) return
       void agentRun.cancel().then((failure) => {
         if (failure) toast.error(failure)
@@ -181,10 +187,18 @@ export function useChatHandler({
 
   const sendChat = useCallback(
     (text: string, options?: SendChatOptions) => {
-      // 单 run 纪律（INT-2507）：平台 run 或供应商生成任一在办时不再起新的一轮
-      if (isAgentRunActive(agentRun.phase) || runRef.current !== null) return
+      const isPlatformChannel = channelRef.current === CHAT_CHANNEL.PLATFORM
+      // 单 run 纪律按通道分流（INT-2507）：平台通道由共享 run 闸拦截（两宿主同口径），
+      // 供应商通道由本地 runRef 拦截；两者互不牵连，复核弹窗可在平台 run 进行中照常发问。
+      if (
+        isPlatformChannel
+          ? isAgentRunActive(agentRun.phase)
+          : runRef.current !== null
+      ) {
+        return
+      }
 
-      if (channelRef.current === CHAT_CHANNEL.PLATFORM) {
+      if (isPlatformChannel) {
         // 平台通道：user 气泡 + assistant 占位与后续事件补丁都在共享 store 内完成，
         // 两个宿主看到同一份消息与同一个 run（不再各持一套补丁器）。
         void agentRun.send(text, {
@@ -321,20 +335,24 @@ export function useChatHandler({
     abortRef.current = null
     runRef.current = null
     setIsProviderGenerating(false)
-    agentRun.reset()
+    // 只有平台通道能复位共享平台会话；供应商通道宿主的清空不得动别的宿主的 run
+    if (channelRef.current === CHAT_CHANNEL.PLATFORM) {
+      agentRun.reset()
+    }
   }, [agentRun, cancelTimers])
 
   return {
     sendChat,
     stopGeneration,
-    /** 两通道统一口径：平台 run 在跑或供应商生成在跑都算生成中（两宿主同源） */
-    isGenerating: platformActive || isProviderGenerating,
-    /** 取消请求在途（输入区停止钮禁用，防重复） */
-    isCancelling: agentRun.phase === AGENT_RUN_PHASE.CANCELLING,
-    /** 平台通道生命周期（reconnecting 时页面显示重连提示） */
-    runPhase: agentRun.phase,
-    /** 当前 run（终态含 CANCELLED / FAILED） */
-    run: agentRun.run,
+    /** 生成态按通道分流（INT-2507）：平台宿主看共享 run，供应商宿主只看本地生成 */
+    isGenerating: (isPlatformChannel && platformActive) || isProviderGenerating,
+    /** 取消请求在途（仅平台通道；供应商通道的中断是本地同步的，无取消请求） */
+    isCancelling:
+      isPlatformChannel && agentRun.phase === AGENT_RUN_PHASE.CANCELLING,
+    /** 平台通道生命周期（reconnecting 时页面显示重连提示）；供应商通道无平台 run */
+    runPhase: isPlatformChannel ? agentRun.phase : AGENT_RUN_PHASE.IDLE,
+    /** 当前平台 run（终态含 CANCELLED / FAILED）；供应商通道恒为 null */
+    run: isPlatformChannel ? agentRun.run : null,
     resetChat,
     // Demo 态对话由用户自配 LLM 供应商驱动（§3.11），无平台后端依赖
     pendingRequest: { config },
