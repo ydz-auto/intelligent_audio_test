@@ -11,6 +11,7 @@
 """
 import json
 import os
+import re
 import uuid
 
 os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
@@ -615,3 +616,40 @@ def _call(tool):
     from agent_service.domain.model.entities import ToolCallRequest
     return ToolCallRequest(tool_call_id=f'call-{uuid.uuid4().hex[:8]}',
                            name=tool, arguments={'action': 'detail'})
+
+
+# ---------------------------------------------------------------- 主键口径
+
+def test_artifact_and_snapshot_ids_fit_pk_width():
+    """P0（INT-2537）：主键生成不得超出库表 VARCHAR(36)。
+
+    生产 PG 对超长主键抛 ``value too long for type character varying(36)``，
+    而两个落库点都按「不阻塞本轮」降级 —— SQLite 不校验 VARCHAR 长度，只有
+    对生成函数本身断言才能拦住这类回归。
+    """
+    from agent_service.application.context_assembler import (
+        _artifact_id, _snapshot_id,
+    )
+    from agent_service.infrastructure.persistence.models.agent_models import (
+        AgentArtifact as AgentArtifactModel,
+        AgentContextSnapshot as AgentContextSnapshotModel,
+    )
+
+    width = AgentArtifactModel.__table__.c.id.type.length
+    assert width == AgentContextSnapshotModel.__table__.c.id.type.length == 36
+
+    run_id = uuid.uuid4().hex
+    message_id = str(uuid.uuid4())
+    artifact_id = _artifact_id(run_id, message_id)
+    snapshot_id = _snapshot_id(run_id, 1)
+
+    assert len(artifact_id) <= width, artifact_id
+    assert len(snapshot_id) <= width, snapshot_id
+    # 字符集：前缀 + 十六进制摘要，不含空白 / 长度溢出
+    assert re.fullmatch(r'art-[0-9a-f]+', artifact_id), artifact_id
+    assert re.fullmatch(r'snap-[0-9a-f]+', snapshot_id), snapshot_id
+    # 确定性：同一 (run, message) / (run, version) 恒等，重启后才不重复上传 / 记账
+    assert artifact_id == _artifact_id(run_id, message_id)
+    assert snapshot_id == _snapshot_id(run_id, 1)
+    assert artifact_id != _artifact_id(run_id, str(uuid.uuid4()))
+    assert snapshot_id != _snapshot_id(run_id, 2)

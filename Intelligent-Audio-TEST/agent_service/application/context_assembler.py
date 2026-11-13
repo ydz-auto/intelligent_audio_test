@@ -746,8 +746,11 @@ class ContextAssembler:
                         'message_id': message.message_id,
                     },
                     created_at=utcnow()))
-            except Exception:  # noqa: BLE001 - 索引失败不丢内容
-                logger.warning('artifact 索引落库失败 run=%s', run_id,
+            except Exception as exc:  # noqa: BLE001 - 索引失败不丢内容
+                # 保留静默降级（产物内容已在对象存储，索引缺一行不影响本轮）；
+                # 但必须带 id 与异常类型可观测，避免落库系统性失败时完全无声。
+                logger.warning('artifact 索引落库失败 run=%s id=%s error=%s: %s',
+                               run_id, artifact_id, type(exc).__name__, exc,
                                exc_info=True)
         known[artifact_id] = uri
         return uri
@@ -773,17 +776,21 @@ class ContextAssembler:
                            outcome: CompactionOutcome) -> None:
         version = self._next_snapshot_version(run.id)
         outcome.version = version
+        snapshot_id = _snapshot_id(run.id, version)
         if self._snapshots is not None:
             try:
                 self._snapshots.add(AgentContextSnapshot(
-                    id=_snapshot_id(run.id, version), run_id=run.id,
+                    id=snapshot_id, run_id=run.id,
                     version=version, token_count=outcome.tokens_after,
                     level=outcome.level,
                     dropped_ids=list(outcome.dropped_ids),
                     memo=dict(outcome.memo), created_at=utcnow()))
-            except Exception:  # noqa: BLE001 - 快照失败不阻断本轮模型调用
-                logger.warning('上下文快照落库失败 run=%s', run.id,
-                               exc_info=True)
+            except Exception as exc:  # noqa: BLE001 - 快照失败不阻断本轮模型调用
+                # 同上：降级保留，但带 id / 层级 / 异常类型可观测。
+                logger.warning(
+                    '上下文快照落库失败 run=%s id=%s level=%s error=%s: %s',
+                    run.id, snapshot_id, outcome.level.value,
+                    type(exc).__name__, exc, exc_info=True)
         payload: Dict[str, Any] = {
             'level': outcome.level.value,
             'snapshot_version': version,
@@ -951,16 +958,26 @@ def _safe_name(value: str) -> str:
                    for ch in (value or 'artifact'))[:120]
 
 
+# 主键列全仓统一口径（agent_models._PK = String(36)）。生产 PG 上超长 insert 抛
+# 「value too long for type character varying(36)」，而两个落库点都按「索引 / 快照
+# 失败不阻塞本轮」降级 —— 超长会让两张表一条都写不进去（INT-2537）。
+_PK_MAX_LEN = 36
+_ARTIFACT_ID_PREFIX = 'art-'
+_SNAPSHOT_ID_PREFIX = 'snap-'
+
+
 def _artifact_id(run_id: str, message_id: str) -> str:
+    """产物主键：同一 (run, message) 恒等（重启后据此去重），总长 ≤36。"""
     digest = hashlib.sha1(f'{run_id}:{message_id}'.encode('utf-8')).hexdigest()
-    return (f'art-{digest[:8]}-{digest[8:12]}-{digest[12:16]}-'
-            f'{digest[16:20]}-{digest[20:32]}')
+    keep = _PK_MAX_LEN - len(_ARTIFACT_ID_PREFIX)
+    return _ARTIFACT_ID_PREFIX + digest[:keep]
 
 
 def _snapshot_id(run_id: str, version: int) -> str:
+    """快照主键：同一 (run, version) 恒等，总长 ≤36。"""
     digest = hashlib.sha1(f'{run_id}:{version}'.encode('utf-8')).hexdigest()
-    return (f'snap-{digest[:8]}-{digest[8:12]}-{digest[12:16]}-'
-            f'{digest[16:20]}-{digest[20:32]}')
+    keep = _PK_MAX_LEN - len(_SNAPSHOT_ID_PREFIX)
+    return _SNAPSHOT_ID_PREFIX + digest[:keep]
 
 
 __all__ = [
