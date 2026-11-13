@@ -10,18 +10,20 @@ agent_service。权限码 ``agent:provider:manage``（AUTH_MODE=off 时 admin �
 import json
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
 
 from api_gateway.application.services.agent.agent_provider_audit import (
     write_agent_provider_audit,
 )
 from api_gateway.application.services.auth.dependencies import require_permission
+from api_gateway.routes.agent_guard import require_agent_enabled
 from api_gateway.routes.agent_runtime_bp import _forward
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+# INT-2456：provider 管理同属 Agent 功能面，总开关关闭时一并 503。
+router = APIRouter(dependencies=[Depends(require_agent_enabled)])
 
 MANAGE_PERMISSION = 'agent:provider:manage'
 

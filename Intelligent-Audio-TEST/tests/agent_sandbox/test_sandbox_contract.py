@@ -214,9 +214,34 @@ def test_missing_script_is_failed_not_silent(skill_root: Path) -> None:
     assert result.reason is SandboxFailureReason.SCRIPT_NOT_FOUND
 
 
-def test_non_t1_tier_rejected(skill_root: Path) -> None:
+def test_t2_without_runtime_probe_reports_unavailable(skill_root: Path) -> None:
+    """INT-2456 拍板#2：证明不了 T2 运行时可用就报 T2_RUNTIME_UNAVAILABLE，
+    不得静默降级 T1（也不得误报成通用 UNSUPPORTED_TIER）。"""
     executor = FakeExecutor()
     result = _run(skill_root, executor, tier='T2_UNTRUSTED_CODE')
+    assert result.outcome is SandboxOutcome.FAILED
+    assert result.reason is SandboxFailureReason.T2_RUNTIME_UNAVAILABLE
+    assert not executor.invocations
+
+
+def test_t2_with_available_runtime_is_still_unsupported(skill_root: Path) -> None:
+    """运行时在位也不冒充执行：T2 执行器未纳入 M0，仍拒绝且不调容器。"""
+    executor = FakeExecutor()
+    runner = SandboxRunner(
+        executor, artifact_policy=None,
+        t2_runtime_probe=lambda: (True, 'runsc version 20260101'),
+    )
+    result = runner.run_trusted_script(SandboxRequest(
+        skill_name='demo', skill_root=skill_root, script='scripts/main.py',
+        tier='T2_UNTRUSTED_CODE'))
+    assert result.outcome is SandboxOutcome.FAILED
+    assert result.reason is SandboxFailureReason.UNSUPPORTED_TIER
+    assert not executor.invocations
+
+
+def test_non_t2_non_t1_tier_rejected(skill_root: Path) -> None:
+    executor = FakeExecutor()
+    result = _run(skill_root, executor, tier='T0_NONE')
     assert result.outcome is SandboxOutcome.FAILED
     assert result.reason is SandboxFailureReason.UNSUPPORTED_TIER
     assert not executor.invocations
