@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """OpenAI 兼容 LLM 流式适配器（§12.1）。
 
-约束（卡面）：base_url / api_key / model / timeout 全部来自配置
-（env``LLM_*`` + config/agent_defaults.json），不硬编码；默认模型待负责人
-拍板，未配置时抛 LlmConfigurationError（服务本身仍可启动）。
+约束（卡面）：base_url / api_key / model 来自用户默认供应商（INT-2488，
+§6.4），timeout / temperature / include_usage 来自 config；不读服务端统一
+LLM Key。未配置时抛 LlmConfigurationError（服务本身仍可启动）。
 
 流式解析口径（OpenAI ``/chat/completions`` SSE）：
 - ``choices[0].delta.content`` → LlmTextDelta
@@ -27,6 +27,7 @@ from agent_service.domain.ports.llm import (
     CancelCheck, LlmClient, LlmFinished, LlmRequest, LlmTextDelta,
     LlmToolCalls, LlmUsage,
 )
+from agent_service.infrastructure.llm.sanitize import sanitize_upstream_body
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +57,9 @@ class OpenAICompatibleLlmClient(LlmClient):
 
     def _validate(self) -> None:
         if not self._base_url:
-            raise LlmConfigurationError('LLM_BASE_URL 未配置')
+            raise LlmConfigurationError('供应商 base_url 未配置')
         if not self._model:
-            raise LlmConfigurationError('LLM_MODEL 未配置')
+            raise LlmConfigurationError('供应商 model 未配置')
 
     def _endpoint(self) -> str:
         if self._base_url.rstrip('/').endswith('/chat/completions'):
@@ -116,7 +117,8 @@ class OpenAICompatibleLlmClient(LlmClient):
                 with client.stream('POST', self._endpoint(),
                                    json=self._payload(request)) as response:
                     if response.status_code >= 400:
-                        body = response.read().decode('utf-8', errors='replace')[:500]
+                        body = sanitize_upstream_body(
+                            response.read().decode('utf-8', errors='replace'))
                         raise LlmInvocationError(
                             f'模型上游返回 {response.status_code}: {body}',
                             code=f'LLM_HTTP_{response.status_code}',

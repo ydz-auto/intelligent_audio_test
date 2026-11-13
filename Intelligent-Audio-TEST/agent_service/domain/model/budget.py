@@ -43,6 +43,16 @@ class RunBudget:
             BUDGET_OUTPUT_BYTES: self.max_output_bytes,
         }
 
+    def with_max_tokens(self, max_tokens: int) -> 'RunBudget':
+        """按有效上下文窗口重算总 token 上限（§8.3：默认 2×W / Auto 4×W）。"""
+        return RunBudget(
+            max_rounds=self.max_rounds,
+            max_tool_calls=self.max_tool_calls,
+            max_tokens=int(max_tokens),
+            max_duration_seconds=self.max_duration_seconds,
+            max_output_bytes=self.max_output_bytes,
+        )
+
     @staticmethod
     def _exceeded(value: int, limit: int) -> bool:
         # limit <= 0 表示该维度不启用（配置可关闭单个预算）

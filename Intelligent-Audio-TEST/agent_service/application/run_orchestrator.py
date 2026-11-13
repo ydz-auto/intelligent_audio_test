@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """唯一 Agent Loop（落地方案 §5 / §9）。
 
-    组装上下文 → 调模型（流式）→ 工具调用批次并行 → 按 tool_call_id 回灌
-    → 直到正常答复 / 取消 / 预算 / 连续失败。
+    解析供应商 → 组装上下文 → 调模型（流式）→ 工具调用批次并行
+    → 按 tool_call_id 回灌 → 直到正常答复 / 取消 / 预算 / 连续失败。
 
 硬规则：
 - 一个模型、一个上下文窗口，不做 handoff；
+- base_url / model / protocol / api_key 全部来自用户默认供应商（§6.4），
+  无可用 Key 时 run 以 LLM_PROVIDER_NOT_CONFIGURED 失败且不发起模型请求；
+- 预算与压缩阈值按有效窗口 W 计算（默认 2×W；单轮输出 ≤ min(8k, 10%×W)），
+  不写死 128k；
 - 工具调用并行执行，结果按 tool_call_id 回灌；
 - 每个 step / tool call / event 都持久化，事件 sequence 严格递增；
 - 只读工具自动执行；写操作在 M2 走审批，M0 一律拒绝；
@@ -17,7 +21,7 @@ import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from agent_service.application.cancel_registry import CancelRegistry
 from agent_service.application.context_assembler import ContextAssembler
@@ -25,14 +29,18 @@ from agent_service.domain.enums import (
     EventType, RunStatus, StepStatus, ToolCallStatus, ToolRisk,
 )
 from agent_service.domain.exceptions import (
-    InvalidRunTransition, LlmConfigurationError, LlmInvocationError, RunCancelled,
+    InvalidRunTransition, LlmConfigurationError, LlmInvocationError,
+    LlmProviderNotConfigured, RunCancelled,
 )
 from agent_service.domain.model.budget import RunBudget
 from agent_service.domain.model.entities import (
     AgentRun, AgentToolCall, ToolCallRequest, ToolResult,
 )
 from agent_service.domain.ports.llm import (
-    LlmClient, LlmFinished, LlmRequest, LlmTextDelta, LlmToolCalls, LlmUsage,
+    LlmFinished, LlmRequest, LlmTextDelta, LlmToolCalls, LlmUsage,
+)
+from agent_service.domain.ports.llm_provider import (
+    LlmProviderResolver, ResolvedProvider,
 )
 from agent_service.domain.ports.run_wakeup import RunWakeup
 from agent_service.domain.ports.side_effects import SideEffectChecker
@@ -42,6 +50,9 @@ from agent_service.domain.ports.tool_gateway import (
 from agent_service.domain.repositories import (
     ArtifactRepository, EventRepository, RunRepository, SessionRepository,
     StepRepository, ToolCallRepository,
+)
+from agent_service.domain.services.context_window_resolver import (
+    ContextWindowResolver,
 )
 from agent_service.domain.services.state_machine import RunStateMachine
 from shared.utils.time_utils import utcnow
@@ -61,13 +72,19 @@ class OrchestratorSettings:
     max_output_tokens: int = 0
     cancel_db_check_every: int = 16
     event_scan_limit: int = 10000
+    # 有效窗口 → 预算 / 压缩阈值（§8.3）
+    token_budget_multiplier: int = 2
+    auto_token_budget_multiplier: int = 4
+    compaction_soft_ratio: float = 0.60
+    compaction_hard_ratio: float = 0.80
 
 
 class RunOrchestrator:
     def __init__(self, *, sessions: SessionRepository, runs: RunRepository,
                  events: EventRepository, steps: StepRepository,
                  tool_calls: ToolCallRepository, artifacts: ArtifactRepository,
-                 assembler: ContextAssembler, llm_factory: Callable[[], LlmClient],
+                 assembler: ContextAssembler,
+                 provider_resolver: LlmProviderResolver,
                  tool_gateway: ToolGateway, side_effects: SideEffectChecker,
                  wakeup: RunWakeup, cancel_registry: CancelRegistry,
                  settings: OrchestratorSettings):
@@ -78,7 +95,7 @@ class RunOrchestrator:
         self._tool_calls = tool_calls
         self._artifacts = artifacts
         self._assembler = assembler
-        self._llm_factory = llm_factory
+        self._provider_resolver = provider_resolver
         self._tool_gateway = tool_gateway
         self._side_effects = side_effects
         self._wakeup = wakeup
@@ -125,7 +142,21 @@ class RunOrchestrator:
 
     def _loop(self, run_id: str) -> None:
         run = self._runs.get(run_id)
-        budget = RunBudget.from_dict(run.budget or self._settings.budget_defaults)
+        try:
+            provider = self._provider_resolver.resolve_for_run(run)
+        except LlmProviderNotConfigured as exc:
+            # §6.4-4：无可用 Key 不发起任何模型请求，也不回退平台 Key
+            self._append_error(run_id, LlmProviderNotConfigured.code, str(exc))
+            self._finish(run_id, RunStatus.FAILED,
+                         error=f'{LlmProviderNotConfigured.code}: {exc}')
+            return
+        window = provider.effective_context_window
+        output_limit = provider.max_output_tokens or self._settings.max_output_tokens
+        budget = self._effective_budget(run, window)
+        soft_limit, hard_limit = ContextWindowResolver.compaction_thresholds(
+            window, output_limit,
+            soft_ratio=self._settings.compaction_soft_ratio,
+            hard_ratio=self._settings.compaction_hard_ratio)
         started_at = run.started_at or utcnow()
         rounds = self._steps.next_index(run_id)
         output_bytes = 0
@@ -170,17 +201,27 @@ class RunOrchestrator:
 
             step = self._steps.create(
                 run_id, self._steps.next_index(run_id),
-                plan_snapshot={'turn': turn})
+                plan_snapshot={
+                    'turn': turn,
+                    'provider_id': provider.provider_id,
+                    'model': provider.model,
+                    'context_window': window,
+                    'context_window_source': provider.context_window_source.value,
+                    'output_token_limit': output_limit,
+                    'token_budget': budget.max_tokens,
+                    'compaction_soft_tokens': soft_limit,
+                    'compaction_hard_tokens': hard_limit,
+                })
             text_parts: List[str] = []
             calls: Sequence[ToolCallRequest] = ()
             message_id = str(uuid.uuid4())
             budget_reason: Optional[str] = None
 
             try:
-                llm = self._llm_factory()
+                llm = self._provider_resolver.build_client(provider)
                 request = self._build_request(
-                    run, turn, permissions=permissions,
-                    active_skill=active_skill)
+                    run, turn, provider, output_limit,
+                    permissions=permissions, active_skill=active_skill)
                 stream = llm.stream(request, cancel_check=cancel_check)
                 try:
                     for chunk in stream:
@@ -218,6 +259,13 @@ class RunOrchestrator:
             except RunCancelled:
                 self._steps.finish(step.id, StepStatus.FAILED, 'cancelled')
                 self._finish(run_id, RunStatus.CANCELLED, reason='user_cancelled')
+                return
+            except LlmProviderNotConfigured as exc:
+                self._steps.finish(step.id, StepStatus.FAILED, str(exc))
+                self._append_error(run_id, LlmProviderNotConfigured.code,
+                                   str(exc))
+                self._finish(run_id, RunStatus.FAILED,
+                             error=f'{LlmProviderNotConfigured.code}: {exc}')
                 return
             except LlmConfigurationError as exc:
                 self._steps.finish(step.id, StepStatus.FAILED, str(exc))
@@ -282,7 +330,8 @@ class RunOrchestrator:
 
     # ------------------------------------------------------------ helpers
 
-    def _build_request(self, run: AgentRun, turn: int, *,
+    def _build_request(self, run: AgentRun, turn: int,
+                       provider: ResolvedProvider, output_limit: int, *,
                        permissions: Sequence[str] = (),
                        active_skill: Optional[str] = None) -> LlmRequest:
         messages = self._assembler.assemble(
@@ -291,9 +340,11 @@ class RunOrchestrator:
         tools = tuple(self._tool_specs())
         return LlmRequest(
             messages=tuple(messages), tools=tools,
-            model=run.model, temperature=self._settings.temperature,
-            max_output_tokens=self._settings.max_output_tokens,
-            metadata={'run_id': run.id, 'turn': turn},
+            model=provider.model or run.model,
+            temperature=self._settings.temperature,
+            max_output_tokens=output_limit,
+            metadata={'run_id': run.id, 'turn': turn,
+                      'provider_id': provider.provider_id},
         )
 
     def _run_scope(self, run_id: str) -> tuple:
@@ -309,6 +360,23 @@ class RunOrchestrator:
         payload = events[0].payload or {}
         return (tuple(payload.get('permissions') or ()),
                 payload.get('active_skill') or None)
+
+    def _effective_budget(self, run: AgentRun, window: int) -> RunBudget:
+        """总 token 上限按有效窗口重算（默认 2×W）。
+
+        - ``max_tokens`` 配置为 0（默认）= 完全按 W 派生；
+        - 显式正数 = 运营方硬上限，取 ``min(硬上限, 2×W)``；
+        - Auto 4×W 的乘数已由配置给出（``auto_token_budget_multiplier``），
+          但 run 的 Auto 模式属 M1（INT-2477），M0 没有该字段，先按默认乘数。
+        换供应商后同会话下一次 run 会重新解析 W 并重算，不沿用旧阈值。
+        """
+        base = RunBudget.from_dict(
+            run.budget or self._settings.budget_defaults)
+        derived = ContextWindowResolver.token_budget(
+            window, self._settings.token_budget_multiplier)
+        if base.max_tokens > 0:
+            derived = min(derived, base.max_tokens)
+        return base.with_max_tokens(derived)
 
     def _tool_specs(self) -> List[Dict]:
         specs: List[Dict] = []

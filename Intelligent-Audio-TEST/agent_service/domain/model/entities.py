@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""运行底座实体（对应落地方案 §10 前七张表）。
+"""运行底座与模型供应商实体（对应落地方案 §10 前七张表 + agent_llm_provider）。
 
 字段口径与 infrastructure/persistence/models/agent_models.py 的 PO 一一对应；
 时间统一 UTC naive（与 shared.utils.time_utils.utcnow 写库口径一致）。
@@ -9,7 +9,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from agent_service.domain.enums import (
-    CompactionLevel, EventType, RunStatus, StepStatus, ToolCallStatus, ToolRisk,
+    CompactionLevel, ContextWindowSource, EventType, LlmProtocol, ProviderStatus,
+    RunStatus, StepStatus, ToolCallStatus, ToolRisk,
 )
 
 
@@ -109,6 +110,34 @@ class AgentContextSnapshot:
     dropped_ids: List[str] = field(default_factory=list)
     memo: Dict[str, Any] = field(default_factory=dict)
     created_at: Optional[datetime] = None
+
+
+@dataclass
+class AgentLlmProvider:
+    """用户模型供应商（§10 agent_llm_provider）。
+
+    ``api_key_ciphertext`` 只存 AES-256-GCM 密文；``api_key_mask`` 是为响应
+    回显准备的脱敏串（``sk-****abcd``），读取列表时不需要解密。两者都
+    不得进入事件、日志、审计与沙箱。
+    """
+
+    id: str
+    owner_id: int
+    tenant_id: str
+    name: str
+    protocol: LlmProtocol
+    base_url: str
+    model: str
+    api_key_ciphertext: str
+    api_key_mask: str
+    key_version: int
+    context_window: Optional[int] = None
+    context_window_source: ContextWindowSource = ContextWindowSource.MODEL_DEFAULT
+    is_default: bool = False
+    status: ProviderStatus = ProviderStatus.ACTIVE
+    last_verified_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)

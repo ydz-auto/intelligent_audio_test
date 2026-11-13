@@ -3,6 +3,7 @@
 
 表：agent_session / agent_run / agent_run_event / agent_step /
     agent_tool_call / agent_artifact / agent_context_snapshot
+    + agent_llm_provider（INT-2488 用户自带供应商密钥库）
 （agent_approval 属 M2，本卡不建。）
 
 口径：
@@ -174,3 +175,49 @@ class AgentContextSnapshot(Base):
     memo = Column(JSON, nullable=True)
     level = Column(String(20), nullable=False, comment='CompactionLevel')
     created_at = Column(DateTime, nullable=False, default=utcnow, server_default=func.now())
+
+
+class AgentLlmProvider(Base):
+    """用户模型供应商（§6.4 / §10 agent_llm_provider）。
+
+    - ``api_key_ciphertext`` 只存 AES-256-GCM 密文（base64(nonce + blob)）；
+    - ``api_key_mask`` 是脱敏回显串（``sk-****abcd``），列表读取不解密；
+    - ``(owner_id, tenant_id)`` 维度下 is_default 唯一（部分唯一索引，已删除行不占位）；
+    - 删除为逻辑删除：``status=DELETED`` 且密文 / 掩码清空。
+    """
+
+    __tablename__ = 'agent_llm_provider'
+    __table_args__ = (
+        Index('ix_agent_llm_provider_owner_default',
+              'owner_id', 'tenant_id', 'is_default'),
+        Index('ix_agent_llm_provider_owner_status', 'owner_id', 'status'),
+        Index('uq_agent_llm_provider_default', 'owner_id', 'tenant_id',
+              unique=True,
+              postgresql_where=text("is_default AND status <> 'DELETED'"),
+              sqlite_where=text("is_default = 1 AND status != 'DELETED'")),
+    )
+
+    id = Column(_PK, primary_key=True)
+    owner_id = Column(BigInteger, nullable=False)
+    tenant_id = Column(String(64), nullable=False)
+    name = Column(String(100), nullable=False, default='')
+    protocol = Column(String(32), nullable=False, comment='LlmProtocol')
+    base_url = Column(String(500), nullable=False)
+    model = Column(String(100), nullable=False)
+    api_key_ciphertext = Column(Text, nullable=False, default='',
+                                comment='AES-256-GCM 密文，禁止明文')
+    api_key_mask = Column(String(32), nullable=False, default='',
+                          server_default='', comment='脱敏回显串')
+    key_version = Column(Integer, nullable=False, default=1,
+                         server_default='1', comment='主密钥版本')
+    context_window = Column(Integer, nullable=True, comment='用户覆盖值')
+    context_window_source = Column(String(20), nullable=False,
+                                   comment='ContextWindowSource')
+    is_default = Column(Boolean, nullable=False, default=False,
+                        server_default=text('false'))
+    status = Column(String(20), nullable=False, comment='ProviderStatus')
+    last_verified_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow,
+                        server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=utcnow,
+                        server_default=func.now(), onupdate=utcnow)

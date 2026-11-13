@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-"""INT-2451 测试替身与装配辅助（非测试文件，pytest 不收集）。"""
+"""INT-2451 测试替身与装配辅助（非测试文件，pytest 不收集）。
+
+INT-2488 起 run 的模型参数来自用户默认供应商：``build_stack`` 默认注入
+``FakeProviderResolver``（固定窗口 128k），需要验证「无可用 Key」或窗口
+差异的用例显式传 ``provider_resolver``。
+"""
+import base64
 import os
 import threading
 import time
@@ -8,15 +14,21 @@ from typing import List, Optional
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from agent_service.domain.enums import SandboxTier, ToolRisk
+from agent_service.domain.enums import (
+    ContextWindowSource, LlmProtocol, SandboxTier, ToolRisk,
+)
 from agent_service.domain.exceptions import RunCancelled
 from agent_service.domain.model.entities import ToolCallRequest, ToolResult
 from agent_service.domain.ports.llm import (
     LlmClient, LlmFinished, LlmTextDelta, LlmToolCalls, LlmUsage,
 )
+from agent_service.domain.ports.llm_provider import (
+    LlmProviderResolver, ResolvedProvider,
+)
 from agent_service.domain.ports.tool_gateway import (
     ToolDescriptor, ToolGateway,
 )
+from agent_service.infrastructure.llm.credential_store import CredentialStore
 from agent_service.infrastructure.persistence.models import agent_models  # noqa: F401
 from agent_service.infrastructure.wakeup import LocalRunWakeup
 from agent_service.wiring import build_container
@@ -26,7 +38,10 @@ from shared.utils.time_utils import utcnow
 _AGENT_TABLES = [
     'agent_session', 'agent_run', 'agent_run_event', 'agent_step',
     'agent_tool_call', 'agent_artifact', 'agent_context_snapshot',
+    'agent_llm_provider',
 ]
+
+TEST_MASTER_KEY = base64.b64encode(b'int2451-test-master-key-32byte!!').decode()
 
 
 def make_engine(db_path: str):
@@ -127,18 +142,63 @@ def write_tool(name='task_run'):
                           risk=ToolRisk.WRITE, sandbox_tier=SandboxTier.T0_NONE)
 
 
+def default_provider(**overrides) -> ResolvedProvider:
+    values = dict(
+        provider_id='provider-fake', owner_id=7, tenant_id='t1',
+        protocol=LlmProtocol.OPENAI_COMPATIBLE, base_url='http://fake-llm',
+        model='fake-model', key_version=1,
+        effective_context_window=131072,
+        context_window_source=ContextWindowSource.MODEL_DEFAULT,
+        catalog_context_window=131072, max_output_tokens=8192,
+    )
+    values.update(overrides)
+    return ResolvedProvider(**values)
+
+
+class FakeProviderResolver(LlmProviderResolver):
+    """固定返回一个供应商；``error`` 非空时模拟「无可用 Key」。"""
+
+    def __init__(self, llm, provider: Optional[ResolvedProvider] = None,
+                 error: Optional[Exception] = None):
+        self._llm = llm
+        self._provider = provider or default_provider()
+        self._error = error
+        self.resolve_calls = 0
+        self.build_calls = 0
+        self.used_provider_ids: List[str] = []
+
+    @property
+    def provider(self) -> ResolvedProvider:
+        return self._provider
+
+    def resolve_for_run(self, run):
+        self.resolve_calls += 1
+        if self._error is not None:
+            raise self._error
+        return self._provider
+
+    def build_client(self, provider):
+        self.build_calls += 1
+        self.used_provider_ids.append(provider.provider_id)
+        return self._llm
+
+
 def build_stack(db_path, llm, gateway=None, executor_factory=None,
                 wakeup=None, budget_defaults=None,
-                terminal_grace_seconds=None):
+                terminal_grace_seconds=None, provider_resolver=None,
+                provider=None):
     engine, session_factory = make_engine(db_path)
+    resolver = provider_resolver or FakeProviderResolver(
+        llm, provider=provider)
     container = build_container(
         session_factory,
-        llm_factory=lambda: llm,
+        provider_resolver=resolver,
         tool_gateway=gateway,
         wakeup=wakeup or LocalRunWakeup(),
         executor_factory=executor_factory,
         budget_defaults=budget_defaults,
         terminal_grace_seconds=terminal_grace_seconds,
+        credential_store=CredentialStore.from_secret(TEST_MASTER_KEY),
     )
     return container, engine, session_factory
 

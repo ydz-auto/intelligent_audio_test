@@ -221,6 +221,12 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(agent_runtime_router, prefix='/api/v1/agent',
                        tags=['agent-runtime'])
 
+    # INT-2488：用户模型供应商（provider 管理 / 验证 / 模型目录），
+    # 权限码 agent:provider:manage；审计只记 provider_id 与操作类型
+    from api_gateway.routes.agent_provider_bp import router as agent_provider_router
+    app.include_router(agent_provider_router, prefix='/api/v1/agent',
+                       tags=['agent-providers'])
+
     # INT-766/INT-787：系统健康汇总（网关 + 认证服务），供「关于」页版本与服务状态卡真实接线
     from api_gateway.routes.system_bp import router as system_router
     app.include_router(system_router, prefix='/api/v1/system', tags=['system'])

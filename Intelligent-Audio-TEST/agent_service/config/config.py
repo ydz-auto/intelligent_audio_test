@@ -3,9 +3,9 @@
 
 所有预算、阈值、超时、并发数与模型参数一律配置化（env + 本目录
 ``agent_defaults.json``），代码中不硬编码。环境变量前缀 ``AGENT_``；
-LLM 四项（base_url / api_key / model / timeout）按卡面口径用 ``LLM_*``，
-默认模型待负责人拍板，未配置时服务照常启动，只在该 run 执行时以
-``LLM_NOT_CONFIGURED`` 失败。
+模型调用不再读服务端统一 LLM Key / model（§6.4）：base_url / model /
+protocol / api_key 全部来自用户自己的 ``agent_llm_provider``，本文件只保留
+运行时超时 / 温度 / 流式选项与「有效窗口 → 预算」的派生系数。
 """
 import json
 import os
@@ -42,14 +42,32 @@ class Config(BaseConfig):
     SERVICE_NAME = 'agent_service'
     DB_POOL_SIZE = _get_int('AGENT_DB_POOL_SIZE', 5)
 
-    # ===== LLM（OpenAI 兼容，§12.1）=====
-    LLM_BASE_URL = os.environ.get('LLM_BASE_URL', '')
-    LLM_API_KEY = os.environ.get('LLM_API_KEY') or os.environ.get('OPENAI_API_KEY', '')
-    LLM_MODEL = os.environ.get('LLM_MODEL', '')
+    # ===== LLM 运行时参数（供应商由用户自带，见下）=====
     LLM_TIMEOUT_SECONDS = _get_float('LLM_TIMEOUT_SECONDS', 60.0)
     LLM_TEMPERATURE = _get_float('LLM_TEMPERATURE', 0.2)
-    LLM_MAX_OUTPUT_TOKENS = _get_int('LLM_MAX_OUTPUT_TOKENS', 0)
     LLM_STREAM_INCLUDE_USAGE = _get_bool('LLM_STREAM_INCLUDE_USAGE', True)
+    ANTHROPIC_VERSION = os.environ.get('ANTHROPIC_VERSION', '2023-06-01')
+
+    # ===== 用户模型供应商 / 加密密钥库（§6.4）=====
+    # 平台 Key 分支不实现：开关只保留 false 位，置 true 即拒绝启动。
+    AGENT_ALLOW_PLATFORM_KEY = _get_bool('AGENT_ALLOW_PLATFORM_KEY', False)
+    # 主密钥：单个 base64 32 字节值，或 JSON 对象 {"版本": "密钥"} 支持轮换
+    CREDENTIAL_MASTER_KEY = os.environ.get('AGENT_CREDENTIAL_MASTER_KEY', '')
+    CREDENTIAL_KEY_VERSION = _get_int('AGENT_CREDENTIAL_KEY_VERSION', 1)
+    # 模型目录；空 = 用 agent_service/config/model_catalog.json
+    MODEL_CATALOG_PATH = os.environ.get('AGENT_MODEL_CATALOG_PATH', '').strip()
+    PROVIDER_VERIFY_TIMEOUT_SECONDS = _get_float(
+        'AGENT_PROVIDER_VERIFY_TIMEOUT_SECONDS', 10.0)
+    # 预算与压缩阈值按有效窗口 W 派生（§8.3），不写死 128k。
+    # AUTO 乘数只保留配置位：run 的 Auto 模式属 M1（INT-2477），M0 尚未接线。
+    TOKEN_BUDGET_MULTIPLIER_DEFAULT = _get_int(
+        'AGENT_TOKEN_BUDGET_MULTIPLIER_DEFAULT', 2)
+    TOKEN_BUDGET_MULTIPLIER_AUTO = _get_int(
+        'AGENT_TOKEN_BUDGET_MULTIPLIER_AUTO', 4)
+    OUTPUT_TOKEN_RATIO = _get_float('AGENT_OUTPUT_TOKEN_RATIO', 0.10)
+    OUTPUT_TOKEN_CAP = _get_int('AGENT_OUTPUT_TOKEN_CAP', 8192)
+    COMPACTION_SOFT_RATIO = _get_float('AGENT_COMPACTION_SOFT_RATIO', 0.60)
+    COMPACTION_HARD_RATIO = _get_float('AGENT_COMPACTION_HARD_RATIO', 0.80)
 
     # ===== 能否直连（网关转发时必带 X-User-Id）=====
     AUTH_REQUIRED = _get_bool('AGENT_AUTH_REQUIRED', True)
@@ -59,7 +77,9 @@ class Config(BaseConfig):
     MAX_ROUNDS = _get_int('AGENT_MAX_ROUNDS', int(_BUDGET_DEFAULTS.get('max_rounds', 12)))
     MAX_TOOL_CALLS = _get_int(
         'AGENT_MAX_TOOL_CALLS', int(_BUDGET_DEFAULTS.get('max_tool_calls', 40)))
-    MAX_TOKENS = _get_int('AGENT_MAX_TOKENS', int(_BUDGET_DEFAULTS.get('max_tokens', 60000)))
+    # 0 = 按有效上下文窗口派生（默认 2×W，见 TOKEN_BUDGET_MULTIPLIER_*）；
+    # 显式正数作为运营方的硬上限（取 min）。
+    MAX_TOKENS = _get_int('AGENT_MAX_TOKENS', int(_BUDGET_DEFAULTS.get('max_tokens', 0)))
     MAX_DURATION_SECONDS = _get_int(
         'AGENT_MAX_DURATION_SECONDS', int(_BUDGET_DEFAULTS.get('max_duration_seconds', 600)))
     MAX_OUTPUT_BYTES = _get_int(
@@ -147,3 +167,19 @@ class Config(BaseConfig):
         super().validate()
         if cls.WORKER_CONCURRENCY <= 0:
             raise ValueError('AGENT_WORKER_CONCURRENCY 必须为正数')
+        if cls.AGENT_ALLOW_PLATFORM_KEY:
+            raise ValueError(
+                'AGENT_ALLOW_PLATFORM_KEY 只保留 false 开关位：'
+                '平台 Key 分支未实现，禁止开启')
+        if cls.LOG_ENVIRONMENT == 'prod' and not cls.CREDENTIAL_MASTER_KEY:
+            raise ValueError(
+                '生产环境缺少 AGENT_CREDENTIAL_MASTER_KEY，拒绝启动')
+        if not 0 < cls.OUTPUT_TOKEN_RATIO <= 1:
+            raise ValueError('AGENT_OUTPUT_TOKEN_RATIO 必须在 (0, 1] 内')
+        if not 0 < cls.COMPACTION_SOFT_RATIO < cls.COMPACTION_HARD_RATIO <= 1:
+            raise ValueError(
+                'AGENT_COMPACTION_SOFT_RATIO / HARD_RATIO 必须满足 '
+                '0 < soft < hard <= 1')
+        if cls.TOKEN_BUDGET_MULTIPLIER_DEFAULT <= 0 \
+                or cls.TOKEN_BUDGET_MULTIPLIER_AUTO <= 0:
+            raise ValueError('AGENT_TOKEN_BUDGET_MULTIPLIER_* 必须为正数')

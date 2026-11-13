@@ -539,6 +539,13 @@ class AuditEvent(str, Enum):
     AI_REVIEW_REJECTED = 'AI_REVIEW_REJECTED'
     # 数据可见性审计（INT-423，category='System'）——私有资源被非 owner 访问（越权命中/尝试）时落一条
     PRIVATE_RESOURCE_ACCESS = 'PRIVATE_RESOURCE_ACCESS'
+    # Agent 模型供应商管理审计（INT-2488，category='System'）
+    # 只记 provider_id 与操作类型，绝不记 Key / 密文。
+    AGENT_PROVIDER_CREATED = 'AGENT_PROVIDER_CREATED'
+    AGENT_PROVIDER_UPDATED = 'AGENT_PROVIDER_UPDATED'
+    AGENT_PROVIDER_DELETED = 'AGENT_PROVIDER_DELETED'
+    AGENT_PROVIDER_VERIFIED = 'AGENT_PROVIDER_VERIFIED'
+    AGENT_PROVIDER_DEFAULT_SET = 'AGENT_PROVIDER_DEFAULT_SET'
 
 
 class AuthErrorCode(str, Enum):

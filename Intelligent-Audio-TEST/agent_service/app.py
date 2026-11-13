@@ -26,8 +26,12 @@ from fastapi.responses import JSONResponse
 
 from agent_service.config.config import Config
 from agent_service.domain.exceptions import (
-    InvalidRunTransition, RunNotFound, SessionNotFound, SkillNotAvailable,
+    CredentialDecryptError, CredentialKeyUnavailable,
+    InvalidContextWindow, InvalidProviderConfiguration,
+    InvalidRunTransition, ProviderNotFound, RunNotFound, SessionNotFound,
+    SkillNotAvailable,
 )
+from agent_service.interfaces.api.provider_routes import router as provider_router
 from agent_service.interfaces.api.routes import router as agent_router
 
 logger = logging.getLogger(__name__)
@@ -41,6 +45,41 @@ def _register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RunNotFound)
     async def _run_not_found(_request: Request, _exc: RunNotFound):
         return JSONResponse(status_code=404, content={'detail': 'not found'})
+
+    @app.exception_handler(ProviderNotFound)
+    async def _provider_not_found(_request: Request, _exc: ProviderNotFound):
+        return JSONResponse(status_code=404, content={'detail': 'not found'})
+
+    @app.exception_handler(InvalidContextWindow)
+    async def _invalid_window(_request: Request, exc: InvalidContextWindow):
+        return JSONResponse(
+            status_code=400,
+            content={'detail': str(exc), 'code': 'INVALID_CONTEXT_WINDOW'})
+
+    @app.exception_handler(InvalidProviderConfiguration)
+    async def _invalid_provider(_request: Request,
+                                exc: InvalidProviderConfiguration):
+        return JSONResponse(
+            status_code=400,
+            content={'detail': str(exc),
+                     'code': 'INVALID_PROVIDER_CONFIGURATION'})
+
+    @app.exception_handler(CredentialKeyUnavailable)
+    async def _credential_key_unavailable(_request: Request,
+                                          _exc: CredentialKeyUnavailable):
+        # 不把主密钥相关细节回给调用方
+        return JSONResponse(
+            status_code=503,
+            content={'detail': 'credential store unavailable',
+                     'code': 'CREDENTIAL_STORE_UNAVAILABLE'})
+
+    @app.exception_handler(CredentialDecryptError)
+    async def _credential_decrypt_error(_request: Request,
+                                        _exc: CredentialDecryptError):
+        return JSONResponse(
+            status_code=500,
+            content={'detail': 'credential decrypt failed',
+                     'code': 'CREDENTIAL_DECRYPT_FAILED'})
 
     @app.exception_handler(InvalidRunTransition)
     async def _invalid_transition(_request: Request,
@@ -103,10 +142,12 @@ def create_app(container=None) -> FastAPI:
             'status': 'ok',
             'service': Config.SERVICE_NAME,
             'version': Config.PLATFORM_VERSION,
-            'llm_model': Config.LLM_MODEL,
+            'llm_mode': 'user_provider',
         }
 
     app.include_router(agent_router, prefix='/api/v1/agent', tags=['agent'])
+    app.include_router(provider_router, prefix='/api/v1/agent',
+                       tags=['agent-providers'])
     return app
 
 

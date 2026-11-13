@@ -4,7 +4,7 @@ RBAC 种子数据初始化
 ===================================
 
 向 permissions / roles / role_permissions 表插入系统内置数据：
-  - 130 个权限点（permissions）
+  - 131 个权限点（permissions）
   - 5 个系统角色（roles: admin / tester / algo_engineer / device_admin / guest）
   - 超级通配权限 * → admin
   - tester / algo_engineer / device_admin / guest 各自的角色-权限映射
@@ -197,6 +197,8 @@ PERMISSIONS = [
     ('auth:refresh', '刷新令牌'),
     ('auth:logout', '登出'),
     ('auth:me', '获取当前用户信息'),
+    # Agent 模型供应商 (1)（INT-2488：用户自带供应商 / Key / 上下文窗口）
+    ('agent:provider:manage', '管理自己的模型供应商与密钥'),
     # 超级通配 (1)
     ('*', '超级权限（通配所有操作）'),
 ]
@@ -253,6 +255,8 @@ TESTER_PERMS = [
     'status:read', 'option:read', 'option:write',
     'sse:read',
     'auth:login', 'auth:callback', 'auth:refresh', 'auth:logout', 'auth:me',
+    # Agent 模型供应商（INT-2488：测试工程师自带 Key 跑 Agent）
+    'agent:provider:manage',
 ]
 
 # algo_engineer 权限
@@ -286,6 +290,8 @@ ALGO_ENGINEER_PERMS = [
     'status:read', 'option:read',
     'sse:read',
     'auth:login', 'auth:callback', 'auth:refresh', 'auth:logout', 'auth:me',
+    # Agent 模型供应商（INT-2488：算法工程师自带 Key 跑 Agent）
+    'agent:provider:manage',
 ]
 
 # device_admin 权限
