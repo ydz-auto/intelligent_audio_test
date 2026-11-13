@@ -186,6 +186,22 @@ class SqlSessionRepository(_BaseRepo, SessionRepository):
         finally:
             db.close()
 
+    def update_active_skill(self, session_id: str,
+                            active_skill: Optional[str]
+                            ) -> Optional[AgentSession]:
+        db = self._session()
+        try:
+            row = db.get(AgentSessionPO, session_id)
+            if row is None:
+                return None
+            row.active_skill = active_skill
+            row.updated_at = utcnow()
+            db.commit()
+            db.refresh(row)
+            return _to_session(row)
+        finally:
+            db.close()
+
 
 # ---------------------------------------------------------------- runs
 

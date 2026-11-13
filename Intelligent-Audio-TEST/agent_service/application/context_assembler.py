@@ -12,8 +12,9 @@
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
+from agent_service.application.skill_registry import SkillRegistry
 from agent_service.domain.enums import EventType, LlmMessageRole, RunStatus
 from agent_service.domain.model.entities import AgentRun, LlmMessage
 from agent_service.domain.repositories import EventRepository, RunRepository
@@ -38,20 +39,30 @@ class _Turn:
 class ContextAssembler:
     def __init__(self, events: EventRepository, runs: RunRepository, *,
                  system_prompt: str = '', max_runs: int = 20,
-                 max_messages: int = 120, event_fetch_limit: int = 10000):
+                 max_messages: int = 120, event_fetch_limit: int = 10000,
+                 skills: Optional[SkillRegistry] = None):
         self._events = events
         self._runs = runs
         self._system_prompt = system_prompt or ''
         self._max_runs = max(1, int(max_runs))
         self._max_messages = max(4, int(max_messages))
         self._event_fetch_limit = max(1, int(event_fetch_limit))
+        self._skills = skills
 
-    def assemble(self, session_id: str, run: AgentRun) -> List[LlmMessage]:
-        """组装本次模型调用的完整消息列表（system + 历史 + 当前轮）。"""
+    def assemble(self, session_id: str, run: AgentRun, *,
+                 permissions: Iterable[str] = (),
+                 active_skill: Optional[str] = None) -> List[LlmMessage]:
+        """组装本次模型调用的完整消息列表（system + 历史 + 当前轮）。
+
+        Skill 披露（§4.1）：L1 全部可见 Skill 的 name + description 常驻
+        system 区段；只有激活的 Skill 注入 L2 正文。二者都只进系统提示，
+        不进对话历史，压缩时也不会被裁掉（§8.4 永不压缩清单）。
+        """
         messages: List[LlmMessage] = []
-        if self._system_prompt:
+        system = self._system_content(permissions, active_skill)
+        if system:
             messages.append(LlmMessage(
-                role=LlmMessageRole.SYSTEM.value, content=self._system_prompt))
+                role=LlmMessageRole.SYSTEM.value, content=system))
         history_runs = self._runs.list_session_runs(session_id, self._max_runs)
         if run.id not in {r.id for r in history_runs}:
             history_runs.append(run)
@@ -61,6 +72,17 @@ class ContextAssembler:
                 pass
             messages.extend(self._messages_for_run(item))
         return self._trim(messages)
+
+    def _system_content(self, permissions: Iterable[str],
+                        active_skill: Optional[str]) -> str:
+        parts: List[str] = []
+        if self._system_prompt:
+            parts.append(self._system_prompt)
+        if self._skills is not None:
+            section = self._skills.system_section(permissions, active_skill)
+            if section:
+                parts.append(section)
+        return '\n\n'.join(parts)
 
     def recent_messages(self, session_id: str, run: Optional[AgentRun],
                         limit: int) -> List[dict]:

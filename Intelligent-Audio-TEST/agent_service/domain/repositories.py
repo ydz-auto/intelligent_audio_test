@@ -31,6 +31,15 @@ class SessionRepository(ABC):
     @abstractmethod
     def touch(self, session_id: str) -> None: ...
 
+    @abstractmethod
+    def update_active_skill(self, session_id: str,
+                            active_skill: Optional[str]
+                            ) -> Optional[AgentSession]:
+        """落库会话当前激活的 Skill（§10 agent_session.active_skill）。
+
+        返回更新后的会话；会话不存在时返回 None。
+        """
+
 
 class RunRepository(ABC):
     @abstractmethod

@@ -20,6 +20,8 @@ class CreateRunRequest(BaseModel):
     # 请求体不接受覆盖：任何调用方都不能把 token / 时长 / 轮次 / 输出字节
     # 的上限关掉。未知字段按 pydantic 默认忽略，不报错、也不生效。
     message: str = Field(min_length=1)
+    # 可选：发起本轮时切换会话激活的 Skill（落库 agent_session.active_skill）
+    active_skill: Optional[str] = None
 
 
 class SessionResponse(BaseModel):
@@ -58,3 +60,22 @@ class SessionDetailResponse(BaseModel):
     session: SessionResponse
     messages: list = Field(default_factory=list)
     runs: list = Field(default_factory=list)
+
+
+class SkillResponse(BaseModel):
+    """当前用户可见的 Skill（§11 GET /api/v1/agent/skills）。"""
+
+    name: str
+    description: str
+    version: str = ''
+    owner: str = ''
+    allowed_tools: list = Field(default_factory=list)
+    permissions: list = Field(default_factory=list)
+    budgets: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SkillListResponse(BaseModel):
+    items: list = Field(default_factory=list)
+    # L1 常驻预算量级（§8.3 system 区段 15%），供前端与审计核对
+    l1_tokens: int = 0
+    l1_budget_tokens: int = 0

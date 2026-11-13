@@ -131,6 +131,9 @@ class RunOrchestrator:
         output_bytes = 0
         turn = self._next_turn(run_id)
         db_check_counter = 0
+        # Skill 披露口径在发起 run 时固化（run_started）：权限用于 L1 过滤，
+        # active_skill 决定是否注入 L2；恢复时读同一条事件，口径不变。
+        permissions, active_skill = self._run_scope(run_id)
 
         def cancel_check() -> bool:
             nonlocal db_check_counter
@@ -175,7 +178,9 @@ class RunOrchestrator:
 
             try:
                 llm = self._llm_factory()
-                request = self._build_request(run, turn)
+                request = self._build_request(
+                    run, turn, permissions=permissions,
+                    active_skill=active_skill)
                 stream = llm.stream(request, cancel_check=cancel_check)
                 try:
                     for chunk in stream:
@@ -277,8 +282,12 @@ class RunOrchestrator:
 
     # ------------------------------------------------------------ helpers
 
-    def _build_request(self, run: AgentRun, turn: int) -> LlmRequest:
-        messages = self._assembler.assemble(run.session_id, run)
+    def _build_request(self, run: AgentRun, turn: int, *,
+                       permissions: Sequence[str] = (),
+                       active_skill: Optional[str] = None) -> LlmRequest:
+        messages = self._assembler.assemble(
+            run.session_id, run, permissions=permissions,
+            active_skill=active_skill)
         tools = tuple(self._tool_specs())
         return LlmRequest(
             messages=tuple(messages), tools=tools,
@@ -286,6 +295,20 @@ class RunOrchestrator:
             max_output_tokens=self._settings.max_output_tokens,
             metadata={'run_id': run.id, 'turn': turn},
         )
+
+    def _run_scope(self, run_id: str) -> tuple:
+        """从 run_started 取本次 run 固化的权限与激活 Skill。"""
+        try:
+            events = self._events.list_by_types(
+                run_id, (EventType.RUN_STARTED,), 1)
+        except Exception:  # noqa: BLE001 - 读取失败按「无 Skill 上下文」处理
+            logger.warning('读取 run_started 失败 run=%s', run_id, exc_info=True)
+            return (), None
+        if not events:
+            return (), None
+        payload = events[0].payload or {}
+        return (tuple(payload.get('permissions') or ()),
+                payload.get('active_skill') or None)
 
     def _tool_specs(self) -> List[Dict]:
         specs: List[Dict] = []

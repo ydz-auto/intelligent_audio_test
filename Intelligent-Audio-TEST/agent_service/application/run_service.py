@@ -7,12 +7,13 @@
 """
 import logging
 import uuid
-from typing import Dict, Optional, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 
 from agent_service.application.cancel_registry import CancelRegistry
+from agent_service.application.skill_registry import SkillRegistry
 from agent_service.domain.enums import EventType, RunStatus
 from agent_service.domain.exceptions import (
-    InvalidRunTransition, RunNotFound, SessionNotFound,
+    InvalidRunTransition, RunNotFound, SessionNotFound, SkillNotAvailable,
 )
 from agent_service.domain.model.budget import RunBudget
 from agent_service.domain.model.entities import AgentRun, AgentSession
@@ -31,7 +32,8 @@ class RunService:
                  events: EventRepository, wakeup: RunWakeup,
                  cancel_registry: CancelRegistry, *,
                  budget_defaults: Dict[str, int],
-                 default_model: str = ''):
+                 default_model: str = '',
+                 skills: Optional[SkillRegistry] = None):
         self._sessions = sessions
         self._runs = runs
         self._events = events
@@ -39,16 +41,19 @@ class RunService:
         self._cancel_registry = cancel_registry
         self._budget_defaults = dict(budget_defaults)
         self._default_model = default_model
+        self._skills = skills
 
     # ------------------------------------------------------------ sessions
 
     def create_session(self, *, owner_id: int, tenant_id: str,
                        title: str = '', active_skill: Optional[str] = None,
-                       model: str = '') -> AgentSession:
+                       model: str = '',
+                       permissions: Iterable[str] = ()) -> AgentSession:
         now = utcnow()
         session = AgentSession(
             id=str(uuid.uuid4()), owner_id=owner_id, tenant_id=tenant_id,
-            title=(title or '')[:200], active_skill=active_skill,
+            title=(title or '')[:200],
+            active_skill=self._resolve_skill(active_skill, permissions),
             model=(model or self._default_model or '')[:100],
             created_at=now, updated_at=now,
         )
@@ -64,15 +69,34 @@ class RunService:
     # ------------------------------------------------------------ runs
 
     def create_run(self, session_id: str, *, owner_id: int, tenant_id: str,
-                   message: str, idempotency_key: Optional[str] = None
+                   message: str, idempotency_key: Optional[str] = None,
+                   permissions: Iterable[str] = (),
+                   active_skill: Optional[str] = None
                    ) -> Tuple[AgentRun, bool]:
         session = self.get_session(session_id, owner_id=owner_id,
                                    tenant_id=tenant_id)
+        permissions = tuple(permissions or ())
         normalized_key = self._normalize_key(idempotency_key, owner_id, tenant_id)
         if normalized_key:
             existing = self._runs.get_by_idempotency_key(normalized_key)
             if existing is not None:
                 return existing, False
+
+        # 切换 Skill：显式传入则落库到会话（后续 run 继续沿用），本轮只注入
+        # 该 Skill 的 L2；未传且会话已有激活 Skill 时沿用会话值。
+        if active_skill:
+            session.active_skill = self._resolve_skill(active_skill, permissions)
+            updated = self._sessions.update_active_skill(
+                session.id, session.active_skill)
+            if updated is not None:
+                session = updated
+        effective_skill = session.active_skill
+        if effective_skill and self._skills is not None and \
+                self._skills.get_visible(effective_skill, permissions) is None:
+            # 权限变化后原 Skill 不再可见：本轮不注入 L2，也不改动会话记录
+            logger.info('会话激活 Skill 当前不可见，本轮跳过 L2 session=%s skill=%s',
+                        session.id, effective_skill)
+            effective_skill = None
 
         budget = RunBudget.from_dict(self._budget_defaults)
         now = utcnow()
@@ -85,11 +109,15 @@ class RunService:
         )
         run, created = self._runs.add_if_absent(run)
         if created:
+            # 发起时的用户权限与激活 Skill 写入 run_started：Loop 与断点恢复
+            # 都只依据这一条事件重建上下文，切换 Skill 不影响已在跑的 run。
             self._events.append(run.id, EventType.RUN_STARTED, {
                 'user_message': message,
                 'session_id': session.id,
                 'model': run.model,
                 'budget': run.budget,
+                'permissions': list(permissions),
+                'active_skill': effective_skill,
             })
             self._sessions.touch(session.id)
             self._wakeup.notify(run.id)
@@ -132,6 +160,18 @@ class RunService:
 
     # ------------------------------------------------------------ internals
 
+    def _resolve_skill(self, name: Optional[str],
+                       permissions: Iterable[str]) -> Optional[str]:
+        """校验 Skill 存在且当前用户可见（§4.2 规则 7）；不可用直接拒绝。"""
+        if not name:
+            return None
+        if self._skills is None:
+            return name
+        skill = self._skills.get_visible(name, permissions)
+        if skill is None:
+            raise SkillNotAvailable(name)
+        return skill.name
+
     @staticmethod
     def _normalize_key(raw: Optional[str], owner_id: int,
                        tenant_id: str) -> Optional[str]:
@@ -144,4 +184,5 @@ class RunService:
         return hashlib.sha256(scoped.encode('utf-8')).hexdigest()
 
 
-__all__ = ['RunService', 'InvalidRunTransition', 'RunNotFound', 'SessionNotFound']
+__all__ = ['RunService', 'InvalidRunTransition', 'RunNotFound',
+           'SessionNotFound', 'SkillNotAvailable']

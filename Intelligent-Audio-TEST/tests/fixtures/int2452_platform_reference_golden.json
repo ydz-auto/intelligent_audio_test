@@ -1,0 +1,67 @@
+{
+  "skill": "platform-reference",
+  "version": "1.0.0",
+  "note": "INT-2452 交付的 10 条 golden tasks（§14 单 Skill 评测）。expect_trigger=true 表示应当激活 platform-reference；false 表示应当不激活（由其他业务 Skill 或直接回答）。判定联跑由 INT-2454 评测基座执行（本仓库暂无该基座）。",
+  "tasks": [
+    {
+      "id": "pr-01",
+      "prompt": "平台现在有哪些接口可以查任务？路径前缀是什么？",
+      "expect_trigger": true,
+      "reason": "触发词「有哪些接口」「路径前缀」"
+    },
+    {
+      "id": "pr-02",
+      "prompt": "任务状态 completed 和 evaluating 分别代表什么？哪些算终态？",
+      "expect_trigger": true,
+      "reason": "触发词「状态枚举取值」"
+    },
+    {
+      "id": "pr-03",
+      "prompt": "报告接口里的 status 为什么只有 draft 和 published？生成进度从哪查？",
+      "expect_trigger": true,
+      "reason": "触发词「枚举」「接口」；属平台口径澄清而非报告生成"
+    },
+    {
+      "id": "pr-04",
+      "prompt": "task:read 和 task:create 这两个权限码是怎么判定的？多个权限是 OR 还是 AND？",
+      "expect_trigger": true,
+      "reason": "触发词「权限码是什么」"
+    },
+    {
+      "id": "pr-05",
+      "prompt": "后端字段是 snake_case 还是 camelCase？前端在哪里转换？",
+      "expect_trigger": true,
+      "reason": "触发词「这个字段叫什么」"
+    },
+    {
+      "id": "pr-06",
+      "prompt": "我想找一个能导出报告的工具，先帮我看看 tool_search 怎么用。",
+      "expect_trigger": true,
+      "reason": "触发词「tool_search 怎么用」「某个工具的 Schema」"
+    },
+    {
+      "id": "pr-07",
+      "prompt": "帮我查一下 5 号任务的状态和用例通过情况。",
+      "expect_trigger": false,
+      "reason": "业务查询，应由 task-operations / task_query 处理"
+    },
+    {
+      "id": "pr-08",
+      "prompt": "把 3 号任务的失败用例重跑一遍。",
+      "expect_trigger": false,
+      "reason": "写操作，属任务域业务 Skill，不是平台速查"
+    },
+    {
+      "id": "pr-09",
+      "prompt": "对比这两份报告，给出 WER 变化趋势。",
+      "expect_trigger": false,
+      "reason": "业务分析，应由 report-compare / report_query 处理"
+    },
+    {
+      "id": "pr-10",
+      "prompt": "帮我导入一批 wav 音频并打标签。",
+      "expect_trigger": false,
+      "reason": "业务操作，应由 audio-import 处理"
+    }
+  ]
+}
