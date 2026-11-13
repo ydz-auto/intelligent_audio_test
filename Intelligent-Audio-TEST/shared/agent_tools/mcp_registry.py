@@ -81,6 +81,11 @@ def _int(desc: str, required: bool = False) -> dict:
     return {'type': 'integer', 'description': desc, 'required': required}
 
 
+# 公开别名：其他只读工具表（如 ``testcase_tools.TESTCASE_READ_TOOLS``）复用
+# 同一构造器，保证工具项形状（含 required 推导）与 MCP 注册表一致。
+tool_entry = _tool
+
+
 def _bool(desc: str, required: bool = False) -> dict:
     return {'type': 'boolean', 'description': desc, 'required': required}
 

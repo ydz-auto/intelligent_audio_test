@@ -244,11 +244,13 @@ def test_skills_endpoint_lists_31_tools_without_duplicates(tmp_path):
         assert body['tools_count'] == 31
         enabled = {t['name'] for t in body['tools'] if t['enabled']}
         # M0 四项常驻；M1 各域卡按域追加
-        # （INT-2458 audio_query / INT-2462 evaluation_query / INT-2464 algorithm_query）
+        # （INT-2458 audio_query / INT-2462 evaluation_query / INT-2464 algorithm_query /
+        #   INT-2460 testcase_query + testcase_generate）
         # 精确等值：新增启用工具必须在本卡同步更新该集合，避免无意多启用。
         assert enabled == {'platform_contract', 'tool_search', 'task_query',
                            'report_query', 'audio_query', 'evaluation_query',
-                           'algorithm_query'}
+                           'algorithm_query', 'testcase_query',
+                           'testcase_generate'}
 
         low = client.get('/api/v1/agent/skills',
                          headers={'X-User-Id': '8', 'X-Tenant-Id': 't1',

@@ -2,7 +2,8 @@
 """只读 ToolGateway（INT-2453，方案 §6.1 / §6.3）。
 
 意图工具（31 个注册项；M0 启用 4 个，M1 各域卡按域追加只读工具——
-当前含 ``algorithm_query``）→ 目标 REST；逐调用校验：
+当前含 audio_query / evaluation_query / algorithm_query / testcase_query，
+以及本地只读推导工具 testcase_generate）→ 目标 REST；逐调用校验：
 
 1. 用户 / 租户：身份来自网关注入，回源请求带同一 Authorization；
 2. 权限：intent 工具声明 permissions（OR 语义，``*`` 通配），不满足返回
@@ -30,6 +31,7 @@ from agent_service.domain.ports.tool_gateway import (
 from agent_service.domain.ports.tool_registry import (
     RunCredentialPort, ToolRegistryPort, ToolTransportPort,
 )
+from shared.agent_tools import testcase_tools as case_tools
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,10 @@ UPSTREAM_UNAVAILABLE = 'UPSTREAM_UNAVAILABLE'
 _DENIED_TEXT = '无权访问该资源，或该资源不存在。'
 _NOT_FOUND_TEXT = '资源不存在或无权访问。'
 
+# 404 语义是「这一轮没有参考参数 / 轮次不存在」而不是越权的只读工具：
+# 沿用上游文案，避免模型把「未生成」回答成「无权访问」。
+_NOT_FOUND_MESSAGE_TOOLS = frozenset({'testcase_round_ref_params'})
+
 
 def _granted(granted: Sequence[str], required: Sequence[str]) -> bool:
     """权限 OR 语义；``*`` 通配；required 为空表示仅需登录。"""
@@ -54,6 +60,27 @@ def _granted(granted: Sequence[str], required: Sequence[str]) -> bool:
     if '*' in perms:
         return True
     return bool(perms & set(required))
+
+
+def _upstream_message(result) -> Optional[str]:
+    """取上游 JSON 的 ``message``（用于「读未命中」类 404 的原文透传）。"""
+    payload = getattr(result, 'payload', None)
+    if isinstance(payload, dict):
+        message = payload.get('message')
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+    return None
+
+
+def _envelope_items(payload: Optional[dict]):
+    """取统一分页信封的 ``data.items``；结构不符返回 ``None``。"""
+    if not isinstance(payload, dict):
+        return None
+    data = payload.get('data')
+    if not isinstance(data, dict):
+        return None
+    items = data.get('items')
+    return items if isinstance(items, list) else None
 
 
 class SharedToolGateway(ToolGateway):
@@ -123,6 +150,9 @@ class SharedToolGateway(ToolGateway):
             return self._run_tool_search(call, arguments, context)
         if name == 'platform_contract':
             return self._run_platform_contract(call, arguments)
+        # 纯只读推导（回源仅 GET，不落库）：标注 → 用例草案
+        if name == 'testcase_generate':
+            return self._run_testcase_generate(call, arguments, context)
 
         mcp_tool, merged, resolve_error = self._bridge.resolve_rest(
             name, arguments)
@@ -153,6 +183,127 @@ class SharedToolGateway(ToolGateway):
             str(arguments.get('section') or 'all').strip() or 'all')
         return self._ok(call, json.dumps(payload, ensure_ascii=False))
 
+    # ------------------------------------------------------- derive (read-only)
+
+    def _run_testcase_generate(self, call: ToolCallRequest,
+                               arguments: Dict[str, Any],
+                               context: ToolInvocationContext) -> ToolResult:
+        """标注 → 用例草案（INT-2460）。**只读推导**：全程只回源 GET。
+
+        - 入参校验显式失败：`audio_ids` 必须是非空正整数列表、
+          `device_type` / `dimension_round_scope` 必须合法、条数不超上限；
+        - `group_id` 存在性校验（INT-2530 教训：收 ID 必须验归属 / 存在，
+          失败显式报错，不静默忽略）；
+        - 逐音频回源取详情（顺带完成行级可见性校验），不吞 403/404；
+        - 最后交给纯函数 ``build_case_drafts`` 推导，不写任何表。
+        """
+        audio_ids = arguments.get('audio_ids')
+        if not isinstance(audio_ids, list) or not audio_ids:
+            return self._fail(call, INVALID_ARGUMENTS, 'audio_ids 不能为空')
+        invalid = [value for value in audio_ids
+                   if not isinstance(value, int) or isinstance(value, bool)
+                   or value <= 0]
+        if invalid:
+            return self._fail(call, INVALID_ARGUMENTS,
+                              f'audio_ids 必须是正整数：{invalid}')
+        unique_ids = list(dict.fromkeys(audio_ids))
+        if len(unique_ids) > case_tools.MAX_GENERATE_AUDIOS:
+            return self._fail(
+                call, INVALID_ARGUMENTS,
+                f'audio_ids 单次最多 {case_tools.MAX_GENERATE_AUDIOS} 条，'
+                f'当前 {len(unique_ids)} 条')
+
+        device_type = arguments.get('device_type')
+        normalized_device = case_tools.normalize_device_type(device_type)
+        if normalized_device is None:
+            return self._fail(
+                call, INVALID_ARGUMENTS,
+                f'device_type 取值非法：{device_type}')
+        round_scope = arguments.get('dimension_round_scope') or 'single'
+        if round_scope not in case_tools.ROUND_SCOPES:
+            return self._fail(
+                call, INVALID_ARGUMENTS,
+                'dimension_round_scope 取值必须是 '
+                f'{"/".join(case_tools.ROUND_SCOPES)} 之一')
+
+        algorithm_type = arguments.get('algorithm_type')
+        case_params: list = []
+        if algorithm_type:
+            payload, failure = self._fetch_payload(
+                call, 'algorithm_query',
+                {'action': 'case_params', 'algorithm_type': algorithm_type},
+                context)
+            if failure is not None:
+                return failure
+            items = _envelope_items(payload)
+            if items is None:
+                return self._fail(call, UPSTREAM_ERROR,
+                                  '算法用例参数返回格式异常（缺少 data.items）')
+            case_params = items
+
+        group_id = arguments.get('group_id')
+        if group_id:
+            payload, failure = self._fetch_payload(
+                call, 'group_list', {}, context)
+            if failure is not None:
+                return failure
+            groups = _envelope_items(payload) or []
+            if not any(str(item.get('id')) == str(group_id) for item in groups):
+                return self._fail(
+                    call, INVALID_ARGUMENTS,
+                    f'group_id={group_id} 不存在或无权限，请先用 group_list 确认')
+
+        audios: list = []
+        for audio_id in unique_ids:
+            payload, failure = self._fetch_payload(
+                call, 'audio_query',
+                {'action': 'detail', 'audio_id': audio_id}, context)
+            if failure is not None:
+                return failure
+            detail = (payload or {}).get('data')
+            if not isinstance(detail, dict):
+                return self._fail(call, UPSTREAM_ERROR,
+                                  f'音频 {audio_id} 详情返回格式异常')
+            audios.append(detail)
+
+        try:
+            result = case_tools.build_case_drafts(
+                audios=audios,
+                case_params=case_params,
+                algorithm_type=algorithm_type,
+                device_type=normalized_device,
+                dimensions=arguments.get('dimension_ids') or (),
+                dimension_round_scope=round_scope,
+                group_id=group_id,
+                spl=arguments.get('spl'),
+                playback_device_id=arguments.get('playback_device_id'),
+                inherit_tags=bool(arguments.get('inherit_tags', True)),
+            )
+        except Exception as exc:  # noqa: BLE001 - 推导失败要显式回给模型
+            logger.warning('testcase_generate 推导失败', exc_info=True)
+            return self._fail(call, INVALID_ARGUMENTS, f'草案推导失败：{exc}')
+
+        payload = {'mode': 'draft', 'persisted': False, 'writes': 0, **result}
+        return self._ok(call, json.dumps(payload, ensure_ascii=False))
+
+    def _fetch_payload(self, call: ToolCallRequest, name: str,
+                       arguments: Dict[str, Any],
+                       context: ToolInvocationContext):
+        """按工具 / 动作名回源取 JSON：``(payload, None)`` 或 ``(None, 失败结果)``。"""
+        tool, merged, resolve_error = self._bridge.resolve_rest(name, arguments)
+        if resolve_error or tool is None:
+            return None, self._fail(call, INVALID_ARGUMENTS,
+                                    resolve_error or '工具映射不可用')
+        authorization = self._credentials.get(context.run_id)
+        result = self._rest.call(
+            tool, merged, authorization=authorization,
+            user_id=context.owner_id, tenant_id=context.tenant_id,
+            permissions=context.permissions)
+        failure = self._transport_failure(call, tool, result)
+        if failure is not None:
+            return None, failure
+        return (result.payload if isinstance(result.payload, dict) else {}), None
+
     # ------------------------------------------------------------ rest
 
     def _call_rest(self, call: ToolCallRequest, tool: dict,
@@ -163,22 +314,34 @@ class SharedToolGateway(ToolGateway):
             tool, arguments, authorization=authorization,
             user_id=context.owner_id, tenant_id=context.tenant_id,
             permissions=context.permissions)
+        failure = self._transport_failure(call, tool, result)
+        if failure is not None:
+            return failure
+        return self._ok(call, result.text)
+
+    def _transport_failure(self, call: ToolCallRequest, tool: dict,
+                           result) -> Optional[ToolResult]:
+        """把回源结果映射为失败结果；成功（2xx）返回 ``None``。"""
+        name = tool['name']
         if result.status == 0:
             return self._fail(call, UPSTREAM_UNAVAILABLE,
                               f'目标服务不可用：{result.error}', ok=False)
         if result.status in (401, 403):
             return self._fail(call, PERMISSION_DENIED, _DENIED_TEXT)
         if result.status == 404:
-            return self._fail(call, RESOURCE_NOT_FOUND, _NOT_FOUND_TEXT)
+            text = _NOT_FOUND_TEXT
+            if name in _NOT_FOUND_MESSAGE_TOOLS:
+                text = _upstream_message(result) or _NOT_FOUND_TEXT
+            return self._fail(call, RESOURCE_NOT_FOUND, text)
         if result.status == 422:
             return self._fail(call, INVALID_ARGUMENTS,
                               f'目标接口参数校验失败：{result.text}')
         if result.status >= 400:
             logger.warning('ToolGateway 回源 %s 失败 tool=%s target=%s',
-                           result.status, call.name, tool['name'])
+                           result.status, call.name, name)
             return self._fail(call, UPSTREAM_ERROR,
                               f'目标接口返回 {result.status}：{result.text}')
-        return self._ok(call, result.text)
+        return None
 
     # ------------------------------------------------------------ helpers
 

@@ -19,9 +19,12 @@
   ``audio_get_by_ids``）不进索引、不可被 Agent 调用（INT-2530）。
 
 M1 各域卡按域启用自己的只读意图工具（已完成：``audio_query`` INT-2458、
-``evaluation_query`` INT-2462、``algorithm_query`` INT-2464）；
+``evaluation_query`` INT-2462、``algorithm_query`` INT-2464、
+``testcase_query`` / ``testcase_generate`` INT-2460）；
 每个域工具 = 动作 → MCP 只读工具的映射，REST 路径 / 查询参数仍由
 ``mcp_registry`` 的共享构造器决定，不复制 Schema。
+用例域少量只读路由（统计 / 轮次参考参数 / 导出作业状态 / 刷新状态）不在
+外部 MCP 表里，映射到 ``testcase_tools.TESTCASE_READ_TOOLS``（同形工具项）。
 
 其余意图工具在本注册表**预留名称与 Schema**（``enabled=False``），调用返回
 ``TOOL_NOT_ENABLED``；实现分别归 M1 / M2 各域卡。预留名称进入 Skill
@@ -33,7 +36,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from shared.agent_tools import contract as platform_contract_catalog
+from shared.agent_tools import testcase_tools as case_tools
 from shared.agent_tools.mcp_registry import TOOLS as MCP_TOOLS, get_tool
+from shared.models.common_enums import DeviceType
 
 # ---------------------------------------------------------------- schema 辅助
 
@@ -162,6 +167,40 @@ EVALUATION_QUERY_ACTIONS: Dict[str, str] = {
     'categories': 'evaluation_category_list',
 }
 
+# 用例只读动作 → 工具名（INT-2460）。
+# list / detail 直接复用 MCP 只读工具；统计 / 轮次参考参数 / 导出作业状态 /
+# 刷新状态在网关有只读路由但外部 MCP 表未登记，取
+# ``testcase_tools.TESTCASE_READ_TOOLS``（同形工具项、同一构造器）。
+TESTCASE_QUERY_ACTIONS: Dict[str, str] = {
+    'list': 'testcase_list',
+    'detail': 'testcase_get',
+    'stats': 'testcase_stats',
+    'round_ref_params': 'testcase_round_ref_params',
+    'export_status': 'testcase_export_job_status',
+    'refresh_status': 'testcase_refresh_status',
+}
+
+# 各动作可用的可选参数（动作独立口径）。网关 TestCaseListQuery 是
+# ``extra='ignore'``，传不认识的参数不会报错、只会静默返回全量——工具层必须先拒。
+# 注意：用例列表**没有** ``status`` 过滤（MCP ``testcase_list`` 声明的 ``status``
+# 在网关被静默丢弃），状态相关属任务域；``view=tag`` 的标签聚合视图输出是
+# camelCase 的另一套字段，本工具不收，标签口径走 tag-group Skill。
+TESTCASE_QUERY_PARAMS: Dict[str, Tuple[str, ...]] = {
+    'list': ('page', 'per_page', 'keyword', 'tag', 'group_id', 'algorithm_type',
+             'dimension_id', 'lab_id', 'visibility', 'favorite', 'only_deleted',
+             'include_deleted'),
+    'detail': (),
+    'stats': (),
+    'round_ref_params': (),
+    'export_status': (),
+    'refresh_status': (),
+}
+
+# 用例列表可见性取值（网关 TestCaseListQuery.visibility，空=全部）
+TESTCASE_VISIBILITY_VALUES: Tuple[str, ...] = ('shared', 'private')
+
+# 用例可见性与回收站口径的接口取值见 ``contract.ENUMS``（单一事实源）。
+
 # 算法只读动作 → MCP 工具名（INT-2464；写动作归 M2 algorithm_manage / 热重载）
 # 逐条对应网关 GET /api/v1/algorithm/* 的只读路由（routes/algorithm_bp.py）。
 ALGORITHM_QUERY_ACTIONS: Dict[str, str] = {
@@ -220,6 +259,12 @@ ACTION_REQUIRED: Dict[str, Dict[str, Tuple[str, ...]]] = {
     },
     'evaluation_query': {
         'dimension': ('dim_id',),
+    },
+    'testcase_query': {
+        'detail': ('tc_id',),
+        'round_ref_params': ('tc_id', 'round_number'),
+        'export_status': ('task_id',),
+        'refresh_status': ('task_id',),
     },
     'algorithm_query': {
         'definition': ('algo_type',),
@@ -372,6 +417,64 @@ INTENT_TOOLS: List[IntentTool] = [
         risk='READ', permissions=('evaluation:read',), enabled=True,
         kind='intent_rest'),
 
+    # ---------------- M1 已实现（INT-2460 用例 / 标签域只读） ----------------
+    IntentTool(
+        name='testcase_query',
+        description=('用例只读查询：列表（关键词 / 标签 / 分组 / 算法 / 维度 / '
+                     '实验室 / 可见性 / 收藏 / 回收站过滤、分页）、详情（含轮次配置 '
+                     'config.rounds、评估维度、音频、参数）、统计、指定轮次参考参数、'
+                     '导出作业状态、参考参数刷新状态。字段口径与 REST '
+                     '/api/v1/testcases 一致，缺失就是缺失，不编造用例 ID、轮次或数值。'),
+        parameters=_schema({
+            'action': _prop('string', '查询动作', required=True,
+                            enum=list(TESTCASE_QUERY_ACTIONS)),
+            'tc_id': _prop('string', '用例 ID（detail / round_ref_params 必填）'),
+            'round_number': _prop('integer', '轮次号，从 1 开始（round_ref_params 必填）'),
+            'task_id': _prop('string', '作业 / 刷新任务 ID（export_status / '
+                                       'refresh_status 必填）'),
+            'page': _prop('integer', '页码（list，默认 1）'),
+            'per_page': _prop('integer', '每页条数（list）'),
+            'keyword': _prop('string', '关键词过滤（list，匹配用例名 / 描述）'),
+            'tag': _prop('string', '标签名过滤（list）'),
+            'group_id': _prop('string', '用例分组 ID 过滤（list）'),
+            'algorithm_type': _prop('string', '算法类型过滤（list）'),
+            'dimension_id': _prop('integer', '评估维度 ID 过滤（list）'),
+            'lab_id': _prop('integer', '实验室 ID 过滤（list，含通用用例）'),
+            'visibility': _prop('string', '可见性过滤（list）',
+                                enum=list(TESTCASE_VISIBILITY_VALUES)),
+            'favorite': _prop('boolean', '仅当前用户收藏（list）'),
+            'only_deleted': _prop('boolean', '仅回收站（list）'),
+            'include_deleted': _prop('boolean', '包含回收站（list）'),
+        }, required=('action',)),
+        risk='READ', permissions=('testcase:read',), enabled=True,
+        kind='intent_rest'),
+    IntentTool(
+        name='testcase_generate',
+        description=('由音频标注推导用例草案（**只读生成，不落库**）：复用音频标注的 '
+                     '轮次 / 声压 / 播放设备与算法用例参数口径，产出可直接照抄到'
+                     '「新建用例」的草案（含 config.rounds、algorithm_params、'
+                     'evaluation.dimensions）。草案没有真实用例 ID，返回后不会写库；'
+                     '创建用例是写操作，M2 才开放。'),
+        parameters=_schema({
+            'audio_ids': _prop('array', '源音频 ID 列表（必填，单次最多 '
+                                       f'{case_tools.MAX_GENERATE_AUDIOS} 条）',
+                               items={'type': 'integer'}),
+            'algorithm_type': _prop('string', '算法类型（用于挑选用例参数与标注 code）'),
+            'device_type': _prop('string', '目标设备类型（缺省 http_api）',
+                                 enum=[d.value for d in DeviceType]),
+            'dimension_ids': _prop('array', '评估维度 ID 列表（挂到生成的草案）',
+                                   items={'type': 'integer'}),
+            'dimension_round_scope': _prop(
+                'string', '评估维度口径：single/per_round 逐轮、multi 多轮整体',
+                enum=list(case_tools.ROUND_SCOPES)),
+            'group_id': _prop('string', '目标用例分组 ID（仅回显，不落库）'),
+            'spl': _prop('number', '播放声压（缺省取标注，标注没有按 65.0）'),
+            'playback_device_id': _prop('integer', '播放设备 ID（缺省取标注）'),
+            'inherit_tags': _prop('boolean', '是否继承音频标签（默认 true）'),
+        }, required=('audio_ids',)),
+        risk='READ', permissions=('testcase:read',), enabled=True,
+        kind='local'),
+
     # ---------------- 探索 / 记忆（预留，M1 / M2 实现） ----------------
     # 权限码口径（INT-2501）：一律取 RBAC 事实源
     # （scripts/migrations/202608/seed_rbac.py）与同能力 MCP 工具
@@ -460,26 +563,6 @@ INTENT_TOOLS: List[IntentTool] = [
             'body': _prop('object', '标注 / 元数据字段'),
         }, required=('action',)),
         risk='WRITE', permissions=('audio:update',), enabled=False, kind='reserved'),
-    IntentTool(
-        name='testcase_query', description='用例列表、详情、导入导出状态（只读）。',
-        parameters=_schema({
-            'action': _prop('string', '查询动作', required=True,
-                            enum=['list', 'detail', 'import_status']),
-            'case_id': _prop('string', '用例 ID'),
-            'group_id': _prop('integer', '分组 ID'),
-            'search': _prop('string', '关键词'),
-            'page': _prop('integer', '页码'),
-            'per_page': _prop('integer', '每页条数'),
-        }, required=('action',)),
-        risk='READ', permissions=('testcase:read',), enabled=False, kind='reserved'),
-    IntentTool(
-        name='testcase_generate', description='标注 → 用例草案（不落库，只读生成）。',
-        parameters=_schema({
-            'audio_ids': _prop('array', '音频 ID 列表', items={'type': 'integer'}),
-            'group_id': _prop('integer', '目标分组 ID'),
-            'algorithm_type': _prop('string', '算法类型'),
-        }, required=('audio_ids',)),
-        risk='READ', permissions=('testcase:read',), enabled=False, kind='reserved'),
     IntentTool(
         name='testcase_write', description='创建、修改、复制、删除、打标签（写）。',
         parameters=_schema({
@@ -771,7 +854,13 @@ _REST_ACTION_MAP: Dict[str, Dict[str, str]] = {
     'audio_query': AUDIO_QUERY_ACTIONS,
     'evaluation_query': EVALUATION_QUERY_ACTIONS,
     'algorithm_query': ALGORITHM_QUERY_ACTIONS,
+    'testcase_query': TESTCASE_QUERY_ACTIONS,
 }
+
+
+def _lookup_rest_tool(name: str) -> Optional[dict]:
+    """按工具名取 REST 工具定义：MCP 注册表优先，其次用例域只读表。"""
+    return get_tool(name) or case_tools.get_tool(name)
 
 
 def risk_of(name: str) -> Optional[str]:
@@ -895,6 +984,38 @@ def _normalize_algorithm_query_arguments(action: str,
     return None
 
 
+def _normalize_testcase_query_arguments(action: str,
+                                       merged: Dict[str, Any]
+                                       ) -> Optional[str]:
+    """按动作校验 testcase_query 参数，返回错误文本或 None。
+
+    网关 TestCaseListQuery 基类 ``extra='ignore'``：不认识的过滤参数不会报错、
+    只会返回全量，模型会把「没过滤」当成「没有匹配」。所以这里先拒掉动作
+    不支持的参数（例如 ``status``——用例列表没有状态过滤），再补网关会 422
+    的边界（``page`` < 1、``round_number`` < 1）提前给出可读错误。
+    """
+    allowed = set(TESTCASE_QUERY_PARAMS.get(action, ()))
+    allowed |= set(required_for_action('testcase_query', action))
+    unknown = sorted(name for name in merged if name not in allowed)
+    if unknown:
+        return f'action={action} 不支持参数：{"、".join(unknown)}'
+
+    if action == 'list':
+        for name in ('page', 'per_page'):
+            value = merged.get(name)
+            if value is not None and (not isinstance(value, int)
+                                      or isinstance(value, bool)
+                                      or value < 1):
+                return f'参数 {name} 必须是 ≥ 1 的整数'
+    if action == 'round_ref_params':
+        round_number = merged.get('round_number')
+        if round_number is not None and (not isinstance(round_number, int)
+                                         or isinstance(round_number, bool)
+                                         or round_number < 1):
+            return '参数 round_number 必须是 ≥ 1 的整数（轮次从 1 开始）'
+    return None
+
+
 def resolve_rest_call(name: str, arguments: Dict[str, Any]
                       ) -> Tuple[Optional[dict], Optional[dict], Optional[str]]:
     """把意图工具 / 长尾 MCP 工具解析为 ``(MCP 工具, 合并参数, 错误文本)``。
@@ -916,7 +1037,7 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
         missing.extend(conditional_required(name, action, arguments))
         if missing:
             return None, None, f'action={action} 缺少必填参数：{"、".join(missing)}'
-        mcp = get_tool(mapping[action])
+        mcp = _lookup_rest_tool(mapping[action])
         if mcp is None:  # pragma: no cover - 注册表内部一致性防御
             return None, None, f'工具映射失效：{name}.{action}'
         if mcp['name'] in AGENT_UNEXPOSED_MCP_TOOLS:  # pragma: no cover - 同上
@@ -930,6 +1051,10 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
                 return None, None, normalize_error
         if name == 'algorithm_query':
             normalize_error = _normalize_algorithm_query_arguments(action, merged)
+            if normalize_error:
+                return None, None, normalize_error
+        if name == 'testcase_query':
+            normalize_error = _normalize_testcase_query_arguments(action, merged)
             if normalize_error:
                 return None, None, normalize_error
         return mcp, merged, None
@@ -987,7 +1112,8 @@ __all__ = [
     'AUDIO_QUERY_ACTIONS',
     'CONDITIONAL_REQUIRED', 'ENABLED_TOOLS', 'EVALUATION_QUERY_ACTIONS',
     'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool', 'MCP_TOOLS',
-    'REPORT_QUERY_ACTIONS', 'TASK_QUERY_ACTIONS', 'TOOL_INDEX',
+    'REPORT_QUERY_ACTIONS', 'TASK_QUERY_ACTIONS', 'TESTCASE_QUERY_ACTIONS',
+    'TESTCASE_QUERY_PARAMS', 'TESTCASE_VISIBILITY_VALUES', 'TOOL_INDEX',
     'TOOL_INDEX_BY_NAME', 'conditional_required', 'platform_contract',
     'required_for_action', 'resolve_rest_call', 'risk_of', 'tool_search',
     'validate_arguments',
