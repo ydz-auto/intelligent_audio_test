@@ -46,9 +46,11 @@
   不发生物理删除；即便如此仍按 ``DESTRUCTIVE`` 提案（审批端二次确认），
   因为被删配置会立刻影响后续执行与评估。
 - **热重载**：只从数据库重建算法配置缓存并广播失效通知，**不改任何配置
-  数据**，因此可重复执行且结果一致；失败（重建异常）由服务层返回
-  ``success=false`` / 异常，工具层按 ``UPSTREAM_ERROR`` 如实失败，不会静默
-  成功。热重载不校验业务规则，也不替代「保存 / 发布」。
+  数据**，因此可重复执行且结果一致；失败不静默 —— 网关的 reload 信封有两层
+  ``success``，外层恒为 ``True``（``task_service.reload_config`` 在 gRPC
+  重载失败时也返回 200 + ``reload_time=None``），因此工具层另按载荷断言
+  （``validate_result``）：内层 ``success`` 不是 ``True`` 或 ``reload_time``
+  为空即 ``UPSTREAM_ERROR``。热重载不校验业务规则，也不替代「保存 / 发布」。
 - **导入是只增不改**：``import`` 对已存在的 ``type`` 不更新定义；同一次导入里
   的 ``params`` 按设备参数追加。模型侧不要用它做「覆盖导入」。
 - **幂等**：同一 tool_call 的重复执行由 M2 基座（INT-2466）的审批幂等键
@@ -357,9 +359,16 @@ def _prepare_definition_save(action: str,
         if not str(body.get('expected_updated_at') or '').strip():
             return ('action=definition_save 的 body.id 有值时必须带 '
                     'expected_updated_at（乐观锁版本，取自定义详情 updated_at）')
-        return None
+    # 保存路径的算法类型：``algorithm_handlers.handle_save_definition`` 无条件
+    # 校验 ``algorithm_type``（网关把 ``type`` 映射过去），新建与更新都必填。
+    # 只在新建分支检查会让「更新缺类型」的提案通过、审批后才 422（INT-2470
+    # 打回项 P3）。
     if not (str(body.get('type') or '').strip()
             or str(body.get('algorithm_type') or '').strip()):
+        if algorithm_id is not None:
+            return ('action=definition_save 的 body.id 有值时必须带 '
+                    'body.type 或 body.algorithm_type（服务端保存时无条件校验；'
+                    '取自定义详情的类型字段）')
         return 'action=definition_save 新建时必须带 body.type 或 body.algorithm_type'
     return None
 
@@ -543,6 +552,39 @@ def resolve(arguments: Optional[Dict[str, Any]]
                           prepare=_prepare)
 
 
+# ------------------------------------------------------------ 执行后校验
+
+# 成功路径必定带重建时间（``algorithm_service`` 的 ReloadConfig 在缓存重建
+# 成功后写入 ``_last_reload_time``），因此空 ``reload_time`` 就是「缓存没重建」。
+
+
+def validate_result(action: str, payload: Any) -> Optional[str]:
+    """执行后语义校验：HTTP 2xx 但实际未成功时返回错误文本。
+
+    目前只有热重载需要：``POST /api/v1/algorithm/reload`` 的外层信封恒为
+    ``success=True``，真实结果在内层 ``data``；``task_service.reload_config``
+    在 gRPC 重载失败时仍返回 ``success=True`` + ``reload_time=None``，只看
+    HTTP 状态会把「配置缓存没重建」报成成功（INT-2470 打回项 P2）。其余写动作
+    的结果由接口幂等语义直接表达，不做额外断言。
+    """
+    if action != 'reload':
+        return None
+    if not isinstance(payload, dict):
+        return '热重载返回非 JSON 对象，无法确认配置缓存已重建'
+    data = payload.get('data')
+    if not isinstance(data, dict):
+        return '热重载响应缺少 data，无法确认配置缓存已重建'
+    message = str(data.get('message') or payload.get('message') or '').strip()
+    if data.get('success') is not True:
+        return ('热重载未成功：' + (message or '接口返回 success=false')
+                + '；不要当作已生效')
+    if not str(data.get('reload_time') or '').strip():
+        return ('热重载未完成：reload_time 为空（配置缓存未重建）'
+                + (f'：{message}' if message else '')
+                + '；请检查 algorithm_service 后重试，不要当作已生效')
+    return None
+
+
 # ------------------------------------------------------------------ 审批预览
 
 # 审批人最需要看清的「这次改了什么」：大段子实体结构只给键名与条数，
@@ -638,5 +680,5 @@ __all__ = [
     'PARAM_CREATE_API_FIELDS', 'PARAM_CREATE_DEVICE_FIELDS', 'PARAM_MANAGE',
     'PARAM_TYPE_SOURCES', 'PARAM_UPDATE_FIELDS',
     'REFERENCE_PARAM_CREATE_FIELDS', 'REFERENCE_PARAM_UPDATE_FIELDS',
-    'TARGET_TABLES', 'proposal_diff', 'resolve',
+    'TARGET_TABLES', 'proposal_diff', 'resolve', 'validate_result',
 ]

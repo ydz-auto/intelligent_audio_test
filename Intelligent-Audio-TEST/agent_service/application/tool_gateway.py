@@ -1076,6 +1076,17 @@ class SharedToolGateway(ToolGateway):
         failure = self._transport_failure(call, tool, result)
         if failure is not None:
             return failure
+        # 语义校验（INT-2470 打回项 P2）：算法热重载的外层信封恒为 success，
+        # 真正结果在内层 data；只看 HTTP 状态会把「缓存没重建」报成成功。
+        # 动作取自原始调用参数（merged 已剔除 action）。
+        if call.name == 'algorithm_manage':
+            action = (call.arguments or {}).get('action')
+            semantic_error = algorithm_tools.validate_result(
+                str(action or ''), result.payload)
+            if semantic_error:
+                logger.warning('ToolGateway 回源语义失败 tool=%s action=%s',
+                               call.name, action)
+                return self._fail(call, UPSTREAM_ERROR, semantic_error)
         return self._ok(call, result.text)
 
     def _transport_failure(self, call: ToolCallRequest, tool: dict,

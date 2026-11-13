@@ -11,7 +11,8 @@
 3. **审批链**：写调用只生成提案、不访问 REST；批准后按动作解析的请求执行一次，
    重复结算 / 重复投递不产生第二次副作用；动作权限不足不生成提案。
 4. **热重载**：可重复执行（两次都成功、不改业务数据）；失败如实返回
-   ``UPSTREAM_ERROR``，不静默成功。
+   ``UPSTREAM_ERROR``，不静默成功 —— 含 HTTP 200 但 ``data.reload_time`` 为空
+   （缓存没重建）的语义失败路径。
 """
 import json
 import os
@@ -125,6 +126,7 @@ def _valid_arguments():
                               'algo_type': ALGO_TYPE, 'body': {'status': 'offline'}},
         'definition_save': {'action': 'definition_save',
                             'body': {'id': 7, 'name': '接线测试_算法',
+                                     'algorithm_type': ALGO_TYPE,
                                      'expected_updated_at': '2026-11-14 00:00:00'}},
         'definition_delete': {'action': 'definition_delete',
                               'algo_type': ALGO_TYPE},
@@ -281,9 +283,13 @@ def test_risk_probe_covers_every_algorithm_write_action():
     ({'action': 'definition_update', 'algo_type': ALGO_TYPE, 'body': {}},
      'body'),
     ({'action': 'definition_update', 'body': {'name': 'n'}}, 'algo_type'),
-    # 乐观锁
+    # 乐观锁 / 算法类型（保存路径两分支都必填 algorithm_type）
     ({'action': 'definition_save',
       'body': {'id': 7, 'name': 'n'}}, 'expected_updated_at'),
+    ({'action': 'definition_save',
+      'body': {'id': 7, 'name': 'n',
+               'expected_updated_at': '2026-11-14 00:00:00'}},
+     'body.type 或 body.algorithm_type'),
     ({'action': 'definition_save',
       'body': {'name': 'n'}}, 'type 或 body.algorithm_type'),
     # 状态 / 方向取值
@@ -571,6 +577,52 @@ def test_reload_failure_is_not_reported_as_success(tmp_path):
     assert record.result_code == 'UPSTREAM_ERROR'
     assert '重载失败' in (record.result or {}).get('content', '')
     # 上游拒绝是业务结论：模型继续答复后 run 正常结束，不静默成功
+    assert container.repositories['runs'].get(run.id).status is \
+        RunStatus.SUCCEEDED
+
+
+def test_reload_success_payload_passes_the_semantic_check():
+    assert algorithm_tools.validate_result('reload', {
+        'success': True, 'code': 0, 'message': 'Config reloaded',
+        'data': {'success': True, 'message': 'Config reloaded: True',
+                 'reload_time': '2026-11-14T00:00:00'}}) is None
+    # 非 reload 动作不做载荷断言（结果由接口自身语义表达）
+    assert algorithm_tools.validate_result('param_update', {'anything': 1}) is None
+
+
+@pytest.mark.parametrize('action,payload,fragment', [
+    # 真实可达路径（打回项 P2）：task_service.reload_config 在 gRPC 重载失败时
+    # 仍返回 200 + success=True + reload_time=None，只看 HTTP 状态会报成功。
+    ('reload', {'success': True, 'code': 0, 'message': 'Config reloaded',
+                'data': {'success': True, 'message': 'Config reloaded: False',
+                         'reload_time': None}}, 'reload_time 为空'),
+    # 服务层若改为如实传播失败：内层 success=false
+    ('reload', {'success': True, 'code': 0, 'message': 'Config reloaded',
+                'data': {'success': False, 'message': 'Config reloaded: False',
+                         'reload_time': None}}, '热重载未成功'),
+    # 信封缺 data（网关异常形态）
+    ('reload', {'success': True, 'code': 0, 'message': 'ok'}, '缺少 data'),
+    ('reload', ['not', 'an', 'object'], '非 JSON 对象'),
+])
+def test_reload_semantic_failure_is_reported_as_upstream_error(
+        tmp_path, action, payload, fragment):
+    rest = FakeAlgorithmRest(status=200, payload=payload)
+    call = ToolCallRequest(
+        tool_call_id='c1', name='algorithm_manage',
+        arguments={'action': action})
+    container, _llm, run = _scenario(tmp_path, rest, call)
+    approval = pending_approval(container, run.id)
+    assert approval.proposal['risk'] == 'WRITE'
+
+    decide(container, approval.id, 'APPROVE', permissions=['*'])
+    container.executor.submit(run.id)
+
+    assert len(rest.calls) == 1
+    record = container.repositories['tool_calls'].find(run.id, 'c1')
+    assert record.status is ToolCallStatus.FAILED
+    assert record.result_code == 'UPSTREAM_ERROR'
+    assert fragment in (record.result or {}).get('content', '')
+    # 失败是业务结论：模型继续答复后 run 正常结束，不静默成功
     assert container.repositories['runs'].get(run.id).status is \
         RunStatus.SUCCEEDED
 
