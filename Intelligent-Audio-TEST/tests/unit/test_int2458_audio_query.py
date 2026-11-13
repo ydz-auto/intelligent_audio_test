@@ -435,14 +435,17 @@ def test_gateway_rejects_by_ids_direct_call_without_calling_rest():
     assert rest.calls == []
 
 
-def test_gateway_write_tools_still_disabled():
+def test_gateway_write_tools_require_approval():
+    """INT-2467 起音频写工具已启用，但**未审批不执行**（先提案）。"""
     for name, args in [
-        ('audio_import', {'action': 'url_import', 'urls': ['http://x/a.wav']}),
-        ('audio_annotate', {'action': 'update_meta', 'audio_ids': [1]}),
+        ('audio_import', {'action': 'url_import', 'url': 'http://x/a.wav'}),
+        ('audio_annotate', {'action': 'update_meta', 'audio_id': 1,
+                            'metadata': {'name': '接线测试_音频'}}),
     ]:
         result = _gateway().execute(
             ToolCallRequest('c2', name, args), _ctx(permissions=('*',)))
-        assert result.error_code == TOOL_NOT_ENABLED, name
+        assert result.error_code == 'APPROVAL_REQUIRED', name
+        assert result.ok is False
 
 
 # ---------------------------------------------------------------- Skill
@@ -465,16 +468,22 @@ def test_audio_import_skill_loads_without_issues():
 def test_audio_import_skill_contract():
     _, skill = _audio_skill()
     meta = skill.meta
-    assert meta.allowed_tools == ('audio_query', 'platform_contract', 'tool_search')
-    assert meta.permissions == ('audio:read',)
+    # INT-2467：音频写工具（需审批）进入本 Skill
+    assert meta.allowed_tools == ('audio_query', 'audio_import',
+                                  'audio_annotate', 'platform_contract',
+                                  'tool_search')
+    assert meta.permissions == ('audio:read', 'audio:upload', 'audio:update')
     assert '触发词' in meta.description and '不适用' in meta.description
     assert skill.has_section('Gotchas') and skill.has_section('验收')
     assert skill.body_line_count <= 500
-    # allowed-tools 只声明只读工具（写工具留 M2）
+    write_tools = {'audio_import', 'audio_annotate'}
     for name in meta.allowed_tools:
         tool = INTENT_TOOL_BY_NAME[name]
-        assert tool.risk == 'READ', name
         assert tool.enabled is True, name
+        if name in write_tools:
+            assert tool.risk == 'WRITE', name
+        else:
+            assert tool.risk == 'READ', name
 
 
 def test_audio_import_skill_is_visible_only_with_permission():

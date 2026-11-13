@@ -2,7 +2,9 @@
 """INT-2459 Skill `device-operations` / `spl-calibration` / `driver-proposal`。
 
 验收锚点（卡面可测标准 3、4）：
-3. 3 个 Skill 触发准确率 ≥ 90%，``allowed-tools`` 只含只读工具；
+3. 3 个 Skill 触发准确率 ≥ 90%，``allowed-tools`` 只含已注册且已启用的工具；
+   INT-2467（M2）起各 Skill 增加自己的写工具（且只加本域那一个），
+   其余工具仍必须是只读；
 4. 不编造设备在线状态或校准数值（Skill 正文硬规则 + 只读工具边界）。
 
 另外锁定卡面口径说明：§6.1 没有独立的 SPL 只读意图工具，SPL 只读走
@@ -22,6 +24,13 @@ from tests.agent_eval.domains.device.skill_support import (
 )
 
 READ_ONLY_TOOLS = {'device_query', 'tool_search'}
+
+#: INT-2467：每个 Skill 允许携带的**本域写工具**（写路径一律先提案后审批）
+SKILL_WRITE_TOOLS = {
+    'device-operations': {'device_control'},
+    'spl-calibration': {'spl_calibrate'},
+    'driver-proposal': {'driver_propose'},
+}
 
 
 # ---------------------------------------------------------------- 装载与契约
@@ -54,27 +63,39 @@ def test_required_sections_and_frontmatter(name):
 
 
 @pytest.mark.parametrize('name', SKILL_NAMES)
-def test_allowed_tools_are_readonly_and_enabled(name):
+def test_allowed_tools_are_enabled_and_scoped(name):
     meta = skill_meta(name)
     assert meta.allowed_tools, f'{name} allowed-tools 不能为空'
-    assert set(meta.allowed_tools) <= READ_ONLY_TOOLS, meta.allowed_tools
-    assert 'device_query' in meta.allowed_tools
-    for tool_name in meta.allowed_tools:
+    allowed = set(meta.allowed_tools)
+    write_tools = SKILL_WRITE_TOOLS.get(name, set())
+    # 只读工具 + 本域写工具；不接受其它域的写工具
+    assert allowed <= (READ_ONLY_TOOLS | write_tools), (
+        name, sorted(allowed - READ_ONLY_TOOLS - write_tools))
+    assert 'device_query' in allowed
+    for tool_name in allowed:
         tool = intent_tools.INTENT_TOOL_BY_NAME.get(tool_name)
         assert tool is not None, f'未注册工具：{tool_name}'
         assert tool.enabled is True, f'工具未启用：{tool_name}'
-        assert ToolRisk(tool.risk) is ToolRisk.READ, f'非只读工具：{tool_name}'
-    # M1 只读：禁止把写工具（含 M2 的 driver_propose）放进 allowed-tools
-    assert 'device_control' not in meta.allowed_tools
-    assert 'spl_calibrate' not in meta.allowed_tools
-    assert 'driver_propose' not in meta.allowed_tools
+        if tool_name in write_tools:
+            assert ToolRisk(tool.risk) in (ToolRisk.WRITE, ToolRisk.DESTRUCTIVE)
+        else:
+            assert ToolRisk(tool.risk) is ToolRisk.READ, f'非只读工具：{tool_name}'
+    # 跨域写工具不得混入（M2 每个 Skill 只带本域那一个）
+    for other in ({'device_control', 'spl_calibrate', 'driver_propose'}
+                  - write_tools):
+        assert other not in allowed, (name, other)
 
 
 def test_skill_permissions_match_domain_scope():
-    assert set(skill_meta('device-operations').permissions) == {'device:read'}
+    # INT-2467：Skill 可见性权限 = 只读域权限 + 写工具所需权限（并集）
+    assert set(skill_meta('device-operations').permissions) == {
+        'device:read', 'device:control'}
     assert set(skill_meta('spl-calibration').permissions) == {
-        'spl:read', 'digital_spl:read'}
-    assert set(skill_meta('driver-proposal').permissions) == {'device:read'}
+        'spl:read', 'digital_spl:read', 'spl:create', 'spl:update',
+        'spl:delete', 'spl:test_tone', 'digital_spl:create',
+        'digital_spl:update', 'digital_spl:delete'}
+    assert set(skill_meta('driver-proposal').permissions) == {
+        'device:read', 'device:update'}
 
 
 # ---------------------------------------------------------------- L2 正文口径
@@ -95,7 +116,7 @@ def test_device_operations_covers_status_alarm_and_write_boundary():
                   'metric_type', 'severity'):
         assert field in body, field
     assert 'device:control' in body and 'APPROVAL_REQUIRED' in body
-    assert 'M1' in body and '审批' in body
+    assert '审批' in body and '二次确认' in body and 'confirm=true' in body
     # 不编造：状态以接口为准
     assert '以接口返回为准' in body
     assert '编造' in body
@@ -120,9 +141,9 @@ def test_spl_skill_states_no_dedicated_read_tool():
     assert 'device_query' in body
     assert 'tool_search' in body
     assert '不要自造' in body or '不要臆造' in body
-    # 写侧工具名只作为 M2 边界说明出现
+    # 写侧工具名与审批口径（INT-2467 起可执行，但先提案后审批）
     assert 'spl_calibrate' in body
-    assert 'M2' in body
+    assert '审批' in body
 
 
 def test_driver_proposal_skill_is_proposal_only():
@@ -137,9 +158,9 @@ def test_driver_proposal_skill_is_proposal_only():
     # 只提案不执行不发布
     assert '不执行' in body and '不注册' in body and '不发布' in body
     assert '只提案' in body
-    # 不把未启用工具当可用
-    assert 'TOOL_NOT_ENABLED' in body
-    assert 'M2' in body and 'INT-2467' in body
+    # 审批前只是提案（INT-2467 起 driver_propose 已启用）
+    assert 'APPROVAL_REQUIRED' in body
+    assert 'INT-2467' in body
 
 
 # ---------------------------------------------------------------- 触发准确率

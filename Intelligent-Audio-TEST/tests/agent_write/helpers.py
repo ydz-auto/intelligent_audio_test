@@ -63,11 +63,11 @@ def start_run(container, *, message='创建任务', permissions=('*',),
 
 def decide(container, approval_id: str, decision: str, *,
            owner_id=OWNER_ID, tenant_id=TENANT_ID,
-           permissions: Iterable[str] = ('*',)):
+           permissions: Iterable[str] = ('*',), confirm: bool = False):
     return container.run_service.decide_approval(
         approval_id, owner_id=owner_id, tenant_id=tenant_id,
         decision=ApprovalDecision(decision.upper()),
-        permissions=tuple(permissions))
+        permissions=tuple(permissions), confirm=confirm)
 
 
 def approvals_of(container, run_id):

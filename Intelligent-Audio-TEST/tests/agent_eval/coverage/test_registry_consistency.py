@@ -47,6 +47,14 @@ M1_SKILLS = frozenset({
 })
 MCP_TOTAL = 207
 
+#: INT-2467（M2）：各 Skill 携带的**本域写工具**；其余 allowed-tools 仍须只读。
+SKILL_WRITE_TOOLS = {
+    'audio-import': {'audio_import', 'audio_annotate'},
+    'device-operations': {'device_control'},
+    'spl-calibration': {'spl_calibrate'},
+    'driver-proposal': {'driver_propose'},
+}
+
 
 def _load_contract():
     with io.open(CONTRACT_FILE, encoding='utf-8') as handle:
@@ -100,10 +108,15 @@ def test_skills_allowed_tools_stay_inside_the_31_names():
         assert set(allowed) <= set(SPEC_NAMES), (
             f'{skill.name} 引用了未注册工具 '
             f'{set(allowed) - set(SPEC_NAMES)}')
+        write_tools = SKILL_WRITE_TOOLS.get(skill.name, set())
         for name in allowed:
             tool = intent_tools.INTENT_TOOL_BY_NAME[name]
             assert tool.enabled is True, f'{skill.name} 引用未启用工具 {name}'
-            assert tool.risk == 'READ', f'{skill.name} 引用非只读工具 {name}'
+            if name in write_tools:
+                # 写路径一律先提案后审批；Skill 只允许带本域写工具
+                assert tool.risk in ('WRITE', 'DESTRUCTIVE'), name
+            else:
+                assert tool.risk == 'READ', f'{skill.name} 引用非只读工具 {name}'
     assert M1_SKILLS <= seen_skills, f'缺少 M1 Skill：{M1_SKILLS - seen_skills}'
     assert 'platform-reference' in seen_skills
 
@@ -127,9 +140,18 @@ def test_enabled_read_tools_are_declared_or_documented():
     enabled_read = {tool.name for tool in intent_tools.INTENT_TOOLS
                     if tool.enabled and tool.risk == 'READ'
                     and tool.name not in intent_tools.ALWAYS_AVAILABLE_TOOLS}
-    assert enabled_read - declared == SKILL_LESS_ENABLED_READ, (
-        f'未声明的已启用只读工具变了：{enabled_read - declared}')
-    assert declared <= enabled_read, f'Skill 声明了写 / 未启用工具：{declared - enabled_read}'
+    declared_read = {name for name in declared
+                     if intent_tools.INTENT_TOOL_BY_NAME[name].risk == 'READ'}
+    assert enabled_read - declared_read == SKILL_LESS_ENABLED_READ, (
+        f'未声明的已启用只读工具变了：{enabled_read - declared_read}')
+    for name in declared:
+        tool = intent_tools.INTENT_TOOL_BY_NAME[name]
+        assert tool.enabled, f'Skill 声明了未启用工具：{name}'
+        if tool.risk != 'READ':
+            # 写工具只允许出现在携带它的本域 Skill 里（INT-2467）
+            owners = {skill for skill, tools in SKILL_WRITE_TOOLS.items()
+                      if name in tools}
+            assert owners, f'写工具未登记归属：{name}'
 
 
 # ---------------------------------------------------------------- tools/list

@@ -30,6 +30,10 @@ M1 各域卡按域启用自己的只读意图工具（已完成：``audio_query`
 ``testcase_query`` / ``testcase_generate`` INT-2460、
 ``task_query`` / ``task_diagnose`` / ``log_diagnose`` / ``dashboard_query``
 INT-2461、``report_query`` / ``report_compare`` INT-2463）；
+M2 写卡（INT-2467 等）实现写意图工具：动作 → 写 REST 目标由域模块解析
+（``audio_tools`` / ``device_tools``），执行前一律走 INT-2466 的提案 + 审批 +
+幂等；``driver_propose`` 是本地工具（代码提案 + T2 验证，见
+``agent_service/application/driver_proposal_service.py``）。
 每个域工具 = 动作 → MCP 只读工具的映射，REST 路径 / 查询参数
 仍由 ``mcp_registry`` 的共享构造器决定，不复制 Schema。
 用例域少量只读路由（统计 / 轮次参考参数 / 导出作业状态 / 刷新状态）不在
@@ -58,7 +62,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from shared.agent_tools import contract as platform_contract_catalog
-from shared.agent_tools import device_tools
+from shared.agent_tools import audio_tools, device_tools, driver_tools
 from shared.agent_tools import testcase_tools as case_tools
 from shared.agent_tools.diagnostics import (
     DEFAULT_LOG_ROWS as LOG_DIAGNOSE_DEFAULT_MAX_ROWS,
@@ -782,9 +786,9 @@ INTENT_TOOLS: List[IntentTool] = [
     # 权限码口径（INT-2501）：一律取 RBAC 事实源
     # （scripts/migrations/202608/seed_rbac.py）与同能力 MCP 工具
     # （mcp_registry.py）实际使用的码，多码按 OR 判定；不自己拼不存在的码。
-    # memory_write / driver_propose 在 RBAC 尚无对应权限码（memory 域未建、
-    # 驱动生成无码），暂保留原声明（不存在即恒拒绝，fail-closed），
-    # 标「待规格」由需求规划师定码后再改。
+    # memory_write 只要求登录（记忆域无 RBAC 码，隔离由服务端构造路径 + 审批）；
+    # driver_propose 在 INT-2467 用 device:update 作为持有者判定（RBAC 仍无独立
+    # 驱动码），详见该工具定义处的注释。
     IntentTool(
         name='ui_tree',
         description=('读取设备 UI 树：裁剪节点、截图引用、与上次快照 diff；'
@@ -861,24 +865,59 @@ INTENT_TOOLS: List[IntentTool] = [
         risk='WRITE', permissions=(), enabled=True, kind='local'),
 
     # ---------------- 其余业务意图工具（预留，M1 / M2 实现） ----------------
+    # INT-2467：音频 / 设备 / SPL / 驱动提案写工具已实现并启用（写路径一律
+    # 先提案后审批，见 §5.2 / §9.4 与 INT-2466）。
     IntentTool(
-        name='audio_import', description='URL 导入、上传初始化/合并、OSS 直传确认（写）。',
+        name='audio_import',
+        description=('音频导入（写，需审批）：URL 导入、分片上传初始化 / 合并、'
+                     'OSS 直传完成确认。分片二进制字节不经 Agent 通道（非 JSON '
+                     '文本通道），Agent 只发起 / 收尾上传流程。'),
         parameters=_schema({
             'action': _prop('string', '导入动作', required=True,
-                            enum=['url_import', 'upload_init', 'upload_merge', 'confirm']),
-            'urls': _prop('array', '音频 URL 列表', items={'type': 'string'}),
-            'upload_id': _prop('string', '上传会话 ID'),
+                            enum=list(audio_tools.AUDIO_IMPORT_ACTIONS)),
+            'url': _prop('string', '音频 URL（url_import 必填）'),
+            'relative_path': _prop('string', '保留的原始目录路径（url_import）'),
+            'audio_type': _prop('string', '音频类型（如 dry / noise）'),
+            'body': _prop('object', '分片合并请求体（upload_merge 必填；'
+                                     'MergeChunksRequest，至少含 file_id / task_id）'),
+            'oss_key': _prop('string', 'OSS 对象键（confirm 必填）'),
+            'upload_id': _prop('string', '上传会话 ID（confirm）'),
+            'filename': _prop('string', '文件名（confirm 必填）'),
+            'md5': _prop('string', '文件 MD5（confirm）'),
+            'file_size': _prop('integer', '文件字节数（confirm）'),
+            'duration': _prop('number', '时长（秒，confirm）'),
+            'sample_rate': _prop('integer', '采样率 Hz（confirm）'),
+            'tags': _prop('array', '标签列表（confirm）',
+                          items={'type': 'string'}),
+            'asr_text': _prop('string', 'ASR 文本（confirm）'),
         }, required=('action',)),
-        risk='WRITE', permissions=('audio:upload',), enabled=False, kind='reserved'),
+        risk='WRITE', permissions=audio_tools.AUDIO_IMPORT_PERMISSIONS,
+        enabled=True, kind='intent_rest'),
     IntentTool(
-        name='audio_annotate', description='批量标注、元数据、算法配置（写）。',
+        name='audio_annotate',
+        description=('音频标注写入（写，需审批）：批量标注 / 附加标签、'
+                     '单条元数据、单条算法配置。批量算法配置的网关路由被 '
+                     '/{audio_id}/algorithms 遮蔽（URL 不可达），批量场景请逐个调用。'),
         parameters=_schema({
             'action': _prop('string', '标注动作', required=True,
-                            enum=['batch_annotate', 'update_meta', 'set_algorithms']),
-            'audio_ids': _prop('array', '音频 ID 列表', items={'type': 'integer'}),
-            'body': _prop('object', '标注 / 元数据字段'),
+                            enum=list(audio_tools.AUDIO_ANNOTATE_ACTIONS)),
+            'audio_id': _prop('integer', '音频 ID（update_meta / set_algorithms 必填）'),
+            'items': _prop('array', '批量标注项 [{audio_id, annotations?, tags?}]'
+                                    '（batch_annotate 必填）',
+                           items={'type': 'object'}),
+            'algorithm_type': _prop('string', '算法类型（batch_annotate；'
+                                              '取值以 algorithm options 为准）'),
+            'refresh_test_cases': _prop('boolean', '是否联动刷新用例参数'
+                                                   '（batch_annotate，默认 true）'),
+            'metadata': _prop('object', '单条元数据字段（update_meta 必填；可用：'
+                                        + '、'.join(audio_tools.AUDIO_METADATA_FIELDS)
+                                        + '；tags 是字符串）'),
+            'algorithms': _prop('array', '算法关系 [{algorithm_type, is_primary?, '
+                                         'weight?, params?}]（set_algorithms 必填）',
+                                items={'type': 'object'}),
         }, required=('action',)),
-        risk='WRITE', permissions=('audio:update',), enabled=False, kind='reserved'),
+        risk='WRITE', permissions=audio_tools.AUDIO_ANNOTATE_PERMISSIONS,
+        enabled=True, kind='intent_rest'),
     IntentTool(
         name='testcase_write', description='创建、修改、复制、删除、打标签（写）。',
         parameters=_schema({
@@ -1018,26 +1057,63 @@ INTENT_TOOLS: List[IntentTool] = [
         }, required=('action',)),
         risk='WRITE', permissions=('task:execute',), enabled=False, kind='reserved'),
     IntentTool(
-        name='spl_calibrate', description='SPL 映射、校准、测试音、历史（写）。',
+        name='spl_calibrate',
+        description=('SPL 映射 / 校准 / 测试音（写，需审批）：物理域 /api/v1/spl 的'
+                     '映射创建 / 修改 / 删除、执行校准、播放 / 停止测试音；'
+                     '数字域 /api/v1/digital-spl 的 RMS→SPL 映射创建 / 修改 / 删除、'
+                     '提交校准点集、设置默认映射。校准会写校准点集，测试音会出声。'),
         parameters=_schema({
-            'action': _prop('string', '动作', required=True,
-                            enum=['mapping', 'calibrate', 'test_tone', 'history']),
-            'device_id': _prop('integer', '设备 ID'),
-            'body': _prop('object', '校准参数'),
+            'action': _prop('string', '校准动作', required=True,
+                            enum=list(device_tools.SPL_CALIBRATE_TARGETS)),
+            'mapping_id': _prop('integer', '映射 ID（修改 / 删除 / 校准必填）'),
+            'api_id': _prop('integer', '被测 API ID（digital_mapping_create / '
+                                       'digital_set_default 必填）'),
+            'unique_id': _prop('string', '测试音目标设备唯一标识（不传用后端扬声器）'),
+            'gain_value': _prop('number', '测试音增益（默认 50）'),
+            'gain_offset': _prop('number', '测试音增益偏移'),
+            'target_spl': _prop('number', '目标声压级'),
+            'name': _prop('string', '映射名称（创建必填）'),
+            'description': _prop('string', '描述'),
+            'device_id': _prop('integer', '播放设备 ID（物理域映射；不是被测设备）'),
+            'device_type': _prop('string', '设备类型（物理域映射）'),
+            'distance': _prop('number', '测试距离（米）'),
+            'digital_gain': _prop('number', '数字增益'),
+            'test_frequency': _prop('integer', '测试频率 Hz'),
+            'is_current': _prop('boolean', '是否设为当前映射（mapping_update）'),
+            'calibration_status': _prop('string', '校准状态（以接口返回为准）',
+                                        enum=list(device_tools.CALIBRATION_STATUS_VALUES)),
+            'calibration_data': _prop('object', '校准点集（物理域 / 数字域字段不同，'
+                                                '以 Schema 描述为准）'),
+            'reference_spl': _prop('number', '数字域参考声压级'),
+            'reference_gain_linear': _prop('number', '数字域参考增益（线性）'),
+            'min_gain_linear': _prop('number', '数字域最小增益（线性）'),
+            'max_gain_linear': _prop('number', '数字域最大增益（线性）'),
+            'vendor': _prop('string', '数字域厂商（以被测 API 配置为准）'),
+            'protocol': _prop('string', '数字域协议（以被测 API 配置为准）'),
         }, required=('action',)),
-        risk='WRITE', permissions=('spl:create', 'spl:update', 'spl:test_tone'),
-        enabled=False, kind='reserved'),
+        risk='WRITE', permissions=device_tools.SPL_CALIBRATE_PERMISSIONS,
+        enabled=True, kind='intent_rest'),
     IntentTool(
-        name='device_control', description='连接、重启、扫描、安装、批量控制（破坏性写）。',
+        name='device_control',
+        description=('设备控制（破坏性写，需审批 + 二次确认）：连接 / 断开 / 重启 / '
+                     '关机 / 安装应用 / 卸载应用 / 扫描 / 批量控制。批量动作的 '
+                     'operation 取值与单设备动作一致。未审批不执行。'),
         parameters=_schema({
-            'action': _prop('string', '动作', required=True,
-                            enum=['connect', 'disconnect', 'reboot', 'scan',
-                                  'install', 'batch']),
-            'device_id': _prop('integer', '设备 ID'),
-            'device_ids': _prop('array', '批量设备 ID', items={'type': 'integer'}),
-            'body': _prop('object', '控制参数'),
+            'action': _prop('string', '控制动作', required=True,
+                            enum=list(device_tools.DEVICE_CONTROL_ACTIONS)),
+            'device_id': _prop('integer', '设备 ID（单设备动作必填）'),
+            'device_ids': _prop('array', '批量设备 ID（batch 必填）',
+                                items={'type': 'integer'}),
+            'operation': _prop('string', '批量动作类型（batch 必填）',
+                               enum=list(device_tools.DEVICE_BATCH_OPERATIONS)),
+            'params': _prop('object', '操作参数：install 需 file_path'
+                                      '（服务器侧安装包路径），uninstall 需 '
+                                      'package_name；其余动作按需'),
+            'idempotency_key': _prop('string', '幂等键（batch，可选）'),
         }, required=('action',)),
-        risk='DESTRUCTIVE', permissions=('device:control',), enabled=False, kind='reserved'),
+        risk='DESTRUCTIVE',
+        permissions=device_tools.DEVICE_CONTROL,
+        enabled=True, kind='intent_rest'),
     IntentTool(
         name='report_generate', description='生成/重生成报告、创建 Studio 草稿（写）。',
         parameters=_schema({
@@ -1079,18 +1155,42 @@ INTENT_TOOLS: List[IntentTool] = [
         risk='WRITE', permissions=('report:read',), enabled=False, kind='reserved'),
     IntentTool(
         name='driver_propose',
-        description=('生成设备驱动（AppDriver）+ 厂商 API 适配器（ApiVendorAdapter）代码提案；'
-                     '不执行、不注册、不发布。target_kind = DEVICE_DRIVER / API_ADAPTER / PAIR。'),
+        description=('生成设备驱动（AppDriver）与厂商 API 适配器（ApiVendorAdapter）'
+                     '代码提案（写，需审批）：产出文件清单 + diff + 依赖 + 风险 + '
+                     '回滚方案 + capabilities.json，并在 T2 沙箱跑导入/编译、单测、'
+                     'mock 厂商契约、注册表 resolve。只提案，不执行、不注册、不发布；'
+                     '发布必须另有单独的 DESTRUCTIVE 审批且默认关闭。'
+                     'target_kind = DEVICE_DRIVER / API_ADAPTER / PAIR。'),
         parameters=_schema({
             'target_kind': _prop('string', '提案目标', required=True,
-                                 enum=['DEVICE_DRIVER', 'API_ADAPTER', 'PAIR']),
-            'app_type': _prop('string', 'App 类型（设备驱动）'),
-            'api_id': _prop('integer', '被测 API ID（API 适配器）'),
-            'capabilities': _prop('object', '能力画像 capabilities.json'),
-            'ui_trace': _prop('object', 'UI 探索轨迹（ui_trace.json）'),
-        }, required=('target_kind',)),
-        risk='WRITE', permissions=('algorithm:update',),  # 待规格（INT-2501）：RBAC 无对应码
-        enabled=False, kind='reserved'),
+                                 enum=list(driver_tools.TARGET_KINDS)),
+            'capabilities': _prop('object', '能力画像 capabilities.json：'
+                                            'stimulus_modes / capture_modes / '
+                                            'timing_points / result_fields / '
+                                            'supported_metrics / limitations（必填）'),
+            'app_type': _prop('string', 'App 类型（设备驱动必填，如 doubao）'),
+            'version': _prop('string', '驱动版本（设备驱动必填，如 v1）'),
+            'platform': _prop('string', '设备平台（设备驱动必填）',
+                              enum=list(driver_tools.DEVICE_PLATFORMS)),
+            'display_name': _prop('string', '驱动展示名（可选）'),
+            'ui_trace': _prop('object', 'UI 探索轨迹 ui_trace.json：动作序列 + '
+                                        '页面树 + 截图引用（设备驱动必填；元素定位'
+                                        '优先 resource_id / key，退化到 text 必须写 '
+                                        'fallback_reason）'),
+            'api_id': _prop('integer', '被测 API ID（API 适配器必填）'),
+            'vendor': _prop('string', '厂商（API 适配器必填）',
+                            enum=list(driver_tools.API_ADAPTER_VENDORS)),
+            'protocol': _prop('string', '协议（API 适配器必填）',
+                              enum=list(driver_tools.API_ADAPTER_PROTOCOLS)),
+            'contract': _prop('object', 'API 契约：端点 / 鉴权 / 请求响应样例'
+                                        '（API 适配器必填）'),
+        }, required=('target_kind', 'capabilities')),
+        risk='WRITE',
+        # RBAC 里没有独立的驱动码（INT-2501「待规格」）。INT-2467 用 device:update
+        # 作为持有者判定：驱动属于设备接入能力，且工具本身只产提案、发布默认关闭；
+        # 需求规划师后续若定专用码（如 device:driver_manage），改这一行即可。
+        permissions=('device:update',),
+        enabled=True, kind='local'),
 ]
 
 INTENT_TOOL_BY_NAME: Dict[str, IntentTool] = {t.name: t for t in INTENT_TOOLS}
@@ -1281,6 +1381,8 @@ def permissions_for(name: str,
     绝大多数工具是「工具 = 一个权限域」，直接用工具级声明。``device_query``
     横跨 device / spl / digital_spl 三个域，工具级声明只表达可见性，调用时按
     ``action`` 收窄，避免持有 device:read 的用户读 SPL 映射（反之亦然）。
+    ``spl_calibrate`` 同理（物理域 create/update/delete/test_tone 与数字域
+    四个码）；``device_control`` 各动作统一 device:control。
     动作非法时回落到工具级权限，由解析层给出明确的 action 错误。
     """
     tool = INTENT_TOOL_BY_NAME.get(name)
@@ -1289,8 +1391,13 @@ def permissions_for(name: str,
             return None
         mcp = get_tool(name)
         return tuple(mcp['permissions']) if mcp is not None else None
-    if name == 'device_query' and isinstance(arguments, dict):
-        by_action = device_tools.action_permissions(arguments.get('action'))
+    if isinstance(arguments, dict) and name in (
+            'device_query', 'device_control', 'spl_calibrate'):
+        action = arguments.get('action')
+        if name == 'device_query':
+            by_action = device_tools.action_permissions(action)
+        else:
+            by_action = device_tools.write_action_permissions(name, action)
         if by_action is not None:
             return by_action
     return tuple(tool.permissions)
@@ -1299,7 +1406,40 @@ def permissions_for(name: str,
 # 本地实现的意图工具（不映射 REST）：tool_search / platform_contract 在网关
 # 内部完成；report_compare 由 ToolGateway 组合只读 REST（见模块 docstring）。
 LOCAL_INTENT_TOOL_NAMES = frozenset(
-    {'tool_search', 'platform_contract', 'report_compare'})
+    {'tool_search', 'platform_contract', 'report_compare', 'driver_propose'})
+
+# 写意图工具（INT-2467）：动作 → 目标 REST 由各域模块解析。执行前一律走
+# INT-2466 的提案 + 审批 + 幂等；`driver_propose` 是本地工具（代码生成 + T2
+# 验证），不映射 REST，故不在本表。
+WRITE_ACTION_TOOL_NAMES = frozenset(
+    {'audio_import', 'audio_annotate', 'device_control', 'spl_calibrate'})
+
+
+def resolve_write_call(name: str, arguments: Dict[str, Any]
+                       ) -> Tuple[Optional[dict], Optional[dict], Optional[str]]:
+    """写意图工具 → ``(目标工具, 合并参数, 错误文本)``（域模块各自解析）。"""
+    if name in ('audio_import', 'audio_annotate'):
+        return audio_tools.resolve_call(name, arguments)
+    if name == 'device_control':
+        return device_tools.resolve_control_call(arguments)
+    if name == 'spl_calibrate':
+        return device_tools.resolve_spl_calibrate_call(arguments)
+    return None, None, f'未知写工具：{name}'
+
+
+def validate_write_arguments(name: str, arguments: Any) -> Optional[str]:
+    """写工具的完整参数校验：Schema + 动作白名单 + 跨字段规则。
+
+    提案阶段（Loop 落 ``agent_approval`` 之前）与审批后执行前用同一份口径，
+    避免「提案时不校验、批准后才 422」。``driver_propose`` 的材料 / 能力画像
+    校验在应用层（``driver_proposal_service``）执行，不在这里。
+    """
+    if name not in WRITE_ACTION_TOOL_NAMES:
+        return None
+    if arguments is not None and not isinstance(arguments, dict):
+        return '工具参数必须是对象'
+    _tool, _merged, error = resolve_write_call(name, arguments or {})
+    return error
 
 
 def risk_of(name: str) -> Optional[str]:
@@ -1585,6 +1725,8 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
     """
     if name == 'device_query':
         return device_tools.resolve_call(arguments or {})
+    if name in WRITE_ACTION_TOOL_NAMES:
+        return resolve_write_call(name, arguments or {})
     if name in LOCAL_INTENT_TOOL_NAMES:
         return None, None, f'工具 {name} 由本地实现，不映射 REST 接口'
     mapping = _REST_ACTION_MAP.get(name)
@@ -1711,9 +1853,11 @@ __all__ = [
     'TASK_DOMAIN_STATS_GRANULARITIES',
     'TASK_QUERY_ACTIONS', 'TASK_QUERY_PARAMS', 'TESTCASE_QUERY_ACTIONS',
     'TESTCASE_QUERY_PARAMS', 'TESTCASE_VISIBILITY_VALUES', 'TOOL_INDEX',
-    'TOOL_INDEX_BY_NAME', 'action_params', 'conditional_required',
+    'TOOL_INDEX_BY_NAME', 'WRITE_ACTION_TOOL_NAMES', 'action_params',
+    'conditional_required',
     'permissions_for',
     'platform_contract', 'redact_for_audit',
-    'required_for_action', 'resolve_rest_call', 'risk_of', 'tool_search',
-    'validate_arguments', 'validate_report_compare',
+    'required_for_action', 'resolve_rest_call', 'resolve_write_call', 'risk_of',
+    'tool_search', 'validate_arguments', 'validate_report_compare',
+    'validate_write_arguments',
 ]

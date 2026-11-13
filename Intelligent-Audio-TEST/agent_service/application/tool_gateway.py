@@ -37,6 +37,9 @@ import math
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from agent_service.application.driver_proposal_service import (
+    DRIVER_PROPOSE_TOOL, DriverProposalError, DriverProposalService,
+)
 from agent_service.application.memory_service import (
     APPROVAL_REQUIRED, MemoryService, tool_error_code,
 )
@@ -231,11 +234,13 @@ class SharedToolGateway(ToolGateway):
     def __init__(self, *, bridge: ToolRegistryPort,
                  rest: ToolTransportPort,
                  credentials: RunCredentialPort,
-                 memory: Optional[MemoryService] = None):
+                 memory: Optional[MemoryService] = None,
+                 driver_proposals: Optional[DriverProposalService] = None):
         self._bridge = bridge
         self._rest = rest
         self._credentials = credentials
         self._memory = memory
+        self._driver_proposals = driver_proposals
 
     # ------------------------------------------------------------ catalog
 
@@ -273,26 +278,57 @@ class SharedToolGateway(ToolGateway):
             return f'工具不存在：{name}'
         if self.risk_of(name) is None:
             return f'工具不存在：{name}'
-        return self._bridge.validate(name, arguments or {})
+        schema_error = self._bridge.validate(name, arguments or {})
+        if schema_error:
+            return schema_error
+        if name == DRIVER_PROPOSE_TOOL and self._driver_proposals is not None:
+            # 材料 / 能力画像在提案阶段就校验（缺材料不生成提案）
+            return self._driver_proposals.validate(arguments or {})
+        return None
 
     def proposal_diff(self, name: str,
                       arguments: Optional[Dict[str, Any]]
                       ) -> Optional[Dict[str, Any]]:
-        """REST 写工具的请求预览：方法 + 路径 + 脱敏参数（审批人可见）。
+        """写工具的变更预览（审批人可见）。
 
-        具体域写工具（M2 各域卡）可覆盖成字段级 diff；这里至少让审批人看到
-        「这条提案会发什么请求」，而不是只有一个工具名。
+        - REST 写工具：方法 + 路径 + 脱敏参数；
+        - ``driver_propose``：提案目标 + 材料清单（代码在审批通过后才生成）；
+        - ``DESTRUCTIVE`` 工具额外带 ``second_confirmation``（INT-2467）：
+          审批端必须二次确认，批准请求要显式带 ``confirm=true``。
         """
-        tool, merged, error = self._bridge.resolve_rest(
-            name, dict(arguments or {}))
+        args = dict(arguments or {})
+        if name == DRIVER_PROPOSE_TOOL:
+            preview: Dict[str, Any] = {
+                'kind': 'driver_proposal',
+                'target_kind': args.get('target_kind'),
+                'materials': sorted(key for key in args if args[key] is not None),
+                'arguments': redact_for_audit(name, args),
+            }
+            self._mark_destructive(preview, name)
+            return preview
+        tool, merged, error = self._bridge.resolve_rest(name, args)
         if error or tool is None:
             return None
-        return {
+        preview = {
             'kind': 'rest_request',
             'method': tool.get('method'),
             'path': tool.get('path'),
             'arguments': redact_for_audit(name, merged),
         }
+        self._mark_destructive(preview, name)
+        return preview
+
+    def _mark_destructive(self, preview: Dict[str, Any], name: str) -> None:
+        """破坏性操作标记：审批端据此要求二次确认（决策接口 confirm=true）。"""
+        risk = self.risk_of(name)
+        if risk is ToolRisk.DESTRUCTIVE:
+            preview['second_confirmation'] = {
+                'required': True,
+                'risk': risk.value,
+                'confirm_field': 'confirm',
+                'reason': '该动作不可回滚（设备重启 / 关机 / 安装 / 卸载 / '
+                          '批量控制），需要二次确认后才执行。',
+            }
 
     def risk_of(self, name: str) -> Optional[ToolRisk]:
         """工具风险（意图工具 + tool_search 命中的长尾 MCP 工具）。
@@ -361,6 +397,10 @@ class SharedToolGateway(ToolGateway):
             return self._run_log_diagnose(call, arguments, context)
         if name == 'report_compare':
             return self._run_report_compare(call, arguments, context)
+        # 驱动提案（INT-2467）：本地工具（确定性代码生成 + T2 验证），
+        # 只在审批通过后执行；不注册、不发布。
+        if name == DRIVER_PROPOSE_TOOL:
+            return self._run_driver_propose(call, arguments, context)
 
         mcp_tool, merged, resolve_error = self._bridge.resolve_rest(
             name, arguments)
@@ -941,6 +981,25 @@ class SharedToolGateway(ToolGateway):
             return self._fail(call, tool_error_code(exc.code), str(exc))
         except (TypeError, ValueError) as exc:
             return self._fail(call, INVALID_ARGUMENTS, f'记忆工具参数非法：{exc}')
+
+    def _run_driver_propose(self, call: ToolCallRequest,
+                            arguments: Dict[str, Any],
+                            context: ToolInvocationContext) -> ToolResult:
+        """``driver_propose``：校验材料 → 生成提案 → 静态检查 → T2 验证。
+
+        服务未装配时按未启用拒绝（不伪造空提案）；输入非法 / 材料不齐返回
+        ``INVALID_ARGUMENTS``，不产生任何可发布产物。
+        """
+        if self._driver_proposals is None:
+            return self._fail(
+                call, TOOL_NOT_ENABLED,
+                '驱动提案服务未装配（缺少 T2 验证通道），不生成提案。')
+        try:
+            payload = self._driver_proposals.generate(
+                arguments, run_id=context.run_id)
+        except DriverProposalError as exc:
+            return self._fail(call, INVALID_ARGUMENTS, str(exc))
+        return self._ok(call, json.dumps(payload, ensure_ascii=False))
 
     # ------------------------------------------------------------ rest
 
