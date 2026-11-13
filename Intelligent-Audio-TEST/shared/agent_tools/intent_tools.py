@@ -121,6 +121,11 @@ def _schema(properties: Dict[str, Any],
 
 # ---------------------------------------------------------------- 工具定义
 
+# 风险等级取值（与 ``agent_service.domain.enums.ToolRisk`` 同口径）。
+# ``WRITE_RISK_LEVELS`` 是「需要审批」的两级，注册期测试按它校验 REST 写映射。
+RISK_LEVELS: Tuple[str, ...] = ('READ', 'WRITE', 'DESTRUCTIVE')
+WRITE_RISK_LEVELS = frozenset({'WRITE', 'DESTRUCTIVE'})
+
 
 @dataclass(frozen=True)
 class IntentTool:
@@ -129,10 +134,19 @@ class IntentTool:
     name: str
     description: str
     parameters: Dict[str, Any]
-    risk: str = 'READ'
+    # 必填、无默认值（INT-2560 / INT-2559 P1-1）：risk 是「是否需要审批」的
+    # 唯一声明。留默认 READ 会让漏写 risk 的新写工具在注册期被当成只读 ——
+    # 不进提案、网关按只读放行、REST 按 POST 直发，绕开整条审批链。
+    risk: str
     permissions: Tuple[str, ...] = ()
     enabled: bool = False
     kind: str = 'intent'  # intent | intent_rest | local | reserved
+
+    def __post_init__(self) -> None:
+        if self.risk not in RISK_LEVELS:
+            raise ValueError(
+                f'工具 {self.name} 的 risk 取值非法：{self.risk!r}'
+                f'（必须是 {"/".join(RISK_LEVELS)} 之一）')
 
     @property
     def requires_approval(self) -> bool:
@@ -1114,6 +1128,15 @@ AGENT_UNEXPOSED_MCP_TOOLS: Dict[str, str] = {
 
 # 审计脱敏：这些工具的参数正文不落 agent_tool_call / 事件（§8.6：审计不落记忆
 # 正文）。值替换成 {redacted, sha256, length}，模型侧仍有 args_hash 可追溯。
+#
+# 约束（INT-2560，INT-2559 P2-4）：进本表的工具**不得走通用审批链**。
+# 通用审批链（Loop 提案 → agent_approval → 审批后执行 / 崩溃后重提案）拿
+# ``record.arguments`` 去执行和重提案，而这里的参数已是 ``redact_for_audit``
+# 之后的占位值 —— 通用链一旦拿到脱敏体，审批通过的「原文」会变成
+# ``{redacted, sha256, length}``。故本表只登记自带提案原语的工具
+# （``ToolGateway.proposal_capable``，当前仅 ``memory_write``：提案内容存
+# artifact，审计记录只留哈希）。域写工具要脱敏，必须先有同款提案原语并
+# 排除出通用审批链，否则不许登记到这里。
 AUDIT_REDACTED_ARGUMENTS: Dict[str, Tuple[str, ...]] = {
     'memory_write': ('content',),
 }
@@ -1253,6 +1276,18 @@ _REST_ACTION_MAP: Dict[str, Dict[str, str]] = {
     # log_diagnose 只有 search / stats 走 REST；diagnose 是本地下游聚合
     'log_diagnose': LOG_DIAGNOSE_ACTIONS,
     'dashboard_query': DASHBOARD_QUERY_ACTIONS,
+}
+
+# 非 GET 但语义只读的 REST 目标（INT-2560）：这四个端点用 POST 只是为了让
+# 过滤条件走 JSON body（数组 / 嵌套字段），不产生任何副作用。
+# 注册期风险断言据此放行 ``risk='READ'``；任何**新增**的 POST / PUT / PATCH /
+# DELETE 映射若不在本表，就必须声明 WRITE / DESTRUCTIVE（fail-closed：宁可
+# 多要求一次审批，也不让写操作按只读直发）。
+READ_ONLY_NON_GET_TOOLS: Dict[str, str] = {
+    'audio_get_by_md5': '按 MD5 批量查重：body 只承载 md5_list',
+    'audio_folder_tree': '音频目录树：body 只承载目录过滤条件',
+    'report_cases_search': '报告内用例搜索：body 只承载过滤 / 排序条件',
+    'report_case_averages': '用例指标均值：body 只承载过滤条件',
 }
 
 # 动作级参数白名单：动作不支持的参数在工具层直接报错（服务端静默忽略）。
@@ -1707,11 +1742,13 @@ __all__ = [
     'REPORT_COMPARE_ACTIONS', 'REPORT_COMPARE_MAX_REPORTS',
     'PAGE_MIN', 'PER_PAGE_MAX',
     'REPORT_COMPARE_MIN_REPORTS', 'REPORT_PAGE_MIN', 'REPORT_PER_PAGE_MAX',
-    'REPORT_QUERY_ACTIONS', 'REPORT_QUERY_PARAMS',
+    'REPORT_QUERY_ACTIONS', 'REPORT_QUERY_PARAMS', 'READ_ONLY_NON_GET_TOOLS',
+    'RISK_LEVELS',
     'TASK_DOMAIN_STATS_GRANULARITIES',
     'TASK_QUERY_ACTIONS', 'TASK_QUERY_PARAMS', 'TESTCASE_QUERY_ACTIONS',
     'TESTCASE_QUERY_PARAMS', 'TESTCASE_VISIBILITY_VALUES', 'TOOL_INDEX',
-    'TOOL_INDEX_BY_NAME', 'action_params', 'conditional_required',
+    'TOOL_INDEX_BY_NAME', 'WRITE_RISK_LEVELS', 'action_params',
+    'conditional_required',
     'permissions_for',
     'platform_contract', 'redact_for_audit',
     'required_for_action', 'resolve_rest_call', 'risk_of', 'tool_search',
