@@ -112,8 +112,13 @@ class ToolGateway(ABC):
         """
         return False
 
-    def release_exploration(self, run_id: str) -> None:
-        """run 收口时释放探索会话资源（设备租约 / 轨迹收尾）。默认无探索。"""
+    def release_exploration(self, run_id: str, *, status: Any = None,
+                            error: Optional[str] = None) -> None:
+        """run 收口时释放探索会话资源（设备租约 / 轨迹收尾）。默认无探索。
+
+        ``status`` / ``error`` 是 run 的终态与失败原因，用于给 ``ui_trace``
+        记准确的 ``stop_reason``（取消 → ``USER_CANCEL``）。
+        """
         return None
 
     def required_permissions(self, name: str,

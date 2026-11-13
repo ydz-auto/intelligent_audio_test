@@ -20,6 +20,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
@@ -71,6 +72,16 @@ _STOP_MESSAGES: Dict[ux.ExplorationStopReason, str] = {
     ux.ExplorationStopReason.USER_CANCEL: '探索已结束。',
 }
 
+#: run 终态 → 探索停止原因（取消不能再记成 DONE；失败原因走 trace 的
+#: ``run_status`` / ``run_error``，不硬塞进 Enum 之外的值）
+_STOP_REASON_BY_RUN_STATUS: Dict[str, ux.ExplorationStopReason] = {
+    'CANCELLED': ux.ExplorationStopReason.USER_CANCEL,
+    'BUDGET_EXCEEDED': ux.ExplorationStopReason.BUDGET,
+}
+
+#: trace 里保存的 run 失败原因长度上限（异常栈可能很长，截断保留关键信息）
+_RUN_ERROR_MAX_CHARS = 500
+
 
 class ExplorationError(RuntimeError):
     """探索失败：``code`` 直接作为工具错误码，``message`` 回灌模型。"""
@@ -102,6 +113,11 @@ class _Session:
     stop_reason: Optional[ux.ExplorationStopReason] = None
     artifact_uri: Optional[str] = None
     artifact_id: Optional[str] = None
+    #: run 收口时的终态与失败原因（写进 trace，取消 / 失败也要留痕）
+    run_status: Optional[str] = None
+    run_error: Optional[str] = None
+    #: 最近一次轨迹的校验报告（工具结果回灌，产物不合格不静默成功）
+    trace_report: Optional[Dict[str, Any]] = None
 
     def elapsed_seconds(self) -> float:
         return max(0.0, time.monotonic() - self.started_monotonic)
@@ -146,15 +162,36 @@ class ExplorationService:
             session.approved = True
             session.approval_id = approval_id
 
-    def close_run(self, run_id: str) -> None:
-        """run 收口：结束会话、释放租约、落最后一版轨迹（不掩盖 run 状态）。"""
+    def close_run(self, run_id: str, *, status: Any = None,
+                  error: Optional[str] = None) -> None:
+        """run 收口：结束会话、释放租约、落最后一版轨迹（不掩盖 run 状态）。
+
+        ``status`` 取 run 的终态（``RunStatus`` 或字符串）：取消记
+        ``USER_CANCEL``，预算超限记 ``BUDGET``；失败时把失败原因写进
+        ``trace.run_status`` / ``trace.run_error``。都不传时保持原口径
+        （``DONE``），便于旧调用方。
+        """
+        run_status, reason = self._close_status(status)
         for key, session in list(self._sessions.items()):
             if session.run_id != run_id:
                 continue
             try:
-                self._finalize(session, ux.ExplorationStopReason.DONE)
+                session.run_status = run_status
+                session.run_error = (str(error)[:_RUN_ERROR_MAX_CHARS]
+                                     if error else None)
+                self._finalize(session, session.stop_reason or reason)
             finally:
                 self._sessions.pop(key, None)
+
+    @staticmethod
+    def _close_status(status: Any
+                      ) -> tuple[Optional[str], ux.ExplorationStopReason]:
+        if status is None:
+            return None, ux.ExplorationStopReason.DONE
+        value = str(getattr(status, 'value', status)).upper()
+        reason = _STOP_REASON_BY_RUN_STATUS.get(value,
+                                                ux.ExplorationStopReason.DONE)
+        return value, reason
 
     # ------------------------------------------------------------ ui_tree
 
@@ -259,9 +296,10 @@ class ExplorationService:
                               'dry_run': dry_run})
 
         if dry_run:
-            # 预演：不下发设备动作、不取新快照；返回「预计变化」= 当前树无变化，
-            # 并显式标注 projected，避免模型把预演当成已生效。
-            trace_ref = self._write_trace(session)
+            # 预演：不下发设备动作、不取新快照、**不落轨迹产物**（预演不是一次
+            # 真实动作，登记成 UI_TRACE 会让 run 的产物列表出现一条 0 动作、
+            # 校验不通过的轨迹）。返回「预计变化」= 当前树无变化，并显式标注
+            # projected，避免模型把预演当成已生效。
             return {
                 'device_id': device_id,
                 'platform': session.platform,
@@ -270,7 +308,8 @@ class ExplorationService:
                 'validate_only': validate_only,
                 'applied': False,
                 'projected': True,
-                'trace_ref': trace_ref,
+                'trace_ref': None,
+                'trace_recorded': False,
                 'action_index': session.actions,
                 'tree_diff': {
                     'projected': True,
@@ -321,6 +360,7 @@ class ExplorationService:
             'tree_diff': diff,
             'stop_reason': (stop_reason or
                             ux.ExplorationStopReason.DONE).value,
+            'trace_validation': self._trace_summary(session),
             'budget': self._budget.as_dict(
                 session.actions, session.elapsed_seconds()),
         }
@@ -505,8 +545,7 @@ class ExplorationService:
     def _stop(self, session: _Session, reason: ux.ExplorationStopReason,
               *, extra: Optional[Dict[str, Any]] = None) -> None:
         """安全 / 预算停止：落轨迹、释放租约，抛带 stop_reason 的失败负载。"""
-        trace_ref = self._write_trace(session, reason)
-        self._finalize(session, reason)
+        trace_ref = self._finalize(session, reason)
         self._sessions.pop(self._key(session.run_id, session.device_id), None)
         payload = {
             'device_id': session.device_id,
@@ -514,6 +553,7 @@ class ExplorationService:
             'action_index': session.actions,
             'trace_ref': trace_ref,
             'stop_reason': reason.value,
+            'trace_validation': self._trace_summary(session),
             'message': _STOP_MESSAGES.get(reason, reason.value),
             'budget': self._budget.as_dict(
                 session.actions, session.elapsed_seconds()),
@@ -525,11 +565,37 @@ class ExplorationService:
                                _STOP_MESSAGES.get(reason, reason.value),
                                payload=payload)
 
+    @staticmethod
+    def _trace_summary(session: _Session) -> Optional[Dict[str, Any]]:
+        """轨迹校验摘要（模型 / 测试从中看到 ok、体积与裁剪情况）。"""
+        report = session.trace_report
+        if not report:
+            return None
+        return {
+            'ok': report.get('ok'),
+            'bytes': report.get('bytes'),
+            'actions': report.get('actions'),
+            'pages': report.get('pages'),
+            'trimmed': report.get('trimmed'),
+        }
+
     def _write_trace(self, session: _Session,
                      reason: Optional[ux.ExplorationStopReason] = None
                      ) -> Optional[str]:
-        """把当前轨迹写成 ``ui_trace.json`` 并登记 ``agent_artifact``（幂等）。"""
+        """把当前轨迹写成 ``ui_trace.json`` 并登记 ``agent_artifact``（幂等）。
+
+        每一步都会覆盖写同一个 URI，因此**登记必须跟着最终内容走**：首版
+        ``add``、之后 ``update`` 同一行的 size / 元数据；否则
+        ``agent_artifact`` 记录的会是首版字节数与 sha256，而 URI 上已是
+        最终（更大）的内容（INT-2492 打回 P2-1）。超过 4MB 的轨迹先裁剪
+        （截节点文本 / 丢最旧页），裁剪后仍超限则以 ``ok=False`` 登记，
+        不静默注册成合格产物。
+        """
         if self._store is None or self._artifacts is None:
+            return None
+        if not session.action_log:
+            # 只预演 / 只读树（没有任何真实动作）时不产出轨迹：0 动作的
+            # ui_trace 过不了结构校验，登记上去只会污染 run 的产物列表。
             return None
         stop = reason or session.stop_reason or ux.ExplorationStopReason.DONE
         trace = ux.build_ui_trace(
@@ -538,53 +604,80 @@ class ExplorationService:
             actions=session.action_log, pages=session.pages,
             screenshots=session.screenshots,
             started_ms=0, finished_ms=session.elapsed_ms(),
-            stop_reason=stop, coverage=session.coverage)
+            stop_reason=stop, coverage=session.coverage,
+            run_status=session.run_status, run_error=session.run_error)
+        trace, trimmed = ux.fit_trace_to_bytes(trace)
         text = json.dumps(trace, ensure_ascii=False, sort_keys=True)
-        report = ux.validation_report(trace, trace_bytes=len(
-            text.encode('utf-8')))
+        raw = text.encode('utf-8')
+        size = len(raw)
+        report = ux.validation_report(trace, trace_bytes=size)
+        if trimmed:
+            report['trimmed'] = trimmed
+        session.trace_report = report
+        if not report['ok']:
+            logger.error('ui_trace 产物校验未通过 run=%s device=%s: %s',
+                         session.run_id, session.device_id,
+                         [check.get('detail') for check in report['checks']
+                          if not check.get('ok')])
+        object_name = (f'{ux.UI_TRACE_FILENAME.split(".")[0]}_'
+                       f'{session.device_id}.json')
         try:
             uri = self._store.put(
-                text, run_id=session.run_id,
-                name=f'{ux.UI_TRACE_FILENAME.split(".")[0]}_{session.device_id}.json',
+                text, run_id=session.run_id, name=object_name,
                 content_type='application/json')
         except Exception as exc:  # noqa: BLE001 - 产物落盘失败不伪造引用
             logger.warning('ui_trace 落对象存储失败 run=%s device=%s: %s',
                            session.run_id, session.device_id, exc)
             return None
         session.artifact_uri = uri
+        metadata = {
+            'artifact_kind': ux.ARTIFACT_KIND_UI_TRACE,
+            # 同一 run 多设备各写各的对象；包内固定名见 package_filename
+            'filename': object_name,
+            'package_filename': ux.UI_TRACE_FILENAME,
+            'device_id': session.device_id,
+            'platform': session.platform,
+            'stop_reason': stop.value,
+            'run_status': session.run_status,
+            'run_error': session.run_error,
+            'valid': bool(report['ok']),
+            'source_trace': {
+                'uri': uri,
+                # 落盘内容的真实 hash（校验 artifact 与 URI 内容一致）
+                'sha256': hashlib.sha256(raw).hexdigest(),
+                # 驱动提案用的规范化 hash（与 driver_propose 的 ui_trace 口径相同）
+                'canonical_sha256': report['sha256'],
+                'actions': report['actions'],
+                'pages': report['pages'],
+                'screenshots': report['screenshots'],
+            },
+            'validation_report': report,
+            'created_at': utcnow().isoformat(),
+        }
         if session.artifact_id is None:
             artifact = AgentArtifact(
                 id=str(uuid.uuid4()), run_id=session.run_id,
-                kind=ux.ARTIFACT_KIND_UI_TRACE, uri=uri,
-                size=len(text.encode('utf-8')),
-                metadata={
-                    'artifact_kind': ux.ARTIFACT_KIND_UI_TRACE,
-                    'filename': ux.UI_TRACE_FILENAME,
-                    'device_id': session.device_id,
-                    'platform': session.platform,
-                    'stop_reason': stop.value,
-                    'source_trace': {
-                        'uri': uri,
-                        'sha256': report['sha256'],
-                        'actions': report['actions'],
-                        'pages': report['pages'],
-                        'screenshots': report['screenshots'],
-                    },
-                    'validation_report': report,
-                    'created_at': utcnow().isoformat(),
-                })
+                kind=ux.ARTIFACT_KIND_UI_TRACE, uri=uri, size=size,
+                metadata=metadata)
             try:
                 stored = self._artifacts.add(artifact)
                 session.artifact_id = stored.id
             except Exception as exc:  # noqa: BLE001 - 登记失败显式留痕
                 logger.warning('ui_trace 登记 agent_artifact 失败 run=%s: %s',
                                session.run_id, exc)
+        else:
+            try:
+                self._artifacts.update(session.artifact_id, size=size,
+                                       metadata=metadata, uri=uri)
+            except Exception as exc:  # noqa: BLE001 - 更新失败显式留痕
+                logger.warning('ui_trace 更新 agent_artifact 失败 run=%s: %s',
+                               session.run_id, exc)
         return uri
 
     def _finalize(self, session: _Session,
-                  reason: ux.ExplorationStopReason) -> None:
+                  reason: ux.ExplorationStopReason) -> Optional[str]:
         session.stop_reason = reason
-        self._write_trace(session, reason)
+        trace_ref = self._write_trace(session, reason)
         lease, session.lease = session.lease, None
         if lease is not None:
             try:
@@ -592,6 +685,7 @@ class ExplorationService:
             except Exception:  # noqa: BLE001 - 释放失败由租约 TTL 兜底
                 logger.warning('释放设备租约失败 device=%s', session.device_id,
                                exc_info=True)
+        return trace_ref
 
 
 __all__ = [

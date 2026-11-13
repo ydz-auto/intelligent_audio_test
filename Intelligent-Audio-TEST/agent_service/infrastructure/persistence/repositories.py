@@ -840,6 +840,26 @@ class SqlArtifactRepository(_BaseRepo, ArtifactRepository):
         finally:
             db.close()
 
+    def update(self, artifact_id: str, *, size: Optional[int] = None,
+               metadata: Optional[Dict[str, Any]] = None,
+               uri: Optional[str] = None) -> bool:
+        db = self._session()
+        try:
+            row = db.query(AgentArtifactPO).filter(
+                AgentArtifactPO.id == artifact_id).first()
+            if row is None:
+                return False
+            if size is not None:
+                row.size = int(size)
+            if metadata is not None:
+                row.artifact_metadata = metadata
+            if uri is not None:
+                row.uri = uri
+            db.commit()
+            return True
+        finally:
+            db.close()
+
     def list_by_run(self, run_id: str) -> List[AgentArtifact]:
         db = self._session()
         try:

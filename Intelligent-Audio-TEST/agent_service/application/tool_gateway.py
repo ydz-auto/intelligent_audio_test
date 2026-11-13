@@ -294,12 +294,18 @@ class SharedToolGateway(ToolGateway):
             return True
         return self._exploration.plan_approved(run_id, args.get('device_id'))
 
-    def release_exploration(self, run_id: str) -> None:
-        """run 收口时结束探索会话（释放设备租约、落最后一版 ui_trace）。"""
+    def release_exploration(self, run_id: str, *, status: Any = None,
+                            error: Optional[str] = None) -> None:
+        """run 收口时结束探索会话（释放设备租约、落最后一版 ui_trace）。
+
+        ``status`` / ``error`` 是 run 的终态与失败原因：取消记
+        ``USER_CANCEL``、预算超限记 ``BUDGET``，失败时把原因写进轨迹，
+        不能让所有收口都记成 ``DONE``。
+        """
         if self._exploration is None:
             return
         try:
-            self._exploration.close_run(run_id)
+            self._exploration.close_run(run_id, status=status, error=error)
         except Exception:  # noqa: BLE001 - 收尾失败不掩盖 run 状态
             logger.warning('探索会话收尾失败 run=%s', run_id, exc_info=True)
 

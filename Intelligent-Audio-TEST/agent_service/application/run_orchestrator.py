@@ -1511,13 +1511,21 @@ class RunOrchestrator:
                 reason: Optional[str] = None,
                 reason_code: Optional[str] = None) -> None:
         current = self._runs.get(run_id)
-        if current is None or current.status.is_terminal:
+        if current is None:
+            return
+        if current.status.is_terminal:
+            # 取消等路径由 RunService 直接落了终态：这里不再推进状态，但仍要
+            # 收尾探索会话——否则设备租约不释放、ui_trace 记成 DONE（P3-3）。
+            self._release_exploration(run_id, current.status, error)
             return
         RunStateMachine.assert_transition(current.status, status)
         hit = self._runs.transition_if(
             run_id, {current.status}, status, error=error,
             finished_at=utcnow())
         if not hit:
+            latest = self._runs.get(run_id)
+            self._release_exploration(
+                run_id, latest.status if latest is not None else status, error)
             return
         payload = {
             'status': status.value,
@@ -1533,9 +1541,22 @@ class RunOrchestrator:
         except Exception:  # noqa: BLE001 - 收尾失败不掩盖 run 的最终状态
             logger.warning('run 收口时作废未决审批失败 run=%s', run_id,
                            exc_info=True)
-        # 探索会话（INT-2492）：释放设备租约并落最后一版 ui_trace
-        self._tool_gateway.release_exploration(run_id)
+        # 探索会话（INT-2492）：释放设备租约并落最后一版 ui_trace；
+        # 终态与失败原因一并传入，取消 / 失败不能都记成 DONE。
+        self._release_exploration(run_id, status, error)
         self._wakeup.notify(run_id)
+
+    def _release_exploration(self, run_id: str, status: RunStatus,
+                             error: Optional[str]) -> None:
+        """收尾探索会话（释放租约 + 按 run 终态落 ui_trace）。
+
+        收尾失败不掩盖 run 的最终状态，也不影响未决审批的作废。
+        """
+        try:
+            self._tool_gateway.release_exploration(run_id, status=status,
+                                                   error=error)
+        except Exception:  # noqa: BLE001 - 收尾失败只留痕
+            logger.warning('探索会话收尾失败 run=%s', run_id, exc_info=True)
 
 
 __all__ = ['RunOrchestrator', 'OrchestratorSettings']

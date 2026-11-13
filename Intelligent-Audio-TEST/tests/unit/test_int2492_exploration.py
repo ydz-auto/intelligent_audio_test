@@ -15,6 +15,7 @@
 """
 import json
 import os
+import hashlib
 
 os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
@@ -27,7 +28,7 @@ from agent_service.application.exploration_service import (
     EXPLORATION_UNAVAILABLE, LOGIN_REQUIRED, ExplorationService,
 )
 from agent_service.application.tool_gateway import SharedToolGateway
-from agent_service.domain.enums import ToolRisk
+from agent_service.domain.enums import RunStatus, ToolRisk
 from agent_service.domain.model.entities import ToolCallRequest
 from agent_service.domain.ports.tool_gateway import (
     ToolApproval, ToolInvocationContext,
@@ -93,10 +94,25 @@ class FakeLease(DeviceLeasePort):
 class FakeArtifacts:
     def __init__(self):
         self.items = []
+        self.updates = 0
 
     def add(self, artifact):
         self.items.append(artifact)
         return artifact
+
+    def update(self, artifact_id, *, size=None, metadata=None, uri=None):
+        for item in self.items:
+            if item.id != artifact_id:
+                continue
+            if size is not None:
+                item.size = int(size)
+            if metadata is not None:
+                item.metadata = metadata
+            if uri is not None:
+                item.uri = uri
+            self.updates += 1
+            return True
+        return False
 
     def list_by_run(self, run_id):
         return [a for a in self.items if a.run_id == run_id]
@@ -472,6 +488,136 @@ def test_close_run_releases_lease():
     assert lease.released == 1
 
 
+# ------------------------------------------------- 产物登记（打回 P2-1 / P3-2）
+
+
+def test_artifact_metadata_tracks_final_trace_after_every_action():
+    """多步动作覆盖写同一 URI：artifact 必须描述**最终**内容（P2-1）。"""
+    artifacts, store = FakeArtifacts(), FakeStore()
+    device = FakeDevice([[_node('n1', '按钮'), _node('n2', '另一个')]])
+    gateway = make_gateway(devices=device, artifacts=artifacts, store=store)
+    context = _ctx(approval=_approval())
+    for _ in range(3):
+        result = gateway.execute(
+            call('ui_action', {'device_id': 3, 'action_type': 'BACK'}),
+            context)
+        assert result.ok, result.content
+
+    assert len(artifacts.items) == 1 and artifacts.updates == 2
+    artifact = artifacts.items[0]
+    text = store.written[artifact.uri]
+    raw = text.encode('utf-8')
+    trace = json.loads(text)
+    assert len(trace['actions']) == 3 and len(trace['pages']) == 3
+    # size / sha256 / 动作数 / 页数都描述 URI 上的最终内容
+    assert artifact.size == len(raw)
+    assert artifact.metadata['source_trace']['sha256'] == \
+        hashlib.sha256(raw).hexdigest()
+    assert artifact.metadata['source_trace']['actions'] == 3
+    assert artifact.metadata['source_trace']['pages'] == 3
+    assert artifact.metadata['validation_report']['ok'] is True
+    assert artifact.metadata['valid'] is True
+    # 对象名与 metadata.filename 对齐（按设备分文件，包内固定名另记）
+    assert artifact.metadata['filename'].endswith('_3.json')
+    assert artifact.metadata['package_filename'] == 'ui_trace.json'
+
+
+def test_oversized_trace_is_trimmed_below_limit_and_validated():
+    """>4MB 的轨迹必须被裁剪到上限内，或以 ok=False 登记（不静默合格）。"""
+    big = [_node(f'n{i}', '长文本' * 2000) for i in range(ux.MAX_TREE_NODES)]
+    artifacts, store = FakeArtifacts(), FakeStore()
+    gateway = make_gateway(devices=FakeDevice([big]), artifacts=artifacts,
+                           store=store)
+    context = _ctx(approval=_approval())
+    for _ in range(3):
+        result = gateway.execute(
+            call('ui_action', {'device_id': 3, 'action_type': 'BACK'}),
+            context)
+        assert result.ok, result.content
+
+    artifact = artifacts.items[0]
+    text = store.written[artifact.uri]
+    raw = text.encode('utf-8')
+    trace = json.loads(text)
+    assert len(raw) <= ux.MAX_TRACE_BYTES
+    assert artifact.size == len(raw) == artifact.metadata['validation_report'][
+        'bytes']
+    assert artifact.metadata['validation_report']['ok'] is True
+    assert trace['trimmed']['bytes_before'] > ux.MAX_TRACE_BYTES
+    assert trace['trimmed']['text_truncated'] > 0
+    assert driver_tools.validate_ui_trace(trace, required=True) is None
+
+
+def test_fit_trace_to_bytes_is_deterministic_and_keeps_last_page():
+    page = [{'id': f'n{i}', 'text': 'x' * 1000} for i in range(50)]
+    trace = ux.build_ui_trace(
+        device_id=1, platform='ANDROID', run_id='run-1', session_id='s1',
+        actions=[{'index': 1, 'action': 'BACK'}],
+        pages=[{'snapshot_id': f'p{index}', 'nodes': page}
+               for index in range(5)],
+        screenshots=[], started_ms=0, finished_ms=10,
+        stop_reason=ux.ExplorationStopReason.DONE)
+    fitted, info = ux.fit_trace_to_bytes(trace, max_bytes=5000)
+    assert info is not None and ux.trace_bytes(fitted) <= 5000
+    assert info['pages_dropped'] > 0
+    assert fitted['pages'][-1]['snapshot_id'] == 'p4'   # 保最后一页
+    assert fitted['actions'] == trace['actions']         # 动作序列不动
+    # 幂等：已经在上限内时不再裁剪
+    again, again_info = ux.fit_trace_to_bytes(fitted, max_bytes=5000)
+    assert again_info is None and again is fitted
+
+
+def test_dry_run_and_validate_never_register_a_trace_artifact():
+    """预演 / 校验不产生轨迹产物（P3-2）；只预演的 run 收口也不登记。"""
+    artifacts, store = FakeArtifacts(), FakeStore()
+    gateway = make_gateway(devices=FakeDevice([[_node('n1', '按钮')]]),
+                           artifacts=artifacts, store=store)
+    for flag in ('dry_run', 'validate'):
+        result = gateway.execute(
+            call('ui_action', {'device_id': 3, 'action_type': 'TAP',
+                               'target': {'id': 'n1'}, flag: True}), _ctx())
+        assert result.ok
+        payload = payload_of(result)
+        assert payload['trace_ref'] is None
+        assert payload['trace_recorded'] is False
+    assert artifacts.items == [] and store.written == {}
+    gateway.release_exploration('run-1', status=RunStatus.SUCCEEDED)
+    assert artifacts.items == [] and store.written == {}
+
+
+def test_close_run_records_cancel_as_user_cancel():
+    """取消 run 不能把轨迹记成 DONE（P3-3）。"""
+    artifacts, store = FakeArtifacts(), FakeStore()
+    gateway = make_gateway(devices=FakeDevice([[_node('n1', '按钮')]]),
+                           artifacts=artifacts, store=store)
+    gateway.execute(call('ui_action', {'device_id': 3, 'action_type': 'TAP',
+                                       'target': {'id': 'n1'}}),
+                    _ctx(approval=_approval()))
+    gateway.release_exploration('run-1', status=RunStatus.CANCELLED)
+    trace = json.loads(store.written[artifacts.items[0].uri])
+    assert trace['stop_reason'] == 'USER_CANCEL'
+    assert trace['run_status'] == 'CANCELLED'
+
+
+def test_close_run_preserves_failure_reason_and_budget_reason():
+    for status, error, expected in (
+            (RunStatus.FAILED, 'LLM 超时', 'DONE'),
+            (RunStatus.BUDGET_EXCEEDED, None, 'BUDGET')):
+        artifacts, store = FakeArtifacts(), FakeStore()
+        gateway = make_gateway(devices=FakeDevice([[_node('n1', '按钮')]]),
+                               artifacts=artifacts, store=store)
+        gateway.execute(call('ui_action', {'device_id': 3,
+                                           'action_type': 'TAP',
+                                           'target': {'id': 'n1'}}),
+                        _ctx(approval=_approval()))
+        gateway.release_exploration('run-1', status=status, error=error)
+        trace = json.loads(store.written[artifacts.items[0].uri])
+        assert trace['stop_reason'] == expected
+        assert trace['run_status'] == status.value
+        if error:
+            assert trace['run_error'] == error
+
+
 # ---------------------------------------------------------------- api_spec
 
 _OPENAPI = json.dumps({
@@ -574,8 +720,8 @@ def test_tool_catalog_has_31_tools_with_exploration_enabled():
 # ---------------------------------------------------------------- run 级预算收口
 
 from tests.unit.int2451_agent_fakes import (  # noqa: E402
-    FakeLlm, FakeToolGateway, build_stack, event_types, new_session,
-    text_turn, tool_turn, write_tool,
+    FakeLlm, FakeToolGateway, Pause, build_stack, event_types, events_of,
+    new_session, text_turn, tool_turn, wait_until, write_tool,
 )
 
 
@@ -618,4 +764,49 @@ def test_exploration_budget_finishes_run_as_budget_exceeded(tmp_path):
     stored = container.repositories['runs'].get(run.id)
     assert stored.status is RunStatus.BUDGET_EXCEEDED
     assert 'error' in event_types(container, run.id)
+    container.shutdown()
+
+
+class RecordingReleaseGateway(FakeToolGateway):
+    """记录收尾时收到的 run 终态（验证 reset_exploration 的 status 透传）。"""
+
+    def __init__(self, tools=None):
+        super().__init__(tools=tools)
+        self.releases = []
+
+    def approval_waived(self, name, arguments=None, *, run_id='',
+                        session_id='', permissions=()):
+        return name == 'ui_action'
+
+    def release_exploration(self, run_id, *, status=None, error=None):
+        self.releases.append((run_id, status, error))
+
+
+def test_orchestrator_releases_exploration_with_cancelled_status(tmp_path):
+    """取消 run（RunService 直接落终态）也要按真实终态收尾探索会话（P3-3）。"""
+    from agent_service.application.run_worker import ThreadPoolRunExecutor
+
+    tool_call = ToolCallRequest(tool_call_id='c1', name='ui_action',
+                                arguments={'device_id': 1,
+                                           'action_type': 'WAIT'})
+    stream = [Pause(0.02), text_turn('chunk')[0], Pause(0.6),
+              text_turn('end')[0]]
+    llm = FakeLlm([tool_turn([tool_call]), stream])
+    gateway = RecordingReleaseGateway(tools=[write_tool('ui_action')])
+    container, _engine, _sf = build_stack(
+        tmp_path / 'cancel.db', llm, gateway=gateway,
+        executor_factory=lambda orch: ThreadPoolRunExecutor(orch, 1))
+    session = new_session(container)
+    run, _ = container.run_service.create_run(
+        session.id, owner_id=7, tenant_id='t1', message='探索')
+    container.executor.submit(run.id)
+
+    assert wait_until(lambda: gateway.executed, timeout=10)
+    cancelled = container.run_service.cancel_run(
+        run.id, owner_id=7, tenant_id='t1')
+    assert cancelled.status is RunStatus.CANCELLED
+    assert wait_until(lambda: gateway.releases, timeout=10)
+    # 收尾带的是真实终态（CANCELLED），不是默认的「无状态 / DONE」
+    assert all(status is RunStatus.CANCELLED
+               for _run, status, _error in gateway.releases)
     container.shutdown()

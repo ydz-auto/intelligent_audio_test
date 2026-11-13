@@ -59,8 +59,12 @@ MAX_TRACE_PAGES = 30
 ARTIFACT_KIND_UI_TRACE = 'UI_TRACE'
 #: 轨迹文件名（交付包内固定名）
 UI_TRACE_FILENAME = 'ui_trace.json'
-#: 轨迹 JSON 字节上界（超过即判产物校验失败，不静默截断）
+#: 轨迹 JSON 字节上界（超出即裁剪；裁剪后仍超出才判产物校验失败）
 MAX_TRACE_BYTES = 4 * 1024 * 1024
+#: 轨迹裁剪时单个节点文本保留长度（被测 App 的文本长度不可控，必须设上限）
+TRACE_TEXT_CAP = 256
+#: 轨迹裁剪时至少保留的页数（最后一页 = 当前页面，丢了就无法定位）
+TRACE_MIN_PAGES = 1
 
 #: 节点固定字段（顺序即输出顺序）
 NODE_FIELDS: Tuple[str, ...] = (
@@ -544,10 +548,17 @@ def build_ui_trace(*, device_id: Any, platform: str, run_id: str,
                    screenshots: Sequence[str],
                    started_ms: int, finished_ms: int,
                    stop_reason: ExplorationStopReason,
-                   coverage: Optional[Dict[str, Any]] = None
+                   coverage: Optional[Dict[str, Any]] = None,
+                   run_status: Optional[str] = None,
+                   run_error: Optional[str] = None
                    ) -> Dict[str, Any]:
-    """组装 ``ui_trace.json``（动作序列 + 页面树 + 截图引用）。"""
-    return {
+    """组装 ``ui_trace.json``（动作序列 + 页面树 + 截图引用）。
+
+    ``stop_reason`` 只描述**探索**为什么停（``ExplorationStopReason`` 六值）；
+    ``run_status`` / ``run_error`` 记录收口时 run 的终态与失败原因（取消 /
+    失败也要留痕，不能都记成 ``DONE`` 把失败原因丢掉）。
+    """
+    trace: Dict[str, Any] = {
         'version': 1,
         'device_id': device_id,
         'platform': platform,
@@ -561,6 +572,77 @@ def build_ui_trace(*, device_id: Any, platform: str, run_id: str,
         'screenshots': list(screenshots)[-MAX_SCREENSHOTS:],
         'coverage': coverage or {},
     }
+    if run_status:
+        trace['run_status'] = str(run_status)
+    if run_error:
+        trace['run_error'] = str(run_error)
+    return trace
+
+
+def trace_bytes(trace: Dict[str, Any]) -> int:
+    """轨迹的落盘字节数（与 ``_write_trace`` 序列化口径一致）。"""
+    return len(json.dumps(trace, ensure_ascii=False,
+                          sort_keys=True).encode('utf-8'))
+
+
+def fit_trace_to_bytes(trace: Dict[str, Any],
+                       *, max_bytes: int = MAX_TRACE_BYTES
+                       ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+    """把轨迹压到 ``max_bytes`` 以内；返回 ``(轨迹, 裁剪说明)``。
+
+    一次探索最多 30 个动作 × 每页 200 节点，而节点文本长度由被测 App 决定，
+    不设上限时会产出十几 MB 的 ``ui_trace.json``。这里按确定性顺序裁剪：
+
+    1. 截断单节点文本（``TRACE_TEXT_CAP`` → 64 → 16 字符，多轮递进）；
+    2. 仍然超限则从最旧的页面开始丢（至少保留最后一页 = 当前页面）。
+
+    动作序列 / 截图引用 / 定位键不动（审计与定位的底线），裁剪量写进
+    ``trace['trimmed']``，**不静默截断**。裁剪后仍超限时原样返回，由
+    ``validation_report`` 判失败（调用方不得把它登记成 ok=True）。
+    """
+    original = trace_bytes(trace)
+    if original <= max_bytes:
+        return trace, None
+    result = json.loads(json.dumps(trace))  # 深拷贝：不改调用方持有的对象
+    pages = result.get('pages')
+    if not isinstance(pages, list):
+        pages = []
+    stats = {'text_truncated': 0, 'pages_dropped': 0}
+
+    def truncate_texts(cap: int) -> None:
+        for page in pages:
+            for node in (page.get('nodes') or ()
+                         if isinstance(page, dict) else ()):
+                if not isinstance(node, dict):
+                    continue
+                text = node.get('text')
+                if isinstance(text, str) and len(text) > cap:
+                    node['text'] = text[:cap]
+                    stats['text_truncated'] += 1
+
+    for cap in (TRACE_TEXT_CAP, 64, 16):
+        truncate_texts(cap)
+        while len(pages) > TRACE_MIN_PAGES:
+            current = trace_bytes(result)
+            if current <= max_bytes:
+                break
+            # 按体积比例一次丢足够多的最旧页（避免逐页序列化 30 次）
+            keep = max(TRACE_MIN_PAGES, int(len(pages) * max_bytes / current))
+            drop = max(1, len(pages) - keep)
+            del pages[:drop]
+            stats['pages_dropped'] += drop
+        if trace_bytes(result) <= max_bytes:
+            break
+
+    result['trimmed'] = {
+        'bytes_before': original,
+        'bytes_after': trace_bytes(result),
+        'max_bytes': int(max_bytes),
+        'text_cap': TRACE_TEXT_CAP,
+        'text_truncated': stats['text_truncated'],
+        'pages_dropped': stats['pages_dropped'],
+    }
+    return result, result['trimmed']
 
 
 def validation_report(trace: Dict[str, Any], *, trace_bytes: int = 0
@@ -919,11 +1001,13 @@ __all__ = [
     'LOCATOR_STABLE_KEYS', 'LOCATOR_TEXT_KEYS', 'MAX_ACTIONS',
     'MAX_DURATION_SECONDS', 'MAX_SCREENSHOTS', 'MAX_TRACE_BYTES',
     'MAX_TRACE_PAGES', 'MAX_TREE_NODES', 'NODE_FIELDS', 'SpecParseError',
-    'UI_TRACE_FILENAME', 'UiActionType', 'UiBlockedPage', 'UiTreeParseError',
+    'TRACE_MIN_PAGES', 'TRACE_TEXT_CAP', 'UI_TRACE_FILENAME', 'UiActionType',
+    'UiBlockedPage', 'UiTreeParseError',
     'build_action_record', 'build_locator', 'build_page_record',
     'build_ui_trace', 'coverage_notes', 'crop_nodes', 'detect_blocked_page',
-    'detect_destructive', 'diff_trees', 'node_key', 'nodes_for_response',
-    'normalize_node', 'parse_android_hierarchy', 'parse_api_spec',
-    'parse_bounds', 'parse_harmony_components', 'stop_reason_for_page',
-    'summarize_spec', 'validation_report',
+    'detect_destructive', 'diff_trees', 'fit_trace_to_bytes', 'node_key',
+    'nodes_for_response', 'normalize_node', 'parse_android_hierarchy',
+    'parse_api_spec', 'parse_bounds', 'parse_harmony_components',
+    'stop_reason_for_page', 'summarize_spec', 'trace_bytes',
+    'validation_report',
 ]
