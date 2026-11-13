@@ -93,9 +93,10 @@ class AgentStep(Base):
     """Step 表：Loop 中每一轮模型调用一个 step。"""
 
     __tablename__ = 'agent_step'
+    # 唯一约束已建 (run_id, index) 索引，可服务 run_id 前缀查询，
+    # 不再额外建同列普通索引（INT-2516）。
     __table_args__ = (
         UniqueConstraint('run_id', 'index', name='uq_agent_step_run_index'),
-        Index('ix_agent_step_run', 'run_id', 'index'),
     )
 
     id = Column(_PK, primary_key=True)
@@ -164,9 +165,9 @@ class AgentContextSnapshot(Base):
     """上下文快照表（§8.5；M0 只落版本与 token 统计，压缩由 m0-04 启用）。"""
 
     __tablename__ = 'agent_context_snapshot'
+    # 同上：(run_id, version) 唯一约束的索引已覆盖该前缀查询（INT-2516）。
     __table_args__ = (
         UniqueConstraint('run_id', 'version', name='uq_agent_context_snapshot_version'),
-        Index('ix_agent_context_snapshot_run', 'run_id', 'version'),
     )
 
     id = Column(_PK, primary_key=True)

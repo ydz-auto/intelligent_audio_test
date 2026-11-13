@@ -11,7 +11,8 @@
 - agent_run.idempotency_key 唯一 —— 重复提交只产生一个 run；
 - (run_id, tool_call_id) 唯一 —— 断点恢复按 tool_call_id 复用结果，不重复执行；
 - (run_id, index) / (run_id, version) 唯一 —— step / 上下文快照版本不重复；
-- session owner、run owner/status 索引。
+- session owner、run owner/status 索引；step / 上下文快照不建普通索引 ——
+  上面两条唯一约束自带的 (同列同序) 索引已覆盖前缀查询（INT-2516）。
 
 DDL 与 ORM（agent_service/infrastructure/persistence/models/agent_models.py）
 逐列对齐；无外键（仓库基线：引用完整性由应用层管理）。
@@ -144,19 +145,18 @@ CREATE TABLE IF NOT EXISTS agent_context_snapshot (
 ]
 
 # (索引名, 表, 列, 是否唯一)
+# agent_step / agent_context_snapshot 不再建普通索引：(run_id, "index") /
+# (run_id, version) 的唯一约束已带同列同序索引，普通索引纯写放大（INT-2516）。
 INDEXES = [
     ('ix_agent_session_owner', 'agent_session', 'owner_id, created_at', False),
     ('ix_agent_session_tenant', 'agent_session', 'tenant_id, owner_id', False),
     ('ix_agent_run_owner_status', 'agent_run', 'owner_id, status', False),
     ('ix_agent_run_session', 'agent_run', 'session_id, created_at', False),
     ('uq_agent_run_idempotency', 'agent_run', 'idempotency_key', True),
-    ('ix_agent_step_run', 'agent_step', 'run_id, "index"', False),
     ('ix_agent_tool_call_run', 'agent_tool_call', 'run_id, created_at', False),
     ('uq_agent_tool_call_idempotency', 'agent_tool_call',
      'idempotency_key', True),
     ('ix_agent_artifact_run', 'agent_artifact', 'run_id, created_at', False),
-    ('ix_agent_context_snapshot_run', 'agent_context_snapshot',
-     'run_id, version', False),
 ]
 
 # (约束名, 表, 列) —— 存量表缺约束时补（全新库由 CREATE TABLE / create_all 带出）
