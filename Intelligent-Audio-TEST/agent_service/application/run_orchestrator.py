@@ -460,6 +460,16 @@ class RunOrchestrator:
                     run_id, RunStatus.FAILED,
                     error='RESTART_WRITE_UNVERIFIED: 中断的写操作需人工确认')
                 return
+            if any(result.error_code == 'BUDGET_EXCEEDED'
+                   for result in results):
+                # 探索预算（INT-2492）：设备动作数 / 时长到上限，工具已带
+                # stop_reason=BUDGET 交回；run 不得静默成功（卡面可测标准 3）。
+                self._append_error(
+                    run_id, 'EXPLORATION_BUDGET',
+                    '探索预算用尽（动作数 / 时长上限），已停止并交回用户')
+                self._finish(run_id, RunStatus.BUDGET_EXCEEDED,
+                             reason='exploration_budget')
+                return
             if self._has_unsettled_write(run_id):
                 # 写操作已生成提案但还没有结果：本批不写 tool_result（会让
                 # 模型误以为已完成）。先结算「本批执行期间已被批准的」提案，
@@ -878,7 +888,9 @@ class RunOrchestrator:
             return result
 
         if risk.requires_approval and not self._tool_gateway.proposal_capable(
-                call.name):
+                call.name) and not self._tool_gateway.approval_waived(
+                    call.name, call.arguments, run_id=run.id,
+                    session_id=run.session_id, permissions=tuple(permissions)):
             # 通用写审批（INT-2466）：WRITE / DESTRUCTIVE 一律先提案，不执行。
             # 自带提案原语的工具（memory_write，INT-2490）沿用网关原地提案。
             return self._propose_write(
@@ -1521,6 +1533,8 @@ class RunOrchestrator:
         except Exception:  # noqa: BLE001 - 收尾失败不掩盖 run 的最终状态
             logger.warning('run 收口时作废未决审批失败 run=%s', run_id,
                            exc_info=True)
+        # 探索会话（INT-2492）：释放设备租约并落最后一版 ui_trace
+        self._tool_gateway.release_exploration(run_id)
         self._wakeup.notify(run_id)
 
 

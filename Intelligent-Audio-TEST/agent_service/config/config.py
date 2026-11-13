@@ -37,6 +37,7 @@ _STREAM_DEFAULTS = _DEFAULTS.get('event_stream', {})
 _SKILL_DEFAULTS = _DEFAULTS.get('skills', {})
 _APPROVAL_DEFAULTS = _DEFAULTS.get('approval', {})
 _DRIVER_PROPOSAL_DEFAULTS = _DEFAULTS.get('driver_proposal', {})
+_EXPLORATION_DEFAULTS = _DEFAULTS.get('exploration', {})
 
 
 class Config(BaseConfig):
@@ -224,6 +225,19 @@ class Config(BaseConfig):
     DRIVER_PROPOSAL_MAX_DIFF_CHARS = _get_int(
         'AGENT_DRIVER_PROPOSAL_MAX_DIFF_CHARS',
         int(_DRIVER_PROPOSAL_DEFAULTS.get('max_diff_chars', 4000)))
+
+    # ===== 探索预算（INT-2492，§6.6「UI 探索会话」）=====
+    # 单次探索：最多 30 个动作 / 5 分钟，超限以 BUDGET 停止并交回（卡面硬口径）。
+    EXPLORATION_MAX_ACTIONS = _get_int(
+        'AGENT_EXPLORATION_MAX_ACTIONS',
+        int(_EXPLORATION_DEFAULTS.get('max_actions', 30)))
+    EXPLORATION_MAX_SECONDS = _get_float(
+        'AGENT_EXPLORATION_MAX_SECONDS',
+        float(_EXPLORATION_DEFAULTS.get('max_seconds', 300)))
+    # 设备租约 TTL：覆盖单次探索上限 + 收尾余量；持有者崩溃由 TTL 自愈。
+    EXPLORATION_LEASE_TTL_SECONDS = _get_int(
+        'AGENT_EXPLORATION_LEASE_TTL_SECONDS',
+        int(_EXPLORATION_DEFAULTS.get('lease_ttl_seconds', 900)))
 
     # ===== 总开关（INT-2529，与网关同源）=====
     # 只用于启动期恢复投递门控：关闭态不产生任何后台 run（网关入口门控不变，
@@ -427,6 +441,13 @@ class Config(BaseConfig):
         if cls.APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS <= 0:
             raise ValueError(
                 'AGENT_APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS 必须为正数')
+        if cls.EXPLORATION_MAX_ACTIONS <= 0:
+            raise ValueError('AGENT_EXPLORATION_MAX_ACTIONS 必须为正数')
+        if cls.EXPLORATION_MAX_SECONDS <= 0:
+            raise ValueError('AGENT_EXPLORATION_MAX_SECONDS 必须为正数')
+        if cls.EXPLORATION_LEASE_TTL_SECONDS < cls.EXPLORATION_MAX_SECONDS:
+            raise ValueError(
+                'AGENT_EXPLORATION_LEASE_TTL_SECONDS 不能小于探索时长上限')
         if not Path(cls.MEMORY_SENSITIVE_RULES_PATH).is_file():
             raise ValueError(
                 f'敏感信息规则文件不存在：{cls.MEMORY_SENSITIVE_RULES_PATH}')

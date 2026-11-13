@@ -15,7 +15,10 @@ testcase_query / task_query / task_diagnose / log_diagnose / dashboard_query，
 4. 实时状态：目标 REST 的 403/404 统一收敛为「无权访问 / 资源不存在或无权访问」；
 5. 本地工具：``memory_search`` / ``memory_write``（INT-2490）走文件式长期记忆，
    身份由调用上下文给定、不经模型传路径；写操作只生成待审批提案；
-   其余预留工具（ui_tree / ui_action / api_spec 等）返回 ``TOOL_NOT_ENABLED``；
+   探索-生成层（``ui_tree`` / ``ui_action`` / ``api_spec``，INT-2492）：
+   ``api_spec`` 是本地契约解析（不发真实请求）；``ui_tree`` / ``ui_action``
+   经 ``ExplorationService`` 走设备租约 + 预算 + 首动作审批后的同计划放行，
+   设备 UI 通道未接时返回 ``EXPLORATION_UNAVAILABLE``（不伪造树）；
    写路径（INT-2466）：WRITE / DESTRUCTIVE 只有在 ``context.approval``
    （服务端按 ``agent_approval`` 构造的已审批凭据）存在时才执行；提案本身
    由 Loop 的审批服务落地，网关不自行放行写操作；
@@ -40,6 +43,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from agent_service.application.driver_proposal_service import (
     DRIVER_PROPOSE_TOOL, DriverProposalError, DriverProposalService,
 )
+from agent_service.application.exploration_service import (
+    ExplorationError, ExplorationService,
+)
 from agent_service.application.memory_service import (
     APPROVAL_REQUIRED, MemoryService, tool_error_code,
 )
@@ -54,6 +60,7 @@ from agent_service.domain.ports.tool_registry import (
 )
 from shared.agent_tools import testcase_tools as case_tools
 from shared.agent_tools import evaluation_tools
+from shared.agent_tools import ui_exploration
 from shared.agent_tools.intent_tools import redact_for_audit
 from shared.models.common_enums import ReportType
 
@@ -76,6 +83,11 @@ LOG_READ_PERMISSION = 'log:read'
 
 # 默认不启用记忆工具（无记忆服务时按「未启用」fail-closed）
 MEMORY_TOOLS = frozenset({'memory_search', 'memory_write'})
+
+# 探索-生成层工具（INT-2492）：ui_tree / ui_action 需要设备通道与租约，
+# api_spec 是本地契约解析。设备通道未接时按 EXPLORATION_UNAVAILABLE 拒绝，
+# 不返回伪造的 UI 树（卡面「不写 mock 糊过去」）。
+EXPLORATION_TOOLS = frozenset({'ui_tree', 'ui_action', 'api_spec'})
 
 # 不泄漏存在性的统一文案（403/404 同一口径）
 _DENIED_TEXT = '无权访问该资源，或该资源不存在。'
@@ -236,12 +248,14 @@ class SharedToolGateway(ToolGateway):
                  rest: ToolTransportPort,
                  credentials: RunCredentialPort,
                  memory: Optional[MemoryService] = None,
-                 driver_proposals: Optional[DriverProposalService] = None):
+                 driver_proposals: Optional[DriverProposalService] = None,
+                 exploration: Optional[ExplorationService] = None):
         self._bridge = bridge
         self._rest = rest
         self._credentials = credentials
         self._memory = memory
         self._driver_proposals = driver_proposals
+        self._exploration = exploration
 
     # ------------------------------------------------------------ catalog
 
@@ -260,6 +274,34 @@ class SharedToolGateway(ToolGateway):
         DESTRUCTIVE 工具走 INT-2466 的通用审批表。
         """
         return name == 'memory_write' and self._memory is not None
+
+    def approval_waived(self, name: str,
+                        arguments: Optional[Dict[str, Any]] = None, *,
+                        run_id: str = '', session_id: str = '',
+                        permissions: Sequence[str] = ()) -> bool:
+        """本调用是否可以跳过「新建审批单」（INT-2492 探索计划放行）。
+
+        - ``ui_action`` 的 ``dry_run`` / ``validate`` 只做预演或校验、不下发设备
+          动作，不产生副作用，因此不进审批；
+        - 同一探索计划（同 run + 同设备）首个动作已审批后，后续动作自动放行
+          （卡面「首个动作需审批，后续在同一探索计划内自动放行」）。放行只覆盖
+          这一个设备计划，其他写工具 / 其他设备仍逐条审批。
+        """
+        if self._exploration is None or name != 'ui_action':
+            return False
+        args = dict(arguments or {})
+        if args.get('dry_run') or args.get('validate'):
+            return True
+        return self._exploration.plan_approved(run_id, args.get('device_id'))
+
+    def release_exploration(self, run_id: str) -> None:
+        """run 收口时结束探索会话（释放设备租约、落最后一版 ui_trace）。"""
+        if self._exploration is None:
+            return
+        try:
+            self._exploration.close_run(run_id)
+        except Exception:  # noqa: BLE001 - 收尾失败不掩盖 run 状态
+            logger.warning('探索会话收尾失败 run=%s', run_id, exc_info=True)
 
     def required_permissions(self, name: str,
                              arguments: Optional[Dict[str, Any]] = None
@@ -285,6 +327,10 @@ class SharedToolGateway(ToolGateway):
         if name == DRIVER_PROPOSE_TOOL and self._driver_proposals is not None:
             # 材料 / 能力画像在提案阶段就校验（缺材料不生成提案）
             return self._driver_proposals.validate(arguments or {})
+        if name in ('ui_tree', 'ui_action') and (
+                self._exploration is None or not self._exploration.available):
+            # 设备 UI 通道未接入：提案阶段就拒绝，不生成一条注定执行不了的审批单
+            return '设备 UI 通道未接入，无法读取 UI 树 / 执行 UI 动作'
         return None
 
     def proposal_diff(self, name: str,
@@ -393,7 +439,11 @@ class SharedToolGateway(ToolGateway):
         risk = self.risk_for(name, arguments) or self.risk_of(name)
         if risk is None:
             return self._fail(call, UNKNOWN_TOOL, f'工具不存在：{name}')
-        if risk is not ToolRisk.READ and context.approval is None:
+        if risk is not ToolRisk.READ and context.approval is None and not \
+                self.approval_waived(
+                    name, arguments, run_id=context.run_id,
+                    session_id=context.session_id,
+                    permissions=context.permissions):
             return self._fail(
                 call, 'APPROVAL_REQUIRED',
                 '写操作需要审批，未携带审批凭据不执行。')
@@ -418,6 +468,10 @@ class SharedToolGateway(ToolGateway):
         # 只在审批通过后执行；不注册、不发布。
         if name == DRIVER_PROPOSE_TOOL:
             return self._run_driver_propose(call, arguments, context)
+        # 探索-生成层（INT-2492）：ui_tree / ui_action 走设备端口与租约，
+        # api_spec 是本地契约解析（不发任何真实请求）。
+        if name in EXPLORATION_TOOLS:
+            return self._run_exploration(call, arguments, context)
 
         mcp_tool, merged, resolve_error = self._bridge.resolve_rest(
             name, arguments)
@@ -998,6 +1052,59 @@ class SharedToolGateway(ToolGateway):
             return self._fail(call, tool_error_code(exc.code), str(exc))
         except (TypeError, ValueError) as exc:
             return self._fail(call, INVALID_ARGUMENTS, f'记忆工具参数非法：{exc}')
+
+    # ------------------------------------------------------------ exploration
+
+    def _run_exploration(self, call: ToolCallRequest,
+                         arguments: Dict[str, Any],
+                         context: ToolInvocationContext) -> ToolResult:
+        """探索工具分派：``api_spec`` 本地解析；``ui_tree`` / ``ui_action`` 走设备。
+
+        设备通道 / 租约在 ``ExplorationService``：租约 fail-closed、预算
+        （30 动作 / 5 分钟）、首个动作审批后的同计划放行、破坏性动作与登录 /
+        验证码页交回都在那里；网关只负责权限、Schema 与错误码映射。
+        """
+        if call.name == 'api_spec':
+            return self._run_api_spec(call, arguments)
+        if self._exploration is None or not self._exploration.available:
+            return self._fail(
+                call, 'EXPLORATION_UNAVAILABLE',
+                '设备 UI 通道未接入：无法读取 UI 树 / 执行 UI 动作。'
+                '本工具不返回伪造的树，请先接入设备侧 UI 探索通道。')
+        try:
+            if call.name == 'ui_tree':
+                payload = self._exploration.ui_tree(arguments, context)
+                return self._ok(call, json.dumps(payload, ensure_ascii=False))
+            approval_id = (context.approval.approval_id
+                           if context.approval is not None else None)
+            payload = self._exploration.ui_action(
+                arguments, context, approval_id=approval_id)
+            return self._ok(call, json.dumps(payload, ensure_ascii=False))
+        except ExplorationError as exc:
+            payload = dict(exc.payload or {})
+            payload.setdefault('message', str(exc))
+            return self._fail(call, exc.code,
+                              json.dumps(payload, ensure_ascii=False))
+
+    def _run_api_spec(self, call: ToolCallRequest,
+                      arguments: Dict[str, Any]) -> ToolResult:
+        """契约解析（OpenAPI / proto / WS）：只解析，不做任何真实调用。"""
+        content = arguments.get('content')
+        if content is None or not str(content).strip():
+            return self._fail(
+                call, INVALID_ARGUMENTS,
+                '缺少必填参数：content（契约内容，JSON / YAML / proto 文本）')
+        try:
+            spec = ui_exploration.parse_api_spec(
+                content, kind=arguments.get('kind'),
+                endpoint=arguments.get('endpoint'))
+        except ui_exploration.SpecParseError as exc:
+            return self._fail(call, INVALID_ARGUMENTS, f'契约解析失败：{exc}')
+        payload = dict(spec)
+        payload['summary'] = ui_exploration.summarize_spec(spec)
+        payload['source_ref'] = arguments.get('source_ref')
+        payload['called'] = False
+        return self._ok(call, json.dumps(payload, ensure_ascii=False))
 
     def _run_driver_propose(self, call: ToolCallRequest,
                             arguments: Dict[str, Any],

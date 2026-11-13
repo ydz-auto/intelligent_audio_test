@@ -20,6 +20,7 @@ from agent_service.application.driver_proposal_service import (
     DriverProposalService, DriverProposalSettings,
 )
 from agent_service.application.event_stream import EventStreamService
+from agent_service.application.exploration_service import ExplorationService
 from agent_service.application.memory_service import (
     MemoryService, MemoryServiceSettings,
 )
@@ -78,10 +79,14 @@ from agent_service.infrastructure.skill.fs_skill_repository import (
 from agent_service.infrastructure.sandbox.docker_runner import (
     DockerRunnerConfig, DockerRunnerMode, SandboxPolicy, build_sandbox_executor,
 )
+from agent_service.infrastructure.tools.device_lease import (
+    PhysicalDeviceLeaseAdapter,
+)
 from agent_service.infrastructure.tools.registry_bridge import (
     RestToolClient, RunCredentialRegistry, SharedToolRegistryBridge,
 )
 from agent_service.infrastructure.wakeup import LocalRunWakeup, RedisRunWakeup
+from shared.agent_tools.ui_exploration import ExplorationBudget
 
 logger = logging.getLogger(__name__)
 
@@ -338,14 +343,30 @@ def build_container(session_factory,
             publish_enabled=Config.DRIVER_PUBLISH_ENABLED,
             max_result_chars=Config.DRIVER_PROPOSAL_MAX_RESULT_CHARS,
             max_diff_chars=Config.DRIVER_PROPOSAL_MAX_DIFF_CHARS))
+    tool_rest = RestToolClient(
+        Config.TOOL_GATEWAY_BASE_URL,
+        timeout_seconds=Config.TOOL_HTTP_TIMEOUT_SECONDS)
+    # 探索-生成层（INT-2492）：设备租约复用任务派发的物理设备互斥锁；
+    # 设备侧 UI 通道（ui_tree / ui_action 的端口实现）尚未接入设备服务，
+    # 端口传 None → 工具返回 EXPLORATION_UNAVAILABLE，不伪造树。
+    exploration = ExplorationService(
+        devices=None,
+        leases=PhysicalDeviceLeaseAdapter(
+            rest=tool_rest, credentials=tool_credentials,
+            ttl_seconds=Config.EXPLORATION_LEASE_TTL_SECONDS),
+        artifacts=artifacts,
+        store=artifact_store or OssArtifactStore(),
+        budget=ExplorationBudget(
+            max_actions=Config.EXPLORATION_MAX_ACTIONS,
+            max_seconds=Config.EXPLORATION_MAX_SECONDS),
+    )
     gateway = tool_gateway or SharedToolGateway(
         bridge=SharedToolRegistryBridge(),
-        rest=RestToolClient(
-            Config.TOOL_GATEWAY_BASE_URL,
-            timeout_seconds=Config.TOOL_HTTP_TIMEOUT_SECONDS),
+        rest=tool_rest,
         credentials=tool_credentials,
         memory=memory,
         driver_proposals=driver_proposals,
+        exploration=exploration,
     )
     skills = skill_registry or build_skill_registry(gateway, skills_root)
     # INT-2466：写审批服务（提案 / 决策 / 过期 / 执行前复核）与 Loop 共用

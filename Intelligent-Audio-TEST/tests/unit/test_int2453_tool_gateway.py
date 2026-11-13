@@ -27,6 +27,13 @@ from agent_service.infrastructure.tools.registry_bridge import (
 )
 
 
+_OPENAPI_CONTRACT = json.dumps({
+    'openapi': '3.0.0',
+    'info': {'title': 'demo'},
+    'paths': {'/ping': {'get': {'responses': {'200': {'description': 'ok'}}}}},
+}, ensure_ascii=False)
+
+
 class FakeRestClient:
     """记录回源请求，返回脚本化响应。"""
 
@@ -49,6 +56,20 @@ def make_gateway(rest=None, credentials=None):
         rest=rest or FakeRestClient(),
         credentials=credentials or RunCredentialRegistry(),
     )
+
+
+def _approved_ctx():
+    """写调用携带审批凭据（INT-2492：ui_action 是 WRITE 工具）。"""
+    from agent_service.domain.enums import ToolRisk
+    from agent_service.domain.ports.tool_gateway import ToolApproval
+    base = ctx()
+    return ToolInvocationContext(
+        run_id=base.run_id, session_id=base.session_id,
+        owner_id=base.owner_id, tenant_id=base.tenant_id,
+        step_id=base.step_id, permissions=base.permissions,
+        idempotency_key=base.idempotency_key,
+        approval=ToolApproval(approval_id='ap-1', risk=ToolRisk.WRITE,
+                              proposal={'tool': 'ui_action'}))
 
 
 def ctx(permissions=('*',), run_id='r1', owner_id=7, tenant='t1'):
@@ -114,17 +135,22 @@ def test_permission_denied_returns_plain_text_without_leak():
     assert 'report' not in result.content  # 不泄漏资源是否存在
 
 
-def test_reserved_tool_returns_not_enabled():
-    # INT-2490：memory_* 已启用（记忆服务未装配时另有内存工具用例覆盖），
-    # 这里只保留仍未实现的探索工具。
+def test_exploration_tools_split_local_and_device_channel():
+    # INT-2492：探索工具已启用。api_spec 是本地解析（缺契约内容 → 参数错误）；
+    # ui_tree / ui_action 需要设备 UI 通道，未接入时显式报不可用，不伪造树。
+    gateway = make_gateway()
+    parsed = gateway.execute(
+        call('api_spec', {'content': _OPENAPI_CONTRACT}), ctx())
+    assert parsed.ok and json.loads(parsed.content)['summary']['endpoints'] == 1
     for name, args in [
         ('ui_tree', {'device_id': 1}),
-        ('ui_action', {'device_id': 1, 'action': 'tap'}),
-        ('api_spec', {'source': 'url'}),
+        ('ui_action', {'device_id': 1, 'action_type': 'TAP'}),
     ]:
-        result = make_gateway().execute(call(name, args), ctx())
-        assert result.error_code == TOOL_NOT_ENABLED, name
-        assert '未启用' in result.content
+        result = gateway.execute(call(name, args),
+                                 ctx() if name == 'ui_tree'
+                                 else _approved_ctx())
+        assert result.error_code == 'EXPLORATION_UNAVAILABLE', name
+        assert '设备 UI 通道未接入' in result.content
 
 
 def test_unknown_tool_is_ordinary_failure():

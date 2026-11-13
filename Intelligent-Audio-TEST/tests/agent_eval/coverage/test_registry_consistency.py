@@ -137,7 +137,10 @@ def test_skills_allowed_tools_stay_inside_the_31_names():
 
 # 首页统计没有专属 Skill（§4.3 清单空档）：INT-2461 的域任务直接覆盖该工具，
 # 本卡不改 Skill 清单，显式登记为已知缺口，避免「无遗漏」口径含糊。
-SKILL_LESS_ENABLED_READ = {'dashboard_query'}
+# INT-2492 探索-生成层：ui_tree / api_spec 由 §6.6 的 `app-api-onboarding`
+# Skill 承载，该 Skill 属 INT-2491（M2 onboarding 全流程）交付；在本卡先启用
+# 工具、Skill 声明后补，显式登记为已知空档（ui_action 是 WRITE，不在本口径）。
+SKILL_LESS_ENABLED_READ = {'dashboard_query', 'ui_tree', 'api_spec'}
 
 
 def test_enabled_read_tools_are_declared_or_documented():
