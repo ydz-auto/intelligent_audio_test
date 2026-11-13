@@ -26,6 +26,12 @@ import sys
 import time
 import traceback
 
+try:  # Windows 控制台默认 GBK，页面文案含 ⌘ 等字符时 print 会炸
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:  # noqa: BLE001
+    pass
+
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -81,9 +87,10 @@ def shot(drv, key):
     os.makedirs(ART, exist_ok=True)
     path = os.path.join(ART, key + '.png')
     drv.save_screenshot(path)
-    RESULT['screenshots'].append({'name': key, 'size': os.path.getsize(path)})
+    info = {'name': key, 'size': os.path.getsize(path), 'path': path}
+    RESULT['screenshots'].append(info)
     log('SHOT %s (%d bytes)' % (key, os.path.getsize(path)))
-    return path
+    return info
 
 
 def set_theme(drv, dark):
@@ -119,10 +126,43 @@ def click(drv, elem):
 
 
 def type_into(drv, selector, value):
-    el = drv.find_element(By.CSS_SELECTOR, selector)
-    el.clear()
-    el.send_keys(value)
+    """输入并确认值落在当前 DOM 节点上（弹窗进场/重渲染偶尔丢键，重试 + JS 回退）。"""
+    el = None
+    for _ in range(5):
+        el = drv.find_element(By.CSS_SELECTOR, selector)
+        el.clear()
+        el.send_keys(value)
+        time.sleep(0.4)
+        if _dom_value(drv, selector) == value:
+            return el
+        drv.execute_script(
+            "const sel=arguments[0],v=arguments[1];const el=document.querySelector(sel);"
+            "const proto=(el instanceof HTMLTextAreaElement)?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;"
+            "Object.getOwnPropertyDescriptor(proto,'value').set.call(el,v);"
+            "el.dispatchEvent(new Event('input',{bubbles:true}));"
+            "el.dispatchEvent(new Event('change',{bubbles:true}));",
+            selector, value)
+        time.sleep(0.4)
+        if _dom_value(drv, selector) == value:
+            return el
+        time.sleep(0.6)
     return el
+
+
+def wait_dialog_closed(drv, timeout=20):
+    """保存后等弹窗关闭 + 列表 invalidate 回填，避免再用旧数据开编辑窗。"""
+    try:
+        WebDriverWait(drv, timeout).until(
+            lambda d: not any(e.is_displayed()
+                              for e in d.find_elements(By.CSS_SELECTOR, '#agent-provider-name')))
+    except Exception:
+        pass
+    time.sleep(2.0)
+
+
+def _dom_value(drv, selector):
+    return drv.execute_script(
+        "const el=document.querySelector(arguments[0]); return el ? el.value : null", selector)
 
 
 def body_text(drv):
@@ -156,7 +196,7 @@ def shot_network(drv, entries, key='net_summary'):
     html = (
         '<html><head><meta charset="utf-8"><style>'
         'body{font-family:system-ui,sans-serif;padding:20px;background:#111;color:#eee}'
-        'table{border-collapse:collapse;width:100%;font-size:12px}'
+        'table{border-collapse:collapse;width:100%%;font-size:12px}'
         'td,th{border:1px solid #444;padding:4px 6px;text-align:left}'
         'th{background:#222}</style></head><body>'
         '<h3>INT-2493 Network（真实请求，状态码来自 Performance log）</h3>'
@@ -206,37 +246,57 @@ def run(base, api_base):
         drv.get(base + '/login')
         WebDriverWait(drv, 30).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type=password]')))
-        drv.find_element(By.CSS_SELECTOR, 'input[type=email], input[type=text]').send_keys(USERNAME)
-        drv.find_element(By.CSS_SELECTOR, 'input[type=password]').send_keys(PASSWORD)
+        # 用户名输入框没有显式 type 属性（默认 text），用可见 input 兜底
+        user_inputs = [e for e in drv.find_elements(By.CSS_SELECTOR, 'input')
+                       if e.get_attribute('type') in (None, 'text', 'email') and e.is_displayed()]
+        (user_inputs and user_inputs[0].send_keys(USERNAME))
+        pwd_inputs = [e for e in drv.find_elements(By.CSS_SELECTOR, 'input[type=password]')
+                      if e.is_displayed()]
+        (pwd_inputs and pwd_inputs[0].send_keys(PASSWORD))
         login_btn = [b for b in buttons(drv, exact=('登录', '登 录')) ]
         click(drv, login_btn[-1] if login_btn else drv.find_element(By.CSS_SELECTOR, 'button[type=submit]'))
         WebDriverWait(drv, 40).until(lambda d: 'login' not in d.current_url.lower())
         time.sleep(3)
         api_requests(drv)
 
-        # 1 空态
+        # 1 空态（等页面正文渲染，不能只等侧栏出现「模型供应商」）
         open_page(drv, base)
-        wait_text(drv, '模型供应商')
+        try:
+            WebDriverWait(drv, 30).until(
+                lambda d: '我的供应商' in body_text(d)
+                          and ('还没有配置模型供应商' in body_text(d) or '验证连通性' in body_text(d)))
+        except Exception:
+            pass
         empty_ok = '还没有配置模型供应商' in body_text(drv)
         empty_ok or step_fail('1_empty', '未显示空态：%s' % body_text(drv)[:200])
         step_ok('1_empty', shot=shot(drv, '01_empty_light')['name'])
         set_theme(drv, True)
         open_page(drv, base)
-        wait_text(drv, '模型供应商')
+        try:
+            wait_text(drv, '还没有配置模型供应商', timeout=25)
+        except Exception:
+            drv.refresh(); time.sleep(3)
+            wait_text(drv, '还没有配置模型供应商', timeout=30)
         step_ok('1_empty_dark', shot=shot(drv, '02_empty_dark')['name'])
         set_theme(drv, False)
 
         # 2 新增（负例：非法 Base URL 先报错不提交）
         open_page(drv, base)
         click(drv, buttons(drv, exact=('新增供应商',))[0])
-        WebDriverWait(drv, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, '#agent-provider-name')))
+        WebDriverWait(drv, 15).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, '#agent-provider-base-url')))
+        time.sleep(3.0)  # 等弹窗进场 + 模型目录查询落定（目录到达会重渲染表单）
         type_into(drv, '#agent-provider-base-url', 'not-a-url')
         type_into(drv, '#agent-provider-model', 'probe-model')
         type_into(drv, '#agent-provider-api-key', 'sk-probe-secret-1234')
+        time.sleep(0.5)
         click(drv, buttons(drv, exact=('保存',))[0])
-        time.sleep(1)
+        try:
+            wait_text(drv, 'Base URL 必须是 http(s) 地址', timeout=10)
+        except Exception:
+            pass
         invalid_ok = 'Base URL 必须是 http(s) 地址' in body_text(drv)
-        invalid_ok or step_fail('2_create_validation', '非法 URL 未报错')
+        invalid_ok or step_fail('2_create_validation', '非法 URL 未报错：%s' % body_text(drv)[-300:])
         step_ok('2_create_validation', shot=shot(drv, '03_form_validation')['name'])
 
         type_into(drv, '#agent-provider-name', '探针_供应商A')
@@ -279,6 +339,7 @@ def run(base, api_base):
         })
         open_page(drv, base)
         wait_text(drv, '探针_供应商B')
+        wait_text(drv, '验证连通性', timeout=20)  # 列表行加载完成才点操作按钮
         click(drv, buttons(drv, exact=('设为默认',))[0])
         time.sleep(2)
         api_requests(drv)
@@ -287,15 +348,25 @@ def run(base, api_base):
         len(defaults) == 1 or step_fail('4_set_default', '默认项数量=%d' % len(defaults))
         step_ok('4_set_default', default_id=defaults[0]['id'])
         drv.refresh(); time.sleep(3)
-        wait_text(drv, '默认') or step_fail('4_default_persist', '刷新后默认标记消失')
+        wait_text(drv, '验证连通性', timeout=20)
+        row_head = drv.execute_script(
+            "const h=Array.from(document.querySelectorAll('h3')).find(e=>e.textContent.trim()===arguments[0]);"
+            "return h ? h.parentElement.innerText : ''", defaults[0]['name']) or ''
+        ('默认' in row_head) or step_fail('4_default_persist', '刷新后默认标记消失：%r' % row_head)
         step_ok('4_default_persist')
 
-        # 5 验证：错地址失败且不回显 Key
-        click(drv, buttons(drv, contains=('验证连通性',))[0])
-        time.sleep(4)
+        # 5 验证：错地址失败且不回显 Key（toast 约 4s 自动消失，边轮询边截）
+        verify_btns = buttons(drv, contains=('验证连通性',))
+        verify_btns or step_fail('5_verify_fail', '行内验证按钮未渲染：%s' % body_text(drv)[-200:])
+        click(drv, verify_btns[0])
+        try:
+            WebDriverWait(drv, 30).until(
+                lambda d: any(k in body_text(d) for k in ('失败', '无法', '超时')))
+        except Exception:
+            pass
         api_requests(drv)
         text = body_text(drv)
-        ('失败' in text or '无法' in text or '超时' in text) or step_fail('5_verify_fail', text[:200])
+        ('失败' in text or '无法' in text or '超时' in text) or step_fail('5_verify_fail', text[-300:])
         ('sk-probe' not in text) or step_fail('5_key_not_leaked', '页面出现明文 Key')
         step_ok('5_verify_fail', shot=shot(drv, '06_verify_failed')['name'])
 
@@ -306,25 +377,34 @@ def run(base, api_base):
                 'api_key': VERIFY_OK_KEY, 'context_window': None,
             })
             open_page(drv, base)
-            click(drv, [b for b in buttons(drv, contains=('验证',))
-                        if ok_item['name'] in (b.get_attribute('aria-label') or '')][0])
-            time.sleep(5)
+            wait_text(drv, '验证连通性', timeout=20)
+            targets = [b for b in buttons(drv, contains=('验证',))
+                       if ok_item['name'] in (b.get_attribute('aria-label') or '')]
+            targets or step_fail('5_verify_ok', '可连通供应商行未渲染：%s' % body_text(drv)[-200:])
+            click(drv, targets[0])
+            try:
+                wait_text(drv, '验证通过', timeout=30)
+            except Exception:
+                pass
             wait_text(drv, '验证通过')
-            step_ok('5_verify_ok')
+            api_requests(drv)
+            step_ok('5_verify_ok', shot=shot(drv, '06b_verify_ok')['name'])
         else:
             record('5_verify_ok', 'SKIP', '未提供 PROBE_VERIFY_BASE_URL/KEY（无可用模型端点）')
 
         # 7 上下文窗口三态（在编辑弹窗里操作）
         open_page(drv, base)
+        wait_text(drv, '验证连通性', timeout=20)
         target = client.request('GET', '/agent/providers').get('items', [])[0]
         click(drv, [b for b in buttons(drv, contains=('编辑',))
                     if target['name'] in (b.get_attribute('aria-label') or '')][0])
         WebDriverWait(drv, 10).until(EC.visibility_of_element_located((By.CSS_SELECTOR, '#agent-provider-name')))
+        time.sleep(2)  # 等弹窗进场/重渲染落定
         # 手动覆盖 32k
         click(drv, [b for b in buttons(drv, exact=('手动覆盖',))][0])
         type_into(drv, '#agent-provider-context-window', '32k')
         click(drv, buttons(drv, exact=('保存',))[0])
-        time.sleep(2)
+        wait_dialog_closed(drv)
         api_requests(drv)
         item = next(i for i in client.request('GET', '/agent/providers')['items'] if i['id'] == target['id'])
         (item['effective_context_window'] == 32768 and item['context_window_source'] == 'USER_OVERRIDE') \
@@ -333,36 +413,55 @@ def run(base, api_base):
         # 恢复默认
         click(drv, [b for b in buttons(drv, contains=('编辑',))
                     if target['name'] in (b.get_attribute('aria-label') or '')][0])
-        WebDriverWait(drv, 10).until(EC.visibility_of_element_located((By.CSS_SELECTOR, '#agent-provider-context-window')))
+        try:
+            WebDriverWait(drv, 15).until(
+                EC.visibility_of_element_located((By.CSS_SELECTOR, '#agent-provider-context-window')))
+        except Exception:
+            step_fail('7_restore_default',
+                      '重开编辑弹窗未回到覆盖态：%s' % body_text(drv)[-250:])
         click(drv, buttons(drv, exact=('恢复默认',))[0])
         click(drv, buttons(drv, exact=('保存',))[0])
-        time.sleep(2)
+        wait_dialog_closed(drv)
         item = next(i for i in client.request('GET', '/agent/providers')['items'] if i['id'] == target['id'])
         (item['context_window'] is None and item['context_window_source'] in ('MODEL_DEFAULT', 'FALLBACK')) \
             or step_fail('7_restore_default', json.dumps(item, ensure_ascii=False)[:200])
         step_ok('7_restore_default')
-        # 非法值不提交
+        # 非法值不提交（恢复默认后弹窗处于「使用默认」态，需先切「手动覆盖」）
         click(drv, [b for b in buttons(drv, contains=('编辑',))
                     if target['name'] in (b.get_attribute('aria-label') or '')][0])
-        WebDriverWait(drv, 10).until(EC.visibility_of_element_located((By.CSS_SELECTOR, '#agent-provider-context-window')))
+        WebDriverWait(drv, 15).until(EC.visibility_of_element_located((By.CSS_SELECTOR, '#agent-provider-name')))
         click(drv, buttons(drv, exact=('手动覆盖',))[0])
+        WebDriverWait(drv, 10).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, '#agent-provider-context-window')))
         type_into(drv, '#agent-provider-context-window', '4096')
         click(drv, buttons(drv, exact=('保存',))[0])
-        time.sleep(1)
-        ('之间' in body_text(drv) or '对齐' in body_text(drv)) or step_fail('7_invalid', '越界值未报错')
+        try:
+            WebDriverWait(drv, 10).until(
+                lambda d: ('之间' in body_text(d) or '对齐' in body_text(d)))
+        except Exception:
+            pass
+        ('之间' in body_text(drv) or '对齐' in body_text(drv)) or step_fail('7_invalid', body_text(drv)[-300:])
         step_ok('7_invalid', shot=shot(drv, '07_context_invalid')['name'])
-        # 超目录最大值：可保存 + 告警（用 deepseek-chat 目录 65536，覆盖 131072）
+        # 超目录最大值：可保存 + 告警（先把模型名改成目录内的 deepseek-chat，目录默认 65536）
+        type_into(drv, '#agent-provider-model', 'deepseek-chat')
         type_into(drv, '#agent-provider-context-window', '131072')
+        try:
+            WebDriverWait(drv, 10).until(lambda d: '高于目录默认' in body_text(d))
+        except Exception:
+            pass
         warn_seen = '高于目录默认' in body_text(drv)
-        warn_seen or step_fail('7_above_catalog_warning', '未出现告警')
+        warn_seen or step_fail('7_above_catalog_warning', body_text(drv)[-300:])
         click(drv, buttons(drv, exact=('保存',))[0])
         time.sleep(2)
         item = next(i for i in client.request('GET', '/agent/providers')['items'] if i['id'] == target['id'])
         item['context_window_warning'] or step_fail('7_above_catalog_saved', '告警未落库')
+        item['effective_context_window'] == 131072 or step_fail(
+            '7_above_catalog_saved', json.dumps(item, ensure_ascii=False)[:200])
         step_ok('7_above_catalog_saved', shot=shot(drv, '08_above_catalog_warning')['name'])
 
         # 6 删除（二次确认 + 刷新不复现）
         open_page(drv, base)
+        wait_text(drv, '验证连通性', timeout=20)
         before = len(client.request('GET', '/agent/providers')['items'])
         click(drv, buttons(drv, contains=('删除',))[0])
         WebDriverWait(drv, 10).until(lambda d: '删除模型供应商' in body_text(d))
