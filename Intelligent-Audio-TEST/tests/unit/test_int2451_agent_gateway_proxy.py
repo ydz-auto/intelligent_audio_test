@@ -139,3 +139,68 @@ def test_upstream_unavailable_is_503(harness):
     resp = client.get('/api/v1/agent/runs/r1')
     assert resp.status_code == 503
     assert resp.json() == {'detail': 'agent service unavailable'}
+
+
+# ---------------------------------------------- INT-2487 P2-2：合成 error 帧同口径
+
+def _error_payload(text):
+    """取出 SSE 里的 error 帧并校验 5 项字段，返回 data 载荷。"""
+    frames = [frame for frame in text.split('\n\n') if 'event: error' in frame]
+    assert len(frames) == 1, text
+    lines = frames[0].split('\n')
+    ids = [line for line in lines if line.startswith('id: ')]
+    data = [line for line in lines if line.startswith('data: ')]
+    assert len(ids) == 1 and len(data) == 1, text
+    payload = json.loads(data[0][len('data: '):])
+    assert ids[0] == f"id: {payload['sequence']}"  # id 即 sequence
+    for key in ('run_id', 'sequence', 'type', 'timestamp'):
+        assert key in payload, (key, payload)
+    assert payload['type'] == 'error'
+    assert payload['timestamp']
+    return payload
+
+
+def test_sse_upstream_error_uses_unified_frame(harness):
+    make_app, calls = harness
+
+    def handler(request):
+        calls.append(request)
+        if request.url.path.endswith('/events'):
+            return httpx.Response(403, json={'detail': 'forbidden'})
+        return httpx.Response(200, json={'id': 'r1', 'status': 'RUNNING'})
+
+    client = make_app(mode='off', handler=handler)
+    resp = client.get('/api/v1/agent/runs/r1/events',
+                      headers={'Last-Event-ID': '7'})
+    assert resp.status_code == 200
+    payload = _error_payload(resp.text)
+    assert payload['code'] == 'UPSTREAM_ERROR'
+    assert payload['run_id'] == 'r1'
+    # 未下发过任何事件：sequence 取客户端续传游标，续传不会跳过真实事件
+    assert payload['sequence'] == 7
+
+
+def test_sse_transport_break_emits_unified_frame(harness):
+    make_app, calls = harness
+
+    def broken_body():
+        # id 行跨 chunk 断开，验证网关仍能跟踪到最后一个 sequence
+        yield b'id: 4\nevent: message_delta\ndata: {"sequence": 4}\n\n'
+        raise httpx.ReadError('connection reset')
+
+    def handler(request):
+        calls.append(request)
+        if request.url.path.endswith('/events'):
+            return httpx.Response(200, content=broken_body(),
+                                  headers={'Content-Type': 'text/event-stream'})
+        return httpx.Response(200, json={'id': 'r1', 'status': 'RUNNING'})
+
+    client = make_app(mode='off', handler=handler)
+    resp = client.get('/api/v1/agent/runs/r1/events')
+    assert resp.status_code == 200
+    assert 'event: message_delta' in resp.text  # 已下发的帧原样透传
+    payload = _error_payload(resp.text)
+    assert payload['code'] == 'UPSTREAM_UNAVAILABLE'
+    assert payload['run_id'] == 'r1'
+    assert payload['sequence'] == 4  # 与已下发帧的 id 对齐，续传不跳过缺口
+

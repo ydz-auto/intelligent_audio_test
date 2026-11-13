@@ -133,7 +133,7 @@ class AgentToolCall(Base):
     permission_decision = Column(String(50), nullable=True, comment='allow / deny / approval_required')
     error = Column(Text, nullable=True)
     idempotency_key = Column(String(255), nullable=True,
-                             comment='run_id + step_id + tool + args_hash')
+                             comment='run_id + step_id + tool_call_id + tool + args_hash')
     created_at = Column(DateTime, nullable=False, default=utcnow, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, default=utcnow,
                         server_default=func.now(), onupdate=utcnow)
