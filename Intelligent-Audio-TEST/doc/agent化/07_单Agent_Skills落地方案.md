@@ -675,6 +675,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 | `infrastructure/api/agentApi.ts` | 由占位桩改为真实契约（sessions / runs / events SSE / approvals 占位） | INT-2457 |
 | `infrastructure/dto/` | 新增 Agent DTO 转换，snake_case 只在此层 | INT-2457 |
 | `application/agent/use-agent-run.ts` | 发起 run、订阅 SSE、断线续传、取消 | INT-2457 |
+| `application/agent/agent-run-store.ts` | run 生命周期收敛为模块级单一实例：会话 id（含 run id）随 `aiChatSessionStore` 持久化，整页 / 浮窗共用同一 phase、消息补丁与取消闸；宿主挂载时用 `GET /agent/sessions/{id}` 校验会话、回填历史、收口刷新打断的气泡 | INT-2507 |
 | `features/ai-chat` | 接真实事件流；保留工具卡与来源卡 | INT-2457 |
 | `features/ai-chat` 审批卡 + Run 时间线 | 审批提案/diff/风险/过期；事件时间线；重连恢复待审批 | INT-2472 |
 | `features/ai-chat` Report Studio 文档面板 | 取数 → 起草 → 版本 → 导出（PDF/PPTX/HTML/MD） | INT-2473 |
@@ -682,6 +683,8 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 | `features/agent-workbench` | 保留页面能力映射，快捷指令仍只回填不自动发送 | INT-2457（保留） |
 
 要求：加载/空/错误态齐全；审批按钮防重复；SSE 重连不重复渲染；仅 Web 单通道，不保留 Electron/桌面壳方案。
+
+前端会话口径（INT-2507）：整页（`/ai-chat`）与全局浮窗是同一服务端会话的两个宿主，会话 id 落在共享 store 并随消息一起持久化——展开整页、切换宿主、刷新页面后续问都延续服务端上下文。边界：刷新时若 run 仍在服务端执行，前端不重接事件流（事件游标未持久化），该轮气泡按「事件流中断」收口；会话上下文不受影响，下一轮追问仍续用同一会话（事件流游标持久化与断点续跑留给后续卡）。
 
 ## 13. 安全
 

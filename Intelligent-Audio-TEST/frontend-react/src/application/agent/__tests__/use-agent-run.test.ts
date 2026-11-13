@@ -1,21 +1,33 @@
 /**
- * use-agent-run 单测（INT-2457 §12.2）：发起 run、SSE 事件去重、重连态、取消防重复、错误归一。
- * API 层用 vi.mock 替身（不发真实请求；端到端证据待后端部署后补）。
+ * use-agent-run 单测（INT-2457 §12.2 + INT-2507 单实例回归）：
+ * 平台 Agent 的会话 id / run 生命周期收敛在 application/agent/agent-run-store 的模块级
+ * 单一实例里。这里覆盖：
+ * - 发起 run、SSE 事件去重、重连态、取消防重复、错误归一、reset 语义；
+ * - 两宿主（整页 / 浮窗）订阅同一份状态：一侧发 run，另一侧同 phase、无法并发发送；
+ * - 展开整页（宿主卸载 → 重新挂载）后仍续用同一服务端会话；
+ * - 刷新恢复：getAgentSession 校验会话 / 回填历史 / 会话失效清 id。
+ * API 层用 vi.mock 替身（不发真实请求；端到端真实栈证据见交付评论）。
  */
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentRun, AgentRunEvent } from '@/domain/models/agent'
 import { AGENT_EVENT_TYPE, AGENT_RUN_STATUS } from '@/domain/models/agent'
-import { useAgentRun, AGENT_RUN_PHASE } from '@/application/agent/use-agent-run'
+import {
+  useAgentRun,
+  AGENT_RUN_PHASE,
+} from '@/application/agent/use-agent-run'
+import { useAgentRunStore } from '@/application/agent/agent-run-store'
 import {
   cancelAgentRun,
   createAgentRun,
   createAgentSession,
+  getAgentSession,
   subscribeAgentRunEvents,
 } from '@/infrastructure/api/agentApi'
 import { ApiError } from '@/infrastructure/api/api-error'
 import type { SubscribeAgentRunEventsOptions } from '@/infrastructure/api/agentApi'
+import { useAiChatSession } from '@/infrastructure/stores/aiChatSessionStore'
 
 vi.mock('@/infrastructure/api/agentApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/infrastructure/api/agentApi')>()
@@ -25,6 +37,7 @@ vi.mock('@/infrastructure/api/agentApi', async (importOriginal) => {
     createAgentRun: vi.fn(),
     cancelAgentRun: vi.fn(),
     getAgentRun: vi.fn(),
+    getAgentSession: vi.fn(),
     subscribeAgentRunEvents: vi.fn(),
   }
 })
@@ -32,6 +45,7 @@ vi.mock('@/infrastructure/api/agentApi', async (importOriginal) => {
 const createSessionMock = vi.mocked(createAgentSession)
 const createRunMock = vi.mocked(createAgentRun)
 const cancelRunMock = vi.mocked(cancelAgentRun)
+const getSessionMock = vi.mocked(getAgentSession)
 const subscribeMock = vi.mocked(subscribeAgentRunEvents)
 
 function messageDelta(sequence: number, messageId: string, delta: string): AgentRunEvent {
@@ -58,8 +72,21 @@ function runFinished(sequence: number): AgentRunEvent {
 /** 捕获 API 层订阅 → 由用例手动推事件 */
 let streamOptions: SubscribeAgentRunEventsOptions | null = null
 
+/** 共享状态复位（模块级 store 跨用例存活，必须每个用例清干净） */
+function resetSharedState() {
+  window.localStorage.clear()
+  useAgentRunStore.getState().reset()
+  useAiChatSession.setState({
+    messages: [],
+    agentSessionId: null,
+    agentRunId: null,
+  })
+  window.localStorage.clear()
+}
+
 beforeEach(() => {
   streamOptions = null
+  resetSharedState()
   createSessionMock.mockResolvedValue({ id: 's-1', title: '会话' })
   createRunMock.mockResolvedValue({
     id: 'r-1',
@@ -70,16 +97,21 @@ beforeEach(() => {
     streamOptions = options
     return () => undefined
   })
+  // 宿主挂载恢复的默认替身：会话存在且无历史（避免 remount 用例误走 404 清会话）
+  getSessionMock.mockResolvedValue({
+    session: { id: 's-1', title: '会话' },
+    messages: [],
+    runs: [],
+  })
 })
 
 afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe('useAgentRun', () => {
-  it('发送：建会话一次 → 发起 run → 转发事件', async () => {
-    const received: AgentRunEvent[] = []
-    const { result } = renderHook(() => useAgentRun({ onEvent: (e) => received.push(e) }))
+describe('useAgentRun（共享单一实例）', () => {
+  it('发送：建会话一次 → 发起 run → 事件驱动共享消息列表', async () => {
+    const { result } = renderHook(() => useAgentRun())
 
     await act(async () => {
       await result.current.send('帮我对比报告')
@@ -93,24 +125,124 @@ describe('useAgentRun', () => {
     expect(typeof createRunMock.mock.calls[0][2]).toBe('string')
     expect(subscribeMock).toHaveBeenCalledWith('r-1', expect.anything())
     expect(result.current.phase).toBe(AGENT_RUN_PHASE.RUNNING)
+    // 会话 id 落共享 store（两宿主与刷新共用）
+    expect(useAiChatSession.getState().agentSessionId).toBe('s-1')
+    expect(useAiChatSession.getState().agentRunId).toBe('r-1')
+    expect(useAiChatSession.getState().messages).toHaveLength(2)
 
     act(() => {
       streamOptions?.onEvent(messageDelta(1, 'm-1', '你好'))
       streamOptions?.onEvent(runFinished(2))
     })
 
-    expect(received.map((event) => event.type)).toEqual([
-      AGENT_EVENT_TYPE.MESSAGE_DELTA,
-      AGENT_EVENT_TYPE.RUN_FINISHED,
-    ])
+    const messages = useAiChatSession.getState().messages
+    expect(messages[1].versions[0].content).toBe('你好')
+    expect(messages[1].status).toBe('complete')
+    expect(messages[1].runStatus).toBe(AGENT_RUN_STATUS.SUCCEEDED)
     expect(result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
     expect(result.current.run?.status).toBe(AGENT_RUN_STATUS.SUCCEEDED)
+    // 终态后清 run id（不再有进行中的 run）
+    expect(useAiChatSession.getState().agentRunId).toBeNull()
   })
 
-  it('去重：重连回放的 sequence / message_id 重复事件不再转发', async () => {
-    const received: AgentRunEvent[] = []
-    const { result } = renderHook(() => useAgentRun({ onEvent: (e) => received.push(e) }))
+  it('两宿主同源（INT-2507 核心）：一侧发 run，另一侧同 phase 且不能再发一条', async () => {
+    const hostA = renderHook(() => useAgentRun())
+    const hostB = renderHook(() => useAgentRun())
 
+    await act(async () => {
+      await hostA.result.current.send('整页发出的问题')
+    })
+
+    // 浮窗（另一宿主）看到同一 run 在跑
+    expect(hostB.result.current.phase).toBe(AGENT_RUN_PHASE.RUNNING)
+
+    // 另一侧再发：共享单实例的 active 闸拦下，不会起第二条 run
+    await act(async () => {
+      await hostB.result.current.send('浮窗并发的问题')
+    })
+    expect(createRunMock).toHaveBeenCalledTimes(1)
+    expect(useAiChatSession.getState().messages).toHaveLength(2)
+
+    // 事件只补一份 assistant 气泡（两套补丁器重复拼接的问题不再出现）
+    act(() => {
+      streamOptions?.onEvent(messageDelta(1, 'm-1', '一份'))
+      streamOptions?.onEvent(messageDelta(2, 'm-1', '正文'))
+    })
+    expect(useAiChatSession.getState().messages).toHaveLength(2)
+    expect(useAiChatSession.getState().messages[1].versions[0].content).toBe('一份正文')
+
+    act(() => {
+      streamOptions?.onEvent(runFinished(3))
+    })
+    expect(hostA.result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
+    expect(hostB.result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
+  })
+
+  it('展开整页：宿主卸载 → 重新挂载后仍续用同一服务端会话', async () => {
+    const floating = renderHook(() => useAgentRun())
+    await act(async () => {
+      await floating.result.current.send('浮窗里的问题')
+    })
+    act(() => {
+      streamOptions?.onEvent(messageDelta(1, 'm-1', '第一轮回答'))
+      streamOptions?.onEvent(runFinished(2))
+    })
+
+    // 「展开整页」= 浮窗卸载、/ai-chat 挂载
+    floating.unmount()
+    const page = renderHook(() => useAgentRun())
+    await act(async () => {
+      await page.result.current.send('刚才那份报告呢')
+    })
+
+    // 没有新建会话，第二条 run 挂在同一个 session 上 → 服务端上下文延续
+    expect(createSessionMock).toHaveBeenCalledTimes(1)
+    expect(createRunMock).toHaveBeenCalledTimes(2)
+    expect(createRunMock.mock.calls[1][0]).toBe('s-1')
+    expect(useAiChatSession.getState().agentSessionId).toBe('s-1')
+  })
+
+  it('取消：两宿主连续点击只发一次取消请求，终态落 CANCELLED', async () => {
+    let resolveCancel: ((run: AgentRun | null) => void) | null = null
+    cancelRunMock.mockImplementation(
+      () =>
+        new Promise<AgentRun | null>((resolve) => {
+          resolveCancel = resolve
+        })
+    )
+
+    const hostA = renderHook(() => useAgentRun())
+    const hostB = renderHook(() => useAgentRun())
+    await act(async () => {
+      await hostA.result.current.send('你好')
+    })
+
+    let first!: Promise<string | null>
+    let second!: Promise<string | null>
+    act(() => {
+      first = hostA.result.current.cancel()
+      second = hostB.result.current.cancel()
+    })
+    expect(hostA.result.current.phase).toBe(AGENT_RUN_PHASE.CANCELLING)
+    expect(hostB.result.current.phase).toBe(AGENT_RUN_PHASE.CANCELLING)
+
+    await act(async () => {
+      resolveCancel?.({
+        id: 'r-1',
+        sessionId: 's-1',
+        status: AGENT_RUN_STATUS.CANCELLED,
+      })
+      await Promise.all([first, second])
+    })
+
+    expect(cancelRunMock).toHaveBeenCalledTimes(1)
+    expect(hostA.result.current.run?.status).toBe(AGENT_RUN_STATUS.CANCELLED)
+    expect(hostA.result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
+    expect(hostB.result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
+  })
+
+  it('去重：重连回放的 sequence / message_id 重复事件不再重复拼接正文', async () => {
+    const { result } = renderHook(() => useAgentRun())
     await act(async () => {
       await result.current.send('你好')
     })
@@ -122,8 +254,7 @@ describe('useAgentRun', () => {
       streamOptions?.onEvent(messageDelta(2, 'm-1', 'B')) // 同一 sequence 重复
     })
 
-    expect(received).toHaveLength(2)
-    expect(received.map((event) => (event as { delta: string }).delta)).toEqual(['A', 'B'])
+    expect(useAiChatSession.getState().messages[1].versions[0].content).toBe('AB')
   })
 
   it('重连状态：reconnecting → 提示；open → 回到运行态', async () => {
@@ -144,57 +275,22 @@ describe('useAgentRun', () => {
     expect(result.current.phase).toBe(AGENT_RUN_PHASE.RUNNING)
   })
 
-  it('取消：连续点击只发一次取消请求，终态落 CANCELLED', async () => {
-    let resolveCancel: ((run: AgentRun | null) => void) | null = null
-    cancelRunMock.mockImplementation(
-      () =>
-        new Promise<AgentRun | null>((resolve) => {
-          resolveCancel = resolve
-        })
-    )
-
-    const { result } = renderHook(() => useAgentRun())
-    await act(async () => {
-      await result.current.send('你好')
-    })
-
-    let first!: Promise<string | null>
-    let second!: Promise<string | null>
-    act(() => {
-      first = result.current.cancel()
-      second = result.current.cancel()
-    })
-    expect(result.current.phase).toBe(AGENT_RUN_PHASE.CANCELLING)
-
-    await act(async () => {
-      resolveCancel?.({
-        id: 'r-1',
-        sessionId: 's-1',
-        status: AGENT_RUN_STATUS.CANCELLED,
-      })
-      await Promise.all([first, second])
-    })
-
-    expect(cancelRunMock).toHaveBeenCalledTimes(1)
-    expect(result.current.run?.status).toBe(AGENT_RUN_STATUS.CANCELLED)
-    expect(result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
-  })
-
-  it('错误归一：Agent 总开关关闭（503）→ error 态 + 中文文案', async () => {
+  it('错误归一：Agent 总开关关闭（503）→ error 态 + 中文文案落在 assistant 气泡', async () => {
     createRunMock.mockRejectedValue(new ApiError({ httpStatus: 503 }))
-    const errors: string[] = []
-    const { result } = renderHook(() => useAgentRun({ onError: (m) => errors.push(m) }))
+    const { result } = renderHook(() => useAgentRun())
 
     await act(async () => {
       await result.current.send('你好')
     })
 
     expect(result.current.phase).toBe(AGENT_RUN_PHASE.ERROR)
-    expect(errors[0]).toContain('Agent')
-    expect(result.current.error).toBe(errors[0])
+    expect(result.current.error).toContain('Agent')
+    const messages = useAiChatSession.getState().messages
+    expect(messages[1].status).toBe('error')
+    expect(messages[1].versions[0].content).toBe(result.current.error)
   })
 
-  it('reset：清空 run（keepSession 保留会话，默认新建会话）', async () => {
+  it('reset：清空 run（keepSession 保留会话，默认结束会话）', async () => {
     const { result } = renderHook(() => useAgentRun())
     await act(async () => {
       await result.current.send('第一轮')
@@ -205,6 +301,7 @@ describe('useAgentRun', () => {
     })
     expect(result.current.phase).toBe(AGENT_RUN_PHASE.IDLE)
     expect(result.current.run).toBeNull()
+    expect(useAiChatSession.getState().agentSessionId).toBe('s-1')
 
     await act(async () => {
       await result.current.send('第二轮')
@@ -214,9 +311,80 @@ describe('useAgentRun', () => {
     act(() => {
       result.current.reset()
     })
+    expect(useAiChatSession.getState().agentSessionId).toBeNull()
     await act(async () => {
       await result.current.send('第三轮')
     })
     expect(createSessionMock).toHaveBeenCalledTimes(2) // 默认新建会话
+  })
+})
+
+describe('useAgentRun 刷新恢复（getAgentSession）', () => {
+  it('有会话 id 且本地消息为空：回填服务端历史，会话继续可用', async () => {
+    getSessionMock.mockResolvedValue({
+      session: { id: 's-9', title: '历史会话' },
+      messages: [
+        { role: 'user', content: '之前的问题' },
+        { role: 'assistant', content: '之前的回答' },
+      ],
+      runs: [],
+    })
+    useAiChatSession.setState({ messages: [], agentSessionId: 's-9' })
+
+    renderHook(() => useAgentRun())
+
+    await waitFor(() => {
+      expect(getSessionMock).toHaveBeenCalledWith('s-9')
+      expect(useAiChatSession.getState().messages).toHaveLength(2)
+    })
+    const restored = useAiChatSession.getState().messages
+    expect(restored[0]).toMatchObject({ from: 'user' })
+    expect(restored[1].versions[0].content).toBe('之前的回答')
+    expect(useAiChatSession.getState().agentSessionId).toBe('s-9')
+  })
+
+  it('刷新打断的悬挂气泡按服务端最新 run 终态收口', async () => {
+    getSessionMock.mockResolvedValue({
+      session: { id: 's-9', title: '历史会话' },
+      messages: [],
+      runs: [
+        {
+          id: 'r-9',
+          sessionId: 's-9',
+          status: AGENT_RUN_STATUS.SUCCEEDED,
+        },
+      ],
+    })
+    useAiChatSession.setState({
+      agentSessionId: 's-9',
+      messages: [
+        {
+          key: 'assistant-stale',
+          from: 'assistant',
+          versions: [{ id: 'assistant-stale-v1', content: '部分正文' }],
+          status: 'streaming',
+        },
+      ],
+    })
+
+    renderHook(() => useAgentRun())
+
+    await waitFor(() => {
+      const [message] = useAiChatSession.getState().messages
+      expect(message.status).toBe('complete')
+      expect(message.runStatus).toBe(AGENT_RUN_STATUS.SUCCEEDED)
+    })
+    expect(useAiChatSession.getState().messages[0].versions[0].content).toBe('部分正文')
+  })
+
+  it('服务端会话已失效（404）：清掉本地会话 id，下次发送新建会话', async () => {
+    getSessionMock.mockRejectedValue(new ApiError({ httpStatus: 404 }))
+    useAiChatSession.setState({ messages: [], agentSessionId: 's-gone' })
+
+    renderHook(() => useAgentRun())
+
+    await waitFor(() => {
+      expect(useAiChatSession.getState().agentSessionId).toBeNull()
+    })
   })
 })

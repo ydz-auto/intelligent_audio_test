@@ -27,6 +27,7 @@ import {
   AGENT_CAPABILITY_PERMISSIONS,
   AI_CHAT_STORAGE_KEYS,
   CHAT_CHANNEL,
+  CHAT_MESSAGE_STATUS,
 } from '@/domain/models/aiChat'
 
 export { AI_CHAT_STORAGE_KEYS as STORAGE_KEYS }
@@ -43,12 +44,8 @@ export const MESSAGE_ROLES = {
   SYSTEM: 'system',
 } as const
 
-export const MESSAGE_STATUS = {
-  LOADING: 'loading',
-  STREAMING: 'streaming',
-  COMPLETE: 'complete',
-  ERROR: 'error',
-} as const
+/** 消息状态（单一事实源在 domain；此别名保持界面层既有调用方不变） */
+export const MESSAGE_STATUS = CHAT_MESSAGE_STATUS
 
 export const MAX_RENDERED_HISTORY_MESSAGES = 24
 
@@ -222,20 +219,6 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
     prompt: null,
   },
 ]
-
-/** DSH 工具中文显示名映射（§3.4 表；待后端立项） */
-export const AGENT_TOOL_LABELS: Record<string, string> = {
-  report_get_facts: '读取报告数据',
-  report_query_metrics: '查询报告指标',
-  studio_create_draft: '创建报告草稿',
-  studio_apply_edit: '修改文档',
-  studio_insert_chart: '插入图表',
-  studio_get_versions: '查询历史版本',
-  studio_restore_version: '恢复历史版本',
-  studio_request_export: '导出文档',
-  compare_reports: '对比报告',
-  secondary_compare_reports: '二次对比',
-}
 
 export const AGENT_TOOL_STATUS_LABELS = {
   pending: '等待中',

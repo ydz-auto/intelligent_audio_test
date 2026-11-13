@@ -9,7 +9,7 @@ import {
   ToolContent,
   ToolHeader,
 } from '@/components/ai-elements/tool'
-import { AGENT_TOOL_LABELS } from '@/features/ai-chat/constants'
+import { AGENT_TOOL_LABELS } from '@/domain/models/agent'
 import type { AgentToolCall } from '@/domain/models/aiChat'
 
 type ToolCallCardProps = {

@@ -21,6 +21,12 @@ const TRUNCATION_SUFFIX = '\n\n[...]'
 
 type StorageEnvelope<T> = { version: number; data: T }
 
+/** 平台 Agent 会话存档（INT-2507）：服务端会话 id 与最近 run id，随会话一起持久化 */
+export type StoredAgentSession = {
+  sessionId: string
+  runId?: string | null
+}
+
 function readEnvelope<T>(key: string): T | null {
   try {
     const raw = window.localStorage.getItem(key)
@@ -96,5 +102,21 @@ export const aiChatPrefs = {
   },
   saveProviders(providers: LlmProvider[]): void {
     writeEnvelope(AI_CHAT_STORAGE_KEYS.providers, providers)
+  },
+  /** 平台 Agent 会话 id（INT-2507）：刷新后继续同一服务端会话，不丢上下文 */
+  loadAgentSession(): StoredAgentSession | null {
+    return readEnvelope<StoredAgentSession>(AI_CHAT_STORAGE_KEYS.agentSession)
+  },
+  /** 传 null 表示结束会话（清空对话 / 服务端会话已失效），移除存档键 */
+  saveAgentSession(session: StoredAgentSession | null): void {
+    if (!session) {
+      try {
+        window.localStorage.removeItem(AI_CHAT_STORAGE_KEYS.agentSession)
+      } catch {
+        // 与写入同策略：存储不可用时静默
+      }
+      return
+    }
+    writeEnvelope(AI_CHAT_STORAGE_KEYS.agentSession, session)
   },
 }

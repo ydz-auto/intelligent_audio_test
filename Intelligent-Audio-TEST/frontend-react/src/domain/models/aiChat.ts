@@ -10,6 +10,17 @@ export type ChatMessageRole = 'user' | 'assistant' | 'system'
 export type ChatMessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
 
 /**
+ * 消息状态常量（domain 单一事实源：features 的 MESSAGE_STATUS 与 application 层的
+ * 平台 Agent 会话补丁共用同一组值，INT-2507）。
+ */
+export const CHAT_MESSAGE_STATUS = {
+  LOADING: 'loading',
+  STREAMING: 'streaming',
+  COMPLETE: 'complete',
+  ERROR: 'error',
+} as const satisfies Record<string, ChatMessageStatus>
+
+/**
  * 对话通道（INT-2457 M0）：
  * - platform：走平台 Agent（agent_service 会话 / Run / SSE，默认）；
  * - provider：自带 LLM 供应商直连（降级模式；P0-1 拍板后二选一，不长期双轨）。
@@ -162,4 +173,6 @@ export const AI_CHAT_STORAGE_KEYS = {
   config: 'iatp:ai-chat:v1:config',
   messages: 'iatp:ai-chat:v1:messages',
   providers: 'iatp:ai-chat:v1:providers',
+  /** 平台 Agent 服务端会话 id / 最近 run id（INT-2507：刷新后续用同一会话，不丢上下文） */
+  agentSession: 'iatp:ai-chat:v1:agent-session',
 } as const

@@ -6,6 +6,24 @@
  * infrastructure/dto/agent.dto.ts。枚举一律常量化（禁止魔法字符串）。
  */
 
+/**
+ * 工具中文显示名映射（§3.4 表）。
+ * 归 domain：application 层的 run 事件 → 工具卡补丁（agent-run-store）与界面工具卡
+ * 共用同一份文案，避免 application 反向依赖 features（INT-2507 收敛单实例时迁移）。
+ */
+export const AGENT_TOOL_LABELS: Record<string, string> = {
+  report_get_facts: '读取报告数据',
+  report_query_metrics: '查询报告指标',
+  studio_create_draft: '创建报告草稿',
+  studio_apply_edit: '修改文档',
+  studio_insert_chart: '插入图表',
+  studio_get_versions: '查询历史版本',
+  studio_restore_version: '恢复历史版本',
+  studio_request_export: '导出文档',
+  compare_reports: '对比报告',
+  secondary_compare_reports: '二次对比',
+}
+
 /** RunStatus 枚举（§5.3；后端原值即大写字符串，禁止改口径） */
 export const AGENT_RUN_STATUS = {
   QUEUED: 'QUEUED',
