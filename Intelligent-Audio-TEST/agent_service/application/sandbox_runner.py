@@ -105,9 +105,6 @@ class SandboxFailureReason(str, Enum):
 
     NONE = 'NONE'
     UNSUPPORTED_TIER = 'UNSUPPORTED_TIER'
-    #: T2 强隔离运行时（runsc / firecracker）不可用（INT-2456 拍板#2）。
-    #: 与 UNSUPPORTED_TIER 分开：前者是「运行时没装」，后者是「层级不支持」。
-    T2_RUNTIME_UNAVAILABLE = 'T2_RUNTIME_UNAVAILABLE'
     SCRIPT_NOT_FOUND = 'SCRIPT_NOT_FOUND'
     SCRIPT_OUTSIDE_SKILL = 'SCRIPT_OUTSIDE_SKILL'
     INVALID_INVOCATION = 'INVALID_INVOCATION'
@@ -123,6 +120,8 @@ class SandboxFailureReason(str, Enum):
     ARTIFACT_TOO_MANY = 'ARTIFACT_TOO_MANY'
     # ── T2（INT-2489）────────────────────────────────────────
     #: gVisor ``runsc`` / Firecracker 不可用：明确失败，绝不降级到 T1。
+    #: 与 UNSUPPORTED_TIER 分开：前者是「运行时没装」，后者是「层级不支持」
+    #: （INT-2456 拍板#2 / INT-2489 合并共用本取值）。
     T2_RUNTIME_UNAVAILABLE = 'T2_RUNTIME_UNAVAILABLE'
     #: 代码来源不可确认（缺少 code_source，或 hash 与重算不一致）。
     CODE_PROVENANCE_MISSING = 'CODE_PROVENANCE_MISSING'
