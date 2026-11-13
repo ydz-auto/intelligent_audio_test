@@ -47,6 +47,10 @@ M1_SKILLS = frozenset({
 })
 MCP_TOTAL = 207
 
+# M2 起写意图工具开始按域进入 Skill allowed-tools：只有本集合里的写工具可以被
+# Skill 声明（新增写工具必须同时在这里登记，避免「悄悄把写工具塞进 Skill」）。
+M2_WRITE_SKILL_TOOLS = frozenset({'evaluation_manage'})
+
 
 def _load_contract():
     with io.open(CONTRACT_FILE, encoding='utf-8') as handle:
@@ -103,7 +107,10 @@ def test_skills_allowed_tools_stay_inside_the_31_names():
         for name in allowed:
             tool = intent_tools.INTENT_TOOL_BY_NAME[name]
             assert tool.enabled is True, f'{skill.name} 引用未启用工具 {name}'
-            assert tool.risk == 'READ', f'{skill.name} 引用非只读工具 {name}'
+            if tool.risk != 'READ':
+                assert name in M2_WRITE_SKILL_TOOLS, (
+                    f'{skill.name} 引用了未登记的写工具 {name}；'
+                    '写工具进 Skill 必须在 M2_WRITE_SKILL_TOOLS 显式登记')
     assert M1_SKILLS <= seen_skills, f'缺少 M1 Skill：{M1_SKILLS - seen_skills}'
     assert 'platform-reference' in seen_skills
 
@@ -129,7 +136,10 @@ def test_enabled_read_tools_are_declared_or_documented():
                     and tool.name not in intent_tools.ALWAYS_AVAILABLE_TOOLS}
     assert enabled_read - declared == SKILL_LESS_ENABLED_READ, (
         f'未声明的已启用只读工具变了：{enabled_read - declared}')
-    assert declared <= enabled_read, f'Skill 声明了写 / 未启用工具：{declared - enabled_read}'
+    enabled = {tool.name for tool in intent_tools.INTENT_TOOLS if tool.enabled}
+    assert declared <= enabled, f'Skill 声明了未启用工具：{declared - enabled}'
+    assert declared - enabled_read <= M2_WRITE_SKILL_TOOLS, (
+        f'Skill 声明了未登记的写工具：{declared - enabled_read - M2_WRITE_SKILL_TOOLS}')
 
 
 # ---------------------------------------------------------------- tools/list

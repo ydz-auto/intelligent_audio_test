@@ -16,6 +16,9 @@
 - ``report_compare``：多报告 / 二次对比与趋势（只读；本地组合，不生成平台报告）；
 - ``audio_query``：音频只读子集（映射 MCP ``audio_*`` 只读工具）；
 - ``evaluation_query``：评估维度 / 分类只读子集（映射 MCP ``evaluation_*`` 只读工具）；
+- ``evaluation_manage``：评估域写操作（INT-2469，M2）—— 维度 / 分类 CRUD、
+  维度可见性、触发重评估；动作表、动作级权限、body 字段白名单在
+  ``evaluation_tools``，写调用一律提案 + 审批（INT-2466 通用审批表）；
 - ``algorithm_query``：算法定义 / 参数 / 映射 / 表单 Schema 只读子集（映射 MCP ``algorithm_*`` 只读工具）；
 - ``memory_search`` / ``memory_write``：文件式长期记忆（INT-2490，§8.6）；
   检索走 ``rg``、写入需审批，路径由服务端按 tenant/owner 构造；两项都是
@@ -39,6 +42,12 @@ INT-2461、``report_query`` / ``report_compare`` INT-2463）；
 用同一份 MCP 定义组合多个只读接口，纯函数汇总在
 ``shared/agent_tools/diagnostics.py``，输出带来源 ID，不估算数值。
 
+M2 写域卡按域启用写意图工具（当前：``evaluation_manage`` INT-2469）；写工具
+同样走动作 → 工具映射，但执行前必须携带审批凭据（``context.approval``），
+提案 / 审批 / 幂等由 Loop 与审批服务统一承担（INT-2466），工具层只做
+参数校验、权限收窄与审批预览。分类更新 / 删除在外部 MCP 表未登记，映射到
+``evaluation_tools.EVALUATION_WRITE_TOOLS``（同形工具项，不外扩外部契约）。
+
 ``report_compare`` 是唯一的**本地组合**域工具（``kind='local'``，与
 ``tool_search`` / ``platform_contract`` 同层）：平台的对接口径
 （``POST /reports/compare`` / ``POST /reports/secondary-compare``）会**落库生成
@@ -59,6 +68,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from shared.agent_tools import contract as platform_contract_catalog
 from shared.agent_tools import device_tools
+from shared.agent_tools import evaluation_tools
 from shared.agent_tools import testcase_tools as case_tools
 from shared.agent_tools.diagnostics import (
     DEFAULT_LOG_ROWS as LOG_DIAGNOSE_DEFAULT_MAX_ROWS,
@@ -361,6 +371,11 @@ EVALUATION_QUERY_ACTIONS: Dict[str, str] = {
     'dimension': 'evaluation_dimension_get',
     'categories': 'evaluation_category_list',
 }
+
+# 评估写动作 → 目标工具名（INT-2469，M2 写域卡）：动作表 / 权限收窄 / body
+# 白名单在 ``evaluation_tools``，此处别名只供注册表与调用方按同一份口径读取。
+EVALUATION_MANAGE_ACTIONS: Dict[str, str] = (
+    evaluation_tools.EVALUATION_MANAGE_ACTIONS)
 
 # 用例只读动作 → 工具名（INT-2460）。
 # list / detail 直接复用 MCP 只读工具；统计 / 轮次参考参数 / 导出作业状态 /
@@ -914,18 +929,33 @@ INTENT_TOOLS: List[IntentTool] = [
                                    'group:create', 'group:update',
                                    'group:delete'),
         enabled=False, kind='reserved'),
+    # ---------------- M2 已实现（INT-2469 评估域写） ----------------
     IntentTool(
-        name='evaluation_manage', description='维度/分类 CRUD、触发重评估（写）。',
+        name='evaluation_manage',
+        description=('评估配置写操作（提案 → 审批 → 执行，审批前不产生副作用）：'
+                     '维度创建 / 修改 / 删除（级联软删）、维度可见性切换、'
+                     '分类创建 / 修改 / 删除（软删）、触发任务重新评估。'
+                     'body 字段名与 REST /api/v1/evaluation 一致（snake_case），'
+                     '不认识的字段会被拒绝而不是静默忽略；重评估只重算评估结论、'
+                     '不重跑执行，同一任务已在队列 / 正在重评估时后端拒绝重复提交。'),
         parameters=_schema({
-            'action': _prop('string', '动作', required=True,
-                            enum=['dimension_create', 'dimension_update',
-                                  'category_create', 'category_update', 'reevaluate']),
-            'body': _prop('object', '维度 / 分类字段'),
+            'action': _prop('string', '写动作', required=True,
+                            enum=list(evaluation_tools.EVALUATION_MANAGE_ACTIONS)),
+            'dim_id': _prop('integer', '维度 ID（dimension_update / '
+                                       'dimension_delete / dimension_visibility 必填）',
+                            minimum=1),
+            'cat_id': _prop('integer', '分类 ID（category_update / '
+                                       'category_delete 必填）', minimum=1),
+            'visibility': _prop('string', '目标可见性（dimension_visibility 必填）',
+                                enum=list(evaluation_tools.VISIBILITY_VALUES)),
+            'body': _prop('object', '维度 / 分类字段或重评估参数（create / update / '
+                                    'reevaluate 必填）'),
         }, required=('action',)),
-        risk='WRITE', permissions=('evaluation:dim_manage',
-                                   'evaluation:category_manage',
-                                   'evaluation:execute'),
-        enabled=False, kind='reserved'),
+        risk='WRITE', permissions=(
+            evaluation_tools.DIM_MANAGE, evaluation_tools.CATEGORY_MANAGE,
+            evaluation_tools.EVALUATION_EXECUTE, evaluation_tools.EVALUATION_SHARE),
+        enabled=True, kind='intent_rest'),
+
     IntentTool(
         name='algorithm_query',
         description=('算法配置只读查询（INT-2464）：定义 / 草稿 / 分组、设备与 API 参数、'
@@ -1316,6 +1346,8 @@ def permissions_for(name: str,
     绝大多数工具是「工具 = 一个权限域」，直接用工具级声明。``device_query``
     横跨 device / spl / digital_spl 三个域，工具级声明只表达可见性，调用时按
     ``action`` 收窄，避免持有 device:read 的用户读 SPL 映射（反之亦然）。
+    ``evaluation_manage`` 同理：维度 / 分类 / 执行 / 分享四个权限域，按
+    ``action`` 收窄，避免持有维度管理权限的用户删除分类或触发重评估。
     动作非法时回落到工具级权限，由解析层给出明确的 action 错误。
     """
     tool = INTENT_TOOL_BY_NAME.get(name)
@@ -1326,6 +1358,10 @@ def permissions_for(name: str,
         return tuple(mcp['permissions']) if mcp is not None else None
     if name == 'device_query' and isinstance(arguments, dict):
         by_action = device_tools.action_permissions(arguments.get('action'))
+        if by_action is not None:
+            return by_action
+    if name == 'evaluation_manage' and isinstance(arguments, dict):
+        by_action = evaluation_tools.action_permissions(arguments.get('action'))
         if by_action is not None:
             return by_action
     return tuple(tool.permissions)
@@ -1613,6 +1649,9 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
       后其余参数原样透传（路径 / 查询 / body 由共享构造器决定）；
     - ``device_query``：设备动作映射 MCP ``device_*`` GET 工具，SPL 动作映射
       ``device_tools`` 的 Agent 专用只读目标（该域没有对外 MCP 工具）；
+    - ``evaluation_manage``：写动作映射 MCP ``evaluation_*`` 写工具（分类更新 /
+      删除映射 ``evaluation_tools`` 的 Agent 专用写目标），由 ``evaluation_tools``
+      做动作级参数校验与 body 白名单；
     - 其他 MCP 工具名（tool_search 命中后直接调用）：原样透传参数；
     - 本地实现的工具（``LOCAL_INTENT_TOOL_NAMES``，含 ``report_compare``）不走
       REST 映射：返回错误文本，避免同名 MCP 的写接口被当成本地只读工具执行；
@@ -1620,6 +1659,10 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
     """
     if name == 'device_query':
         return device_tools.resolve_call(arguments or {})
+    if name == 'evaluation_manage':
+        # M2 写工具：动作表 / body 白名单 / 权限收窄都在 evaluation_tools，
+        # 与只读工具的 _REST_ACTION_MAP 分开，避免写动作误入只读解析分支。
+        return evaluation_tools.resolve_call(arguments or {})
     if name in LOCAL_INTENT_TOOL_NAMES:
         return None, None, f'工具 {name} 由本地实现，不映射 REST 接口'
     mapping = _REST_ACTION_MAP.get(name)
@@ -1733,7 +1776,8 @@ __all__ = [
     'ALWAYS_AVAILABLE_TOOLS',
     'AUDIO_QUERY_ACTIONS', 'AUDIT_REDACTED_ARGUMENTS',
     'CONDITIONAL_REQUIRED', 'DASHBOARD_QUERY_ACTIONS',
-    'DASHBOARD_QUERY_PARAMS', 'ENABLED_TOOLS', 'EVALUATION_QUERY_ACTIONS',
+    'DASHBOARD_QUERY_PARAMS', 'ENABLED_TOOLS', 'EVALUATION_MANAGE_ACTIONS',
+    'EVALUATION_QUERY_ACTIONS',
     'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool',
     'LOCAL_INTENT_TOOL_NAMES', 'LOCAL_TOOL_NAMES', 'LOG_DIAGNOSE_ACTIONS',
     'LOG_DIAGNOSE_ALL_ACTIONS', 'LOG_DIAGNOSE_DEFAULT_MAX_ROWS',

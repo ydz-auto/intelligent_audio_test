@@ -34,7 +34,7 @@ _EXPECTED_PERMISSIONS = {
                          'group:create', 'group:update', 'group:delete'},
     'evaluation_manage': {'evaluation:dim_manage',
                           'evaluation:category_manage',
-                          'evaluation:execute'},
+                          'evaluation:execute', 'evaluation:share'},
     'algorithm_manage': {'algorithm:definition_manage',
                          'algorithm:param_manage',
                          'algorithm:group_manage'},
@@ -127,8 +127,9 @@ def test_pending_permission_spec_is_exactly_the_known_tools():
 
 def test_fixed_tools_use_fact_source_permission_codes():
     rbac = _rbac_codes()
-    # INT-2461 启用了 dashboard_query（首页只读），其余本卡修正项仍停用
-    enabled_later = {'dashboard_query'}
+    # INT-2461 启用了 dashboard_query（首页只读）；INT-2469 启用 evaluation_manage
+    # （M2 写工具，权限码补上可见性分享 evaluation:share）
+    enabled_later = {'dashboard_query', 'evaluation_manage'}
     for name, expected in _EXPECTED_PERMISSIONS.items():
         tool = intent_tools.INTENT_TOOL_BY_NAME[name]
         assert set(tool.permissions) == expected, name

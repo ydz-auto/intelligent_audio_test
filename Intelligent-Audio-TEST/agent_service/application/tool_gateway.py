@@ -50,6 +50,7 @@ from agent_service.domain.ports.tool_registry import (
     RunCredentialPort, ToolRegistryPort, ToolTransportPort,
 )
 from shared.agent_tools import testcase_tools as case_tools
+from shared.agent_tools import evaluation_tools
 from shared.agent_tools.intent_tools import redact_for_audit
 from shared.models.common_enums import ReportType
 
@@ -283,6 +284,12 @@ class SharedToolGateway(ToolGateway):
         具体域写工具（M2 各域卡）可覆盖成字段级 diff；这里至少让审批人看到
         「这条提案会发什么请求」，而不是只有一个工具名。
         """
+        # 评估域写（INT-2469）：字段级预览（目标对象 / 变更字段 / 重评估范围 /
+        # 软删语义），比裸 REST 请求更能让审批人判断影响面。
+        if name == 'evaluation_manage':
+            diff = evaluation_tools.proposal_diff(dict(arguments or {}))
+            if diff is not None:
+                return diff
         tool, merged, error = self._bridge.resolve_rest(
             name, dict(arguments or {}))
         if error or tool is None:
