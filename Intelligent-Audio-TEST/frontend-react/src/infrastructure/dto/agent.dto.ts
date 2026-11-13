@@ -11,6 +11,7 @@ import {
   AGENT_EVENT_TYPE,
   AGENT_RUN_STATUS,
   AGENT_TOOL_RESULT_STATUS,
+  isRecoverableAgentErrorCode,
   normalizeRunStatus,
   normalizeToolRisk,
   type AgentApproval,
@@ -395,13 +396,18 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
         error,
       }
     }
-    case AGENT_EVENT_TYPE.ERROR:
+    case AGENT_EVENT_TYPE.ERROR: {
+      // 网关合成的上游中断帧（code=UPSTREAM_*）语义是「可续传」，不是 run 终态；
+      // 标记 recoverable 供 application 层区分（其余 error 仍按终态失败处理）。
+      const errorCode = toStringValue(dto['code'])
       return {
         ...base,
         type: AGENT_EVENT_TYPE.ERROR,
-        errorCode: toStringValue(dto['code']),
+        errorCode,
         errorMessage: toStringValue(dto['message']) ?? '',
+        recoverable: isRecoverableAgentErrorCode(errorCode),
       }
+    }
     default:
       return null
   }

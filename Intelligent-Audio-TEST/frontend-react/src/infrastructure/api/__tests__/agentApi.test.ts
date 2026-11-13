@@ -4,7 +4,11 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { AGENT_ERROR_COPY, AGENT_RUN_STATUS } from '@/domain/models/agent'
+import {
+  AGENT_ERROR_COPY,
+  AGENT_RUN_STATUS,
+  type AgentRunEvent,
+} from '@/domain/models/agent'
 import {
   AGENT_API_PATHS,
   cancelAgentRun,
@@ -16,6 +20,7 @@ import {
 } from '@/infrastructure/api/agentApi'
 import { ApiError } from '@/infrastructure/api/api-error'
 import { AgentContractError } from '@/infrastructure/dto/agent.dto'
+import { authTokenStore } from '@/infrastructure/storage/auth-token'
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -48,6 +53,7 @@ async function waitUntil(check: () => boolean, timeoutMs = 5_000): Promise<void>
 describe('agentApi', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+    authTokenStore.clear()
   })
 
   it('createAgentRun：POST /agent/sessions/{id}/runs + Idempotency-Key，拆 {run, created} 信封', async () => {
@@ -147,12 +153,40 @@ describe('agentApi', () => {
     await expect(cancelAgentRun('r-1')).rejects.toBeInstanceOf(Error)
   })
 
-  it('错误归一：503=Agent 未开启、404=未部署、网络失败', () => {
+  it('错误归一：503 按 code 区分「未开启 / 服务不可达」，404=会话或 run 不存在，网络失败', () => {
+    // 网关总开关：FastAPI 把 HTTPException detail 落成 {"detail": {"code": "AGENT_DISABLED"}}
+    expect(
+      toAgentErrorMessage(
+        new ApiError({
+          httpStatus: 503,
+          detail: { code: 'AGENT_DISABLED', message: 'Agent 未启用' },
+        })
+      )
+    ).toBe(AGENT_ERROR_COPY.disabled)
+
+    // agent_service 不可达时网关返回 {"detail": "agent service unavailable"}：
+    // 是环境问题，不能报成「平台 Agent 当前未开启」
+    expect(
+      toAgentErrorMessage(
+        new ApiError({ httpStatus: 503, detail: 'agent service unavailable' })
+      )
+    ).toBe(AGENT_ERROR_COPY.serviceUnavailable)
+    // 凭据主密钥不可用等其他 503 同样按服务不可用处理
+    expect(
+      toAgentErrorMessage(
+        new ApiError({
+          httpStatus: 503,
+          detail: 'credential store unavailable',
+        })
+      )
+    ).toBe(AGENT_ERROR_COPY.serviceUnavailable)
     expect(toAgentErrorMessage(new ApiError({ httpStatus: 503 }))).toBe(
-      AGENT_ERROR_COPY.disabled
+      AGENT_ERROR_COPY.serviceUnavailable
     )
+
+    // 404 表示 run / session 不存在，不是「未部署」
     expect(toAgentErrorMessage(new ApiError({ httpStatus: 404 }))).toBe(
-      AGENT_ERROR_COPY.unavailable
+      AGENT_ERROR_COPY.notFound
     )
     expect(
       toAgentErrorMessage(
@@ -205,8 +239,10 @@ describe('agentApi', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   }, 15_000)
 
-  it('SSE：503 不可恢复，直接失败且不重连', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 503 }))
+  it('SSE：总开关关闭（503 + code=AGENT_DISABLED）报「未开启」，不重连', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ detail: { code: 'AGENT_DISABLED', message: 'Agent 未启用' } }, 503)
+    )
     vi.stubGlobal('fetch', fetchMock)
 
     const failures: string[] = []
@@ -220,6 +256,103 @@ describe('agentApi', () => {
     expect(failures[0]).toBe(AGENT_ERROR_COPY.disabled)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('SSE：agent_service 不可达的 503 报「服务暂不可用」，不误报未开启', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ detail: 'agent service unavailable' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const failures: string[] = []
+    const unsubscribe = subscribeAgentRunEvents('r-1', {
+      onEvent: () => undefined,
+      onFailure: (message) => failures.push(message),
+    })
+
+    await waitUntil(() => failures.length > 0)
+    unsubscribe()
+    expect(failures[0]).toBe(AGENT_ERROR_COPY.serviceUnavailable)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('SSE：401 先 refresh token 再重连，后续请求带新 token', async () => {
+    authTokenStore.set('old-token')
+    const fetchMock = vi
+      .fn()
+      // 首次订阅：token 过期
+      .mockResolvedValueOnce(new Response('', { status: 401 }))
+      // refresh 换新 token
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'new-token' }))
+      // 重连：续传终态
+      .mockResolvedValueOnce(
+        sseResponse(
+          'id: 2\nevent: run_finished\ndata: {"status":"SUCCEEDED","run_id":"r-1","sequence":2,"type":"run_finished","timestamp":"t"}\n\n'
+        )
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events: string[] = []
+    const unsubscribe = subscribeAgentRunEvents('r-1', {
+      onEvent: (event) => events.push(event.type),
+    })
+
+    await waitUntil(() => events.includes('run_finished'))
+    unsubscribe()
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    const [refreshUrl, refreshInit] = fetchMock.mock.calls[1] as [string, RequestInit]
+    expect(refreshUrl).toBe('/api/v1/auth/refresh')
+    expect(refreshInit.method).toBe('POST')
+    expect(authTokenStore.get()).toBe('new-token')
+
+    const [eventsUrl, eventsInit] = fetchMock.mock.calls[2] as [string, RequestInit]
+    expect(String(eventsUrl)).toContain(AGENT_API_PATHS.runEvents('r-1'))
+    expect((eventsInit.headers as Record<string, string>).Authorization).toBe(
+      'Bearer new-token'
+    )
+    authTokenStore.clear()
+  }, 15_000)
+
+  it('SSE：网关合成的上游中断帧按可恢复事件下发，重连仍从水位续传', async () => {
+    const fetchMock = vi
+      .fn()
+      // 上游中断：网关合成 error 帧，id 取已下发水位（3）
+      .mockResolvedValueOnce(
+        sseResponse(
+          'id: 3\nevent: error\ndata: {"run_id":"r-1","sequence":3,"type":"error","timestamp":"t","code":"UPSTREAM_UNAVAILABLE","message":"上游事件流转发中断，请按 Last-Event-ID 续传"}\n\n'
+        )
+      )
+      // 重连后从水位 3 续传终态
+      .mockResolvedValueOnce(
+        sseResponse(
+          'id: 4\nevent: run_finished\ndata: {"status":"SUCCEEDED","run_id":"r-1","sequence":4,"type":"run_finished","timestamp":"t"}\n\n'
+        )
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events: AgentRunEvent[] = []
+    const unsubscribe = subscribeAgentRunEvents('r-1', {
+      lastEventId: '3',
+      onEvent: (event) => events.push(event),
+    })
+
+    await waitUntil(() => events.some((event) => event.type === 'run_finished'))
+    unsubscribe()
+
+    expect(events[0]).toMatchObject({
+      type: 'error',
+      errorCode: 'UPSTREAM_UNAVAILABLE',
+      recoverable: true,
+    })
+    const secondInit = fetchMock.mock.calls[1][1] as RequestInit
+    expect((secondInit.headers as Record<string, string>)['Last-Event-ID']).toBe('3')
+    expect(String(fetchMock.mock.calls[1][0])).toContain('cursor=3')
+  }, 15_000)
 
   it('SSE：解绑后不再重连', async () => {
     const fetchMock = vi.fn().mockResolvedValue(sseResponse(''))

@@ -16,7 +16,7 @@ import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentRun, AgentRunEvent } from '@/domain/models/agent'
-import { AGENT_EVENT_TYPE, AGENT_RUN_STATUS } from '@/domain/models/agent'
+import { AGENT_ERROR_COPY, AGENT_EVENT_TYPE, AGENT_RUN_STATUS } from '@/domain/models/agent'
 import {
   useAgentRun,
   useAgentRunHost,
@@ -301,8 +301,10 @@ describe('useAgentRun（共享单一实例）', () => {
     expect(result.current.phase).toBe(AGENT_RUN_PHASE.RUNNING)
   })
 
-  it('错误归一：Agent 总开关关闭（503）→ error 态 + 中文文案落在 assistant 气泡', async () => {
-    createRunMock.mockRejectedValue(new ApiError({ httpStatus: 503 }))
+  it('错误归一：Agent 总开关关闭（503 + AGENT_DISABLED）→ error 态 + 中文文案落在 assistant 气泡', async () => {
+    createRunMock.mockRejectedValue(
+      new ApiError({ httpStatus: 503, detail: { code: 'AGENT_DISABLED', message: 'z' } })
+    )
     const { result } = renderHook(() => useAgentRun())
 
     await act(async () => {
@@ -310,10 +312,95 @@ describe('useAgentRun（共享单一实例）', () => {
     })
 
     expect(result.current.phase).toBe(AGENT_RUN_PHASE.ERROR)
-    expect(result.current.error).toContain('Agent')
+    expect(result.current.error).toBe(AGENT_ERROR_COPY.disabled)
     const messages = useAiChatSession.getState().messages
     expect(messages[1].status).toBe('error')
     expect(messages[1].versions[0].content).toBe(result.current.error)
+  })
+
+  it('INT-2520 上游中断：等于水位的可恢复 error 帧不去重、不落终态，只提示重连', async () => {
+    const { result } = renderHook(() => useAgentRun())
+    await act(async () => {
+      await result.current.send('你好')
+    })
+
+    act(() => {
+      streamOptions?.onEvent(messageDelta(5, 'm-1', 'A'))
+      // 网关合成帧：sequence 恒等于已下发水位
+      streamOptions?.onEvent({
+        type: AGENT_EVENT_TYPE.ERROR,
+        runId: 'r-1',
+        sequence: 5,
+        timestamp: 't',
+        errorCode: 'UPSTREAM_UNAVAILABLE',
+        errorMessage: '上游事件流转发中断，请按 Last-Event-ID 续传',
+        recoverable: true,
+      })
+    })
+
+    // 不落终态、不报错，页面只停在「重连中」；已下发正文不受影响
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.RECONNECTING)
+    expect(result.current.error).toBeNull()
+    expect(useAiChatSession.getState().messages[1].versions[0].content).toBe('A')
+
+    // 续传后仍按 sequence 继续应用增量，终态正常收口
+    act(() => {
+      streamOptions?.onStatus?.('open')
+      streamOptions?.onEvent(messageDelta(6, 'm-1', 'B'))
+      streamOptions?.onEvent(runFinished(7))
+    })
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
+    expect(useAiChatSession.getState().messages[1].versions[0].content).toBe('AB')
+  })
+
+  it('INT-2520 终态错误：不可恢复的 error 帧仍判失败并关流', async () => {
+    const { result } = renderHook(() => useAgentRun())
+    await act(async () => {
+      await result.current.send('你好')
+    })
+
+    act(() => {
+      streamOptions?.onEvent({
+        type: AGENT_EVENT_TYPE.ERROR,
+        runId: 'r-1',
+        sequence: 1,
+        timestamp: 't',
+        errorCode: 'RESTART_WRITE_UNVERIFIED',
+        errorMessage: '进程重启前的中断写操作需人工确认',
+        recoverable: false,
+      })
+    })
+
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.ERROR)
+    expect(result.current.error).toBe('进程重启前的中断写操作需人工确认')
+  })
+
+  it('INT-2520 错误归一：503 服务不可达 → 服务暂不可用文案（不误报未开启）', async () => {
+    createRunMock.mockRejectedValue(
+      new ApiError({ httpStatus: 503, detail: 'agent service unavailable' })
+    )
+    const { result } = renderHook(() => useAgentRun())
+
+    await act(async () => {
+      await result.current.send('你好')
+    })
+
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.ERROR)
+    expect(result.current.error).toBe(AGENT_ERROR_COPY.serviceUnavailable)
+  })
+
+  it('INT-2520 错误归一：503 + code=AGENT_DISABLED 仍是「未开启」文案', async () => {
+    createRunMock.mockRejectedValue(
+      new ApiError({ httpStatus: 503, detail: { code: 'AGENT_DISABLED', message: 'z' } })
+    )
+    const { result } = renderHook(() => useAgentRun())
+
+    await act(async () => {
+      await result.current.send('你好')
+    })
+
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.ERROR)
+    expect(result.current.error).toBe(AGENT_ERROR_COPY.disabled)
   })
 
   it('reset：清空 run（keepSession 保留会话，默认结束会话）', async () => {

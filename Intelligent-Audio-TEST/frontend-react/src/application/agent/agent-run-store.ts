@@ -439,6 +439,14 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         return
       }
       case AGENT_EVENT_TYPE.ERROR: {
+        if (event.recoverable === true) {
+          // 可恢复的上游中断（网关合成 error 帧，code=UPSTREAM_*）：不关流、不进 run 终态，
+          // 只提示「重连中」，由 SSE 层按 Last-Event-ID 续传（游标仍取已确认水位）。
+          if (get().phase !== AGENT_RUN_PHASE.CANCELLING) {
+            setPhase(AGENT_RUN_PHASE.RECONNECTING)
+          }
+          return
+        }
         failRun(event.errorMessage || AGENT_ERROR_COPY.runFailed)
         return
       }
@@ -455,14 +463,20 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
 
   /** 全局 sequence 单调去重：重连回放不会重复渲染同一段文本 */
   const handleEvent = (event: AgentRunEvent) => {
-    if (event.sequence <= lastSequence) return
+    // 网关合成的上游中断帧 id 取「已下发水位」，恰好等于水位，必须放行，
+    // 否则用户既看不到中断提示、也只剩静默重连（INT-2520 P2-2）。
+    const isRecoverableInterrupt =
+      event.type === AGENT_EVENT_TYPE.ERROR && event.recoverable === true
+    if (event.sequence <= lastSequence && !isRecoverableInterrupt) return
     if (event.type === AGENT_EVENT_TYPE.MESSAGE_DELTA) {
       const applied = lastDeltaSequences.get(event.messageId) ?? -1
       if (event.sequence <= applied) return
       lastDeltaSequences.set(event.messageId, event.sequence)
     }
-    lastSequence = event.sequence
-    lastEventId = String(event.sequence)
+    if (event.sequence > lastSequence) {
+      lastSequence = event.sequence
+      lastEventId = String(event.sequence)
+    }
     applyEvent(event)
   }
 

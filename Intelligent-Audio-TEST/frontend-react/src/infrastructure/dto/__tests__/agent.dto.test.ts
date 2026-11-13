@@ -235,6 +235,47 @@ describe('agent.dto', () => {
     })
   })
 
+  it('事件：error 帧按 code 标记可恢复（网关上游中断）与终态错误', () => {
+    // 网关 _sse_error_frame 合成帧：字段平铺，code=UPSTREAM_*
+    const interrupted = toAgentRunEvent({
+      run_id: 'r-4',
+      sequence: 9,
+      type: 'error',
+      timestamp: 't',
+      code: 'UPSTREAM_UNAVAILABLE',
+      message: '上游事件流转发中断，请按 Last-Event-ID 续传',
+    })
+    expect(interrupted).toMatchObject({
+      type: 'error',
+      sequence: 9,
+      errorCode: 'UPSTREAM_UNAVAILABLE',
+      recoverable: true,
+    })
+
+    const upstreamError = toAgentRunEvent({
+      run_id: 'r-4',
+      sequence: 9,
+      type: 'error',
+      code: 'UPSTREAM_ERROR',
+      message: '上游事件流返回 500',
+    })
+    expect(upstreamError).toMatchObject({ recoverable: true })
+
+    // agent_service 的业务错误（如重启写操作待确认）仍是终态错误
+    const terminal = toAgentRunEvent({
+      run_id: 'r-4',
+      sequence: 10,
+      type: 'error',
+      code: 'RESTART_WRITE_UNVERIFIED',
+      message: '进程重启前的中断写操作需人工确认',
+    })
+    expect(terminal).toMatchObject({
+      type: 'error',
+      errorCode: 'RESTART_WRITE_UNVERIFIED',
+      recoverable: false,
+    })
+  })
+
   it('响应信封：run 创建 {run, created} / 会话 {session,messages,runs} / approvals {items}', () => {
     const run = toAgentRunFromCreateResponse({
       run: { id: 'r-1', session_id: 's-1', status: 'QUEUED' },
