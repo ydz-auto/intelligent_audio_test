@@ -1053,8 +1053,14 @@ class RunOrchestrator:
                                          ToolCallStatus.WAITING_APPROVAL)]
         if not records:
             return False
-        approvals = {item.tool_call_id: item
-                     for item in self._approvals.list_for_run(run_id)}
+        approvals = {}
+        for item in self._approvals.list_for_run(run_id):
+            # §3.1 CQRS：列表只读，到点结算放在命令侧。本轮 Loop 恢复时先
+            # 把过期的 PENDING 落 EXPIRED，下面按 EXPIRED 分支回灌模型，
+            # 避免「无人决策 + TTL 到点」把 run 永远挂在 WAITING_APPROVAL。
+            if item.status is ApprovalStatus.PENDING:
+                item = self._approvals.settle(item)
+            approvals[item.tool_call_id] = item
         emitted = self._emitted_tool_events(run_id)
         waiting = False
         for record in records:

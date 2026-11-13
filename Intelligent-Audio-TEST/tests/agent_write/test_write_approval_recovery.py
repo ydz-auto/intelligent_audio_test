@@ -210,7 +210,9 @@ def test_startup_expiry_sweep_marks_due_approvals(tmp_path):
     finally:
         session.close()
 
-    assert container.approval_service.expire_due() == 1
+    assert container.approval_service.expire_due() == [run.id]
+    # 幂等：再扫一轮不再命中
+    assert container.approval_service.expire_due() == []
     assert container.repositories['approvals'].get(
         approval.id).status is ApprovalStatus.EXPIRED
     assert gateway.executed == []

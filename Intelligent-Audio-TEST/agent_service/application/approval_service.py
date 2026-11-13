@@ -8,12 +8,12 @@
    副作用；同一次调用重复提交只复用已有提案（重启 / 重复投递幂等）。
 2. **决策**：只有 run 归属者本人能审批（越权一律 404，不泄漏存在性）；
    决策 / 过期都是 ``WHERE status='PENDING'`` 的条件更新，并发审批只有一个
-   请求生效；过期单不再允许决策。
+   请求生效；过期单不再允许决策（``ApprovalExpired``，调用方据此唤醒 run）。
 3. **执行前复核**：决策时把审批人的实时权限快照写入 ``decision_permissions``；
    真正执行前用它重新校验权限，并重新校验工具注册状态与参数 Schema ——
    「审批后权限被收回」或注册表变化都让执行失败，而不是照旧执行。
-4. **过期**：``expires_at`` 到点即不可执行（决策路径 / Loop 恢复路径 /
-   启动扫描三处判定，幂等）。
+4. **过期**：``expires_at`` 到点即不可执行（决策路径 / 命令侧结算 /
+   周期扫描三处判定，幂等）。查询侧只读，不落库（§3.1 CQRS）。
 5. **取消**：run 被取消时未决提案转 REJECTED（不执行、留决策人）。
 
 审批本身不代表授权：审批人可以是本人，但**执行**仍要求其权限仍在。
@@ -137,6 +137,9 @@ class ApprovalService:
         - 已决 → ``ApprovalConflict``（409）；
         - 已过期 → 先落 EXPIRED 再 ``ApprovalExpired``（409），不执行；
         - 并发审批只有一个请求命中条件更新，其余按「已决」返回。
+
+        ``ApprovalExpired`` 是「让 run 收下过期结果」的唤醒信号：调用方必须
+        提交 run（``executor.submit``），否则 run 会一直停在 WAITING_APPROVAL。
         """
         approval = self._approvals.get(approval_id)
         if approval is None:
@@ -152,6 +155,10 @@ class ApprovalService:
             # run 已收口（取消 / 失败 / 超预算）：审批不再产生任何副作用
             self.cancel_pending(approval.run_id, owner_id)
             raise ApprovalConflict(approval_id)
+        if approval.status is ApprovalStatus.EXPIRED:
+            # 已被命令侧 / 周期扫描结算成 EXPIRED：仍按「过期」语义返回，
+            # 调用方据此唤醒 run 把 APPROVAL_EXPIRED 回灌模型（不是 409 挂死）。
+            raise ApprovalExpired(approval.id, approval.run_id)
         if approval.status is not ApprovalStatus.PENDING:
             raise ApprovalConflict(approval_id)
         if self._is_due(approval, now):
@@ -184,15 +191,21 @@ class ApprovalService:
         self._approvals.expire(approval.id, now)
         return self._approvals.get(approval.id) or approval
 
-    def expire_due(self) -> int:
-        """启动 / 恢复时的过期扫描：把到点的待审批单统一判过期。"""
+    def expire_due(self) -> List[str]:
+        """过期扫描（命令侧）：把到点的待审批单统一判过期。
+
+        返回**受影响的 run id**（去重、保序）：调用方据此提交 run，让 Loop
+        把 ``APPROVAL_EXPIRED`` 作为工具结果回灌模型并继续收口 —— 否则
+        「TTL 到点且无人决策」只能等重启。
+        """
         now = utcnow()
-        expired = 0
+        expired_runs: List[str] = []
         for approval in self._approvals.list_due(
                 now, self._settings.expiry_scan_limit):
-            if self._approvals.expire(approval.id, now):
-                expired += 1
-        return expired
+            if self._approvals.expire(approval.id, now) \
+                    and approval.run_id not in expired_runs:
+                expired_runs.append(approval.run_id)
+        return expired_runs
 
     def cancel_pending(self, run_id: str, actor_id: int) -> int:
         """run 取消：未决提案转 REJECTED（不执行；已完成写不回滚，§9.2-4）。"""
@@ -238,8 +251,13 @@ class ApprovalService:
     # ------------------------------------------------------------ 查询
 
     def list_for_run(self, run_id: str) -> List[AgentApproval]:
-        return [self.settle(item)
-                for item in self._approvals.list_by_run(run_id)]
+        """本 run 的审批单（**只读**，查询侧不落库）。
+
+        §3.1 CQRS：列表接口不得把到点的 PENDING 单写成 EXPIRED —— 那会让
+        「先查列表再决策」拿到 409 且 run 无人唤醒。过期结算只在命令侧
+        （决策 / Loop 结算 / 周期扫描）发生，查询如实返回库内状态。
+        """
+        return self._approvals.list_by_run(run_id)
 
     # ------------------------------------------------------------ internals
 

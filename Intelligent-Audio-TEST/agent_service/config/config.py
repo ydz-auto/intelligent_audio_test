@@ -206,6 +206,10 @@ class Config(BaseConfig):
     APPROVAL_EXPIRY_SCAN_LIMIT = _get_int(
         'AGENT_APPROVAL_EXPIRY_SCAN_LIMIT',
         int(_APPROVAL_DEFAULTS.get('expiry_scan_limit', 200)))
+    # 运行期过期扫描间隔（秒）：到点单结算后提交 run，不依赖重启
+    APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS = _get_float(
+        'AGENT_APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS',
+        float(_APPROVAL_DEFAULTS.get('expiry_scan_interval_seconds', 30)))
 
     # ===== 总开关（INT-2529，与网关同源）=====
     # 只用于启动期恢复投递门控：关闭态不产生任何后台 run（网关入口门控不变，
@@ -406,6 +410,9 @@ class Config(BaseConfig):
             raise ValueError('AGENT_APPROVAL_TTL_SECONDS 必须为正数')
         if cls.APPROVAL_EXPIRY_SCAN_LIMIT <= 0:
             raise ValueError('AGENT_APPROVAL_EXPIRY_SCAN_LIMIT 必须为正数')
+        if cls.APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS <= 0:
+            raise ValueError(
+                'AGENT_APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS 必须为正数')
         if not Path(cls.MEMORY_SENSITIVE_RULES_PATH).is_file():
             raise ValueError(
                 f'敏感信息规则文件不存在：{cls.MEMORY_SENSITIVE_RULES_PATH}')
