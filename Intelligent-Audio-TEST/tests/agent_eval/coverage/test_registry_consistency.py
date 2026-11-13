@@ -54,6 +54,8 @@ SKILL_WRITE_TOOLS = {
     'device-operations': {'device_control'},
     'spl-calibration': {'spl_calibrate'},
     'driver-proposal': {'driver_propose'},
+    # INT-2469 评估写
+    'evaluation-config': {'evaluation_manage'},
     # INT-2468 用例 / 标签 / 任务写
     'testcase-authoring': {'testcase_write'},
     'tag-group': {'tag_group_manage'},

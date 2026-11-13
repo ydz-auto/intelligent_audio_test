@@ -1523,6 +1523,31 @@ def _lookup_rest_tool(name: str) -> Optional[dict]:
     return get_tool(name) or case_tools.get_tool(name)
 
 
+# 各写域模块的 Agent 专用写入口（不在外部 MCP 契约里，同形工具项）。
+_WRITE_INTERNAL_TOOLS: Dict[str, dict] = {}
+for _module in (case_write_tools, task_write_tools, tag_group_tools):
+    _WRITE_INTERNAL_TOOLS.update(getattr(_module, 'INTERNAL_TOOLS', {}))
+
+
+def _write_target_for(tool_name: str) -> Optional[dict]:
+    """写动作的目标工具名 → 静态 REST 目标定义（MCP 优先，内部写入口兜底）。"""
+    return _lookup_rest_tool(tool_name) or _WRITE_INTERNAL_TOOLS.get(tool_name)
+
+
+def _write_action_target(spec: Any) -> Optional[dict]:
+    """``WriteAction`` → 它的目标工具定义（无动作 / 目标缺失时返回 None）。"""
+    if spec is None:
+        return None
+    return _write_target_for(spec.tool)
+
+
+def _tag_group_target(action: str) -> Optional[dict]:
+    """标签 / 分组写动作的静态目标：``batch_tag`` 单列，CRUD 按标签口径取。"""
+    if action == 'batch_tag':
+        return _write_target_for(tag_group_tools.BATCH_TAG_ACTION.tool)
+    return _write_action_target(tag_group_tools.CRUD_ACTIONS.get(('tag', action)))
+
+
 class DomainActionMap(NamedTuple):
     """一个意图工具的动作表与静态目标解析器（INT-2562）。
 
@@ -1549,6 +1574,37 @@ DOMAIN_ACTION_MAPS: Dict[str, DomainActionMap] = {
     'evaluation_manage': DomainActionMap(
         tuple(evaluation_tools.EVALUATION_MANAGE_ACTIONS),
         evaluation_tools.rest_target),
+    # 音频写（INT-2467）：动作 → 共享 MCP 注册表的写工具名，静态目标直接查表。
+    'audio_import': DomainActionMap(
+        tuple(audio_tools.AUDIO_IMPORT_ACTIONS),
+        lambda action: _write_target_for(
+            audio_tools.AUDIO_IMPORT_ACTIONS.get(action, ''))),
+    'audio_annotate': DomainActionMap(
+        tuple(audio_tools.AUDIO_ANNOTATE_ACTIONS),
+        lambda action: _write_target_for(
+            audio_tools.AUDIO_ANNOTATE_ACTIONS.get(action, ''))),
+    # 设备控制（INT-2467）：动作 → MCP 写工具名。
+    'device_control': DomainActionMap(
+        tuple(device_tools.DEVICE_CONTROL_ACTIONS),
+        lambda action: _write_target_for(
+            device_tools.DEVICE_CONTROL_ACTIONS.get(action, ''))),
+    # SPL 校准（INT-2467）：动作表本身就是静态目标定义。
+    'spl_calibrate': DomainActionMap(
+        tuple(device_tools.SPL_CALIBRATE_TARGETS),
+        lambda action: device_tools.SPL_CALIBRATE_TARGETS.get(action)),
+    # 用例 / 任务写（INT-2468）：动作 → ``WriteAction.tool``，内部写入口兜底。
+    'testcase_write': DomainActionMap(
+        tuple(case_write_tools.ACTIONS),
+        lambda action: _write_action_target(
+            case_write_tools.ACTIONS.get(action))),
+    'task_run': DomainActionMap(
+        tuple(task_write_tools.ACTIONS),
+        lambda action: _write_action_target(
+            task_write_tools.ACTIONS.get(action))),
+    # 标签 / 分组写（INT-2468）：batch_tag 单列，CRUD 按标签口径取静态目标。
+    'tag_group_manage': DomainActionMap(
+        tuple(tag_group_tools.ACTION_NAMES),
+        _tag_group_target),
 }
 
 
