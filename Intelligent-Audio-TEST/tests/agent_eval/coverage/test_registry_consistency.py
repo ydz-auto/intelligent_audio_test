@@ -114,13 +114,19 @@ SKILL_LESS_ENABLED_READ = {'dashboard_query'}
 
 
 def test_enabled_read_tools_are_declared_or_documented():
-    """所有已启用只读意图工具都要被某个 Skill 声明，已知空档显式登记。"""
+    """所有已启用只读意图工具都要被某个 Skill 声明，已知空档显式登记。
+
+    Harness 级常驻工具（INT-2490 ``memory_search`` 等，见
+    ``intent_tools.ALWAYS_AVAILABLE_TOOLS``）按设计不绑定任何 Skill、
+    激活业务 Skill 时保持可用，故不参与「必须被某个 Skill 声明」的口径。
+    """
     registry = _registry()
     declared = set()
     for skill in registry.skills:
         declared |= set(skill.meta.allowed_tools)
     enabled_read = {tool.name for tool in intent_tools.INTENT_TOOLS
-                    if tool.enabled and tool.risk == 'READ'}
+                    if tool.enabled and tool.risk == 'READ'
+                    and tool.name not in intent_tools.ALWAYS_AVAILABLE_TOOLS}
     assert enabled_read - declared == SKILL_LESS_ENABLED_READ, (
         f'未声明的已启用只读工具变了：{enabled_read - declared}')
     assert declared <= enabled_read, f'Skill 声明了写 / 未启用工具：{declared - enabled_read}'
