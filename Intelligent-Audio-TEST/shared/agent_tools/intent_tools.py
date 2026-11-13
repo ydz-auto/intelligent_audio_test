@@ -2,7 +2,9 @@
 """意图级工具注册表 —— 内部 Agent 的唯一事实源（方案 §6.1，INT-2453）。
 
 按用户意图分组，不按 REST 1:1。全表 31 个（含 ``tool_search``、2 个记忆工具、
-3 个探索工具；业务意图工具 25 个），与方案 §6.1 表逐条对应。
+3 个探索工具；业务意图工具 25 个），与方案 §6.1 表逐条对应。探索-生成层
+（``ui_tree`` / ``ui_action`` / ``api_spec``）由 INT-2492 实现并启用，
+口径全部在 ``ui_exploration``。
 
 本卡（M0）实现 3 个业务意图工具 + ``tool_search``，M1 音频域卡（INT-2458）
 追加 ``audio_query``，评估域卡（INT-2462）追加 ``evaluation_query``，
@@ -66,9 +68,13 @@ M2 写意图（``testcase_write`` / ``tag_group_manage`` / ``task_run``，INT-24
 提案 → 审批 → 幂等执行，工具层本身不执行任何未经审批的写；删除类动作在动作
 层记 ``DESTRUCTIVE``（``risk_for``）。
 
-其余意图工具在本注册表**预留名称与 Schema**（``enabled=False``），调用返回
-``TOOL_NOT_ENABLED``；实现分别归 M1 / M2 各域卡。预留名称进入 Skill
-allowed-tools 校验与 tool_search 索引，启动时不会出现 ``UNKNOWN_TOOL``。
+探索-生成层（INT-2492）已实现并启用：``ui_tree`` / ``ui_action`` /
+``api_spec`` 的口径在 ``ui_exploration``，执行在
+``agent_service/application/exploration_service.py``（设备租约 / 审批 /
+预算 / 轨迹）。仍未实现的 ``algorithm_manage`` / ``report_generate`` /
+``report_export`` 保留名称与 Schema（``enabled=False``，调用返回
+``TOOL_NOT_ENABLED``），归各自 M2 卡。全部名称进入 Skill allowed-tools 校验与
+tool_search 索引，启动时不会出现 ``UNKNOWN_TOOL``。
 """
 from __future__ import annotations
 
@@ -86,6 +92,7 @@ from shared.agent_tools import tag_group_tools
 from shared.agent_tools import task_write_tools
 from shared.agent_tools import testcase_tools as case_tools
 from shared.agent_tools import testcase_write_tools as case_write_tools
+from shared.agent_tools import ui_exploration
 from shared.agent_tools.diagnostics import (
     DEFAULT_LOG_ROWS as LOG_DIAGNOSE_DEFAULT_MAX_ROWS,
     MAX_LOG_ROWS as LOG_DIAGNOSE_MAX_ROWS,
@@ -824,52 +831,66 @@ INTENT_TOOLS: List[IntentTool] = [
         risk='READ', permissions=('testcase:read',), enabled=True,
         kind='local'),
 
-    # ---------------- 探索 / 记忆（预留，M1 / M2 实现） ----------------
+    # ---------------- 探索-生成层（INT-2492，M2 已实现并启用） ----------------
     # 权限码口径（INT-2501）：一律取 RBAC 事实源
     # （scripts/migrations/202608/seed_rbac.py）与同能力 MCP 工具
     # （mcp_registry.py）实际使用的码，多码按 OR 判定；不自己拼不存在的码。
     # memory_write 只要求登录（记忆域无 RBAC 码，隔离由服务端构造路径 + 审批）；
     # driver_propose 在 INT-2467 用 device:update 作为持有者判定（RBAC 仍无独立
     # 驱动码），详见该工具定义处的注释。
+    # 三个工具都是本地能力（kind='local'）：树裁剪 / diff / 预算 / 契约解析在
+    # ``ui_exploration``，设备租约与执行在 ``exploration_service``；不经 REST 回源。
     IntentTool(
         name='ui_tree',
-        description=('读取设备 UI 树：裁剪节点、截图引用、与上次快照 diff；'
-                     '需要设备租用。实现见 M2 探索层（INT-2492），当前未启用。'),
+        description=('读取设备 UI 树（裁剪后最多 200 节点）：节点字段 id / text / '
+                     'resource_id（无则 key）/ class / bounds / clickable / enabled，'
+                     '附截图引用与上次快照 diff；不返回整页 XML / base64。'
+                     '必须已租用并锁定设备；遇到登录 / 验证码 / 实名 / 支付页会以 '
+                     'stop_reason 交回用户，不尝试绕过。'),
         parameters=_schema({
             'device_id': _prop('integer', '设备 ID', required=True),
-            'max_nodes': _prop('integer', '节点上限（默认 200）'),
-            'include_screenshot': _prop('boolean', '是否返回截图引用'),
-            'diff_with_last': _prop('boolean', '是否与上次快照 diff'),
+            'max_nodes': _prop('integer', '节点上限（默认 200，硬上限 200）'),
+            'include_screenshot': _prop('boolean', '是否返回截图引用（默认 true）'),
+            'diff_with_last': _prop('boolean', '是否与上次快照 diff（默认 true）'),
         }, required=('device_id',)),
-        risk='READ', permissions=('device:read',), enabled=False, kind='reserved'),
+        risk='READ', permissions=('device:read',), enabled=True, kind='local'),
     IntentTool(
         name='ui_action',
-        description=('设备 UI 动作：点击 / 长按 / 滑动 / 输入 / 返回 / Home / 等待；'
-                     '需要设备租用与审批。实现见 M2 探索层（INT-2492），当前未启用。'),
+        description=('设备 UI 动作（写，需审批）：TAP / LONG_PRESS / SWIPE / '
+                     'INPUT_TEXT / BACK / HOME / WAIT。首个动作走审批，同一探索计划内'
+                     '后续动作自动放行；每次动作返回新的树 diff 并写入 ui_trace.json。'
+                     '卸载 / 重启 / 支付 / 删账号等破坏性动作一律拒绝（'
+                     'DESTRUCTIVE_BLOCKED）；预算 30 个动作 / 5 分钟，超限以 BUDGET '
+                     '停止。dry_run=true 只预演、不下发设备动作。'),
         parameters=_schema({
             'device_id': _prop('integer', '设备 ID', required=True),
-            'action': _prop('string', '动作类型', required=True,
-                            enum=['tap', 'long_press', 'swipe', 'input',
-                                  'back', 'home', 'wait']),
-            'x': _prop('integer', '横坐标（tap / long_press / swipe 起点）'),
-            'y': _prop('integer', '纵坐标（tap / long_press / swipe 起点）'),
-            'to_x': _prop('integer', '滑动终点横坐标'),
-            'to_y': _prop('integer', '滑动终点纵坐标'),
-            'text': _prop('string', '输入文本（input）'),
-            'duration_ms': _prop('integer', '长按 / 等待时长（毫秒）'),
-        }, required=('device_id', 'action')),
-        risk='WRITE', permissions=('device:control',), enabled=False, kind='reserved'),
+            'action_type': _prop('string', '动作类型', required=True,
+                                 enum=['TAP', 'LONG_PRESS', 'SWIPE', 'INPUT_TEXT',
+                                       'BACK', 'HOME', 'WAIT']),
+            'target': _prop('object', '目标元素定位（TAP / LONG_PRESS / INPUT_TEXT '
+                                      '必填）：{id | resource_id | text}，须在最近一次 '
+                                      'ui_tree 快照里存在'),
+            'params': _prop('object', '动作参数：INPUT_TEXT 用 text；SWIPE 用 to_x / '
+                                      'to_y；WAIT / LONG_PRESS 用 duration_ms'),
+            'dry_run': _prop('boolean', '预演：返回预计树变化，不真正下发设备动作'),
+            'validate': _prop('boolean', '只做目标 / 安全 / 预算校验，不下发动作'),
+        }, required=('device_id', 'action_type')),
+        risk='WRITE', permissions=('device:control',), enabled=True, kind='local'),
     IntentTool(
         name='api_spec',
-        description=('解析 OpenAPI / proto / WebSocket 契约：端点、鉴权、请求响应样例。'
-                     '实现见 M2 探索层（INT-2492），当前未启用。'),
+        description=('解析 OpenAPI / gRPC proto / WebSocket 契约：输出端点、鉴权方式、'
+                     '请求响应样例；**不做任何真实 API 调用**。契约内容以文本提供'
+                     '（JSON / YAML / proto 文本），畸形契约返回明确错误。'),
         parameters=_schema({
-            'source': _prop('string', '契约来源：URL / 文件路径 / 被测 API ID'),
-            'api_id': _prop('integer', '被测 API ID'),
-            'format': _prop('string', '契约格式', enum=['openapi', 'proto', 'ws']),
-            'endpoint': _prop('string', '只看某个端点'),
-        }),
-        risk='READ', permissions=('api_config:read',), enabled=False, kind='reserved'),
+            'content': _prop('string', '契约内容（JSON / YAML / proto 文本）',
+                             required=True),
+            'kind': _prop('string', '契约类型（缺省自动识别）',
+                          enum=list(ui_exploration.CONTRACT_KINDS)),
+            'endpoint': _prop('string', '只看匹配该子串的端点（方法 + 路径 / rpc 名）'),
+            'source_ref': _prop('string', '契约来源标记（URL / 文件名，仅回显，'
+                                          '不发起请求）'),
+        }, required=('content',)),
+        risk='READ', permissions=('api_config:read',), enabled=True, kind='local'),
     # ---------------- M1 已实现（INT-2490 长期记忆：文件树 + rg，无向量 RAG） ----------------
     # 权限口径：记忆域没有 RBAC 权限码（INT-2501 待规格名单），且隔离由服务端
     # 按登录身份构造路径 + 审批占位保证，因此两项都只要求登录（permissions 为空）。

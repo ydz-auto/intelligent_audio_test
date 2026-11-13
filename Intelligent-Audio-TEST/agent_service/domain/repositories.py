@@ -199,6 +199,17 @@ class ArtifactRepository(ABC):
     def add(self, artifact: AgentArtifact) -> AgentArtifact: ...
 
     @abstractmethod
+    def update(self, artifact_id: str, *, size: Optional[int] = None,
+               metadata: Optional[Dict[str, Any]] = None,
+               uri: Optional[str] = None) -> bool:
+        """更新已登记产物的体积 / 元数据（不新增行）。
+
+        同一 URI 被覆盖写时（例如每一步都重写的 ``ui_trace.json``），登记
+        必须跟着最终内容走，否则 ``agent_artifact`` 描述的是首版而不是落盘
+        的内容。返回是否命中该产物。
+        """
+
+    @abstractmethod
     def list_by_run(self, run_id: str) -> List[AgentArtifact]: ...
 
 

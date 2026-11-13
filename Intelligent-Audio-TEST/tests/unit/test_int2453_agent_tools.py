@@ -112,20 +112,23 @@ def test_intent_registry_has_31_unique_tools():
                              'audio_import', 'audio_annotate', 'device_control',
                              'spl_calibrate', 'driver_propose',
                              # INT-2468 用例 / 标签 / 任务写
-                             'testcase_write', 'tag_group_manage', 'task_run'}
+                             'testcase_write', 'tag_group_manage', 'task_run',
+                             # INT-2492 探索-生成层（ui_tree / ui_action / api_spec）
+                             'ui_tree', 'ui_action', 'api_spec'}
 
 
-def test_reserved_tool_names_present_and_disabled():
-    # INT-2490：记忆工具已实现并启用，预留集合只剩探索工具
-    reserved = {'ui_tree', 'ui_action', 'api_spec'}
+def test_exploration_tool_names_enabled_and_shaped():
+    # INT-2492：探索-生成层三个工具已实现并启用（不再有 reserved 意图工具）
     by_name = {t.name: t for t in INTENT_TOOLS}
-    assert reserved <= set(by_name)
-    for name in reserved:
+    for name in ('ui_tree', 'ui_action', 'api_spec'):
         tool = by_name[name]
-        assert tool.enabled is False
+        assert tool.enabled is True
         assert tool.parameters['type'] == 'object'
         assert tool.risk in ('READ', 'WRITE', 'DESTRUCTIVE')
         assert isinstance(tool.permissions, tuple)
+    assert by_name['ui_action'].risk == 'WRITE'
+    assert by_name['ui_tree'].risk == 'READ'
+    assert by_name['api_spec'].risk == 'READ'
     # 记忆工具：已启用、只要求登录（记忆域无 RBAC 码，隔离靠服务端路径构造）
     for name in ('memory_search', 'memory_write'):
         tool = by_name[name]

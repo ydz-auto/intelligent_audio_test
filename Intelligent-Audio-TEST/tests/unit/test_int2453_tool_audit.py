@@ -265,7 +265,9 @@ def test_skills_endpoint_lists_31_tools_without_duplicates(tmp_path):
                            'audio_import', 'audio_annotate', 'device_control',
                            'spl_calibrate', 'driver_propose',
                            # INT-2468 用例 / 标签 / 任务写
-                           'testcase_write', 'tag_group_manage', 'task_run'}
+                           'testcase_write', 'tag_group_manage', 'task_run',
+                           # INT-2492 探索-生成层
+                           'ui_tree', 'ui_action', 'api_spec'}
 
         low = client.get('/api/v1/agent/skills',
                          headers={'X-User-Id': '8', 'X-Tenant-Id': 't1',
@@ -276,15 +278,15 @@ def test_skills_endpoint_lists_31_tools_without_duplicates(tmp_path):
         assert 'tool_search' in low_names
 
 
-def test_reserved_tool_returns_not_enabled_through_loop(tmp_path):
-    # INT-2490：memory_* 已启用，改用仍未实现的探索工具验证同一条链路
+def test_exploration_tool_without_device_channel_fails_through_loop(tmp_path):
+    # INT-2492：探索工具已启用；设备 UI 通道未接入时经 Loop 返回明确失败
+    # （EXPLORATION_UNAVAILABLE），不是「未启用」，也不伪造成成功。
     llm = FakeLlm([
         tool_turn([ToolCallRequest('c1', 'ui_tree', {'device_id': 1})]),
-        text_turn('未启用'),
+        text_turn('设备通道未接入'),
     ])
     container, _, _ = _stack(tmp_path, llm, FakeRestClient())
     run = _run(container, permissions=['*'])
     record = container.repositories['tool_calls'].find(run.id, 'c1')
-    assert record.status is ToolCallStatus.DENIED
-    assert record.permission_decision == 'not_enabled'
-    assert record.result_code == 'TOOL_NOT_ENABLED'
+    assert record.status is ToolCallStatus.FAILED
+    assert record.result_code == 'EXPLORATION_UNAVAILABLE'
