@@ -58,3 +58,61 @@ class SessionDetailResponse(BaseModel):
     session: SessionResponse
     messages: list = Field(default_factory=list)
     runs: list = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------- providers
+
+class CreateProviderRequest(BaseModel):
+    name: str = ''
+    protocol: str = 'OPENAI_COMPATIBLE'
+    base_url: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    api_key: str = Field(min_length=1)
+    context_window: Optional[int] = None
+
+
+class UpdateProviderRequest(BaseModel):
+    """PUT 语义：未出现的字段不变；api_key 留空 / 不传表示不变。"""
+
+    name: Optional[str] = None
+    protocol: Optional[str] = None
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    context_window: Optional[int] = None
+
+
+class ProviderResponse(BaseModel):
+    id: str
+    owner_id: int
+    tenant_id: str
+    name: str
+    protocol: str
+    base_url: str
+    model: str
+    api_key_mask: str
+    context_window: Optional[int] = None
+    context_window_source: str
+    effective_context_window: int
+    catalog_context_window: Optional[int] = None
+    catalog_max_output_tokens: Optional[int] = None
+    context_window_warning: Optional[str] = None
+    context_window_warning_message: Optional[str] = None
+    is_default: bool = False
+    status: str
+    last_verified_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ProviderListResponse(BaseModel):
+    items: list = Field(default_factory=list)
+
+
+class VerifyProviderResponse(BaseModel):
+    provider_id: str
+    ok: bool
+    code: str
+    message: str = ''
+    status: str
+    last_verified_at: Optional[str] = None

@@ -450,6 +450,14 @@ BOOTSTRAP_STEPS = [
     #     幂等（表/索引 IF NOT EXISTS、约束先查 pg_constraint），全新库为全 SKIP；
     #     默认 dry-run，引导链必须带 --apply。须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/add_agent_runtime_tables.py', '--apply'),
+    # ㊾-8.1 agent_llm_provider 用户模型供应商密钥库（INT-2488 / 落地方案
+    #     §6.4 / §10）：Key 只存 AES-256-GCM 密文 + 掩码；索引
+    #     (owner_id, tenant_id, is_default) / (owner_id, status)，
+    #     部分唯一索引 (owner_id, tenant_id) WHERE is_default AND status
+    #     <> 'DELETED' 保证每用户唯一默认。幂等（表/索引 IF NOT EXISTS），
+    #     全新库为全 SKIP；默认 dry-run，引导链必须带 --apply。须排在 ㊽
+    #     ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_agent_llm_provider_table.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
@@ -540,6 +548,8 @@ PROD_DDL_SCRIPTS = frozenset({
     'scripts/migrations/202611/add_param_change_history.py',
     # INT-2451 agent_service 运行底座七表（结构 DDL，幂等）
     'scripts/migrations/202611/add_agent_runtime_tables.py',
+    # INT-2488 用户模型供应商密钥库（结构 DDL，幂等）
+    'scripts/migrations/202611/add_agent_llm_provider_table.py',
     'scripts/migrations/202610/analyze_stale_statistics_int1741.py',
 })
 

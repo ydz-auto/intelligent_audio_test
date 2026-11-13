@@ -31,6 +31,35 @@ class LlmConfigurationError(AgentDomainError):
     """LLM 配置缺失 / 非法。"""
 
 
+class LlmProviderNotConfigured(AgentDomainError):
+    """用户没有可用的模型供应商：run 必须以 LLM_PROVIDER_NOT_CONFIGURED 失败。
+
+    绝不回退平台 Key，也不发起任何模型请求（§6.4-4）。
+    """
+
+    code = 'LLM_PROVIDER_NOT_CONFIGURED'
+
+
+class ProviderNotFound(AgentDomainError):
+    """供应商不存在、不属于当前用户/租户，或已逻辑删除。"""
+
+
+class InvalidContextWindow(AgentDomainError):
+    """上下文窗口覆盖值非法（超出 8k–2M 或未 1024 对齐）。"""
+
+
+class InvalidProviderConfiguration(AgentDomainError):
+    """供应商字段非法（协议 / 地址 / 模型名 / Key 为空或超长）。"""
+
+
+class CredentialKeyUnavailable(AgentDomainError):
+    """主密钥不可用（生产缺失即 fail-fast；开发环境显式配置后可用）。"""
+
+
+class CredentialDecryptError(AgentDomainError):
+    """密文解密失败（密钥版本缺失 / 密文被篡改 / AAD 不匹配）。"""
+
+
 class LlmInvocationError(AgentDomainError):
     """模型调用失败（上游错误、超时、非法响应）。"""
 

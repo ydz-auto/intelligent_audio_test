@@ -86,6 +86,29 @@ class EventType(str, Enum):
     ERROR = 'error'
 
 
+class LlmProtocol(str, Enum):
+    """用户模型供应商协议（§6.4-5）。"""
+
+    OPENAI_COMPATIBLE = 'OPENAI_COMPATIBLE'
+    ANTHROPIC = 'ANTHROPIC'
+
+
+class ProviderStatus(str, Enum):
+    """供应商状态（§10 agent_llm_provider.status）。"""
+
+    ACTIVE = 'ACTIVE'
+    INVALID = 'INVALID'
+    DELETED = 'DELETED'
+
+
+class ContextWindowSource(str, Enum):
+    """有效上下文窗口来源（§6.4-9）。"""
+
+    USER_OVERRIDE = 'USER_OVERRIDE'
+    MODEL_DEFAULT = 'MODEL_DEFAULT'
+    FALLBACK = 'FALLBACK'
+
+
 class StepStatus(str, Enum):
     """agent_step 状态。"""
 
