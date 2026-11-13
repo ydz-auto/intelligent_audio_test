@@ -83,6 +83,9 @@ def test_agent_service_env_covers_config_contract():
         'AGENT_T2_RUNTIME=', 'AGENT_SANDBOX_EXECUTOR_MODE=',
         'AGENT_MAX_ROUNDS=', 'AGENT_MAX_TOOL_CALLS=', 'AGENT_MAX_TOKENS=',
         'AGENT_MAX_DURATION_SECONDS=', 'AGENT_MAX_OUTPUT_BYTES=',
+        # INT-2529：意图工具回源必须指向网关容器；缺省 127.0.0.1:5000 在容器内
+        # 打到自身（ConnectError），启动与 /health 却全绿，属静默故障。
+        'AGENT_TOOL_GATEWAY_BASE_URL=http://api_gateway:5000',
     ):
         assert needle in env, needle
 

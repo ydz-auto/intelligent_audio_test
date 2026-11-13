@@ -614,6 +614,11 @@ services:
       # T2 可信运行时（gVisor runsc / Firecracker）：缺失时 T2 请求报
       # T2_RUNTIME_UNAVAILABLE，绝不静默降级 T1（方案 07 §7，INT-2456 拍板#2）。
       - AGENT_T2_RUNTIME=${AGENT_T2_RUNTIME:-runsc}
+      # ===== 意图工具回源（INT-2529）=====
+      # 工具经网关 REST 执行。容器内 agent_service 监听 5011 而非 5000，缺省回落
+      # http://127.0.0.1:5000 会把每次工具调用打到容器自身（ConnectError），
+      # 而容器启动与 /health 全程正常——必须在编排层显式指向网关服务名。
+      - AGENT_TOOL_GATEWAY_BASE_URL=http://api_gateway:5000
     volumes:
       # skills/ 顶层只读（§12.1「skills/ 顶层只读挂载」）：Skill 单一事实源，
       # 任何容器内写入都是缺陷，故 ro。
