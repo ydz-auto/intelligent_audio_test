@@ -259,6 +259,176 @@ def _pump(stream, out: _BoundedOutput, channel: str, on_limit) -> None:
         return
 
 
+# ── 容器执行公共循环（T1/T2 共用） ─────────────────────────────
+
+
+def docker_cli_env() -> dict[str, str]:
+    """docker CLI 自己的环境（不是容器环境）：只保留 CLI 运行必需的键。"""
+    keep = ('PATH', 'SystemRoot', 'SYSTEMROOT', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP',
+            'HOME', 'USERPROFILE', 'DOCKER_HOST', 'DOCKER_CONFIG', 'DOCKER_TLS_VERIFY',
+            'DOCKER_CERT_PATH', 'DOCKER_CONTEXT')
+    return {k: v for k, v in os.environ.items() if k in keep}
+
+
+def run_docker_admin(
+    args: Sequence[str],
+    docker_binary: str = 'docker',
+    *,
+    timeout: int = DOCKER_ADMIN_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess | None:
+    try:
+        return subprocess.run(
+            [docker_binary, *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=docker_cli_env(),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning('docker %s 失败：%s', ' '.join(args), exc)
+        return None
+
+
+def remove_container(name: str, docker_binary: str = 'docker') -> None:
+    run_docker_admin(['rm', '--force', name], docker_binary)
+
+
+def inspect_container_state(
+    name: str, docker_binary: str = 'docker'
+) -> dict | None:
+    result = run_docker_admin(
+        ['inspect', '--format', '{{.State.OOMKilled}}|{{.State.ExitCode}}|{{.Id}}', name],
+        docker_binary,
+    )
+    if result is None or result.returncode != 0:
+        return None
+    parts = (result.stdout or '').strip().split('|')
+    if len(parts) != 3:
+        return None
+    return {
+        'oom_killed': parts[0].strip().lower() == 'true',
+        'exit_code': parts[1].strip(),
+        'container_id': parts[2].strip(),
+    }
+
+
+def execute_docker_container(
+    argv: Sequence[str],
+    container_name: str,
+    limits: ContainerLimits,
+    docker_binary: str = 'docker',
+    *,
+    timeout_seconds: int | None = None,
+    runtime: str = '',
+) -> ContainerExecution:
+    """跑一次一次性容器并回收结果（T1/T2 共用，不含镜像/加固参数构造）。
+
+    超时或输出超限时**先杀附着的 docker CLI、再 ``docker rm -f``**，保证不留
+    遗留容器；结束后统一 inspect（取 OOM 状态）并删除容器。
+    """
+    started = time.monotonic()
+    timeout = timeout_seconds or limits.timeout_seconds
+    output = _BoundedOutput(limits.output_limit_bytes)
+    limit_reached = threading.Event()
+
+    def _mark_limit() -> None:
+        # 只置位，由主线程统一终止：读线程直接调 docker 会与主线程的
+        # inspect/等待竞态，且 Windows 上 docker CLI 在管道写满时无法自解。
+        limit_reached.set()
+
+    try:
+        process = subprocess.Popen(
+            list(argv),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=docker_cli_env(),
+        )
+    except FileNotFoundError:
+        return ContainerExecution(
+            exit_code=-1,
+            error=f'docker CLI 不可用：{docker_binary}',
+            runtime=runtime,
+        )
+    except OSError as exc:
+        return ContainerExecution(
+            exit_code=-1, error=f'docker CLI 启动失败：{exc}', runtime=runtime
+        )
+
+    stdout_reader = threading.Thread(
+        target=_pump, args=(process.stdout, output, 'stdout', _mark_limit), daemon=True
+    )
+    stderr_reader = threading.Thread(
+        target=_pump, args=(process.stderr, output, 'stderr', _mark_limit), daemon=True
+    )
+    stdout_reader.start()
+    stderr_reader.start()
+
+    timed_out = False
+    deadline = time.monotonic() + timeout
+    while process.poll() is None:
+        if limit_reached.is_set():
+            _terminate(process, container_name, docker_binary)
+            break
+        if time.monotonic() >= deadline:
+            timed_out = True
+            _terminate(process, container_name, docker_binary)
+            break
+        time.sleep(0.05)
+
+    try:
+        process.wait(timeout=DOCKER_ADMIN_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+    # 读线程可能仍阻塞在被杀进程的管道上，关闭后再 join，避免挂住。
+    for stream in (process.stdout, process.stderr):
+        try:
+            stream.close()
+        except OSError:
+            pass
+    stdout_reader.join(timeout=DOCKER_ADMIN_TIMEOUT_SECONDS)
+    stderr_reader.join(timeout=DOCKER_ADMIN_TIMEOUT_SECONDS)
+
+    state = inspect_container_state(container_name, docker_binary)
+    remove_container(container_name, docker_binary)
+
+    duration_ms = int((time.monotonic() - started) * 1000)
+    exit_code = process.returncode if process.returncode is not None else -1
+    stderr_text = output.stderr_text
+    start_failed = exit_code == DOCKER_START_FAILURE_EXIT_CODE
+    if start_failed:
+        logger.warning('沙箱容器启动失败：%s', stderr_text[:500])
+    return ContainerExecution(
+        exit_code=exit_code,
+        stdout=output.stdout_text,
+        stderr=stderr_text,
+        timed_out=timed_out,
+        oom_killed=bool(state and state.get('oom_killed')),
+        output_truncated=output.truncated,
+        duration_ms=duration_ms,
+        container_id=str((state or {}).get('container_id') or ''),
+        killed_by_runner=timed_out or output.truncated,
+        start_failed=start_failed,
+        # 启动失败（125）走 error，供应用层判 FAILED/CONTAINER_START_FAILED。
+        error=stderr_text[:1000] if start_failed else '',
+        runtime=runtime,
+    )
+
+
+def _terminate(process: subprocess.Popen, name: str, docker_binary: str = 'docker') -> None:
+    """终止容器：先杀附着的 docker CLI（解除管道阻塞），再 ``docker rm -f``。
+
+    实测（Docker Desktop / Windows）：管道写满时 ``docker kill`` 会长时间挂住，
+    而 ``docker rm -f``（= kill + 删除）0.4s 内返回；故统一走 rm -f。
+    """
+    try:
+        process.kill()
+    except OSError:
+        pass
+    remove_container(name, docker_binary)
+
+
 # ── 宿主 docker CLI 执行器 ─────────────────────────────────────
 
 
@@ -278,147 +448,19 @@ class HostCliDockerExecutor(SandboxExecutor):
         return self._limits
 
     def run(self, invocation: ContainerInvocation) -> ContainerExecution:
-        started = time.monotonic()
         try:
             validate_invocation(invocation)
             argv = build_docker_run_argv(invocation, self._docker_binary)
         except SandboxConfigurationError as exc:
             return ContainerExecution(exit_code=-1, error=str(exc))
 
-        output = _BoundedOutput(self._limits.output_limit_bytes)
-        limit_reached = threading.Event()
-
-        def _mark_limit() -> None:
-            # 只置位，由主线程统一终止：读线程直接调 docker 会与主线程的
-            # inspect/等待竞态，且 Windows 上 docker CLI 在管道写满时无法自解。
-            limit_reached.set()
-
-        try:
-            process = subprocess.Popen(
-                argv,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=self._docker_cli_env(),
-            )
-        except FileNotFoundError:
-            return ContainerExecution(
-                exit_code=-1,
-                error=f'docker CLI 不可用：{self._docker_binary}',
-            )
-        except OSError as exc:
-            return ContainerExecution(exit_code=-1, error=f'docker CLI 启动失败：{exc}')
-
-        stdout_reader = threading.Thread(
-            target=_pump, args=(process.stdout, output, 'stdout', _mark_limit), daemon=True
+        return execute_docker_container(
+            argv,
+            invocation.name,
+            self._limits,
+            self._docker_binary,
+            timeout_seconds=self._limits.timeout_seconds,
         )
-        stderr_reader = threading.Thread(
-            target=_pump, args=(process.stderr, output, 'stderr', _mark_limit), daemon=True
-        )
-        stdout_reader.start()
-        stderr_reader.start()
-
-        timed_out = False
-        deadline = time.monotonic() + self._limits.timeout_seconds
-        while process.poll() is None:
-            if limit_reached.is_set():
-                self._terminate(process, invocation.name)
-                break
-            if time.monotonic() >= deadline:
-                timed_out = True
-                self._terminate(process, invocation.name)
-                break
-            time.sleep(0.05)
-
-        try:
-            process.wait(timeout=DOCKER_ADMIN_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
-
-        # 读线程可能仍阻塞在被杀进程的管道上，关闭后再 join，避免挂住。
-        for stream in (process.stdout, process.stderr):
-            try:
-                stream.close()
-            except OSError:
-                pass
-        stdout_reader.join(timeout=DOCKER_ADMIN_TIMEOUT_SECONDS)
-        stderr_reader.join(timeout=DOCKER_ADMIN_TIMEOUT_SECONDS)
-
-        state = self._inspect_state(invocation.name)
-        self._remove_container(invocation.name)
-
-        duration_ms = int((time.monotonic() - started) * 1000)
-        exit_code = process.returncode if process.returncode is not None else -1
-        stderr_text = output.stderr_text
-        start_failed = exit_code == DOCKER_START_FAILURE_EXIT_CODE
-        if start_failed:
-            logger.warning('沙箱容器启动失败：%s', stderr_text[:500])
-        return ContainerExecution(
-            exit_code=exit_code,
-            stdout=output.stdout_text,
-            stderr=stderr_text,
-            timed_out=timed_out,
-            oom_killed=bool(state and state.get('oom_killed')),
-            output_truncated=output.truncated,
-            duration_ms=duration_ms,
-            container_id=str((state or {}).get('container_id') or ''),
-            killed_by_runner=timed_out or output.truncated,
-            start_failed=start_failed,
-            # 启动失败（125）走 error，供应用层判 FAILED/CONTAINER_START_FAILED。
-            error=stderr_text[:1000] if start_failed else '',
-        )
-
-    # ── docker 子命令 ────────────────────────────────────────
-    def _terminate(self, process: subprocess.Popen, name: str) -> None:
-        """终止容器：先杀附着的 docker CLI（解除管道阻塞），再 ``docker rm -f``。
-
-        实测（Docker Desktop / Windows）：管道写满时 ``docker kill`` 会长时间挂住，
-        而 ``docker rm -f``（= kill + 删除）0.4s 内返回；故统一走 rm -f。
-        """
-        try:
-            process.kill()
-        except OSError:
-            pass
-        self._remove_container(name)
-
-    def _docker_cli_env(self) -> dict[str, str]:
-        """docker CLI 自己的环境（不是容器环境）：只保留 CLI 运行必需的键。"""
-        keep = ('PATH', 'SystemRoot', 'SYSTEMROOT', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP',
-                'HOME', 'USERPROFILE', 'DOCKER_HOST', 'DOCKER_CONFIG', 'DOCKER_TLS_VERIFY',
-                'DOCKER_CERT_PATH', 'DOCKER_CONTEXT')
-        return {k: v for k, v in os.environ.items() if k in keep}
-
-    def _remove_container(self, name: str) -> None:
-        self._run_admin(['rm', '--force', name])
-
-    def _inspect_state(self, name: str) -> dict | None:
-        result = self._run_admin(
-            ['inspect', '--format',
-             '{{.State.OOMKilled}}|{{.State.ExitCode}}|{{.Id}}', name]
-        )
-        if result is None or result.returncode != 0:
-            return None
-        parts = (result.stdout or '').strip().split('|')
-        if len(parts) != 3:
-            return None
-        return {
-            'oom_killed': parts[0].strip().lower() == 'true',
-            'exit_code': parts[1].strip(),
-            'container_id': parts[2].strip(),
-        }
-
-    def _run_admin(self, args: Sequence[str]) -> subprocess.CompletedProcess | None:
-        try:
-            return subprocess.run(
-                [self._docker_binary, *args],
-                capture_output=True,
-                text=True,
-                timeout=DOCKER_ADMIN_TIMEOUT_SECONDS,
-                env=self._docker_cli_env(),
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            logger.warning('docker %s 失败：%s', ' '.join(args), exc)
-            return None
 
 
 # ── 独立 runner（HTTP 通道）执行器 ────────────────────────────
@@ -557,6 +599,8 @@ def execution_to_dict(execution: ContainerExecution) -> dict:
         'killed_by_runner': execution.killed_by_runner,
         'start_failed': execution.start_failed,
         'error': execution.error,
+        'runtime': execution.runtime,
+        'runtime_unavailable': execution.runtime_unavailable,
     }
 
 
@@ -573,4 +617,6 @@ def execution_from_dict(data: Mapping) -> ContainerExecution:
         killed_by_runner=bool(data.get('killed_by_runner')),
         start_failed=bool(data.get('start_failed')),
         error=str(data.get('error') or ''),
+        runtime=str(data.get('runtime') or ''),
+        runtime_unavailable=bool(data.get('runtime_unavailable')),
     )

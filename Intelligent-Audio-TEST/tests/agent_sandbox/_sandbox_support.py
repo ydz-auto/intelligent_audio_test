@@ -5,8 +5,13 @@ from __future__ import annotations
 
 import subprocess
 
-from agent_service.application.sandbox_runner import ContainerExecution, ContainerInvocation
+from agent_service.application.sandbox_runner import (
+    ContainerExecution,
+    ContainerInvocation,
+    T2ContainerInvocation,
+)
 from agent_service.infrastructure.sandbox.docker_runner import HostCliDockerExecutor
+from agent_service.infrastructure.sandbox.t2_runner import T2DockerExecutor
 
 
 def docker_cli(*args: str, timeout: int = 60) -> subprocess.CompletedProcess:
@@ -25,3 +30,16 @@ class RecordingDockerExecutor(HostCliDockerExecutor):
     def run(self, invocation: ContainerInvocation) -> ContainerExecution:
         self.container_names.append(invocation.name)
         return super().run(invocation)
+
+
+class RecordingT2Executor(T2DockerExecutor):
+    """T2 执行器 + 容器名记录（用例结束后确认无遗留容器）。"""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.container_names: list[str] = []
+
+    def run(self, invocation: T2ContainerInvocation) -> ContainerExecution:
+        self.container_names.append(invocation.name)
+        return super().run(invocation)
+
