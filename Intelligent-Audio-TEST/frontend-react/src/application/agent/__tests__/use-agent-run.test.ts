@@ -16,7 +16,14 @@ import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentRun, AgentRunEvent } from '@/domain/models/agent'
-import { AGENT_ERROR_COPY, AGENT_EVENT_TYPE, AGENT_RUN_STATUS } from '@/domain/models/agent'
+import {
+  AGENT_APPROVAL_COPY,
+  AGENT_APPROVAL_STATUS,
+  AGENT_ERROR_COPY,
+  AGENT_EVENT_TYPE,
+  AGENT_RUN_STATUS,
+  AGENT_TOOL_RISK,
+} from '@/domain/models/agent'
 import {
   useAgentRun,
   useAgentRunHost,
@@ -28,7 +35,10 @@ import {
   cancelAgentRun,
   createAgentRun,
   createAgentSession,
+  decideAgentApproval,
+  getAgentRun,
   getAgentSession,
+  listAgentApprovals,
   subscribeAgentRunEvents,
 } from '@/infrastructure/api/agentApi'
 import { ApiError } from '@/infrastructure/api/api-error'
@@ -47,6 +57,8 @@ vi.mock('@/infrastructure/api/agentApi', async (importOriginal) => {
     getAgentRun: vi.fn(),
     getAgentSession: vi.fn(),
     subscribeAgentRunEvents: vi.fn(),
+    listAgentApprovals: vi.fn(),
+    decideAgentApproval: vi.fn(),
   }
 })
 
@@ -55,6 +67,9 @@ const createRunMock = vi.mocked(createAgentRun)
 const cancelRunMock = vi.mocked(cancelAgentRun)
 const getSessionMock = vi.mocked(getAgentSession)
 const subscribeMock = vi.mocked(subscribeAgentRunEvents)
+const getRunMock = vi.mocked(getAgentRun)
+const listApprovalsMock = vi.mocked(listAgentApprovals)
+const decideApprovalMock = vi.mocked(decideAgentApproval)
 const toastInfoMock = vi.mocked(toast.info)
 
 /** 离场宽限窗口（store 判定「最后一个宿主离场」用 setTimeout(0)）走完 */
@@ -82,6 +97,46 @@ function runFinished(sequence: number): AgentRunEvent {
     sequence,
     timestamp: 't',
     status: AGENT_RUN_STATUS.SUCCEEDED,
+  }
+}
+
+/** 写操作工具调用事件（risk=WRITE，随后由 approval_required 关联审批单） */
+function writeToolCall(sequence: number, toolCallId = 'tc-1'): AgentRunEvent {
+  return {
+    type: AGENT_EVENT_TYPE.TOOL_CALL,
+    runId: 'r-1',
+    sequence,
+    timestamp: 't',
+    toolCallId,
+    tool: 'memory_write',
+    risk: AGENT_TOOL_RISK.WRITE,
+    summary: '{"section":"USER_PROFILE"}',
+  }
+}
+
+/** 审批提案事件（§9.4；载荷形态同后端 approval_required） */
+function approvalRequired(
+  sequence: number,
+  approvalId = 'ap-1',
+  toolCallId = 'tc-1'
+): AgentRunEvent {
+  return {
+    type: AGENT_EVENT_TYPE.APPROVAL_REQUIRED,
+    runId: 'r-1',
+    sequence,
+    timestamp: 't',
+    approvalId,
+    toolCallId,
+    tool: 'memory_write',
+    risk: AGENT_TOOL_RISK.WRITE,
+    expiresAt: '2030-01-01T00:00:00Z',
+    proposal: {
+      tool: 'memory_write',
+      risk: AGENT_TOOL_RISK.WRITE,
+      stepId: 'step-1',
+      turn: 1,
+      arguments: { section: 'USER_PROFILE' },
+    },
   }
 }
 
@@ -128,6 +183,21 @@ beforeEach(() => {
     session: { id: 's-1', title: '会话' },
     messages: [],
     runs: [],
+  })
+  listApprovalsMock.mockResolvedValue([])
+  getRunMock.mockResolvedValue({
+    id: 'r-1',
+    sessionId: 's-1',
+    status: AGENT_RUN_STATUS.RUNNING,
+  })
+  decideApprovalMock.mockResolvedValue({
+    approval: {
+      id: 'ap-1',
+      runId: 'r-1',
+      status: AGENT_APPROVAL_STATUS.APPROVED,
+      proposal: { tool: 'memory_write', risk: AGENT_TOOL_RISK.WRITE },
+    },
+    runStatus: AGENT_RUN_STATUS.RUNNING,
   })
 })
 
@@ -429,6 +499,408 @@ describe('useAgentRun（共享单一实例）', () => {
       await result.current.send('第三轮')
     })
     expect(createSessionMock).toHaveBeenCalledTimes(2) // 默认新建会话
+  })
+})
+
+describe('useAgentRun 审批卡 + 断线续传（INT-2472）', () => {
+  async function startRunWithApproval() {
+    const hook = renderHook(() => useAgentRun())
+    await act(async () => {
+      await hook.result.current.send('记住我的偏好')
+    })
+    act(() => {
+      streamOptions?.onEvent(writeToolCall(1))
+      streamOptions?.onEvent(approvalRequired(2))
+    })
+    return hook
+  }
+
+  it('approval_required：审批单入列、工具卡同步、阶段转等待审批、时间线有记录', async () => {
+    const { result } = await startRunWithApproval()
+
+    expect(result.current.approvals).toHaveLength(1)
+    expect(result.current.approvals[0]).toMatchObject({
+      id: 'ap-1',
+      runId: 'r-1',
+      toolCallId: 'tc-1',
+      status: AGENT_APPROVAL_STATUS.PENDING,
+    })
+    expect(result.current.approvals[0].proposal).toMatchObject({
+      tool: 'memory_write',
+      risk: AGENT_TOOL_RISK.WRITE,
+      stepId: 'step-1',
+    })
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.WAITING_APPROVAL)
+
+    // 工具卡与审批卡同源：同一条 tool call 标等待审批，计数不会重复
+    const message = useAiChatSession.getState().messages[1]
+    expect(message.toolCalls?.[0]).toMatchObject({
+      id: 'tc-1',
+      risk: AGENT_TOOL_RISK.WRITE,
+      approvalId: 'ap-1',
+      approvalStatus: AGENT_APPROVAL_STATUS.PENDING,
+      status: 'pending',
+    })
+
+    // 时间线按后端 sequence 记录工具调用与审批
+    const kinds = result.current.timeline.map((entry) => entry.kind)
+    expect(kinds).toContain('tool_call')
+    expect(kinds).toContain('approval')
+
+    // 流仍开着（等待审批期间不关流），残留的取消定时器等不污染下一个用例
+    act(() => {
+      streamOptions?.onEvent(runFinished(3))
+    })
+  })
+
+  it('决策连点：同一条审批单只发一次请求，批准后状态 / 工具卡 / 阶段同步', async () => {
+    let resolveDecision: ((value: Awaited<
+      ReturnType<typeof decideAgentApproval>
+    >) => void) | null = null
+    decideApprovalMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDecision = resolve
+        })
+    )
+    const { result } = await startRunWithApproval()
+
+    let first!: Promise<string | null>
+    let second!: Promise<string | null>
+    act(() => {
+      first = result.current.decideApproval('ap-1', 'APPROVE')
+      second = result.current.decideApproval('ap-1', 'APPROVE')
+    })
+    expect(decideApprovalMock).toHaveBeenCalledTimes(1)
+    expect(result.current.decidingApprovalIds).toEqual(['ap-1'])
+
+    await act(async () => {
+      resolveDecision?.({
+        approval: {
+          id: 'ap-1',
+          runId: 'r-1',
+          toolCallId: 'tc-1',
+          status: AGENT_APPROVAL_STATUS.APPROVED,
+          proposal: { tool: 'memory_write', risk: AGENT_TOOL_RISK.WRITE },
+          decidedBy: 1,
+          decidedAt: 't',
+        },
+        runStatus: AGENT_RUN_STATUS.RUNNING,
+      })
+      await Promise.all([first, second])
+    })
+
+    expect(result.current.approvals[0].status).toBe(
+      AGENT_APPROVAL_STATUS.APPROVED
+    )
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.RUNNING)
+    expect(result.current.decidingApprovalIds).toEqual([])
+    const call = useAiChatSession.getState().messages[1].toolCalls?.[0]
+    expect(call?.approvalStatus).toBe(AGENT_APPROVAL_STATUS.APPROVED)
+    expect(call?.status).toBe('running')
+
+    act(() => {
+      streamOptions?.onEvent(runFinished(3))
+    })
+  })
+
+  it('决策 409（过期 / 并发）：以服务端列表为准刷新卡片并返回统一文案', async () => {
+    const { result } = await startRunWithApproval()
+    // approval_required 会先对齐一次列表；等它落定后再让后续列表返回已过期
+    await waitFor(() => {
+      expect(result.current.approvals[0]?.status).toBe(
+        AGENT_APPROVAL_STATUS.PENDING
+      )
+    })
+    decideApprovalMock.mockRejectedValue(
+      new ApiError({ httpStatus: 409, detail: '审批单已过期，写操作未执行' })
+    )
+    listApprovalsMock.mockResolvedValue([
+      {
+        id: 'ap-1',
+        runId: 'r-1',
+        toolCallId: 'tc-1',
+        status: AGENT_APPROVAL_STATUS.EXPIRED,
+        proposal: { tool: 'memory_write', risk: AGENT_TOOL_RISK.WRITE },
+      },
+    ])
+
+    let failure: string | null = null
+    await act(async () => {
+      failure = await result.current.decideApproval('ap-1', 'APPROVE')
+    })
+
+    expect(failure).toBe(AGENT_APPROVAL_COPY.conflict)
+    expect(listApprovalsMock).toHaveBeenCalledWith('r-1')
+    expect(result.current.approvals[0].status).toBe(
+      AGENT_APPROVAL_STATUS.EXPIRED
+    )
+    expect(result.current.decidingApprovalIds).toEqual([])
+
+    act(() => {
+      streamOptions?.onEvent(runFinished(3))
+    })
+  })
+
+  it('决策透传 confirm：DESTRUCTIVE 二次确认后带 confirm=true，WRITE 不带', async () => {
+    const { result } = await startRunWithApproval()
+    await waitFor(() => {
+      expect(result.current.approvals[0]?.status).toBe(
+        AGENT_APPROVAL_STATUS.PENDING
+      )
+    })
+    decideApprovalMock.mockResolvedValue({
+      approval: {
+        id: 'ap-1',
+        runId: 'r-1',
+        toolCallId: 'tc-1',
+        status: AGENT_APPROVAL_STATUS.APPROVED,
+        proposal: { tool: 'device_control', risk: AGENT_TOOL_RISK.DESTRUCTIVE },
+        decidedBy: 1,
+        decidedAt: 't',
+      },
+      runStatus: AGENT_RUN_STATUS.RUNNING,
+    })
+
+    await act(async () => {
+      await result.current.decideApproval('ap-1', 'APPROVE', true)
+    })
+
+    expect(decideApprovalMock).toHaveBeenLastCalledWith('ap-1', 'APPROVE', true)
+
+    act(() => {
+      streamOptions?.onEvent(runFinished(3))
+    })
+  })
+
+  it('400 APPROVAL_CONFIRMATION_REQUIRED：返回补确认文案，不刷新列表、卡片保持待审批', async () => {
+    const { result } = await startRunWithApproval()
+    await waitFor(() => {
+      expect(result.current.approvals[0]?.status).toBe(
+        AGENT_APPROVAL_STATUS.PENDING
+      )
+    })
+    listApprovalsMock.mockClear()
+    decideApprovalMock.mockRejectedValue(
+      new ApiError({
+        httpStatus: 400,
+        code: 'APPROVAL_CONFIRMATION_REQUIRED',
+        detail: '破坏性操作需要二次确认：请带 confirm=true 重新批准',
+      })
+    )
+
+    let failure: string | null = null
+    await act(async () => {
+      failure = await result.current.decideApproval('ap-1', 'APPROVE')
+    })
+
+    expect(failure).toBe(AGENT_APPROVAL_COPY.confirmRequired)
+    // 决策未落库：不需要（也不该）触发审批列表刷新
+    expect(listApprovalsMock).not.toHaveBeenCalled()
+    expect(result.current.approvals[0].status).toBe(
+      AGENT_APPROVAL_STATUS.PENDING
+    )
+    expect(result.current.decidingApprovalIds).toEqual([])
+
+    act(() => {
+      streamOptions?.onEvent(runFinished(3))
+    })
+  })
+
+
+  it('断线重连：列表接口恢复待审批卡，已决的只展示不可操作', async () => {
+    const { result } = await startRunWithApproval()
+    // approval_required 已对齐一次列表（默认空）：等它落定，再让重连拿到两条记录
+    await waitFor(() => {
+      expect(result.current.approvals).toHaveLength(1)
+    })
+    listApprovalsMock.mockResolvedValue([
+      {
+        id: 'ap-0',
+        runId: 'r-1',
+        toolCallId: 'tc-0',
+        status: AGENT_APPROVAL_STATUS.APPROVED,
+        proposal: { tool: 'memory_write', risk: AGENT_TOOL_RISK.WRITE },
+        decidedBy: 1,
+        decidedAt: 't',
+      },
+      {
+        id: 'ap-1',
+        runId: 'r-1',
+        toolCallId: 'tc-1',
+        status: AGENT_APPROVAL_STATUS.PENDING,
+        proposal: { tool: 'memory_write', risk: AGENT_TOOL_RISK.WRITE },
+        expiresAt: '2030-01-01T00:00:00Z',
+      },
+    ])
+
+    act(() => {
+      streamOptions?.onStatus?.('open') // 首次连上：不对齐列表（事件到达时已对齐过一次）
+    })
+    const callsAfterFirstOpen = listApprovalsMock.mock.calls.length
+    await waitFor(() => {
+      expect(listApprovalsMock.mock.calls.length).toBe(callsAfterFirstOpen)
+    })
+
+    act(() => {
+      streamOptions?.onStatus?.('reconnecting')
+    })
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.RECONNECTING)
+
+    act(() => {
+      streamOptions?.onStatus?.('open') // 重连成功：同步审批状态
+    })
+    await waitFor(() => {
+      expect(listApprovalsMock.mock.calls.length).toBe(callsAfterFirstOpen + 1)
+      expect(result.current.approvals).toHaveLength(2)
+    })
+    expect(listApprovalsMock.mock.calls.at(-1)?.[0]).toBe('r-1')
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.WAITING_APPROVAL)
+    expect(
+      result.current.approvals.find((item) => item.id === 'ap-0')?.status
+    ).toBe(AGENT_APPROVAL_STATUS.APPROVED)
+
+    act(() => {
+      streamOptions?.onEvent(runFinished(3))
+    })
+  })
+
+  it('刷新恢复：服务端 run 仍在等审批时恢复待审批卡（本页未接事件流，不改阶段）', async () => {
+    getSessionMock.mockResolvedValue({
+      session: { id: 's-9', title: '历史会话' },
+      messages: [],
+      runs: [
+        {
+          id: 'r-9',
+          sessionId: 's-9',
+          status: AGENT_RUN_STATUS.WAITING_APPROVAL,
+        },
+      ],
+    })
+    listApprovalsMock.mockResolvedValue([
+      {
+        id: 'ap-9',
+        runId: 'r-9',
+        status: AGENT_APPROVAL_STATUS.PENDING,
+        proposal: { tool: 'memory_write', risk: AGENT_TOOL_RISK.WRITE },
+      },
+    ])
+    useAiChatSession.setState({ messages: [], agentSessionId: 's-9' })
+
+    const { result } = renderHook(() => useAgentRun())
+
+    await waitFor(() => {
+      expect(listApprovalsMock).toHaveBeenCalledWith('r-9')
+      expect(result.current.approvals).toHaveLength(1)
+    })
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.IDLE)
+    expect(result.current.run?.id).toBe('r-9')
+  })
+
+  it('刷新恢复：run 停在 WAITING_APPROVAL 且待审批卡已恢复时，悬挂气泡按「等待审批」中性收口（P2-1）', async () => {
+    getSessionMock.mockResolvedValue({
+      session: { id: 's-9', title: '历史会话' },
+      messages: [],
+      runs: [
+        {
+          id: 'r-9',
+          sessionId: 's-9',
+          status: AGENT_RUN_STATUS.WAITING_APPROVAL,
+        },
+      ],
+    })
+    listApprovalsMock.mockResolvedValue([
+      {
+        id: 'ap-9',
+        runId: 'r-9',
+        status: AGENT_APPROVAL_STATUS.PENDING,
+        proposal: { tool: 'memory_write', risk: AGENT_TOOL_RISK.WRITE },
+      },
+    ])
+    useAiChatSession.setState({
+      agentSessionId: 's-9',
+      messages: [
+        {
+          key: 'assistant-stale',
+          from: 'assistant',
+          versions: [{ id: 'assistant-stale-v1', content: '' }],
+          status: 'loading',
+        },
+      ],
+    })
+
+    renderHook(() => useAgentRun())
+
+    await waitFor(() => {
+      expect(useAiChatSession.getState().messages[0].status).toBe('complete')
+    })
+    const [message] = useAiChatSession.getState().messages
+    // 不落错误态、不给重试入口；按「等待审批」中性收口，正文用兜底文案
+    expect(message.status).toBe('complete')
+    expect(message.runStatus).toBe(AGENT_RUN_STATUS.WAITING_APPROVAL)
+    expect(message.errorCode).toBeUndefined()
+    expect(message.versions[0].content).toBe(AGENT_APPROVAL_COPY.waitingMessage)
+  })
+
+  it('刷新恢复：run 在等审批但拿不到待审批卡时，仍按事件流中断收口', async () => {
+    getSessionMock.mockResolvedValue({
+      session: { id: 's-9', title: '历史会话' },
+      messages: [],
+      runs: [
+        {
+          id: 'r-9',
+          sessionId: 's-9',
+          status: AGENT_RUN_STATUS.WAITING_APPROVAL,
+        },
+      ],
+    })
+    listApprovalsMock.mockResolvedValue([])
+    useAiChatSession.setState({
+      agentSessionId: 's-9',
+      messages: [
+        {
+          key: 'assistant-stale',
+          from: 'assistant',
+          versions: [{ id: 'assistant-stale-v1', content: '' }],
+          status: 'loading',
+        },
+      ],
+    })
+
+    renderHook(() => useAgentRun())
+
+    await waitFor(() => {
+      expect(useAiChatSession.getState().messages[0].status).toBe('error')
+    })
+    expect(useAiChatSession.getState().messages[0].errorCode).toBe(
+      'STREAM_INTERRUPTED'
+    )
+  })
+
+  it('终态后补 run 快照：token 与预算进入 run（时间线展示预算消耗）', async () => {
+    getRunMock.mockResolvedValue({
+      id: 'r-1',
+      sessionId: 's-1',
+      status: AGENT_RUN_STATUS.SUCCEEDED,
+      tokenIn: 120,
+      tokenOut: 30,
+      budget: { maxTokens: 1000, maxToolCalls: 40 },
+    })
+    const { result } = renderHook(() => useAgentRun())
+    await act(async () => {
+      await result.current.send('你好')
+    })
+
+    act(() => {
+      streamOptions?.onEvent(messageDelta(1, 'm-1', '完成'))
+      streamOptions?.onEvent(runFinished(2))
+    })
+
+    await waitFor(() => {
+      expect(result.current.run?.tokenIn).toBe(120)
+      expect(result.current.run?.tokenOut).toBe(30)
+      expect(result.current.run?.budget?.maxTokens).toBe(1000)
+    })
   })
 })
 

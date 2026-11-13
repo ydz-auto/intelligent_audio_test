@@ -3,7 +3,11 @@
  * 形态对照 api_gateway/schemas/report.py + task.py（ReportListItem/TaskListItem）与
  * Agent 会话契约占位（§3.8，待后端立项）；mock 数据与真实 schema 对齐，后续接线字段不返工。
  */
-import type { AgentRunStatus } from './agent'
+import type {
+  AgentApprovalStatus,
+  AgentRunStatus,
+  AgentToolRisk,
+} from './agent'
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system'
 
@@ -63,6 +67,12 @@ export interface AgentToolCall {
   /** 工具失败时的后端错误码（tool_result.error_code） */
   errorCode?: string
   sourceRefs?: ChatSourceRef[]
+  /** 工具风险等级（tool_call 事件的 risk；审批卡与工具卡同源展示） */
+  risk?: AgentToolRisk
+  /** 关联的写操作审批单 id（approval_required 事件） */
+  approvalId?: string
+  /** 审批状态（与审批卡同一份数据源，计数不重复） */
+  approvalStatus?: AgentApprovalStatus
 }
 
 /** 文档变更卡（studio_apply_edit / studio_restore_version 成功后嵌入，§3.4） */

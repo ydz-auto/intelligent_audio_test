@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  countLatestAssistantToolCalls,
   formatDuration,
   formatMessageTime,
   getChatMessageRenderState,
@@ -112,5 +113,24 @@ describe('格式化', () => {
 
   it('时间戳格式化为 HH:mm:ss（zh-CN）', () => {
     expect(formatMessageTime(0)).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+  })
+
+  it('工具卡计数取最后一条 assistant 气泡（刷新后时间线为空时的计数口径）', () => {
+    expect(countLatestAssistantToolCalls([])).toBe(0)
+    expect(countLatestAssistantToolCalls([userMessage])).toBe(0)
+    expect(
+      countLatestAssistantToolCalls([
+        { ...assistantMessage, toolCalls: [{ id: 'tc-old', tool: 'a', label: 'A', status: 'completed' }] },
+        userMessage,
+        {
+          ...assistantMessage,
+          key: 'a2',
+          toolCalls: [
+            { id: 'tc-1', tool: 'b', label: 'B', status: 'pending' },
+            { id: 'tc-2', tool: 'c', label: 'C', status: 'completed' },
+          ],
+        },
+      ])
+    ).toBe(2)
   })
 })
