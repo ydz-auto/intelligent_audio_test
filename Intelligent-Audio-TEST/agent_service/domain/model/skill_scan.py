@@ -24,7 +24,12 @@ class SkillScanIssue:
 
 @dataclass(frozen=True)
 class SkillScanResult:
-    """一次目录扫描的完整结果：装载到的 Skill + 目录级问题。"""
+    """一次目录扫描的完整结果：装载到的 Skill + 目录级问题。
+
+    INT-2549：三层同名的遮蔽是**查看者相关**的（不同 owner 的同名 USER
+    Skill 互不遮蔽），不能在装载期定论；``skills`` 只回候选集，合并由
+    ``domain.services.skill_visibility.merge_skill_layers`` 按 viewer 计算。
+    """
 
     skills: Tuple[Skill, ...] = ()
     issues: Tuple[SkillScanIssue, ...] = field(default_factory=tuple)

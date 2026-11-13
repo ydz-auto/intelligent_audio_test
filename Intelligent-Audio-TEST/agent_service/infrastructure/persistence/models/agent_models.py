@@ -17,10 +17,14 @@ from sqlalchemy import (
     UniqueConstraint, func, text,
 )
 
+from agent_service.domain.enums import SkillScope
 from shared.models.database import Base
 from shared.utils.time_utils import utcnow
 
 _PK = String(36)
+# 局部唯一索引谓词（枚举取值，不写魔法字符串）
+_SCOPE_USER_PREDICATE = "scope = '%s'" % SkillScope.USER.value
+_SCOPE_TENANT_PREDICATE = "scope = '%s'" % SkillScope.TENANT.value
 
 
 class AgentSession(Base):
@@ -264,3 +268,95 @@ class AgentLlmProvider(Base):
                         server_default=func.now())
     updated_at = Column(DateTime, nullable=False, default=utcnow,
                         server_default=func.now(), onupdate=utcnow)
+
+
+class AgentSkill(Base):
+    """自定义 Skill 当前指针（INT-2549 §4.4 / §10）。
+
+    - ``scope``：``PLATFORM`` 只读挂载，**不落本表**；本表只有 ``TENANT`` /
+      ``USER`` 行（PLATFORM 由 ``skills/`` 扫描装载）；
+    - 正文只存版本表 ``agent_skill_version``，本行 ``version`` 是指针，
+      不双写正文（卡面 §4.4「正文只存版本表」）；
+    - ``resources`` 只存「相对路径 → 对象存储 key」，资源本体不进库；
+    - 唯一性用**局部唯一索引**表达：USER 按 ``(owner_id, name)``、TENANT 按
+      ``(tenant_id, name)``，与卡面「scope + tenant_id/owner_id + name 唯一」
+      等价，且不因另一作用域为 NULL 而失效。
+    """
+
+    __tablename__ = 'agent_skill'
+    __table_args__ = (
+        Index('ix_agent_skill_scope_status', 'scope', 'status'),
+        Index('uq_agent_skill_owner_name', 'owner_id', 'name', unique=True,
+              postgresql_where=text(_SCOPE_USER_PREDICATE),
+              sqlite_where=text(_SCOPE_USER_PREDICATE)),
+        Index('uq_agent_skill_tenant_name', 'tenant_id', 'name', unique=True,
+              postgresql_where=text(_SCOPE_TENANT_PREDICATE),
+              sqlite_where=text(_SCOPE_TENANT_PREDICATE)),
+    )
+
+    id = Column(_PK, primary_key=True)
+    scope = Column(String(20), nullable=False, comment='SkillScope')
+    tenant_id = Column(String(64), nullable=True, comment='TENANT 行必填')
+    owner_id = Column(BigInteger, nullable=True, comment='USER 行必填')
+    name = Column(String(64), nullable=False)
+    description = Column(Text, nullable=False, default='')
+    version = Column(String(32), nullable=False, default='0',
+                     comment='当前版本指针（指向 agent_skill_version）')
+    status = Column(String(20), nullable=False, comment='SkillStatus')
+    content_hash = Column(String(64), nullable=False, default='')
+    frontmatter_json = Column(JSON, nullable=True, comment='frontmatter 字典')
+    resources = Column(JSON, nullable=True, comment='相对路径 → 对象存储 key')
+    created_by = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow,
+                        server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=utcnow,
+                        server_default=func.now(), onupdate=utcnow)
+
+
+class AgentSkillVersion(Base):
+    """自定义 Skill 的不可变版本快照（正文唯一事实源）。
+
+    历史 run 的回放读本表 + ``agent_run_skill``；Skill 后续修改不影响历史版本。
+    """
+
+    __tablename__ = 'agent_skill_version'
+    __table_args__ = (
+        UniqueConstraint('skill_id', 'version',
+                         name='uq_agent_skill_version_skill_version'),
+        Index('ix_agent_skill_version_skill', 'skill_id', 'created_at'),
+    )
+
+    id = Column(_PK, primary_key=True)
+    skill_id = Column(_PK, nullable=False)
+    version = Column(String(32), nullable=False)
+    content_hash = Column(String(64), nullable=False, default='')
+    frontmatter_json = Column(JSON, nullable=True)
+    body = Column(Text, nullable=False, default='')
+    resources = Column(JSON, nullable=True)
+    created_by = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow,
+                        server_default=func.now())
+
+
+class AgentRunSkill(Base):
+    """run 内 Skill 激活快照（一次激活 / 切换追加一行）。
+
+    回放以「本表 + agent_skill_version」为准：Skill 后续修改不中途换内容。
+    ``(run_id, activated_at)`` 服务按 run 回放；``skill_id`` 索引服务「这个
+    skill 被哪些 run 用过」的排查。保留策略配置化，不在本卡做自动清理。
+    """
+
+    __tablename__ = 'agent_run_skill'
+    __table_args__ = (
+        Index('ix_agent_run_skill_run', 'run_id', 'activated_at'),
+        Index('ix_agent_run_skill_skill', 'skill_id'),
+    )
+
+    id = Column(_PK, primary_key=True)
+    run_id = Column(_PK, nullable=False)
+    skill_id = Column(String(100), nullable=False,
+                      comment='agent_skill.id；平台层为 platform:<name>')
+    version = Column(String(32), nullable=False)
+    content_hash = Column(String(64), nullable=False, default='')
+    activated_at = Column(DateTime, nullable=False, default=utcnow,
+                          server_default=func.now())

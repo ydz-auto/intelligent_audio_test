@@ -18,7 +18,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api_gateway.middleware import AuthMiddleware
-from api_gateway.routes import agent_runtime_bp
+from api_gateway.routes import agent_runtime_bp, agent_skill_bp
 
 
 @pytest.fixture()
@@ -29,6 +29,8 @@ def harness():
         app = FastAPI()
         app.add_middleware(AuthMiddleware, auth_mode=mode)
         app.include_router(agent_runtime_bp.router, prefix='/api/v1/agent')
+        # INT-2549：GET /skills 的代理迁到 agent_skill_bp（带权限码）
+        app.include_router(agent_skill_bp.router, prefix='/api/v1/agent')
         agent_runtime_bp._transport_override = httpx.MockTransport(handler)
         return TestClient(app)
 
@@ -77,3 +79,37 @@ def test_upstream_unavailable_maps_to_503(harness):
     resp = client.get('/api/v1/agent/skills')
     assert resp.status_code == 503
     assert resp.json()['detail'] == 'agent service unavailable'
+
+
+def test_import_over_upload_limit_rejected_before_upstream(harness,
+                                                           monkeypatch):
+    """INT-2549 返工 P3：网关在读入内存前按同一上限拒绝超大 zip（413）。"""
+    make_app, calls = harness
+
+    def handler(request):  # pragma: no cover - 不应被调用
+        calls.append(request)
+        return httpx.Response(201, json={'id': 'x'})
+
+    client = make_app(mode='off', handler=handler)
+    monkeypatch.setattr(agent_skill_bp, 'SKILL_UPLOAD_MAX_BYTES', 32)
+    resp = client.post('/api/v1/agent/skills/import', content=b'x' * 128,
+                       headers={'Content-Type': 'application/zip'})
+    assert resp.status_code == 413
+    assert resp.json()['code'] == 'SKILL_IMPORT_INVALID'
+    assert calls == []
+
+
+def test_import_within_limit_is_forwarded(harness, monkeypatch):
+    make_app, calls = harness
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(201, json={'id': 'x'})
+
+    client = make_app(mode='off', handler=handler)
+    monkeypatch.setattr(agent_skill_bp, 'SKILL_UPLOAD_MAX_BYTES', 4096)
+    resp = client.post('/api/v1/agent/skills/import', content=b'x' * 64,
+                       headers={'Content-Type': 'application/zip'})
+    assert resp.status_code == 201
+    assert len(calls) == 1
+    assert calls[0].content == b'x' * 64

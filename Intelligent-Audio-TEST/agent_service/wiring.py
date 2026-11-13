@@ -39,6 +39,8 @@ from agent_service.application.sandbox_runner import (
     SandboxArtifactPolicy, SandboxConfigurationError, SandboxRunner,
 )
 from agent_service.application.skill_registry import SkillRegistry
+from agent_service.application.skill_guard import SkillGuard
+from agent_service.application.skill_service import SkillService
 from agent_service.application.tool_gateway import SharedToolGateway
 from agent_service.config.config import Config
 from agent_service.domain.model.context_budget import SectionRatios
@@ -75,6 +77,21 @@ from agent_service.infrastructure.sandbox.t2_runner import build_t2_executor
 from agent_service.infrastructure.skill.fs_skill_repository import (
     FsSkillRepository,
 )
+from agent_service.infrastructure.skill.composite_skill_repository import (
+    CompositeSkillRepository,
+)
+from agent_service.infrastructure.skill.json_golden_task_provider import (
+    JsonGoldenTaskProvider,
+)
+from agent_service.infrastructure.skill.oss_resource_store import (
+    OssSkillResourceStore,
+)
+from agent_service.infrastructure.skill.platform_resources import (
+    load_platform_resources,
+)
+from agent_service.infrastructure.persistence.skill_repositories import (
+    SqlAgentRunSkillRepository, SqlAgentSkillRepository,
+)
 from agent_service.infrastructure.sandbox.docker_runner import (
     DockerRunnerConfig, DockerRunnerMode, SandboxPolicy, build_sandbox_executor,
 )
@@ -105,6 +122,7 @@ class AgentContainer:
     compaction_settings: Optional[CompactionSettings] = None
     memory_service: Optional[MemoryService] = None
     approval_service: Optional[ApprovalService] = None
+    skill_service: Optional[SkillService] = None
     repositories: dict = field(default_factory=dict)
 
     def shutdown(self) -> None:
@@ -148,21 +166,58 @@ def build_wakeup(wakeup: Optional[RunWakeup] = None) -> RunWakeup:
 
 def build_skill_registry(tool_gateway: ToolGateway,
                          skills_root: Optional[str] = None,
-                         strict: Optional[bool] = None) -> SkillRegistry:
+                         strict: Optional[bool] = None,
+                         custom=None) -> SkillRegistry:
     """装配 SkillRegistry 并装载 skills 目录（§4）。
 
     allowed-tools 的事实源是工具注册表：当前取自 ToolGateway.all_tools()；
     INT-2453 把注册表抽到 shared/agent_tools 后，这里换成同一份 Schema 即可，
     不为两套口径写兼容分支。
+
+    INT-2549：``custom`` 为自定义 Skill 仓储时走 ``CompositeSkillRepository``，
+    平台只读层 + 自定义层合并去重（USER > TENANT > PLATFORM）。
     """
+    platform = FsSkillRepository(skills_root or Config.SKILLS_ROOT)
+    repository = (CompositeSkillRepository(platform, custom)
+                  if custom is not None else platform)
     registry = SkillRegistry(
-        FsSkillRepository(skills_root or Config.SKILLS_ROOT),
+        repository,
         known_tools=lambda: [d.name for d in tool_gateway.all_tools()],
         max_body_lines=Config.SKILL_BODY_MAX_LINES,
         strict=(Config.SKILL_VALIDATION_STRICT if strict is None else strict),
         l1_budget_tokens=Config.skill_l1_budget_tokens(),
     )
     return registry.load()
+
+
+def build_skill_service(gateway: ToolGateway,
+                        skills: SkillRegistry,
+                        skill_repository,
+                        run_skill_repository,
+                        resource_store=None,
+                        golden_tasks=None,
+                        guard=None,
+                        settings=None) -> SkillService:
+    """装配自定义 Skill 应用服务（INT-2549）。"""
+
+    def known_tools():
+        from shared.agent_tools.intent_tools import INTENT_TOOL_BY_NAME
+        names = set(INTENT_TOOL_BY_NAME)
+        names.update(d.name for d in gateway.all_tools())
+        return sorted(names)
+
+    return SkillService(
+        repository=skill_repository,
+        run_skills=run_skill_repository,
+        registry=skills,
+        resource_store=resource_store or OssSkillResourceStore(),
+        golden_tasks=golden_tasks or JsonGoldenTaskProvider(
+            Config.SKILL_GOLDEN_TASKS_PATH),
+        guard=guard or SkillGuard(rules_path=Config.SKILL_GUARD_RULES_PATH),
+        known_tools=known_tools,
+        settings=settings or Config.skill_settings(),
+        platform_resources=load_platform_resources,
+    )
 
 
 def _skill_script_locator(skills: Optional[SkillRegistry]):
@@ -296,6 +351,10 @@ def build_container(session_factory,
                     budget_ratios: Optional[SectionRatios] = None,
                     context_debug: Optional[bool] = None,
                     memory_service: Optional[MemoryService] = None,
+                    skill_resource_store=None,
+                    golden_tasks=None,
+                    skill_guard=None,
+                    skill_settings=None,
                     ) -> AgentContainer:
     """组合根。``budget_defaults`` / ``terminal_grace_seconds`` /
     ``skill_registry`` / ``skills_root`` 与 ``provider_resolver`` /
@@ -314,6 +373,9 @@ def build_container(session_factory,
     artifacts = SqlArtifactRepository(session_factory)
     snapshots = SqlContextSnapshotRepository(session_factory)
     provider_repository = SqlLlmProviderRepository(session_factory)
+    # INT-2549：自定义 Skill 当前行 / 版本 / run 快照
+    skill_repository = SqlAgentSkillRepository(session_factory)
+    run_skill_repository = SqlAgentRunSkillRepository(session_factory)
 
     credentials = credential_store or CredentialStore.from_env()
     windows = window_resolver or _build_window_resolver()
@@ -347,7 +409,13 @@ def build_container(session_factory,
         memory=memory,
         driver_proposals=driver_proposals,
     )
-    skills = skill_registry or build_skill_registry(gateway, skills_root)
+    skills = skill_registry or build_skill_registry(
+        gateway, skills_root, custom=skill_repository)
+    # INT-2549：自定义 Skill 的 CRUD / 版本 / 导入导出 / 发布门槛
+    skill_service = build_skill_service(
+        gateway, skills, skill_repository, run_skill_repository,
+        resource_store=skill_resource_store, golden_tasks=golden_tasks,
+        guard=skill_guard, settings=skill_settings)
     # INT-2466：写审批服务（提案 / 决策 / 过期 / 执行前复核）与 Loop 共用
     # 同一份工具网关与仓储；run 归属校验在服务内部完成。
     approval_service = ApprovalService(
@@ -419,6 +487,8 @@ def build_container(session_factory,
         cancel_registry=cancel_registry, settings=settings,
         approvals=approval_service,
         sandbox=sandbox_executor,
+        # INT-2549：在办 run 的 L2 / allowed-tools 按激活快照固定
+        skill_snapshots=skill_service.snapshot_skill,
     )
     run_service = RunService(
         sessions, runs, events, wakeup, cancel_registry,
@@ -426,6 +496,7 @@ def build_container(session_factory,
         default_model='',
         skills=skills,
         approvals=approval_service,
+        run_skills=run_skill_repository,
     )
     event_stream = EventStreamService(
         events, runs, wakeup, page_size=Config.EVENT_PAGE_SIZE,
@@ -455,11 +526,14 @@ def build_container(session_factory,
         budget_policy=budget_policy, compaction_settings=compaction,
         memory_service=memory,
         approval_service=approval_service,
+        skill_service=skill_service,
         repositories={
             'sessions': sessions, 'runs': runs, 'events': events,
             'steps': steps, 'tool_calls': tool_calls,
             'approvals': approvals,
             'artifacts': artifacts, 'snapshots': snapshots,
             'providers': provider_repository,
+            'skills': skill_repository,
+            'run_skills': run_skill_repository,
         },
     )

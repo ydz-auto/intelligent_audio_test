@@ -19,13 +19,19 @@ import logging
 from typing import Optional
 
 from fastapi import (
-    APIRouter, Depends, Header, HTTPException, Query, Request, Response,
+    APIRouter, Depends, File, Header, HTTPException, Query, Request, Response,
+    UploadFile,
 )
 from fastapi.responses import StreamingResponse
 
+from agent_service.application.skill_registry import SkillIssue
+from agent_service.application.skill_service import SkillDraftPayload
 from agent_service.config.config import Config
-from agent_service.domain.enums import ApprovalDecision
-from agent_service.domain.exceptions import ApprovalExpired
+from agent_service.domain.enums import (
+    ApprovalDecision, SkillErrorCode, SkillIssueCode, SkillIssueSeverity,
+    SkillScope, SkillStatus,
+)
+from agent_service.domain.exceptions import ApprovalExpired, SkillPackageTooLarge
 from agent_service.domain.model.entities import AgentRun, AgentSession
 from agent_service.interfaces.api.dependencies import (
     Identity, get_container, get_identity,
@@ -33,7 +39,8 @@ from agent_service.interfaces.api.dependencies import (
 from agent_service.interfaces.api.schemas import (
     ApprovalDecisionRequest, ApprovalDecisionResponse, ApprovalResponse,
     CreateRunRequest, CreateRunResponse, CreateSessionRequest, RunResponse,
-    SessionDetailResponse, SessionResponse, SkillResponse,
+    SessionDetailResponse, SessionResponse, SkillDraftRequest,
+    SkillForkRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -273,17 +280,28 @@ def list_context_snapshots(run_id: str, request: Request,
 
 @router.get('/skills')
 def list_skills(request: Request,
+                scope: Optional[str] = Query(default=None),
+                status: Optional[str] = Query(default=None),
                 identity: Identity = Depends(get_identity)):
     """当前用户可见的 Skill 列表（§11；权限 = Skill ∩ 用户权限）。
 
     INT-2453：同一响应附带当前用户可见的意图工具清单（31 个注册项，
     ``enabled`` 标明 M0 是否已实现），供前端展示与 Skill allowed-tools 对照。
+
+    INT-2549：合并自定义层（USER / TENANT）与平台层，支持 ``?scope=`` /
+    ``?status=`` 过滤；被同名高层遮蔽的条目带 ``masked_by``。L1 只取生效项。
     """
     from shared.agent_tools.intent_tools import ENABLED_TOOLS
 
     container = get_container(request)
     registry = container.skill_registry
-    visible = registry.visible_for(identity.permissions)
+    service = getattr(container, 'skill_service', None)
+    if service is None:
+        raise HTTPException(status_code=503, detail='Skill 服务未就绪')
+    views = service.list(
+        owner_id=identity.user_id, tenant_id=identity.tenant_id,
+        permissions=identity.permissions,
+        scope=_skill_scope(scope), status=_skill_status(status))
     tools = []
     for descriptor in container.tool_gateway.all_tools():
         if not _granted(identity.permissions, descriptor.permissions):
@@ -297,16 +315,8 @@ def list_skills(request: Request,
             'enabled': descriptor.name in ENABLED_TOOLS,
         })
     return {
-        'items': [
-            SkillResponse(
-                name=skill.name, description=skill.description,
-                version=skill.meta.version, owner=skill.meta.owner,
-                allowed_tools=list(skill.meta.allowed_tools),
-                permissions=list(skill.meta.permissions),
-                budgets=dict(skill.meta.budgets),
-            ).model_dump()
-            for skill in visible
-        ],
+        'items': [_skill_view_dict(view, include_issues=False)
+                  for view in views],
         # 装载摘要（INT-2506）：装载总数与目录级 / 校验问题码，供看板与审计
         # 判断「Skill 层是否整体消失」，避免错挂载时接口仍然 200 全绿。
         'skills_count': len(registry.skills),
@@ -323,7 +333,9 @@ def list_skills(request: Request,
         'issues_count': len(registry.issues),
         'tools': tools,
         'tools_count': len(tools),
-        'l1_tokens': registry.l1_tokens(identity.permissions),
+        'l1_tokens': registry.l1_tokens(
+            identity.permissions, owner_id=identity.user_id,
+            tenant_id=identity.tenant_id),
         'l1_budget_tokens': registry.l1_budget_tokens,
     }
 
@@ -336,3 +348,236 @@ def _granted(granted, required) -> bool:
     if '*' in perms:
         return True
     return bool(perms & set(required))
+
+
+# ---------------------------------------------------------------- 自定义 Skill（INT-2549）
+
+def _skill_service(request: Request):
+    container = get_container(request)
+    service = getattr(container, 'skill_service', None)
+    if service is None:
+        raise HTTPException(status_code=503, detail='Skill 服务未就绪')
+    return service
+
+
+def _skill_scope(raw: Optional[str]):
+    if not raw:
+        return None
+    try:
+        return SkillScope(raw.strip().upper())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail={'code': SkillErrorCode.SKILL_VALIDATION_FAILED.value,
+                    'message': f'不支持的 scope：{raw}'
+                               '（只能是 PLATFORM / TENANT / USER）'})
+
+
+def _skill_status(raw: Optional[str]):
+    if not raw:
+        return None
+    try:
+        return SkillStatus(raw.strip().upper())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail={'code': SkillErrorCode.SKILL_STATUS_INVALID.value,
+                    'message': f'不支持的 status：{raw}'
+                               '（只能是 DRAFT / ACTIVE / DISABLED）'})
+
+
+def _reject_identity_fields(payload) -> None:
+    forbidden = payload.forbidden_identity_fields()
+    if forbidden:
+        raise HTTPException(
+            status_code=400,
+            detail={'code': SkillErrorCode.SKILL_VALIDATION_FAILED.value,
+                    'message': ('请求体不得携带服务端身份字段：'
+                                + '、'.join(forbidden)
+                                + '（scope / owner_id / tenant_id 由服务端填写）')})
+
+
+def _skill_view_dict(view, *, include_issues: bool = True) -> dict:
+    payload = {
+        'id': view.id,
+        'scope': view.scope.value,
+        'name': view.name,
+        'description': view.description,
+        'version': view.version,
+        'status': view.status.value,
+        'content_hash': view.content_hash,
+        'masked_by': view.masked_by,
+        'owner': view.owner,
+        'owner_id': view.owner_id,
+        'tenant_id': view.tenant_id,
+        'created_by': view.created_by,
+        'updated_at': _iso(view.updated_at),
+        'allowed_tools': list(view.allowed_tools),
+        'permissions': list(view.permissions),
+        'budgets': dict(view.budgets),
+    }
+    if include_issues:
+        payload['issues'] = [
+            {'code': issue.code.value, 'severity': issue.severity.value,
+             'field': issue.field, 'message': issue.message}
+            for issue in view.issues
+        ]
+    return payload
+
+
+def _draft_payload(payload) -> SkillDraftPayload:
+    # None 原样透传（PUT 语义：未出现的字段不改）
+    return SkillDraftPayload(
+        name=payload.name, description=payload.description,
+        frontmatter=(None if payload.frontmatter is None
+                     else dict(payload.frontmatter)),
+        body=payload.body,
+        resources=(None if payload.resources is None
+                   else dict(payload.resources)))
+
+
+@router.post('/skills', status_code=201)
+def create_skill(payload: SkillDraftRequest, request: Request,
+                 identity: Identity = Depends(get_identity)):
+    """新建草稿（在线编辑入口）。``scope`` / ``owner_id`` / ``tenant_id``
+    由服务端按登录身份填，请求体携带一律 400。"""
+    _reject_identity_fields(payload)
+    service = _skill_service(request)
+    view = service.create(
+        _draft_payload(payload), owner_id=identity.user_id,
+        tenant_id=identity.tenant_id, permissions=identity.permissions,
+        created_by=identity.user_id)
+    return _skill_view_dict(view)
+
+
+@router.put('/skills/{skill_id}')
+def update_skill(skill_id: str, payload: SkillDraftRequest, request: Request,
+                 identity: Identity = Depends(get_identity)):
+    """保存草稿（version +1）。ACTIVE Skill 保存后回到 DRAFT，需重新发布。"""
+    _reject_identity_fields(payload)
+    service = _skill_service(request)
+    view = service.update(
+        skill_id, _draft_payload(payload),
+        owner_id=identity.user_id, tenant_id=identity.tenant_id,
+        permissions=identity.permissions)
+    return _skill_view_dict(view)
+
+
+@router.delete('/skills/{skill_id}', status_code=204)
+def delete_skill(skill_id: str, request: Request,
+                 identity: Identity = Depends(get_identity)):
+    """删除自定义 Skill（立即从 L1 / 激活候选消失；版本行保留供回放）。"""
+    service = _skill_service(request)
+    service.delete(skill_id, owner_id=identity.user_id,
+                   tenant_id=identity.tenant_id)
+    return Response(status_code=204)
+
+
+@router.post('/skills/{skill_id}/publish')
+def publish_skill(skill_id: str, request: Request,
+                  identity: Identity = Depends(get_identity)):
+    """发布门槛：≥3 条 golden tasks 且触发判定通过才 ACTIVE。"""
+    service = _skill_service(request)
+    result = service.publish(
+        skill_id, owner_id=identity.user_id, tenant_id=identity.tenant_id,
+        permissions=identity.permissions)
+    return {
+        'skill': _skill_view_dict(
+            service.get(skill_id, owner_id=identity.user_id,
+                        tenant_id=identity.tenant_id,
+                        permissions=identity.permissions)),
+        'gate': result.gate.to_dict(),
+        'participates_in_trigger': result.participates_in_trigger,
+    }
+
+
+@router.post('/skills/{skill_id}/disable')
+def disable_skill(skill_id: str, request: Request,
+                  identity: Identity = Depends(get_identity)):
+    """停用：立即从 L1 / 激活候选消失；在办 run 按快照继续。"""
+    service = _skill_service(request)
+    view = service.disable(skill_id, owner_id=identity.user_id,
+                           tenant_id=identity.tenant_id)
+    return _skill_view_dict(view)
+
+
+@router.post('/skills/{skill_id}/fork', status_code=201)
+def fork_skill(skill_id: str, payload: SkillForkRequest, request: Request,
+               identity: Identity = Depends(get_identity)):
+    """从内置 / 可见 Skill fork 出本人的草稿。"""
+    _reject_identity_fields(payload)
+    service = _skill_service(request)
+    view = service.fork(
+        skill_id, owner_id=identity.user_id, tenant_id=identity.tenant_id,
+        permissions=identity.permissions, name=payload.name or '',
+        description=payload.description or '')
+    return _skill_view_dict(view)
+
+
+@router.post('/skills/import', status_code=201)
+async def import_skill(request: Request,
+                       file: UploadFile = File(...),
+                       identity: Identity = Depends(get_identity)):
+    """zip 导入（根级 ``SKILL.md`` + references/scripts/assets）。"""
+    service = _skill_service(request)
+    limit = service.package_limits().max_upload_bytes
+    declared = request.headers.get('content-length')
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise _upload_too_large(int(declared), limit)
+    # 有界读取：Content-Length 缺失（chunked）时也不会无界读入内存
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise _upload_too_large(len(data), limit)
+    view = service.import_package(
+        data, owner_id=identity.user_id, tenant_id=identity.tenant_id,
+        permissions=identity.permissions)
+    return _skill_view_dict(view)
+
+
+def _upload_too_large(size: int, limit: int) -> SkillPackageTooLarge:
+    message = f'上传包 {size} 字节，超过上限 {limit} 字节'
+    return SkillPackageTooLarge(message, issues=[SkillIssue(
+        code=SkillIssueCode.PACKAGE_TOO_LARGE,
+        severity=SkillIssueSeverity.ERROR, skill='', path='',
+        field='package', message=message)])
+
+
+@router.get('/skills/{skill_id}/export')
+def export_skill(skill_id: str, request: Request,
+                 identity: Identity = Depends(get_identity)):
+    """导出 zip（根级 ``SKILL.md``，与本服务导入和平台包同一结构）。"""
+    service = _skill_service(request)
+    filename, data = service.export_package(
+        skill_id, owner_id=identity.user_id, tenant_id=identity.tenant_id,
+        permissions=identity.permissions)
+    return Response(
+        content=data, media_type='application/zip',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'})
+
+
+@router.get('/skills/{skill_id}/versions')
+def list_skill_versions(skill_id: str, request: Request,
+                        identity: Identity = Depends(get_identity)):
+    service = _skill_service(request)
+    versions = service.versions(skill_id, owner_id=identity.user_id,
+                                tenant_id=identity.tenant_id)
+    return {
+        'items': [
+            {'version': item.version, 'content_hash': item.content_hash,
+             'created_at': _iso(item.created_at),
+             'created_by': item.created_by}
+            for item in versions
+        ],
+    }
+
+
+@router.get('/runs/{run_id}/skills')
+def list_run_skills(run_id: str, request: Request,
+                    identity: Identity = Depends(get_identity)):
+    """run 的 Skill 版本快照 + 按版本表回放（Skill 后续修改不影响历史 run）。"""
+    container = get_container(request)
+    container.run_service.get_run(
+        run_id, owner_id=identity.user_id, tenant_id=identity.tenant_id)
+    service = _skill_service(request)
+    return {'items': service.replay(
+        run_id, owner_id=identity.user_id, tenant_id=identity.tenant_id)}

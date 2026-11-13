@@ -93,6 +93,10 @@ class EventType(str, Enum):
     TOOL_RESULT = 'tool_result'
     APPROVAL_REQUIRED = 'approval_required'
     CONTEXT_COMPACTED = 'context_compacted'
+    # 对话沉淀建议（INT-2549 §4.4 第 7 条第④项）：run 正常结束后产出
+    # 「把本次流程沉淀为 Skill」的草案建议。仅事件、不落库，用户确认后
+    # 才走 POST /skills 创建 DRAFT。
+    SKILL_DRAFT_SUGGESTED = 'skill_draft_suggested'
     RUN_FINISHED = 'run_finished'
     ERROR = 'error'
 
@@ -177,11 +181,56 @@ class LlmMessageRole(str, Enum):
     TOOL = 'tool'
 
 
+class SkillScope(str, Enum):
+    """Skill 来源三层（INT-2549 §4.4「来源与优先级」）。
+
+    优先级 ``USER > TENANT > PLATFORM``：同名时高层生效、低层在列表里带
+    ``masked_by`` 标注。``PLATFORM`` 是 ``skills/`` 只读挂载，无写入口。
+    """
+
+    PLATFORM = 'PLATFORM'
+    TENANT = 'TENANT'
+    USER = 'USER'
+
+    @property
+    def precedence(self) -> int:
+        """数值越大越优先（去重排序用）。"""
+        return _SKILL_SCOPE_PRECEDENCE[self]
+
+
+_SKILL_SCOPE_PRECEDENCE = {
+    SkillScope.PLATFORM: 0,
+    SkillScope.TENANT: 1,
+    SkillScope.USER: 2,
+}
+
+
+class SkillStatus(str, Enum):
+    """自定义 Skill 生命周期状态（§4.4「安全与生命周期」）。
+
+    只有 ``ACTIVE`` 参与自动触发与 L1 列表；``DRAFT`` 需过发布门槛才转
+    ``ACTIVE``；``DISABLED`` 立即从 L1 / 激活候选消失（在办 run 按
+    ``agent_run_skill`` 快照继续）。
+    """
+
+    DRAFT = 'DRAFT'
+    ACTIVE = 'ACTIVE'
+    DISABLED = 'DISABLED'
+
+    @property
+    def participates_in_trigger(self) -> bool:
+        """是否进入自动触发候选 / L1 列表。"""
+        return self is SkillStatus.ACTIVE
+
+
 class SkillIssueCode(str, Enum):
     """Skill 校验问题码（§4.2 frontmatter 契约）。
 
     目录级失败码（INT-2506）由仓储层回传：扫描阶段就必须给出原因码，不允许
     空目录 / 错挂载 / 目录缺 SKILL.md 静默丢 Skill。
+
+    INT-2549 补自定义 Skill 落库前逐项校验码（保存 / 发布共用同一套
+    ``validate_skill()``），禁止在服务层散落字符串。
     """
 
     SKILLS_ROOT_MISSING = 'SKILLS_ROOT_MISSING'
@@ -199,6 +248,23 @@ class SkillIssueCode(str, Enum):
     L1_BUDGET_EXCEEDED = 'L1_BUDGET_EXCEEDED'
     # 目录里一个 Skill 都没装到（空目录 / 缺 SKILL.md）：部署级故障，启动即失败
     EMPTY_SKILLS_ROOT = 'EMPTY_SKILLS_ROOT'
+    # ---- INT-2549 自定义 Skill 写入校验 ----
+    INVALID_NAME = 'INVALID_NAME'
+    NAME_CONFLICT = 'NAME_CONFLICT'
+    BODY_TOO_LARGE = 'BODY_TOO_LARGE'
+    RESOURCE_TOO_LARGE = 'RESOURCE_TOO_LARGE'
+    PACKAGE_TOO_LARGE = 'PACKAGE_TOO_LARGE'
+    TOO_MANY_ENTRIES = 'TOO_MANY_ENTRIES'
+    INVALID_PATH = 'INVALID_PATH'
+    SYMLINK_REJECTED = 'SYMLINK_REJECTED'
+    EXTERNAL_LINK_REJECTED = 'EXTERNAL_LINK_REJECTED'
+    PERMISSION_ESCALATION = 'PERMISSION_ESCALATION'
+    EMBEDDED_SECRET = 'EMBEDDED_SECRET'
+    INTERNAL_ADDRESS = 'INTERNAL_ADDRESS'
+    BINARY_CONTENT = 'BINARY_CONTENT'
+    INJECTION_DETECTED = 'INJECTION_DETECTED'
+    GATE_INSUFFICIENT_GOLDEN_TASKS = 'GATE_INSUFFICIENT_GOLDEN_TASKS'
+    GATE_TRIGGER_FAILED = 'GATE_TRIGGER_FAILED'
 
 
 class SkillIssueSeverity(str, Enum):
@@ -206,6 +272,19 @@ class SkillIssueSeverity(str, Enum):
 
     ERROR = 'ERROR'
     WARNING = 'WARNING'
+
+
+class SkillErrorCode(str, Enum):
+    """Skill 接口错误码（§4.4 接口草案，枚举化、不散落字符串）。"""
+
+    SKILL_NAME_CONFLICT = 'SKILL_NAME_CONFLICT'
+    SKILL_VALIDATION_FAILED = 'SKILL_VALIDATION_FAILED'
+    SKILL_PERMISSION_ESCALATION = 'SKILL_PERMISSION_ESCALATION'
+    SKILL_NOT_FOUND = 'SKILL_NOT_FOUND'
+    SKILL_STATUS_INVALID = 'SKILL_STATUS_INVALID'
+    SKILL_IMPORT_INVALID = 'SKILL_IMPORT_INVALID'
+    SKILL_INJECTION_DETECTED = 'SKILL_INJECTION_DETECTED'
+    SKILL_GATE_FAILED = 'SKILL_GATE_FAILED'
 
 
 # ---------------------------------------------------------------- 长期记忆（INT-2490）

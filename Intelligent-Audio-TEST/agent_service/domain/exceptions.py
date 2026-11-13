@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """agent_service 领域异常（不依赖框架，接口层再映射 HTTP 状态码）。"""
 
+from agent_service.domain.enums import SkillErrorCode
+
 
 class AgentDomainError(Exception):
     """agent 域异常基类。"""
@@ -129,6 +131,68 @@ class SkillValidationError(AgentDomainError):
         self.issues = tuple(issues)
         detail = '; '.join(f'{i.code.value}:{i.skill or i.path}' for i in issues)
         super().__init__(f'Skill 校验失败（{len(self.issues)} 项）: {detail}')
+
+
+# ---------------------------------------------------------------- 自定义 Skill（INT-2549）
+
+
+class SkillServiceError(AgentDomainError):
+    """自定义 Skill 域异常基类：``code`` 即接口错误码（§4.4 枚举）。"""
+
+    code = SkillErrorCode.SKILL_VALIDATION_FAILED.value
+
+    def __init__(self, message: str, *, issues=()):
+        self.issues = tuple(issues or ())
+        super().__init__(message)
+
+
+class SkillNotFound(SkillServiceError):
+    """Skill 不存在 / 非本人可见 / 无写入口（对外统一 404，不泄漏存在性）。"""
+
+    code = SkillErrorCode.SKILL_NOT_FOUND.value
+
+
+class SkillNameConflict(SkillServiceError):
+    """同名冲突：与 PLATFORM 同名或同作用域重名（拒绝，不静默覆盖）。"""
+
+    code = SkillErrorCode.SKILL_NAME_CONFLICT.value
+
+
+class SkillPermissionEscalation(SkillServiceError):
+    """``permissions`` 超出当前用户权限（不得提权）。"""
+
+    code = SkillErrorCode.SKILL_PERMISSION_ESCALATION.value
+
+
+class SkillStatusInvalid(SkillServiceError):
+    """状态迁移非法（例如 ACTIVE 才能停用、DRAFT 才能发布）。"""
+
+    code = SkillErrorCode.SKILL_STATUS_INVALID.value
+
+
+class SkillImportInvalid(SkillServiceError):
+    """zip 导入非法（结构 / 体积 / 路径 / 压缩比 / 二进制）。"""
+
+    code = SkillErrorCode.SKILL_IMPORT_INVALID.value
+
+
+class SkillPackageTooLarge(SkillImportInvalid):
+    """上传包超过体积上限（读入内存 / 解析前拒绝，对外 413）。
+
+    继承导入非法的错误码（``SKILL_IMPORT_INVALID``），不新增对外词表。
+    """
+
+
+class SkillInjectionDetected(SkillServiceError):
+    """正文命中注入规则：可存草稿，禁止发布为 ACTIVE。"""
+
+    code = SkillErrorCode.SKILL_INJECTION_DETECTED.value
+
+
+class SkillGateFailed(SkillServiceError):
+    """发布门槛未通过（golden tasks 数量 / 触发判定）。"""
+
+    code = SkillErrorCode.SKILL_GATE_FAILED.value
 
 
 # ---------------------------------------------------------------- 长期记忆（INT-2490）

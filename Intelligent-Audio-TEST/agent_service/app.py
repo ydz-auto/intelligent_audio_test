@@ -33,7 +33,13 @@ from agent_service.domain.exceptions import (
     CredentialDecryptError, CredentialKeyUnavailable,
     InvalidContextWindow, InvalidProviderConfiguration,
     InvalidRunTransition, ProviderNotFound, RunNotFound, SessionNotFound,
-    SkillNotAvailable,
+    SkillGateFailed, SkillImportInvalid, SkillInjectionDetected,
+    SkillNameConflict, SkillNotAvailable, SkillNotFound,
+    SkillPackageTooLarge, SkillPermissionEscalation, SkillServiceError,
+    SkillStatusInvalid,
+)
+from agent_service.interfaces.api.upload_limit import (
+    SkillImportUploadLimitMiddleware,
 )
 from agent_service.infrastructure.sandbox.t2_runtime import probe_t2_runtime
 from agent_service.interfaces.api.provider_routes import router as provider_router
@@ -161,6 +167,39 @@ def _register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(status_code=400,
                             content={'detail': 'Skill 不可用'})
 
+    # ---- INT-2549 自定义 Skill 域异常（错误码枚举化，不散落字符串）----
+    def _skill_error(status_code: int):
+        async def _handler(_request: Request, exc: SkillServiceError):
+            return JSONResponse(status_code=status_code, content={
+                'detail': str(exc) or 'Skill 操作失败',
+                'code': exc.code,
+                'issues': [
+                    {'code': issue.code.value,
+                     'severity': issue.severity.value,
+                     'skill': issue.skill,
+                     'field': getattr(issue, 'field', ''),
+                     'message': issue.message}
+                    for issue in getattr(exc, 'issues', ())
+                ],
+            })
+        return _handler
+
+    @app.exception_handler(SkillNotFound)
+    async def _skill_not_found(_request: Request, exc: SkillNotFound):
+        # 不存在 / 非本人 / 无写入口统一 404，不泄漏存在性
+        return JSONResponse(status_code=404, content={
+            'detail': 'Skill 不存在', 'code': exc.code, 'issues': []})
+
+    app.add_exception_handler(SkillNameConflict, _skill_error(409))
+    app.add_exception_handler(SkillPermissionEscalation, _skill_error(403))
+    app.add_exception_handler(SkillStatusInvalid, _skill_error(409))
+    app.add_exception_handler(SkillImportInvalid, _skill_error(400))
+    # 上传体积超限在读入内存 / 解析 multipart 之前就拒绝（413）
+    app.add_exception_handler(SkillPackageTooLarge, _skill_error(413))
+    app.add_exception_handler(SkillInjectionDetected, _skill_error(400))
+    app.add_exception_handler(SkillGateFailed, _skill_error(409))
+    app.add_exception_handler(SkillServiceError, _skill_error(400))
+
     @app.exception_handler(ApprovalNotFound)
     async def _approval_not_found(_request: Request, _exc: ApprovalNotFound):
         # 不存在 / 非本人 run 的审批单统一 404（不泄漏存在性）
@@ -259,6 +298,10 @@ def create_app(container=None) -> FastAPI:
     app = FastAPI(title='Intelligent Audio Test - Agent Service',
                   lifespan=lifespan)
     _register_error_handlers(app)
+    # INT-2549 返工 P3：zip 导入在读入内存 / 解析 multipart 之前按
+    # Content-Length 拒绝超大包（网关侧同一口径，见 agent_skill_bp）。
+    app.add_middleware(SkillImportUploadLimitMiddleware,
+                       max_bytes=Config.SKILL_MAX_UPLOAD_BYTES)
 
     @app.get('/health')
     def health(request: Request):

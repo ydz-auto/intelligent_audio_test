@@ -12,6 +12,7 @@ INT-2506：目录级失败（根目录不存在 / 不可读 / 为空、目录缺
 不再只打一行日志——每个都带原因码回传给 ``SkillRegistry``，保证「挂了空目录
 或挂错路径导致 Skill 层整体消失」在 ``/skills`` 与 ``/health`` 上可见。
 """
+import hashlib
 import logging
 import os
 import stat as stat_module
@@ -29,10 +30,12 @@ from agent_service.domain.model.skill_scan import (
     SkillScanIssue, SkillScanResult,
 )
 from agent_service.domain.ports.skill_repository import SkillRepository
+from shared.skill_package import (
+    FRONTMATTER_DELIMITER, split_frontmatter,
+)
 
 logger = logging.getLogger(__name__)
 
-FRONTMATTER_DELIMITER = '---'
 REFERENCES_DIR = 'references'
 SCRIPTS_DIR = 'scripts'
 ASSETS_DIR = 'assets'
@@ -134,24 +137,22 @@ class FsSkillRepository(SkillRepository):
             permissions=_text_list(data.get(FIELD_PERMISSIONS)),
             budgets=_budget_map(data.get(FIELD_BUDGETS)),
         )
+        # INT-2549：平台层也给出合成 ID 与内容指纹，run 快照口径统一
+        # （平台 Skill 无库内版本行，回放时按 content_hash 校验未变更）
+        content_hash = hashlib.sha256(raw.encode('utf-8')).hexdigest()
         return Skill(
             meta=meta, body=body, path=directory,
             references=_list_files(directory, REFERENCES_DIR),
             scripts=_list_files(directory, SCRIPTS_DIR),
             assets=_list_files(directory, ASSETS_DIR),
+            skill_id=f'platform:{meta.name}' if meta.name else '',
+            content_hash=content_hash,
         )
 
 
 def _split_frontmatter(raw: str) -> Tuple[Optional[str], str]:
-    lines = raw.splitlines()
-    if not lines or lines[0].strip() != FRONTMATTER_DELIMITER:
-        return None, raw
-    for index in range(1, len(lines)):
-        if lines[index].strip() == FRONTMATTER_DELIMITER:
-            frontmatter = '\n'.join(lines[1:index])
-            body = '\n'.join(lines[index + 1:]).lstrip('\n')
-            return frontmatter, body
-    return None, raw
+    """frontmatter 切分（与 zip 导入共用 ``shared.skill_package`` 唯一实现）。"""
+    return split_frontmatter(raw)
 
 
 def _text(value: Any) -> str:
