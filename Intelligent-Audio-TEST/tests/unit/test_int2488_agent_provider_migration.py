@@ -121,8 +121,9 @@ def test_create_all_registers_provider_table():
     text = open(_CREATE_ALL, encoding='utf-8').read()
     assert 'AgentLlmProvider' in text
     module = _load(_CREATE_ALL, 'int2488_create_all')
-    # INT-2466 新增 agent_approval 后全集 109 → 110
-    assert module.EXPECTED_TABLE_COUNT == 110
+    # INT-2466 新增 agent_approval 后全集 109 → 110；INT-2549 新增 Agent Skill
+    # 三表后 110 → 113
+    assert module.EXPECTED_TABLE_COUNT == 113
 
 
 def test_readme_lists_step():
