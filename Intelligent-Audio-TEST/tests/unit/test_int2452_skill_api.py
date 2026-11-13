@@ -16,6 +16,7 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 import pytest
 from fastapi.testclient import TestClient
 
+import agent_service.app as agent_app
 from agent_service.app import create_app
 from agent_service.application.run_worker import InlineRunExecutor
 from agent_service.infrastructure.wakeup import LocalRunWakeup
@@ -169,12 +170,24 @@ def test_skills_endpoint_surfaces_directory_level_issue(tmp_path):
         assert issue['skill'] == '' and issue['path']
 
 
-def test_health_reports_skill_load_summary(tmp_path, skills_root):
-    """INT-2506：/health 能看到装载了几个 Skill、几个问题、问题码。"""
+def test_health_reports_skill_load_summary(tmp_path, skills_root, monkeypatch):
+    """INT-2506：/health 能看到装载了几个 Skill、几个问题、问题码。
+
+    INT-2456 起 /health 改为真实探测 DB / Redis（DB 不可用 → 503 +
+    status=error）。本用例栈用 ``make_engine`` 建临时 sqlite，
+    ``shared.models.database.get_engine()`` 未初始化，真实探测必然失败；
+    这里按合并后的契约把两个探测桩为可用，断言 HTTP 状态与
+    ``checks.database`` 结论一致，再核对装载摘要。
+    """
+    monkeypatch.setattr(agent_app, '_probe_database', lambda: (True, ''))
+    monkeypatch.setattr(agent_app, '_probe_redis', lambda: (True, ''))
     stack = _stack(tmp_path, skills_root)
     with stack.client as client:
-        health = client.get('/health').json()
+        resp = client.get('/health')
+        assert resp.status_code == 200
+        health = resp.json()
         assert health['status'] == 'ok'
+        assert health['checks']['database']['status'] == 'ok'
         assert health['skills']['loaded'] >= 2
         assert health['skills']['issues'] == 0
         assert health['skills']['issue_codes'] == []
