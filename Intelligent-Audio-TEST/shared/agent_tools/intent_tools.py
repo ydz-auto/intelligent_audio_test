@@ -4,12 +4,14 @@
 按用户意图分组，不按 REST 1:1。全表 31 个（含 ``tool_search``、2 个记忆工具、
 3 个探索工具；业务意图工具 25 个），与方案 §6.1 表逐条对应。
 
-本卡（M0）只实现 3 个业务意图工具 + ``tool_search``：
+M0 实现 3 个业务意图工具 + ``tool_search``：
 
 - ``platform_contract``：平台口径（服务 / 接口前缀 / 枚举 / 权限码 / 工具 Schema）；
 - ``task_query``：任务只读子集（映射 MCP ``task_*`` 只读工具）；
 - ``report_query``：报告只读子集（映射 MCP ``report_*`` 只读工具）；
 - ``tool_search``：对 205 个 MCP 工具 + 意图工具建索引，按关键词返回 Schema。
+
+M1 各域卡按同一模式逐个启用：INT-2462 启用 ``evaluation_query``（评估域只读）。
 
 其余意图工具在本注册表**预留名称与 Schema**（``enabled=False``），调用返回
 ``TOOL_NOT_ENABLED``；实现分别归 M1 / M2 各域卡。预留名称进入 Skill
@@ -96,6 +98,15 @@ REPORT_QUERY_ACTIONS: Dict[str, str] = {
     'case_averages': 'report_case_averages',
 }
 
+# 评估只读动作 → MCP 工具名（INT-2462）。
+# 评分口径 / 可见性 / 输入输出参数都是维度详情的字段，不另设端点；
+# 健康探测与维度选项属维护 / UI 下拉数据源，M1 未开放为意图动作。
+EVALUATION_QUERY_ACTIONS: Dict[str, str] = {
+    'dimensions': 'evaluation_dimension_list',
+    'dimension': 'evaluation_dimension_get',
+    'categories': 'evaluation_category_list',
+}
+
 # 动作的必填参数（参数 Schema 无法表达的条件必填）
 ACTION_REQUIRED: Dict[str, Dict[str, Tuple[str, ...]]] = {
     'task_query': {
@@ -112,6 +123,9 @@ ACTION_REQUIRED: Dict[str, Dict[str, Tuple[str, ...]]] = {
         'progress': ('report_id',),
         'cases': ('report_id',),
         'case_averages': ('report_id',),
+    },
+    'evaluation_query': {
+        'dimension': ('dim_id',),
     },
 }
 
@@ -169,6 +183,25 @@ INTENT_TOOLS: List[IntentTool] = [
             'per_page': _prop('integer', '每页条数（list）'),
         }, required=('action',)),
         risk='READ', permissions=('report:read',), enabled=True, kind='intent_rest'),
+
+    # ---------------- M1 已实现（INT-2462 评估域只读） ----------------
+    IntentTool(
+        name='evaluation_query',
+        description=('评估只读查询：维度列表（可按分类 / 关键词过滤、分页）、'
+                     '维度详情（评分口径、可见性、输入输出参数、关联算法）、'
+                     '评估分类列表。字段口径与 REST /api/v1/evaluation 一致，'
+                     '评分口径解释必须引用接口返回原文，不得二次计算。'),
+        parameters=_schema({
+            'action': _prop('string', '查询动作', required=True,
+                            enum=list(EVALUATION_QUERY_ACTIONS)),
+            'dim_id': _prop('integer', '维度 ID（dimension 动作必填）'),
+            'category_id': _prop('integer', '分类 ID 过滤（dimensions）'),
+            'search': _prop('string', '关键词过滤（dimensions）'),
+            'page': _prop('integer', '页码（dimensions，默认 1）'),
+            'per_page': _prop('integer', '每页条数（dimensions）'),
+        }, required=('action',)),
+        risk='READ', permissions=('evaluation:read',), enabled=True,
+        kind='intent_rest'),
 
     # ---------------- 探索 / 记忆（预留，M1 / M2 实现） ----------------
     IntentTool(
@@ -300,15 +333,6 @@ INTENT_TOOLS: List[IntentTool] = [
             'body': _prop('object', '标签 / 分组字段'),
         }, required=('action', 'target_kind')),
         risk='WRITE', permissions=('tag:write',), enabled=False, kind='reserved'),
-    IntentTool(
-        name='evaluation_query', description='评估维度、分类、评分口径（只读）。',
-        parameters=_schema({
-            'action': _prop('string', '查询动作', required=True,
-                            enum=['dimensions', 'categories', 'scores']),
-            'task_id': _prop('integer', '任务 ID'),
-            'case_id': _prop('string', '用例 ID'),
-        }, required=('action',)),
-        risk='READ', permissions=('evaluation:read',), enabled=False, kind='reserved'),
     IntentTool(
         name='evaluation_manage', description='维度/分类 CRUD、触发重评估（写）。',
         parameters=_schema({
@@ -519,6 +543,7 @@ def required_for_action(name: str, action: str) -> Tuple[str, ...]:
 _REST_ACTION_MAP: Dict[str, Dict[str, str]] = {
     'task_query': TASK_QUERY_ACTIONS,
     'report_query': REPORT_QUERY_ACTIONS,
+    'evaluation_query': EVALUATION_QUERY_ACTIONS,
 }
 
 
@@ -537,8 +562,9 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
                       ) -> Tuple[Optional[dict], Optional[dict], Optional[str]]:
     """把意图工具 / 长尾 MCP 工具解析为 ``(MCP 工具, 合并参数, 错误文本)``。
 
-    - ``task_query`` / ``report_query``：按 ``action`` 映射到对应 MCP 只读工具，
-      去掉 ``action`` 后其余参数原样透传（路径 / 查询 / body 由共享构造器决定）；
+    - ``task_query`` / ``report_query`` / ``evaluation_query``：按 ``action``
+      映射到对应 MCP 只读工具，去掉 ``action`` 后其余参数原样透传（路径 /
+      查询 / body 由共享构造器决定）；
     - 其他 MCP 工具名（tool_search 命中后直接调用）：原样透传参数；
     - 未知名称或动作非法：返回错误文本，由 ToolGateway 收敛为普通失败结果。
     """
@@ -602,8 +628,9 @@ def _serialize_intent(tool: IntentTool) -> dict:
 
 
 __all__ = [
-    'ACTION_REQUIRED', 'ENABLED_TOOLS', 'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS',
-    'IntentTool', 'MCP_TOOLS', 'REPORT_QUERY_ACTIONS', 'TASK_QUERY_ACTIONS',
-    'TOOL_INDEX', 'TOOL_INDEX_BY_NAME', 'platform_contract', 'required_for_action',
+    'ACTION_REQUIRED', 'ENABLED_TOOLS', 'EVALUATION_QUERY_ACTIONS',
+    'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool', 'MCP_TOOLS',
+    'REPORT_QUERY_ACTIONS', 'TASK_QUERY_ACTIONS', 'TOOL_INDEX',
+    'TOOL_INDEX_BY_NAME', 'platform_contract', 'required_for_action',
     'resolve_rest_call', 'risk_of', 'tool_search', 'validate_arguments',
 ]
