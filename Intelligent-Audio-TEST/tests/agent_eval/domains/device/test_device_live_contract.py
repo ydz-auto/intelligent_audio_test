@@ -302,6 +302,51 @@ def test_live_filters_take_effect(live):
                    for item in filtered['items'])
 
 
+def test_live_algorithm_type_filter(live):
+    """INT-2548：``algorithm_type`` 过滤在真实库栈可用（REST + 工具层同口径）。
+
+    PG 上 JSON 列的 ``contains`` 曾退化为 ``json ~~ text`` → 400，并把 SQL
+    原文回灌模型。本用例锁住三件事：真实算法过滤 200 且行内都含该算法；
+    不存在的算法返回 200 空列表；工具层返回 OK、正文不含内部实现细节。
+    """
+    gateway, token = live
+    status, listed = _raw('/api/v1/test-devices?page=1&per_page=50', token)
+    assert status == 200 and listed['success'] is True
+    items = listed['data']['items']
+    algorithm_type = next(
+        (item['supported_algorithms'][0] for item in items
+         if item.get('supported_algorithms')), None)
+    if not algorithm_type:  # pragma: no cover
+        pytest.skip('库里没有带 supported_algorithms 的设备')
+
+    # REST：真实算法 → 200，返回行全部包含该算法
+    path = ('/api/v1/test-devices?page=1&per_page=50&algorithm_type='
+            + urllib.parse.quote(str(algorithm_type)))
+    status, filtered = _raw(path, token)
+    assert status == 200 and filtered['success'] is True, filtered
+    for item in filtered['data']['items']:
+        assert algorithm_type in item['supported_algorithms'], item
+
+    # REST：不存在的算法 → 200 空列表（不是 400）
+    status, empty = _raw(
+        '/api/v1/test-devices?algorithm_type=__no_such_algorithm__', token)
+    assert status == 200 and empty['success'] is True, empty
+    assert empty['data']['items'] == [] and empty['data']['total'] == 0
+
+    # 工具层：与 Agent 实际路径一致 → OK，且不泄漏内部实现细节
+    result = _execute(gateway, {'action': 'list',
+                                'algorithm_type': algorithm_type,
+                                'page': 1, 'per_page': 50})
+    assert result.ok, f'{result.error_code}: {result.content}'
+    payload = json.loads(result.content)
+    assert payload['success'] is True
+    for item in payload['data']['items']:
+        assert algorithm_type in item['supported_algorithms'], item
+    for leak in ('psycopg2', 'operator does not exist', 'LINE ', 'HINT',
+                 'supported_algorithms LIKE'):
+        assert leak not in result.content, f'内部实现细节泄漏：{leak}'
+
+
 def test_live_missing_mapping_semantics(live):
     gateway, _ = live
     result = _execute(gateway,

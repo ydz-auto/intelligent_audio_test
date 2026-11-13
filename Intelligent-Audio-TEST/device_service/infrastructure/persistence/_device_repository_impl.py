@@ -4,7 +4,11 @@
 P5+DOMAIN: 通过 PO ↔ Entity 显式转换，仓储方法返回 domain entities，
 聚合根不再持有 ORM 引用，领域层与 SQLAlchemy 完全隔离。
 """
+import json
 from typing import List, Optional
+
+from sqlalchemy import String, cast
+from sqlalchemy.dialects.postgresql import JSONB
 
 from shared.models.database import get_db_session
 from device_service.infrastructure.persistence.models import (
@@ -21,6 +25,30 @@ from device_service.infrastructure.persistence._device_serializers import (
     _device_to_dict,
 )
 from device_service.infrastructure.persistence._lab_resolver import resolve_lab_names
+
+
+def supported_algorithm_filter(session, algorithm_type: str):
+    """``supported_algorithms`` 数组包含某算法类型的过滤条件（INT-2548）。
+
+    ``Device.supported_algorithms`` 是 ``Column(JSON)``：JSON 列的 ``contains``
+    在 PostgreSQL 方言下退化为 ``json ~~ text`` 的 LIKE 文本比较，PG 没有该
+    操作符（``operator does not exist: json ~~ text``）→ 接口 400。因此按方言
+    分支：
+
+    - PostgreSQL：列值转 JSONB 后用 ``@>`` 精确匹配数组元素；
+    - 其他方言（SQLite 单测）：把列值转文本后按 JSON 字面量（``"asr"``，
+      与 ``json.dumps`` 的序列化口径一致）匹配，带引号避免 ``asr`` 命中
+      ``asr_stream``；不能直接用 JSON 列的 ``contains``——SQLite 上它按
+      ``%["asr"]%`` 匹配，只命中「数组恰好只有这一个元素」的行。
+
+    不改列类型（JSON → JSONB）：设备表结构变更需要生产库迁移，超出本缺陷
+    修复范围；转换只发生在查询表达式里，写入链路与存量数据都不受影响。
+    """
+    bind = session.get_bind()
+    if bind.dialect.name == 'postgresql':
+        return cast(Device.supported_algorithms, JSONB).contains([algorithm_type])
+    return cast(Device.supported_algorithms, String).contains(
+        json.dumps(algorithm_type))
 
 
 class DeviceRepository(DeviceRepositoryInterface):
@@ -123,7 +151,7 @@ class DeviceRepository(DeviceRepositoryInterface):
         if device_type:
             query = query.filter(Device.type == device_type)
         if algorithm_type:
-            query = query.filter(Device.supported_algorithms.contains([algorithm_type]))
+            query = query.filter(supported_algorithm_filter(session, algorithm_type))
         if lab_id:
             query = query.filter(Device.lab_id == lab_id)
 

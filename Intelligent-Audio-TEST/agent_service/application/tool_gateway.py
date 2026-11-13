@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from agent_service.application.memory_service import (
@@ -162,8 +163,34 @@ def _upstream_message(result) -> Optional[str]:
     if isinstance(payload, dict):
         message = payload.get('message')
         if isinstance(message, str) and message.strip():
-            return message.strip()
+            return _plain_upstream_text(message.strip())
     return None
+
+
+# 上游把内部实现细节写进响应（驱动异常、SQL 原文、PG 错误位置）时，模型
+# 上下文只该看到普通失败文案：psycopg2 异常 + SQL + HINT 回灌会让模型照着
+# 内部实现编造，也把库结构暴露给用户（INT-2523 P2-1 同型教训）。
+_INTERNAL_ERROR_PATTERN = re.compile(
+    r'psycopg2|sqlalchemy|operator does not exist|syntax error at or near'
+    r'|traceback \(most recent call last\)|(?:^|\n)\s*(?:LINE \d+:|HINT:)',
+    re.IGNORECASE)
+_INTERNAL_ERROR_TEXT = '服务内部错误，请稍后重试或联系管理员。'
+# 普通上游正文的长度上界：错误信息只需帮模型判断「该改参数还是该换接口」
+_MAX_UPSTREAM_TEXT = 500
+
+
+def _plain_upstream_text(text: Optional[str]) -> str:
+    """上游正文脱敏：内部实现细节收敛为普通文案，普通正文截断到可读长度。"""
+    body = (text or '').strip()
+    if _INTERNAL_ERROR_PATTERN.search(body):
+        return _INTERNAL_ERROR_TEXT
+    return body[:_MAX_UPSTREAM_TEXT]
+
+
+def _upstream_error_text(status: int, text: Optional[str]) -> str:
+    """``目标接口返回 <status>：<脱敏后的上游正文>`` 的统一拼装。"""
+    plain = _plain_upstream_text(text)
+    return f'目标接口返回 {status}：{plain}' if plain else f'目标接口返回 {status}'
 
 
 def _envelope_items(payload: Optional[dict]):
@@ -543,7 +570,7 @@ class SharedToolGateway(ToolGateway):
                            result.status, tool['name'])
             return None, self._fail(
                 call, UPSTREAM_ERROR,
-                f'目标接口返回 {result.status}：{result.text}')
+                _upstream_error_text(result.status, result.text))
         return True, None
 
     def _fetch_payload(self, call: ToolCallRequest, name: str,
@@ -887,12 +914,13 @@ class SharedToolGateway(ToolGateway):
         if result.status == 0:
             return None, f'目标服务不可用：{result.error}', 0
         if result.status >= 400:
-            return None, f'目标接口返回 {result.status}：{result.text}', \
+            return None, _upstream_error_text(result.status, result.text), \
                 result.status
         if not isinstance(result.payload, dict):
             return None, '目标接口返回非 JSON 对象', result.status
         if result.payload.get('success') is False:
-            return None, str(result.payload.get('message') or '目标接口返回失败'), \
+            return None, _plain_upstream_text(
+                str(result.payload.get('message') or '目标接口返回失败')), \
                 result.status
         return result.payload.get('data'), None, result.status
 
@@ -938,12 +966,13 @@ class SharedToolGateway(ToolGateway):
             return self._fail(call, RESOURCE_NOT_FOUND, text)
         if result.status == 422:
             return self._fail(call, INVALID_ARGUMENTS,
-                              f'目标接口参数校验失败：{result.text}')
+                              f'目标接口参数校验失败：'
+                              f'{_plain_upstream_text(result.text)}')
         if result.status >= 400:
             logger.warning('ToolGateway 回源 %s 失败 tool=%s target=%s',
                            result.status, call.name, name)
             return self._fail(call, UPSTREAM_ERROR,
-                              f'目标接口返回 {result.status}：{result.text}')
+                              _upstream_error_text(result.status, result.text))
         return None
 
     # ------------------------------------------------------------ helpers
