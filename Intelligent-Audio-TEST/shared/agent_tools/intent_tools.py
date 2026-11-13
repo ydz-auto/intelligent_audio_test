@@ -176,6 +176,11 @@ ALGORITHM_QUERY_ACTIONS: Dict[str, str] = {
     'dimension_params': 'algorithm_dimension_params',
 }
 
+# 算法定义列表的网关查询 Schema 只有 status / group_id
+# （api_gateway/schemas/_algorithm_param_schemas.py AlgorithmListQuery，基类
+# APIModel ``extra='ignore'``）：其余过滤参数会被静默丢弃。
+ALGORITHM_DEFINITIONS_FILTERS: Tuple[str, ...] = ('status', 'group_id')
+
 # 算法定义状态 / 参数作用域 / 映射源类型的接口取值见
 # ``contract.ALGORITHM_*``（平台口径单一事实源），此处不再重复字面量。
 
@@ -227,14 +232,22 @@ ACTION_REQUIRED: Dict[str, Dict[str, Tuple[str, ...]]] = {
 
 # 条件必填：同一动作下，某参数出现（或取到某值）时连带必填的参数。
 # 结构：tool -> action -> ((触发参数, 触发值 | '*', 连带必填), ...)；
-# '*' 表示「该参数出现即触发」。事实源为网关侧校验：
-# - AlgorithmQueryService.list_params：param_type=api 必须带 api_id；
-#   带 device_id 时必须带 algorithm_type 且 param_type 必须是 device。
-# - list_mappings：device_id 需要 algorithm_type 定位算法行。
+# '*' 表示「该参数出现即触发」。
+# params 的三条护栏分两类：
+# - param_type=api 必须带 api_id、device_id 必须带 algorithm_type 是网关校验，
+#   缺参网关直接 400，工具层提前拦下省一次调用；
+# - api_id 出现即要求 param_type：缺 param_type 时网关**不报错**，按默认
+#   device 走算法级列表并静默忽略 api_id，返回的不是 API 作用域行。
+# 取值冲突（param_type 非 api / 非 device）的详细报错见
+# ``_normalize_algorithm_query_arguments``。
+# mappings 的 device_id → algorithm_type 也只是工具层护栏：网关对不带
+# algorithm_type 的 /mappings?device_id= 返回 200 + 空数组，**不会报错**，
+# 放过去模型会把「没查到」当成「设备没有映射」。
 CONDITIONAL_REQUIRED: Dict[str, Dict[str, Tuple[Tuple[str, str, Tuple[str, ...]], ...]]] = {
     'algorithm_query': {
         'params': (
             ('param_type', 'api', ('api_id',)),
+            ('api_id', '*', ('param_type',)),
             ('device_id', '*', ('algorithm_type',)),
         ),
         'mappings': (
@@ -492,7 +505,9 @@ INTENT_TOOLS: List[IntentTool] = [
             'action': _prop('string', '查询动作', required=True,
                             enum=list(ALGORITHM_QUERY_ACTIONS)),
             'algo_type': _prop('string', '算法类型（如 voice_llm；取值以 options 动作为准）'),
-            'algorithm_type': _prop('string', '算法类型过滤（列表 / 参数 / 映射 / 参考参数用）'),
+            'algorithm_type': _prop('string', '算法类型过滤（params / mappings / '
+                                               'reference_params / case_params 用；'
+                                               'definitions 不支持，只认 status / group_id）'),
             'param_id': _prop('integer', '参数 ID（param / reference_param / case_param 必填）'),
             'group_id': _prop('integer', '算法分组 ID（group 必填）'),
             'dimension_id': _prop('integer', '评估维度 ID（dimension_params 必填）'),
@@ -500,7 +515,8 @@ INTENT_TOOLS: List[IntentTool] = [
                             enum=list(platform_contract_catalog.ALGORITHM_STATUS_VALUES)),
             'param_type': _prop('string', '参数作用域（params；缺省 device）',
                                 enum=list(platform_contract_catalog.ALGORITHM_PARAM_TYPE_VALUES)),
-            'api_id': _prop('integer', 'API 实例 ID（param_type=api 或 API 作用域映射）'),
+            'api_id': _prop('integer', 'API 实例 ID（params 必须同时给 param_type=api，'
+                                       '否则网关静默忽略；映射用于 API 作用域行）'),
             'device_id': _prop('integer', '设备 ID（设备作用域参数 / 映射）'),
             'source_type': _prop('string', '映射源类型（mappings）',
                                  enum=list(platform_contract_catalog.ALGORITHM_MAPPING_SOURCE_VALUES)),
@@ -810,6 +826,38 @@ def _normalize_audio_query_arguments(action: str,
     return None
 
 
+def _normalize_algorithm_query_arguments(action: str,
+                                        merged: Dict[str, Any]
+                                        ) -> Optional[str]:
+    """按动作校验 algorithm_query 参数，返回错误文本或 None。
+
+    网关查询 Schema 基类 ``extra='ignore'``：不认识的参数被静默丢弃，
+    不会报错。工具层必须拦下「传了但不会生效」的组合，否则模型会把
+    算法级 / 未过滤的结果当成目标作用域的回答。
+
+    - ``definitions``：网关只认 ``status`` / ``group_id``，``algorithm_type``
+      静默无效（``/definitions?algorithm_type=asr`` 仍返回全量）；
+    - ``params``：``api_id`` 只在 ``param_type=api`` 时生效，``device_id``
+      只在 ``param_type=device`` 时生效（网关对后者的冲突组合直接 400）。
+    """
+    if action == 'definitions' and merged.get('algorithm_type') is not None:
+        supported = ' / '.join(ALGORITHM_DEFINITIONS_FILTERS)
+        return (f'action=definitions 不支持 algorithm_type 过滤（网关只支持 {supported}，'
+                '其余参数会被静默忽略）；需要按算法类型过滤请对返回行自行筛选')
+
+    if action == 'params':
+        param_type = merged.get('param_type')
+        if merged.get('api_id') is not None and param_type != 'api':
+            current = f'param_type={param_type}' if param_type else '未传 param_type'
+            return ('参数 api_id 只在 param_type=api 时生效（当前 '
+                    f'{current}），网关会静默忽略 api_id 并返回算法级原始行。'
+                    '正确用法：param_type=api&api_id=<id>（可带 algorithm_type）')
+        if merged.get('device_id') is not None and param_type not in (None, 'device'):
+            return (f'参数 device_id 只支持 param_type=device（当前 param_type={param_type}）。'
+                    '查 API 实例作用域请用 param_type=api&api_id=<id>')
+    return None
+
+
 def resolve_rest_call(name: str, arguments: Dict[str, Any]
                       ) -> Tuple[Optional[dict], Optional[dict], Optional[str]]:
     """把意图工具 / 长尾 MCP 工具解析为 ``(MCP 工具, 合并参数, 错误文本)``。
@@ -837,6 +885,10 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
         merged = {k: v for k, v in arguments.items() if k != 'action'}
         if name == 'audio_query':
             normalize_error = _normalize_audio_query_arguments(action, merged)
+            if normalize_error:
+                return None, None, normalize_error
+        if name == 'algorithm_query':
+            normalize_error = _normalize_algorithm_query_arguments(action, merged)
             if normalize_error:
                 return None, None, normalize_error
         return mcp, merged, None
