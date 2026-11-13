@@ -40,10 +40,11 @@ def destructive_tool(name='device_control'):
         permissions=('device:control',), enabled=True)
 
 
-def make_container(tmp_path, llm, gateway=None, name='agent_write.db'):
+def make_container(tmp_path, llm, gateway=None, name='agent_write.db',
+                   **kwargs):
     container, engine, session_factory = build_stack(
         tmp_path / name, llm, gateway=gateway,
-        executor_factory=inline_executor)
+        executor_factory=inline_executor, **kwargs)
     return container, engine, session_factory
 
 

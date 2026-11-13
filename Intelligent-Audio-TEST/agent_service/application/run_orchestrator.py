@@ -273,6 +273,9 @@ class RunOrchestrator:
         soft_limit = context_budget.soft_threshold
         hard_limit = context_budget.hard_threshold
         started_at = run.started_at or utcnow()
+        # §9.3：等人工审批的时长不计入执行预算（否则 TTL 内的正常审批会把
+        # 15 分钟执行预算耗尽，run 在恢复时被判 BUDGET_EXCEEDED）。
+        approval_wait = self._approval_wait_seconds(run_id)
         rounds = self._steps.next_index(run_id)
         output_bytes = 0
         turn = self._next_turn(run_id)
@@ -314,7 +317,8 @@ class RunOrchestrator:
                 self._finish(run_id, RunStatus.BUDGET_EXCEEDED,
                              reason='max_tokens')
                 return
-            elapsed = (utcnow() - started_at).total_seconds()
+            elapsed = ((utcnow() - started_at).total_seconds()
+                       - approval_wait)
             if budget.check_duration(elapsed):
                 self._finish(run_id, RunStatus.BUDGET_EXCEEDED,
                              reason='max_duration_seconds')
@@ -1108,6 +1112,26 @@ class RunOrchestrator:
             result_code=APPROVAL_REQUIRED,
             error=None)
         return approval
+
+    def _approval_wait_seconds(self, run_id: str) -> float:
+        """等待人工审批的累计时长（秒）：不计入 §9.3 执行时长预算。
+
+        按审批单 ``created_at → decided_at`` 累计；未决单算到当前时刻，过期
+        单算到 ``expires_at``（取消作废的单有 decided_at）。
+        """
+        now = utcnow()
+        total = 0.0
+        for approval in self._approvals.list_for_run(run_id):
+            if approval.created_at is None:
+                continue
+            end = approval.decided_at
+            if end is None:
+                if approval.status is ApprovalStatus.PENDING:
+                    end = now
+                else:
+                    end = approval.expires_at or approval.updated_at or now
+            total += max(0.0, (end - approval.created_at).total_seconds())
+        return total
 
     def _turn_for_call(self, run_id: str, tool_call_id: str) -> int:
         """从 tool_call 事件取调用所属轮次（崩溃恢复补事件分组用）。"""

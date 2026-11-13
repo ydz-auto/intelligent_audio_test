@@ -222,6 +222,49 @@ def _expire_now(container, approval_id):
 
 # ---------------------------------------------------------------- 取消
 
+def test_approval_wait_does_not_consume_duration_budget(tmp_path):
+    """等待人工审批的时间不计入 §9.3 执行时长预算。"""
+    from datetime import timedelta
+
+    from agent_service.infrastructure.persistence.models.agent_models import (
+        AgentApproval as AgentApprovalPO,
+        AgentRun as AgentRunPO,
+    )
+    from shared.utils.time_utils import utcnow
+    from tests.unit.int2451_agent_fakes import server_budget
+
+    call = ToolCallRequest(tool_call_id='c1', name='task_create',
+                           arguments={'body': {'name': '接线任务'}})
+    llm = FakeLlm([tool_turn([call]), text_turn('已完成')])
+    gateway = FakeToolGateway(tools=[write_tool('task_create')])
+    container, _engine, _sf = make_container(
+        tmp_path, llm, gateway,
+        budget_defaults=server_budget(max_duration_seconds=10))
+    run = start_run(container)
+    approval = pending_approval(container, run.id)
+
+    # 模拟「run 已跑 30s、其中 29s 在等审批」：执行时长只剩 1s
+    now = utcnow()
+    session = container.repositories['approvals']._session_factory()  # noqa: SLF001
+    try:
+        session.query(AgentRunPO).filter(AgentRunPO.id == run.id).update(
+            {'started_at': now - timedelta(seconds=30)},
+            synchronize_session=False)
+        session.query(AgentApprovalPO).filter(
+            AgentApprovalPO.id == approval.id).update(
+                {'created_at': now - timedelta(seconds=29)},
+                synchronize_session=False)
+        session.commit()
+    finally:
+        session.close()
+
+    decide(container, approval.id, 'APPROVE', permissions=('task:execute',))
+    container.executor.submit(run.id)
+    stored = container.repositories['runs'].get(run.id)
+    assert stored.status is RunStatus.SUCCEEDED, stored.error
+    assert len(gateway.executed) == 1
+
+
 def test_cancel_while_waiting_voids_pending_approval(tmp_path):
     container, _llm, gateway, run = _write_scenario(tmp_path)
     approval = pending_approval(container, run.id)
