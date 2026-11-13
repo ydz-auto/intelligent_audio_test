@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 
+from agent_service.domain.model.skill import SKILL_FILE_NAME
 from shared.config.service_ports import AGENT_SERVICE_HTTP_PORT, API_GATEWAY_PORT
 from shared.infrastructure.config import BaseConfig, _get_bool, _get_float, _get_int
 
@@ -196,7 +197,12 @@ class Config(BaseConfig):
     TOOL_CREDENTIAL_TTL_SECONDS = _get_int(
         'AGENT_TOOL_CREDENTIAL_TTL_SECONDS', 3600)
 
-    # ===== 重启恢复（§9.2）=====
+    # ===== 总开关（INT-2529，与网关同源）=====
+    # 只用于启动期恢复投递门控：关闭态不产生任何后台 run（网关入口门控不变，
+    # 刻意不新增第二个开关名，避免形成第二套语义）。缺省与网关一致：关闭。
+    AGENT_ENABLED = _get_bool('AGENT_ENABLED', False)
+
+    # ===== 重启恢复（§9.2；仅总开关开启时生效）=====
     RECOVERY_ON_STARTUP = _get_bool('AGENT_RECOVERY_ON_STARTUP', True)
 
     # ===== T1 沙箱接线（INT-2495；执行器参数仍由 AGENT_SANDBOX_* 单一读取）=====
@@ -271,6 +277,18 @@ class Config(BaseConfig):
             problems.append(f'skills 目录不存在：{skills}（应只读挂载 ../skills）')
         elif not os.access(str(skills), os.R_OK):
             problems.append(f'skills 目录不可读：{skills}')
+        else:
+            # INT-2529：Docker 对不存在的 bind 源会自动创建空目录，只判
+            # is_dir() 会把「零 Skill」静默放行。以 platform-reference 作哨兵，
+            # 至少要求一个合法 SKILL.md 真实可读。
+            sentinel = skills / 'platform-reference' / SKILL_FILE_NAME
+            if not sentinel.is_file():
+                problems.append(
+                    f'skills 目录没有可用的 {SKILL_FILE_NAME}：{skills}'
+                    f'（至少需 platform-reference/{SKILL_FILE_NAME}；'
+                    '空目录多因 bind 源缺失被 Docker 自动创建）')
+            elif not os.access(str(sentinel), os.R_OK):
+                problems.append(f'Skill 哨兵文件不可读：{sentinel}')
         catalog = Path(cls.model_catalog_path())
         if not catalog.is_file():
             problems.append(f'模型目录文件不存在：{catalog}')

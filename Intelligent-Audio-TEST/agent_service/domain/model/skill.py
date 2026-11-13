@@ -14,6 +14,9 @@
 from dataclasses import dataclass, field
 from typing import Dict, Mapping, Optional, Tuple
 
+# Skill 目录内的正文文件名（唯一事实源；扫描与部署校验共用，INT-2529）
+SKILL_FILE_NAME = 'SKILL.md'
+
 # frontmatter 契约字段（§4.2）。缺 name / description 视为无效 Skill。
 FIELD_NAME = 'name'
 FIELD_DESCRIPTION = 'description'
@@ -100,6 +103,7 @@ __all__ = [
     'FIELD_BUDGETS', 'FIELD_DESCRIPTION', 'FIELD_NAME', 'FIELD_OWNER',
     'FIELD_PERMISSIONS', 'FIELD_VERSION', 'REQUIRED_SECTIONS',
     'SECTION_ACCEPTANCE', 'SECTION_GOTCHAS', 'SKILL_DISCLOSURE_L1',
-    'SKILL_DISCLOSURE_L2', 'SKILL_DISCLOSURE_L3', 'Skill', 'SkillMeta',
+    'SKILL_DISCLOSURE_L2', 'SKILL_DISCLOSURE_L3', 'SKILL_FILE_NAME',
+    'Skill', 'SkillMeta',
     'WILDCARD_PERMISSION',
 ]

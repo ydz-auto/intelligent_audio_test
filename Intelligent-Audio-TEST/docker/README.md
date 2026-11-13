@@ -301,11 +301,19 @@ compose 新增 `agent_service`（`docker/Dockerfile.agent_service`），依赖
 - **不发布宿主端口**（与 `api_test_service` 同口径）：它只消费网关转发的
   `X-User-Id` / `X-Tenant-Id` / `X-User-Permissions`，暴露到宿主等于把身份头
   变成可伪造的授权入口。健康探测经 `run_stack.py` 的容器内 exec 完成。
-- **总开关 `AGENT_ENABLED`（缺省 false）**：网关是唯一执行点。关闭时
+- **总开关 `AGENT_ENABLED`（缺省 false）**：网关是唯一入口执行点。关闭时
   `/api/v1/agent` 的会话 / Run / 事件 / 审批 / skills / provider 接口返回
   `503 {"detail":{"code":"AGENT_DISABLED",...}}` 且不转发上游；任务、用例、
   报告等人工流程不经过这些路由，完全不受影响。开启只需在 `docker/.env` 置
-  `AGENT_ENABLED=true` 并重建 `api_gateway` 容器。
+  `AGENT_ENABLED=true` 并重建 `api_gateway` 容器。同一开关也传入
+  `agent_service`，但**只用于启动期恢复投递门控**（INT-2529）：关闭时
+  `recovery.recover()` 与对应 `executor.submit` 一律跳过，保证「关闭态不产生
+  任何后台 run」；不新增第二个开关名，也不形成第二套语义。
+- **网络隔离（INT-2529）**：`agent_service` 不加入默认网络，只连
+  `agent_internal`（`internal: true`，成员仅 `api_gateway` / `postgres` /
+  `redis`）与 `agent_egress`（仅本服务，用于访问用户自带的集群外 LLM 供应商）。
+  其余业务容器因此无法凭 `X-User-Id` 头绕过网关直连建 run；新增被 agent 依赖
+  的容器需同时加入 `agent_internal`。
 - **三个挂载点**（缺一即启动失败，`Config.validate_mounts`）：
 
   | 容器路径 | 来源 | 读写 |
@@ -313,6 +321,11 @@ compose 新增 `agent_service`（`docker/Dockerfile.agent_service`），依赖
   | `/app/skills` | `../skills` | ro（Skill 单一事实源） |
   | `/app/memory` | 命名卷 `agent_memory` | rw（长期记忆，按 tenant/owner 隔离） |
   | `/app/agent_service/config` | `../agent_service/config` | ro（模型目录/预算/压缩阈值） |
+
+  `skills/` 还必须是**非空**的合法技能目录：以 `platform-reference/SKILL.md`
+  作哨兵（INT-2529）。Docker 对不存在的 bind 源会自动创建空目录，只判
+  `is_dir()` 会让「零 Skill」静默通过；空目录或只剩非 `SKILL.md` 文件时启动
+  明确失败，`SkillRegistry` 同样 fail-fast 报 `EMPTY_SKILLS_ROOT`。
 
 - **`/health`**：DB 不可用 → 503（无法读写 run/event）；Redis 不可用 →
   200 + `degraded`（只影响 SSE 唤醒，已退化为轮询）；`t2_runtime` 字段给出

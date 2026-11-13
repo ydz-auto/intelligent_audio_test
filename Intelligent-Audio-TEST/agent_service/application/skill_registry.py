@@ -63,13 +63,19 @@ class SkillRegistry:
     # ------------------------------------------------------------ loading
 
     def load(self) -> 'SkillRegistry':
-        """重新扫描并校验。严格模式下有任何问题直接抛异常（启动失败）。"""
+        """重新扫描并校验。严格模式下有任何问题直接抛异常（启动失败）。
+
+        目录级失败（根目录缺失 / 不可读 / 为空、目录缺 SKILL.md）由仓储层
+        带回原因码（INT-2506），统一收进 issues。
+
+        INT-2529：仓库一个 Skill 都没装到（空目录 / 缺 SKILL.md）属部署级
+        故障，与 ``strict`` 无关一律 fail-fast —— Docker 对不存在的 bind 源
+        会自动创建空目录，只读挂载静默变「零 Skill」不能等到运行期才发现。
+        """
         issues: List[SkillIssue] = []
         accepted: List[Skill] = []
         seen: Set[str] = set()
         scan = self._repository.load_all()
-        # 目录级失败（根目录缺失 / 不可读 / 为空、目录缺 SKILL.md）：INT-2506
-        # 统一收进 issues，不再只留在仓储层日志里。
         for scan_issue in scan.issues:
             issues.append(SkillIssue(
                 code=scan_issue.code,
@@ -115,6 +121,10 @@ class SkillRegistry:
             (logger.error if errors else logger.warning)(
                 'Skill 装载结果为空：0 个可用 Skill / %d 个问题，'
                 'skills 目录是否挂载正确？', len(self._issues))
+        if not scan.skills:
+            # INT-2529：空目录不是「某个 Skill 不合法」，而是部署配置错误：
+            # 非 strict 也失败（Docker 对缺失 bind 源会自动建空目录）。
+            raise SkillValidationError(self._issues)
         return self
 
     @property

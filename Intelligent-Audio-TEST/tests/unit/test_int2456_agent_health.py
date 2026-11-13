@@ -141,11 +141,47 @@ def test_probe_redis_reports_failure(monkeypatch):
 def _mounts(tmp_path):
     skills = tmp_path / 'skills'
     skills.mkdir()
+    # INT-2529：空 skills 目录不再是合法布局，哨兵必须是合法的 SKILL.md。
+    sentinel = skills / 'platform-reference'
+    sentinel.mkdir()
+    (sentinel / 'SKILL.md').write_text(
+        '---\nname: platform-reference\ndescription: 测试哨兵\n---\n\n'
+        '# platform-reference\n\n## Gotchas\n\n- 无\n\n## 验收\n\n- 无\n',
+        encoding='utf-8')
     memory = tmp_path / 'memory'
     memory.mkdir()
     catalog = tmp_path / 'model_catalog.json'
     catalog.write_text('{}', encoding='utf-8')
     return skills, memory, catalog
+
+
+def test_validate_mounts_rejects_empty_skills_dir(monkeypatch, tmp_path):
+    """卡面验收 4：空目录（bind 源缺失被 Docker 自动创建）→ 启动失败。"""
+    _skills, memory, catalog = _mounts(tmp_path)
+    empty = tmp_path / 'empty-skills'
+    empty.mkdir()
+    monkeypatch.setattr(Config, 'SKILLS_ROOT', str(empty))
+    monkeypatch.setattr(Config, 'MEMORY_ROOT', str(memory))
+    monkeypatch.setattr(Config, 'MODEL_CATALOG_PATH', str(catalog))
+    with pytest.raises(RuntimeError) as exc:
+        Config.validate_mounts()
+    assert 'SKILL.md' in str(exc.value)
+
+
+def test_validate_mounts_rejects_skills_dir_without_skill_md(
+        monkeypatch, tmp_path):
+    """只有非 SKILL.md 文件同样视为零 Skill，不能静默放行。"""
+    _skills, memory, catalog = _mounts(tmp_path)
+    only_other = tmp_path / 'other-skills'
+    (only_other / 'platform-reference').mkdir(parents=True)
+    (only_other / 'platform-reference' / 'README.md').write_text(
+        'not a skill', encoding='utf-8')
+    monkeypatch.setattr(Config, 'SKILLS_ROOT', str(only_other))
+    monkeypatch.setattr(Config, 'MEMORY_ROOT', str(memory))
+    monkeypatch.setattr(Config, 'MODEL_CATALOG_PATH', str(catalog))
+    with pytest.raises(RuntimeError) as exc:
+        Config.validate_mounts()
+    assert 'SKILL.md' in str(exc.value)
 
 
 def test_validate_mounts_accepts_complete_layout(monkeypatch, tmp_path):

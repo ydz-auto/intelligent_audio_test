@@ -139,25 +139,27 @@ def test_directory_scan_lists_references_scripts_assets(tmp_path):
     assert skill.references == ('references/notes.md',)
 
 
-def test_missing_skills_root_reports_reason_code_not_fatal(tmp_path):
-    """INT-2506：根目录不存在不再静默——带原因码，进程不崩。"""
-    registry = _registry(tmp_path / 'nope')
-    assert registry.skills == ()
-    assert _codes(registry) == {SkillIssueCode.SKILLS_ROOT_MISSING}
-    issue = registry.issues[0]
+def test_missing_skills_root_reports_reason_code_and_fails_fast(tmp_path):
+    """INT-2506 + INT-2529：根目录不存在要带原因码，且零 Skill 一律启动失败。"""
+    with pytest.raises(SkillValidationError) as exc:
+        _registry(tmp_path / 'nope')
+    issues = exc.value.issues
+    assert [i.code for i in issues] == [SkillIssueCode.SKILLS_ROOT_MISSING]
+    issue = issues[0]
     assert issue.severity is SkillIssueSeverity.ERROR
     assert issue.skill == ''
     assert issue.path.endswith('nope')
 
 
-def test_empty_skills_root_reports_reason_code(tmp_path):
-    """INT-2506：skills 目录存在但为空 = 独立原因码，不是「0 个可用」INFO。"""
+def test_empty_skills_root_reports_reason_code_and_fails_fast(tmp_path):
+    """INT-2506 + INT-2529：目录存在但为空 = 独立原因码，且非 strict 也失败。"""
     root = tmp_path / 'skills'
     root.mkdir()
-    registry = _registry(root)
-    assert registry.skills == ()
-    assert _codes(registry) == {SkillIssueCode.SKILLS_ROOT_EMPTY}
-    assert registry.issues[0].path == str(root)
+    with pytest.raises(SkillValidationError) as exc:
+        _registry(root)
+    issues = exc.value.issues
+    assert [i.code for i in issues] == [SkillIssueCode.SKILLS_ROOT_EMPTY]
+    assert issues[0].path == str(root)
 
 
 def test_directory_without_skill_file_reports_reason_code(tmp_path):
@@ -173,8 +175,19 @@ def test_directory_without_skill_file_reports_reason_code(tmp_path):
     assert issue.path.endswith('no-skill-md')
 
 
+def test_skills_dir_with_only_non_skill_md_fails_fast(tmp_path):
+    """INT-2529：目录里只有 README 之类的非 Skill，等同零 Skill，启动即失败。"""
+    directory = tmp_path / 'platform-reference'
+    directory.mkdir()
+    (directory / 'README.md').write_text('not a skill', encoding='utf-8')
+    with pytest.raises(SkillValidationError) as exc:
+        _registry(tmp_path)
+    assert SkillIssueCode.SKILL_FILE_MISSING in {i.code
+                                                 for i in exc.value.issues}
+
+
 def test_unreadable_skills_root_reports_reason_code(tmp_path, monkeypatch):
-    """INT-2506：根目录不可读转成原因码，不再一路冒到启动失败。"""
+    """INT-2506 + INT-2529：根目录不可读转成原因码，零 Skill 一律启动失败。"""
     from agent_service.infrastructure.skill import fs_skill_repository
 
     real_listdir = os.listdir
@@ -185,9 +198,10 @@ def test_unreadable_skills_root_reports_reason_code(tmp_path, monkeypatch):
         return real_listdir(path)
 
     monkeypatch.setattr(fs_skill_repository.os, 'listdir', _denied)
-    registry = _registry(tmp_path)
-    assert registry.skills == ()
-    assert _codes(registry) == {SkillIssueCode.SKILLS_ROOT_UNREADABLE}
+    with pytest.raises(SkillValidationError) as exc:
+        _registry(tmp_path)
+    assert [i.code for i in exc.value.issues] == [
+        SkillIssueCode.SKILLS_ROOT_UNREADABLE]
 
 
 def test_directory_level_issue_fails_startup_in_strict_mode(tmp_path):
@@ -195,12 +209,13 @@ def test_directory_level_issue_fails_startup_in_strict_mode(tmp_path):
         _registry(tmp_path / 'nope', strict=True)
 
 
-def test_zero_usable_skills_logs_warning(tmp_path, caplog):
-    """INT-2506：0 个可用 Skill 至少 WARNING（原来只有 INFO）。"""
+def test_zero_usable_skills_logs_error_before_failing(tmp_path, caplog):
+    """INT-2506：0 个可用 Skill 不能只留 INFO；INT-2529：随后启动失败。"""
     root = tmp_path / 'skills'
     root.mkdir()
     with caplog.at_level(logging.WARNING):
-        _registry(root)
+        with pytest.raises(SkillValidationError):
+            _registry(root)
     assert any('0 个可用 Skill' in record.getMessage()
                and record.levelno >= logging.WARNING
                for record in caplog.records)

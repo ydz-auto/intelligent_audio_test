@@ -45,6 +45,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # INT-2529：同时加入 agent 内部网络，供 agent_service 直连（其不入默认网络）。
+    networks:
+      - default
+      - agent_internal
     logging:
       driver: json-file
       options:
@@ -61,6 +65,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - default
+      - agent_internal
 
   # ==================== 数据库结构引导 job（一次性，门控后端服务启动）====================
   # 全新库初始化链（scripts/migrations/README.md）：建表 → 202608 结构 + RBAC 种子 →
@@ -215,6 +222,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    # INT-2529：网关是 agent_service 的唯一入站方（默认网络 + agent 内部网络）。
+    networks:
+      - default
+      - agent_internal
 
   task_service:
     restart: unless-stopped
@@ -553,7 +564,8 @@ services:
   # compose.override.yml 里对单实例追加 ports 映射。
   #
   # 总开关在网关（AGENT_ENABLED，缺省 false）：本服务随之常驻但不可达，
-  # 关闭态不产生任何后台 run，人工业务流程零影响。
+  # 关闭态不产生任何后台 run，人工业务流程零影响。agent_service 也消费同一个
+  # 开关，但只用于启动期恢复投递门控（INT-2529），不新增第二个开关名。
   agent_service:
     restart: unless-stopped
     build:
@@ -592,6 +604,9 @@ services:
       # ===== 身份（网关转发身份头；直连无头一律 401）=====
       - AGENT_AUTH_REQUIRED=true
       - AGENT_DEFAULT_TENANT_ID=${AGENT_DEFAULT_TENANT_ID:-default}
+      # 总开关同源传入（INT-2529）：仅门控启动期恢复投递，关闭态不产生任何
+      # 后台 run；网关入口门控仍是唯一入口执行点。
+      - AGENT_ENABLED=${AGENT_ENABLED:-false}
       # ===== LLM 运行时（供应商/模型由用户自带，§6.4；此处只有运行时参数）=====
       - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-60}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.2}
@@ -604,6 +619,7 @@ services:
       - AGENT_WORKER_CONCURRENCY=${AGENT_WORKER_CONCURRENCY:-4}
       # ===== SSE 唤醒 / 启动恢复 =====
       - AGENT_EVENT_WAKEUP_BACKEND=${AGENT_EVENT_WAKEUP_BACKEND:-redis}
+      # 启动恢复只在总开关开启时生效（INT-2529：关闭态不产生任何后台 run）。
       - AGENT_RECOVERY_ON_STARTUP=${AGENT_RECOVERY_ON_STARTUP:-true}
       # ===== 沙箱（§7；agent_service 不持有 docker.sock）=====
       # runner_http：执行只经独立 runner/sidecar（AGENT_SANDBOX_RUNNER_URL）；
@@ -614,6 +630,11 @@ services:
       # T2 可信运行时（gVisor runsc / Firecracker）：缺失时 T2 请求报
       # T2_RUNTIME_UNAVAILABLE，绝不静默降级 T1（方案 07 §7，INT-2456 拍板#2）。
       - AGENT_T2_RUNTIME=${AGENT_T2_RUNTIME:-runsc}
+      # ===== 意图工具回源（INT-2529）=====
+      # 工具经网关 REST 执行。容器内 agent_service 监听 5011 而非 5000，缺省回落
+      # http://127.0.0.1:5000 会把每次工具调用打到容器自身（ConnectError），
+      # 而容器启动与 /health 全程正常——必须在编排层显式指向网关服务名。
+      - AGENT_TOOL_GATEWAY_BASE_URL=http://api_gateway:5000
     volumes:
       # skills/ 顶层只读（§12.1「skills/ 顶层只读挂载」）：Skill 单一事实源，
       # 任何容器内写入都是缺陷，故 ro。
@@ -639,6 +660,13 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    # INT-2529：只加入专用内部网络，不挂默认网络 —— 其余业务容器无法凭
+    # X-User-Id 头绕过网关开关直连建 run（agent_service 只信网关注入的身份）。
+    # agent_egress 仅承载出网（用户自带 LLM 供应商在集群外），成员只有本服务，
+    # 不构成第二条入站路径。新增被 agent 依赖的容器需同时加入 agent_internal。
+    networks:
+      - agent_internal
+      - agent_egress
     logging:
       driver: json-file
       options:
@@ -730,3 +758,15 @@ volumes:
   rustfs_data:
   # 网关 ↔ task_service 数据导入/导出 ZIP 中转卷（INT-25 链路依赖）
   data_transfer_tmp:
+
+networks:
+  # 默认网络：现役全栈互访口径（未显式声明 networks 的服务自动加入）。
+  default:
+  # INT-2529：agent_service 专用内部网络，成员仅 api_gateway / postgres / redis。
+  # internal 断掉该网络的出网与外部路由，收掉「同网络容器凭 X-User-Id 头绕过
+  # 网关开关直连建 run」的面。
+  agent_internal:
+    internal: true
+  # agent_service 出网：用户自带 LLM 供应商在集群外，内部网络不能出网；
+  # 该网络只有 agent_service 一个成员，不构成第二条入站路径。
+  agent_egress:
