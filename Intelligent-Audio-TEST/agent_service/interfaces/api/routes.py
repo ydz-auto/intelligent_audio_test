@@ -10,6 +10,7 @@
 | GET  | /api/v1/agent/runs/{id}/events?cursor= | SSE，支持 Last-Event-ID |
 | POST | /api/v1/agent/runs/{id}/cancel | 取消 |
 | GET  | /api/v1/agent/runs/{id}/approvals | 待审批提案（M0 空列表）|
+| GET  | /api/v1/agent/runs/{id}/context-snapshots | 上下文压缩快照（调试模式可回放）|
 | GET  | /api/v1/agent/skills | 当前用户可见 Skill（§4.2 规则 7）|
 """
 import json
@@ -189,6 +190,37 @@ def list_approvals(run_id: str, request: Request,
     items = container.run_service.list_approvals(
         run_id, owner_id=identity.user_id, tenant_id=identity.tenant_id)
     return {'items': items}
+
+
+@router.get('/runs/{run_id}/context-snapshots')
+def list_context_snapshots(run_id: str, request: Request,
+                           identity: Identity = Depends(get_identity)):
+    """上下文压缩快照（§8.5）。
+
+    归属校验与 GET /runs 一致：非本人 / 不存在一律 404。调试模式
+    （``AGENT_CONTEXT_DEBUG``）下附带被裁消息 ID 与备忘，可据快照回放；
+    非调试模式只给版本 / token / 层级等统计字段。
+    """
+    container = get_container(request)
+    container.run_service.get_run(
+        run_id, owner_id=identity.user_id, tenant_id=identity.tenant_id)
+    snapshots = container.repositories['snapshots'].list_by_run(run_id)
+    debug = bool(getattr(container.compaction_settings, 'debug', False))
+    items = []
+    for snapshot in snapshots:
+        item = {
+            'id': snapshot.id,
+            'version': snapshot.version,
+            'token_count': snapshot.token_count,
+            'level': snapshot.level.value,
+            'dropped_count': len(snapshot.dropped_ids or []),
+            'created_at': _iso(snapshot.created_at),
+        }
+        if debug:
+            item['dropped_ids'] = list(snapshot.dropped_ids or [])
+            item['memo'] = dict(snapshot.memo or {})
+        items.append(item)
+    return {'enabled': debug, 'items': items}
 
 
 @router.get('/skills')

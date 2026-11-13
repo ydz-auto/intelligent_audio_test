@@ -26,15 +26,16 @@ from typing import Dict, List, Optional, Sequence
 from agent_service.application.cancel_registry import CancelRegistry
 from agent_service.application.context_assembler import ContextAssembler
 from agent_service.domain.enums import (
-    EventType, RunStatus, StepStatus, ToolCallStatus, ToolRisk,
+    EventType, LlmMessageRole, RunStatus, StepStatus, ToolCallStatus, ToolRisk,
 )
 from agent_service.domain.exceptions import (
     InvalidRunTransition, LlmConfigurationError, LlmInvocationError,
     LlmProviderNotConfigured, RunCancelled,
 )
 from agent_service.domain.model.budget import RunBudget
+from agent_service.domain.model.context_budget import ContextBudget
 from agent_service.domain.model.entities import (
-    AgentRun, AgentToolCall, ToolCallRequest, ToolResult,
+    AgentRun, AgentToolCall, LlmMessage, ToolCallRequest, ToolResult,
 )
 from agent_service.domain.ports.llm import (
     LlmFinished, LlmRequest, LlmTextDelta, LlmToolCalls, LlmUsage,
@@ -51,6 +52,9 @@ from agent_service.domain.repositories import (
     ArtifactRepository, EventRepository, RunRepository, SessionRepository,
     StepRepository, ToolCallRepository,
 )
+from agent_service.domain.services.context_budget_policy import (
+    ContextBudgetPolicy,
+)
 from agent_service.domain.services.context_window_resolver import (
     ContextWindowResolver,
 )
@@ -62,6 +66,41 @@ logger = logging.getLogger(__name__)
 # 注册表里查不到的工具不可信：按最高风险记账（fail-closed），并一律拒绝执行。
 # 绝不把未知工具降级成 READ —— 那会让写操作绕过「提案 + 审批」门禁（§5.2 硬规则 5）。
 _UNKNOWN_TOOL_RISK = ToolRisk.DESTRUCTIVE
+
+# L3 备忘的固定 schema 提示（§8.2）：只允许 JSON；事实必须带来源消息 ID。
+_MEMO_SYSTEM_PROMPT = (
+    '你是上下文压缩器。把给出的旧对话压缩成一个 JSON 对象，只输出 JSON，'
+    '不要解释、不要 Markdown 代码块。固定 schema：'
+    '{"goal": "目标", "constraints": ["约束"], '
+    '"facts": [{"fact": "事实", "value": 原值, "source_id": "来源消息ID"}], '
+    '"decisions": ["决策"], "artifacts": ["产物 URI"], '
+    '"open_questions": ["未决问题"], "next_steps": ["下一步"]}。'
+    '事实必须来自消息内容并带 source_id（消息的 message_id），不得编造数值；'
+    '没有内容的字段用空字符串或空数组。'
+)
+
+
+def _parse_memo(text: str) -> Optional[Dict]:
+    """解析 L3 备忘 JSON；非 JSON / 结构不符返回 None（调用方回退 L1）。"""
+    raw = (text or '').strip()
+    if not raw:
+        return None
+    if raw.startswith('```'):
+        raw = raw.strip('`')
+        if raw.lower().startswith('json'):
+            raw = raw[4:]
+        raw = raw.strip()
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        start, end = raw.find('{'), raw.rfind('}')
+        if start < 0 or end <= start:
+            return None
+        try:
+            data = json.loads(raw[start:end + 1])
+        except (TypeError, ValueError):
+            return None
+    return data if isinstance(data, dict) else None
 
 
 def _has_permission(granted: Sequence[str],
@@ -92,6 +131,10 @@ class OrchestratorSettings:
     auto_token_budget_multiplier: int = 4
     compaction_soft_ratio: float = 0.60
     compaction_hard_ratio: float = 0.80
+    # 区段预算 / 软硬阈值统一由策略按有效窗口派生（INT-2454）
+    budget_policy: Optional[ContextBudgetPolicy] = None
+    # L3 备忘单轮输出上限（与主对话输出预留分开，避免占满上下文）
+    memo_max_output_tokens: int = 2048
 
 
 class RunOrchestrator:
@@ -168,10 +211,10 @@ class RunOrchestrator:
         window = provider.effective_context_window
         output_limit = provider.max_output_tokens or self._settings.max_output_tokens
         budget = self._effective_budget(run, window)
-        soft_limit, hard_limit = ContextWindowResolver.compaction_thresholds(
-            window, output_limit,
-            soft_ratio=self._settings.compaction_soft_ratio,
-            hard_ratio=self._settings.compaction_hard_ratio)
+        # §8.3：预算区段与 60% / 80% 阈值统一按有效窗口派生（不写死 128k）
+        context_budget = self._context_budget(provider, window, output_limit)
+        soft_limit = context_budget.soft_threshold
+        hard_limit = context_budget.hard_threshold
         started_at = run.started_at or utcnow()
         rounds = self._steps.next_index(run_id)
         output_bytes = 0
@@ -232,6 +275,10 @@ class RunOrchestrator:
                     'token_budget': budget.max_tokens,
                     'compaction_soft_tokens': soft_limit,
                     'compaction_hard_tokens': hard_limit,
+                    'section_budgets': {
+                        section.value: context_budget.section_limit(section)
+                        for section in context_budget.sections
+                    },
                 })
             text_parts: List[str] = []
             calls: Sequence[ToolCallRequest] = ()
@@ -243,7 +290,10 @@ class RunOrchestrator:
                 request = self._build_request(
                     run, turn, provider, output_limit,
                     permissions=permissions, active_skill=active_skill,
-                    allowed_tools=allowed_tools)
+                    allowed_tools=allowed_tools,
+                    context_budget=context_budget,
+                    memo_summarizer=self._memo_summarizer(
+                        llm, provider, run_id, cancel_check))
                 stream = llm.stream(request, cancel_check=cancel_check)
                 try:
                     for chunk in stream:
@@ -359,10 +409,13 @@ class RunOrchestrator:
                        provider: ResolvedProvider, output_limit: int, *,
                        permissions: Sequence[str] = (),
                        active_skill: Optional[str] = None,
-                       allowed_tools: Optional[frozenset] = None) -> LlmRequest:
+                       allowed_tools: Optional[frozenset] = None,
+                       context_budget: Optional[ContextBudget] = None,
+                       memo_summarizer=None) -> LlmRequest:
         messages = self._assembler.assemble(
             run.session_id, run, permissions=permissions,
-            active_skill=active_skill)
+            active_skill=active_skill, budget=context_budget,
+            memo_summarizer=memo_summarizer)
         tools = tuple(self._tool_specs(permissions, allowed_tools))
         return LlmRequest(
             messages=tuple(messages), tools=tools,
@@ -372,6 +425,58 @@ class RunOrchestrator:
             metadata={'run_id': run.id, 'turn': turn,
                       'provider_id': provider.provider_id},
         )
+
+    def _context_budget(self, provider: ResolvedProvider, window: int,
+                        output_limit: int) -> ContextBudget:
+        """按有效窗口 W 构造区段预算；缺省策略时按默认比例兜底。"""
+        policy = self._settings.budget_policy
+        if policy is None:
+            policy = ContextBudgetPolicy(
+                ContextWindowResolver.from_dict({'models': []}),
+                soft_ratio=self._settings.compaction_soft_ratio,
+                hard_ratio=self._settings.compaction_hard_ratio,
+                token_budget_multiplier=self._settings.token_budget_multiplier)
+        return policy.build(
+            window, output_limit,
+            window_source=provider.context_window_source.value,
+            token_budget_multiplier=self._settings.token_budget_multiplier)
+
+    def _memo_summarizer(self, llm, provider: ResolvedProvider,
+                         run_id: str, cancel_check):
+        """L3 备忘生成器：用同一供应商调一次无工具模型，失败返回 None。"""
+        def summarize(messages) -> Optional[Dict]:
+            transcript = [
+                {'message_id': item.get('message_id'),
+                 'role': item.get('role'),
+                 'tool': item.get('tool'),
+                 'content': (item.get('content') or '')[:4000]}
+                for item in messages
+            ]
+            request = LlmRequest(
+                messages=(
+                    LlmMessage(
+                        role=LlmMessageRole.SYSTEM.value,
+                        content=_MEMO_SYSTEM_PROMPT),
+                    LlmMessage(
+                        role=LlmMessageRole.USER.value,
+                        content=json.dumps(transcript, ensure_ascii=False)),
+                ),
+                tools=(),
+                model=provider.model or '',
+                temperature=0.0,
+                max_output_tokens=self._settings.memo_max_output_tokens,
+                metadata={'run_id': run_id, 'purpose': 'context_memo'},
+            )
+            parts: List[str] = []
+            for chunk in llm.stream(request, cancel_check=cancel_check):
+                if isinstance(chunk, LlmTextDelta):
+                    parts.append(chunk.text)
+                elif isinstance(chunk, LlmUsage):
+                    # 压缩调用同样计入 run 预算（§5.2）
+                    self._runs.update_tokens(
+                        run_id, chunk.prompt_tokens, chunk.completion_tokens)
+            return _parse_memo(''.join(parts))
+        return summarize
 
     def _run_scope(self, run_id: str) -> tuple:
         """从 run_started 取本次 run 固化的权限与激活 Skill。"""

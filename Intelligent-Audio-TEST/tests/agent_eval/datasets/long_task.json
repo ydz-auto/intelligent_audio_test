@@ -1,0 +1,786 @@
+{
+  "version": 1,
+  "name": "跨域 60 轮长任务",
+  "rounds": [
+    {
+      "round": 1,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T1:progress",
+      "expected_value": "7",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T1"
+      },
+      "prompt": "请记录任务 T1 的 progress"
+    },
+    {
+      "round": 2,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T2:case_count",
+      "expected_value": "3",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T2"
+      },
+      "prompt": "请记录任务 T2 的 case_count"
+    },
+    {
+      "round": 3,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T3:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T3"
+      },
+      "prompt": "请记录任务 T3 的 status"
+    },
+    {
+      "round": 4,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T4:progress",
+      "expected_value": "28",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T4"
+      },
+      "prompt": "请记录任务 T4 的 progress"
+    },
+    {
+      "round": 5,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T5:case_count",
+      "expected_value": "6",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T5"
+      },
+      "prompt": "请记录任务 T5 的 case_count"
+    },
+    {
+      "round": 6,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T6:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T6"
+      },
+      "prompt": "请记录任务 T6 的 status"
+    },
+    {
+      "round": 7,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T7:progress",
+      "expected_value": "49",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T7"
+      },
+      "prompt": "请记录任务 T7 的 progress"
+    },
+    {
+      "round": 8,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T8:case_count",
+      "expected_value": "9",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T8"
+      },
+      "prompt": "请记录任务 T8 的 case_count"
+    },
+    {
+      "round": 9,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T9:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T9"
+      },
+      "prompt": "请记录任务 T9 的 status"
+    },
+    {
+      "round": 10,
+      "kind": "learn",
+      "domain": "report",
+      "fact_key": "report:R1:recall",
+      "expected_value": "0.851",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R1"
+      },
+      "prompt": "请记录报告 R1 的 recall 指标"
+    },
+    {
+      "round": 11,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T10:progress",
+      "expected_value": "70",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T10"
+      },
+      "prompt": "请记录任务 T10 的 progress"
+    },
+    {
+      "round": 12,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T2:case_count",
+      "expected_value": "3",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T2"
+      },
+      "prompt": "复核：请记录任务 T2 的 case_count"
+    },
+    {
+      "round": 13,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T11:case_count",
+      "expected_value": "3",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T11"
+      },
+      "prompt": "请记录任务 T11 的 case_count"
+    },
+    {
+      "round": 14,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T12:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T12"
+      },
+      "prompt": "请记录任务 T12 的 status"
+    },
+    {
+      "round": 15,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T13:progress",
+      "expected_value": "91",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T13"
+      },
+      "prompt": "请记录任务 T13 的 progress"
+    },
+    {
+      "round": 16,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T9:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T9"
+      },
+      "prompt": "复核：请记录任务 T9 的 status"
+    },
+    {
+      "round": 17,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T14:case_count",
+      "expected_value": "6",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T14"
+      },
+      "prompt": "请记录任务 T14 的 case_count"
+    },
+    {
+      "round": 18,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T15:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T15"
+      },
+      "prompt": "请记录任务 T15 的 status"
+    },
+    {
+      "round": 19,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T16:progress",
+      "expected_value": "11",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T16"
+      },
+      "prompt": "请记录任务 T16 的 progress"
+    },
+    {
+      "round": 20,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T8:case_count",
+      "expected_value": "9",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T8"
+      },
+      "prompt": "复核：请记录任务 T8 的 case_count"
+    },
+    {
+      "round": 21,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T17:case_count",
+      "expected_value": "9",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T17"
+      },
+      "prompt": "请记录任务 T17 的 case_count"
+    },
+    {
+      "round": 22,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T18:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T18"
+      },
+      "prompt": "请记录任务 T18 的 status"
+    },
+    {
+      "round": 23,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T19:progress",
+      "expected_value": "32",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T19"
+      },
+      "prompt": "请记录任务 T19 的 progress"
+    },
+    {
+      "round": 24,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T14:case_count",
+      "expected_value": "6",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T14"
+      },
+      "prompt": "复核：请记录任务 T14 的 case_count"
+    },
+    {
+      "round": 25,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T20:case_count",
+      "expected_value": "3",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T20"
+      },
+      "prompt": "请记录任务 T20 的 case_count"
+    },
+    {
+      "round": 26,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T21:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T21"
+      },
+      "prompt": "请记录任务 T21 的 status"
+    },
+    {
+      "round": 27,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T22:progress",
+      "expected_value": "53",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T22"
+      },
+      "prompt": "请记录任务 T22 的 progress"
+    },
+    {
+      "round": 28,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T13:progress",
+      "expected_value": "91",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T13"
+      },
+      "prompt": "复核：请记录任务 T13 的 progress"
+    },
+    {
+      "round": 29,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T23:case_count",
+      "expected_value": "6",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T23"
+      },
+      "prompt": "请记录任务 T23 的 case_count"
+    },
+    {
+      "round": 30,
+      "kind": "learn",
+      "domain": "report",
+      "fact_key": "report:R2:f1",
+      "expected_value": "0.882",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R2"
+      },
+      "prompt": "请记录报告 R2 的 f1 指标"
+    },
+    {
+      "round": 31,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T24:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T24"
+      },
+      "prompt": "请记录任务 T24 的 status"
+    },
+    {
+      "round": 32,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T20:case_count",
+      "expected_value": "3",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T20"
+      },
+      "prompt": "复核：请记录任务 T20 的 case_count"
+    },
+    {
+      "round": 33,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T25:progress",
+      "expected_value": "74",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T25"
+      },
+      "prompt": "请记录任务 T25 的 progress"
+    },
+    {
+      "round": 34,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T26:case_count",
+      "expected_value": "9",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T26"
+      },
+      "prompt": "请记录任务 T26 的 case_count"
+    },
+    {
+      "round": 35,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T27:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T27"
+      },
+      "prompt": "请记录任务 T27 的 status"
+    },
+    {
+      "round": 36,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T19:progress",
+      "expected_value": "32",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T19"
+      },
+      "prompt": "复核：请记录任务 T19 的 progress"
+    },
+    {
+      "round": 37,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T28:progress",
+      "expected_value": "95",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T28"
+      },
+      "prompt": "请记录任务 T28 的 progress"
+    },
+    {
+      "round": 38,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T29:case_count",
+      "expected_value": "3",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T29"
+      },
+      "prompt": "请记录任务 T29 的 case_count"
+    },
+    {
+      "round": 39,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T30:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T30"
+      },
+      "prompt": "请记录任务 T30 的 status"
+    },
+    {
+      "round": 40,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T25:progress",
+      "expected_value": "74",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T25"
+      },
+      "prompt": "复核：请记录任务 T25 的 progress"
+    },
+    {
+      "round": 41,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T31:progress",
+      "expected_value": "15",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T31"
+      },
+      "prompt": "请记录任务 T31 的 progress"
+    },
+    {
+      "round": 42,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T32:case_count",
+      "expected_value": "6",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T32"
+      },
+      "prompt": "请记录任务 T32 的 case_count"
+    },
+    {
+      "round": 43,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T33:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T33"
+      },
+      "prompt": "请记录任务 T33 的 status"
+    },
+    {
+      "round": 44,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T24:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T24"
+      },
+      "prompt": "复核：请记录任务 T24 的 status"
+    },
+    {
+      "round": 45,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T34:progress",
+      "expected_value": "36",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T34"
+      },
+      "prompt": "请记录任务 T34 的 progress"
+    },
+    {
+      "round": 46,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T35:case_count",
+      "expected_value": "9",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T35"
+      },
+      "prompt": "请记录任务 T35 的 case_count"
+    },
+    {
+      "round": 47,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T36:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T36"
+      },
+      "prompt": "请记录任务 T36 的 status"
+    },
+    {
+      "round": 48,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T31:progress",
+      "expected_value": "15",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T31"
+      },
+      "prompt": "复核：请记录任务 T31 的 progress"
+    },
+    {
+      "round": 49,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T37:progress",
+      "expected_value": "57",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T37"
+      },
+      "prompt": "请记录任务 T37 的 progress"
+    },
+    {
+      "round": 50,
+      "kind": "learn",
+      "domain": "report",
+      "fact_key": "report:R3:accuracy",
+      "expected_value": "0.903",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R3"
+      },
+      "prompt": "请记录报告 R3 的 accuracy 指标"
+    },
+    {
+      "round": 51,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T38:case_count",
+      "expected_value": "3",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T38"
+      },
+      "prompt": "请记录任务 T38 的 case_count"
+    },
+    {
+      "round": 52,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T30:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T30"
+      },
+      "prompt": "复核：请记录任务 T30 的 status"
+    },
+    {
+      "round": 53,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T39:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T39"
+      },
+      "prompt": "请记录任务 T39 的 status"
+    },
+    {
+      "round": 54,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T40:progress",
+      "expected_value": "78",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T40"
+      },
+      "prompt": "请记录任务 T40 的 progress"
+    },
+    {
+      "round": 55,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T41:case_count",
+      "expected_value": "6",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T41"
+      },
+      "prompt": "请记录任务 T41 的 case_count"
+    },
+    {
+      "round": 56,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T37:progress",
+      "expected_value": "57",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T37"
+      },
+      "prompt": "复核：请记录任务 T37 的 progress"
+    },
+    {
+      "round": 57,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T42:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T42"
+      },
+      "prompt": "请记录任务 T42 的 status"
+    },
+    {
+      "round": 58,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T43:progress",
+      "expected_value": "99",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T43"
+      },
+      "prompt": "请记录任务 T43 的 progress"
+    },
+    {
+      "round": 59,
+      "kind": "learn",
+      "domain": "task",
+      "fact_key": "task:T44:case_count",
+      "expected_value": "9",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T44"
+      },
+      "prompt": "请记录任务 T44 的 case_count"
+    },
+    {
+      "round": 60,
+      "kind": "recall",
+      "domain": "task",
+      "fact_key": "task:T36:status",
+      "expected_value": "SUCCEEDED",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T36"
+      },
+      "prompt": "复核：请记录任务 T36 的 status"
+    }
+  ]
+}

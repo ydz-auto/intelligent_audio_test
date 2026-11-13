@@ -65,7 +65,7 @@ class SandboxTier(str, Enum):
 
 
 class CompactionLevel(str, Enum):
-    """上下文压缩层级（§8.2）。M0 只记录快照，不启用压缩。"""
+    """上下文压缩层级（§8.2）。M0 启用 L1/L2/L3；L4 属 M3。"""
 
     L1_TRIM = 'L1_TRIM'
     L2_DEDUPE = 'L2_DEDUPE'

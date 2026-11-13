@@ -14,7 +14,25 @@
   "context": {
     "max_runs": 20,
     "max_messages": 120,
-    "recent_messages": 50
+    "recent_messages": 50,
+    "keep_recent_turns": 3,
+    "tool_summary_chars": 600,
+    "max_summary_chars": 2400,
+    "artifact_threshold_chars": 4000,
+    "artifact_timeout_seconds": 10.0,
+    "list_top_n": 5,
+    "list_trim_threshold_chars": 1200,
+    "max_key_fields": 24,
+    "memo_max_output_tokens": 2048,
+    "memo_min_candidates": 6,
+    "debug": false,
+    "section_ratios": {
+      "system": 0.15,
+      "scratchpad": 0.10,
+      "dialogue": 0.35,
+      "tool_results": 0.30,
+      "reserve": 0.10
+    }
   },
   "event_stream": {
     "page_size": 200,

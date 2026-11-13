@@ -161,7 +161,8 @@ class AgentArtifact(Base):
 
 
 class AgentContextSnapshot(Base):
-    """上下文快照表（§8.5；M0 只落版本与 token 统计，压缩由 m0-04 启用）。"""
+    """上下文快照表（§8.5）：每次实际压缩落一条，含版本 / token / 被裁 ID /
+    备忘 / 触发层级，调试模式可据此回放。"""
 
     __tablename__ = 'agent_context_snapshot'
     __table_args__ = (

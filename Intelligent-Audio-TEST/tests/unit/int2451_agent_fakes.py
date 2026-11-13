@@ -186,7 +186,7 @@ class FakeProviderResolver(LlmProviderResolver):
 def build_stack(db_path, llm, gateway=None, executor_factory=None,
                 wakeup=None, budget_defaults=None,
                 terminal_grace_seconds=None, provider_resolver=None,
-                provider=None):
+                provider=None, **container_kwargs):
     engine, session_factory = make_engine(db_path)
     resolver = provider_resolver or FakeProviderResolver(
         llm, provider=provider)
@@ -199,6 +199,7 @@ def build_stack(db_path, llm, gateway=None, executor_factory=None,
         budget_defaults=budget_defaults,
         terminal_grace_seconds=terminal_grace_seconds,
         credential_store=CredentialStore.from_secret(TEST_MASTER_KEY),
+        **container_kwargs,
     )
     return container, engine, session_factory
 

@@ -100,13 +100,69 @@ class Config(BaseConfig):
     # 重建上下文 / 恢复时单 run 扫描事件的页上限
     EVENT_SCAN_LIMIT = _get_int('AGENT_EVENT_SCAN_LIMIT', 10000)
 
-    # ===== 上下文（§5.1 第 1 步；压缩由 m0-04 落地）=====
+    # ===== 上下文（§5.1 第 1 步 + §8 无感压缩）=====
     CONTEXT_MAX_RUNS = _get_int(
         'AGENT_CONTEXT_MAX_RUNS', int(_CONTEXT_DEFAULTS.get('max_runs', 20)))
     CONTEXT_MAX_MESSAGES = _get_int(
         'AGENT_CONTEXT_MAX_MESSAGES', int(_CONTEXT_DEFAULTS.get('max_messages', 120)))
     CONTEXT_RECENT_MESSAGES = _get_int(
         'AGENT_CONTEXT_RECENT_MESSAGES', int(_CONTEXT_DEFAULTS.get('recent_messages', 50)))
+    # 最近 N 轮原文永不压缩（§8.4-6，N 配置化）
+    CONTEXT_KEEP_RECENT_TURNS = _get_int(
+        'AGENT_CONTEXT_KEEP_RECENT_TURNS',
+        int(_CONTEXT_DEFAULTS.get('keep_recent_turns', 3)))
+    # L1：摘要长度 / 单条摘要上限 / 大结果外置阈值（字符）
+    CONTEXT_TOOL_SUMMARY_CHARS = _get_int(
+        'AGENT_CONTEXT_TOOL_SUMMARY_CHARS',
+        int(_CONTEXT_DEFAULTS.get('tool_summary_chars', 600)))
+    CONTEXT_MAX_SUMMARY_CHARS = _get_int(
+        'AGENT_CONTEXT_MAX_SUMMARY_CHARS',
+        int(_CONTEXT_DEFAULTS.get('max_summary_chars', 2400)))
+    CONTEXT_ARTIFACT_THRESHOLD_CHARS = _get_int(
+        'AGENT_CONTEXT_ARTIFACT_THRESHOLD_CHARS',
+        int(_CONTEXT_DEFAULTS.get('artifact_threshold_chars', 4000)))
+    # 外置上传的有界等待（秒）：OSS 不可用时快速降级为截断，不拖住 Loop
+    CONTEXT_ARTIFACT_TIMEOUT_SECONDS = _get_float(
+        'AGENT_CONTEXT_ARTIFACT_TIMEOUT_SECONDS',
+        float(_CONTEXT_DEFAULTS.get('artifact_timeout_seconds', 10.0)))
+    # L2：列表只留计数 + TopN + 查询入口
+    CONTEXT_LIST_TOP_N = _get_int(
+        'AGENT_CONTEXT_LIST_TOP_N',
+        int(_CONTEXT_DEFAULTS.get('list_top_n', 5)))
+    CONTEXT_LIST_TRIM_THRESHOLD_CHARS = _get_int(
+        'AGENT_CONTEXT_LIST_TRIM_THRESHOLD_CHARS',
+        int(_CONTEXT_DEFAULTS.get('list_trim_threshold_chars', 1200)))
+    CONTEXT_MAX_KEY_FIELDS = _get_int(
+        'AGENT_CONTEXT_MAX_KEY_FIELDS',
+        int(_CONTEXT_DEFAULTS.get('max_key_fields', 24)))
+    # L3 备忘单轮输出上限
+    CONTEXT_MEMO_MAX_OUTPUT_TOKENS = _get_int(
+        'AGENT_CONTEXT_MEMO_MAX_OUTPUT_TOKENS',
+        int(_CONTEXT_DEFAULTS.get('memo_max_output_tokens', 2048)))
+    # L3 防抖动：可压缩消息少于此数时不重复调模型（超过模型窗口强制压缩）
+    CONTEXT_MEMO_MIN_CANDIDATES = _get_int(
+        'AGENT_CONTEXT_MEMO_MIN_CANDIDATES',
+        int(_CONTEXT_DEFAULTS.get('memo_min_candidates', 6)))
+    # 调试模式：context_compacted 事件附带被裁消息 ID 与备忘，供回放（§8.5）
+    CONTEXT_DEBUG = _get_bool(
+        'AGENT_CONTEXT_DEBUG', bool(_CONTEXT_DEFAULTS.get('debug', False)))
+    # 区段占比（§8.3，合计 1.0）：每项可用环境变量单独覆盖
+    _CONTEXT_RATIO_DEFAULTS = _CONTEXT_DEFAULTS.get('section_ratios') or {}
+    CONTEXT_RATIO_SYSTEM = _get_float(
+        'AGENT_CONTEXT_RATIO_SYSTEM',
+        float(_CONTEXT_RATIO_DEFAULTS.get('system', 0.15)))
+    CONTEXT_RATIO_SCRATCHPAD = _get_float(
+        'AGENT_CONTEXT_RATIO_SCRATCHPAD',
+        float(_CONTEXT_RATIO_DEFAULTS.get('scratchpad', 0.10)))
+    CONTEXT_RATIO_DIALOGUE = _get_float(
+        'AGENT_CONTEXT_RATIO_DIALOGUE',
+        float(_CONTEXT_RATIO_DEFAULTS.get('dialogue', 0.35)))
+    CONTEXT_RATIO_TOOL_RESULTS = _get_float(
+        'AGENT_CONTEXT_RATIO_TOOL_RESULTS',
+        float(_CONTEXT_RATIO_DEFAULTS.get('tool_results', 0.30)))
+    CONTEXT_RATIO_RESERVE = _get_float(
+        'AGENT_CONTEXT_RATIO_RESERVE',
+        float(_CONTEXT_RATIO_DEFAULTS.get('reserve', 0.10)))
     SYSTEM_PROMPT = os.environ.get(
         'AGENT_SYSTEM_PROMPT', _DEFAULTS.get('system_prompt', ''))
 
@@ -164,6 +220,17 @@ class Config(BaseConfig):
         return int(cls.CONTEXT_WINDOW_TOKENS * cls.SYSTEM_SECTION_RATIO)
 
     @classmethod
+    def context_section_ratios(cls) -> dict:
+        """§8.3 区段占比（ContextBudgetPolicy 的唯一配置来源）。"""
+        return {
+            'system': cls.CONTEXT_RATIO_SYSTEM,
+            'scratchpad': cls.CONTEXT_RATIO_SCRATCHPAD,
+            'dialogue': cls.CONTEXT_RATIO_DIALOGUE,
+            'tool_results': cls.CONTEXT_RATIO_TOOL_RESULTS,
+            'reserve': cls.CONTEXT_RATIO_RESERVE,
+        }
+
+    @classmethod
     def budget_defaults(cls) -> dict:
         return {
             'max_rounds': cls.MAX_ROUNDS,
@@ -194,3 +261,8 @@ class Config(BaseConfig):
         if cls.TOKEN_BUDGET_MULTIPLIER_DEFAULT <= 0 \
                 or cls.TOKEN_BUDGET_MULTIPLIER_AUTO <= 0:
             raise ValueError('AGENT_TOKEN_BUDGET_MULTIPLIER_* 必须为正数')
+        ratios = cls.context_section_ratios()
+        if any(value < 0 for value in ratios.values()) \
+                or abs(sum(ratios.values()) - 1.0) > 1e-6:
+            raise ValueError(
+                'AGENT_CONTEXT_RATIO_* 区段占比必须非负且合计为 1.0')
