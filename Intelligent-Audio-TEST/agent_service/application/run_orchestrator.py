@@ -133,7 +133,8 @@ class OrchestratorSettings:
     compaction_hard_ratio: float = 0.80
     # 区段预算 / 软硬阈值统一由策略按有效窗口派生（INT-2454）
     budget_policy: Optional[ContextBudgetPolicy] = None
-    # L3 备忘单轮输出上限（与主对话输出预留分开，避免占满上下文）
+    # L3 备忘单轮输出上限（与主对话输出预留分开，避免占满上下文）；
+    # 实际生效值 = min(本配置, 单轮输出预留 output_limit)
     memo_max_output_tokens: int = 2048
 
 
@@ -293,7 +294,8 @@ class RunOrchestrator:
                     allowed_tools=allowed_tools,
                     context_budget=context_budget,
                     memo_summarizer=self._memo_summarizer(
-                        llm, provider, run_id, cancel_check))
+                        llm, provider, run_id, cancel_check,
+                        output_limit=output_limit))
                 stream = llm.stream(request, cancel_check=cancel_check)
                 try:
                     for chunk in stream:
@@ -442,8 +444,18 @@ class RunOrchestrator:
             token_budget_multiplier=self._settings.token_budget_multiplier)
 
     def _memo_summarizer(self, llm, provider: ResolvedProvider,
-                         run_id: str, cancel_check):
-        """L3 备忘生成器：用同一供应商调一次无工具模型，失败返回 None。"""
+                         run_id: str, cancel_check,
+                         output_limit: int = 0):
+        """L3 备忘生成器：用同一供应商调一次无工具模型，失败返回 None。
+
+        备忘调用也是一次单轮输出，上限按 ``min(配置上限, 单轮输出预留)``
+        收敛（§8.3：单轮输出 ≤ min(8k, 10%×W)），小窗口下不申请超额输出。
+        """
+        memo_limit = self._settings.memo_max_output_tokens
+        if output_limit > 0:
+            memo_limit = (min(memo_limit, output_limit)
+                          if memo_limit > 0 else output_limit)
+
         def summarize(messages) -> Optional[Dict]:
             transcript = [
                 {'message_id': item.get('message_id'),
@@ -464,7 +476,7 @@ class RunOrchestrator:
                 tools=(),
                 model=provider.model or '',
                 temperature=0.0,
-                max_output_tokens=self._settings.memo_max_output_tokens,
+                max_output_tokens=memo_limit,
                 metadata={'run_id': run_id, 'purpose': 'context_memo'},
             )
             parts: List[str] = []

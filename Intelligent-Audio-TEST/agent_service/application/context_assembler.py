@@ -391,32 +391,59 @@ class ContextAssembler:
 
     def _apply_l2(self, messages: List[ContextMessage]
                   ) -> Tuple[bool, List[str]]:
-        """L2_DEDUPE：相同查询去重；列表只留计数 + TopN + 查询入口。"""
+        """L2_DEDUPE：相同查询**结果一致**才去重；列表只留计数 + TopN + 查询入口。
+
+        只按「工具 + 参数」判重会把旧结果当权威：轮询类查询（同参数，状态从
+        RUNNING 变 SUCCEEDED）会被替换成「结果一致，此处省略」，模型静默拿到
+        陈旧事实。因此按分组比较结果内容：内容一致→保留首次；内容不同→保留
+        最新一条，旧消息改为「结果已更新」并指向最新消息（§8.2 / §8.1）。
+        """
         changed: List[str] = []
-        seen: Dict[Tuple[str, str], ContextMessage] = {}
+        groups: Dict[Tuple[str, str], List[ContextMessage]] = {}
         for message in messages:
             if message.role != LlmMessageRole.TOOL.value or message.pinned:
                 continue
-            tool = message.tool or ''
-            args_hash = _args_hash(message.tool_arguments)
-            key = (tool, args_hash)
-            first = seen.get(key)
-            if first is not None:
-                content = message.content or ''
-                if not content.startswith(L2_PREFIX):
-                    message.content = (
-                        f'{L2_PREFIX} 与消息 {first.message_id} 为相同查询'
-                        f'（工具 {tool}，参数摘要 {args_hash[:8]}），'
-                        f'本会话已执行多次，结果一致，此处省略。'
-                        f'完整结果可重新调用 {tool} 获取。')
+            key = (message.tool or '', _args_hash(message.tool_arguments))
+            groups.setdefault(key, []).append(message)
+
+        for (tool, args_hash), group in groups.items():
+            if len(group) > 1:
+                changed.extend(
+                    self._dedupe_same_query(group, tool, args_hash))
+            for message in group:
+                trimmed, _note = self._trim_list_result(message)
+                if trimmed is not None:
+                    message.content = trimmed
                     changed.append(message.message_id)
-            else:
-                seen[key] = message
-            trimmed, note = self._trim_list_result(message)
-            if trimmed is not None:
-                message.content = trimmed
-                changed.append(message.message_id)
         return bool(changed), changed
+
+    @staticmethod
+    def _dedupe_same_query(group: List[ContextMessage], tool: str,
+                           args_hash: str) -> List[str]:
+        """同工具同参数分组内去重：结果一致留首次，结果变化留最新。"""
+        contents = [message.content or '' for message in group]
+        same_result = all(item == contents[0] for item in contents[1:])
+        if same_result:
+            authority = group[0]
+            note = (
+                f'{L2_PREFIX} 与消息 {authority.message_id} 为相同查询'
+                f'（工具 {tool}，参数摘要 {args_hash[:8]}），结果一致，'
+                f'此处省略。完整结果可重新调用 {tool} 获取。')
+            superseded = group[1:]
+        else:
+            # 结果发生变化：最新一次查询才是当前事实，旧结果不得当权威
+            authority = group[-1]
+            note = (
+                f'{L2_PREFIX} 与消息 {authority.message_id} 为相同查询'
+                f'（工具 {tool}，参数摘要 {args_hash[:8]}），但结果已更新，'
+                f'此条为旧结果；最新结果以 {authority.message_id} 为准，'
+                f'完整结果可重新调用 {tool} 获取。')
+            superseded = group[:-1]
+        changed: List[str] = []
+        for message in superseded:
+            message.content = note
+            changed.append(message.message_id)
+        return changed
 
     def _trim_list_result(self, message: ContextMessage
                           ) -> Tuple[Optional[str], bool]:

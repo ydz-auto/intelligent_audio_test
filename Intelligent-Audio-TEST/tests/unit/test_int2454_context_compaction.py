@@ -230,6 +230,97 @@ def test_l2_dedupes_queries_and_trims_lists(tmp_path):
     container.shutdown()
 
 
+def test_l2_same_query_changed_result_keeps_latest_fact(tmp_path):
+    """同工具同参数但结果变化 → 不得声称「结果一致」，最新结果必须保留。
+
+    回归：L2 只按「工具 + 参数」判重时，轮询同一个查询会把旧结果当权威，
+    把后到的 SUCCEEDED 替换成「结果一致，此处省略」，模型拿到陈旧的
+    RUNNING（§8.2 要求「相同查询**结果**去重」，§8.1 要求事实可核对）。
+    """
+    container, _engine, _sf = _container(
+        tmp_path, name='l2changed.db',
+        settings=CompactionSettings(keep_recent_turns=2))
+    session = new_session(container)
+    args = {'action': 'detail', 'task_id': 'T1'}
+    _seed_run(container, session, '查询任务 T1', tools=[{
+        'call_id': 'call-r5', 'tool': 'task_query', 'arguments': args,
+        'content': json.dumps({'task_id': 'T1', 'status': 'RUNNING'}),
+    }])
+    _seed_run(container, session, '再查任务 T1', tools=[{
+        'call_id': 'call-r20', 'tool': 'task_query', 'arguments': args,
+        'content': json.dumps({'task_id': 'T1', 'status': 'SUCCEEDED'}),
+    }])
+    # 把两条查询推出「最近 N 轮」，并把总量推过软阈值
+    _seed_run(container, session, '闲聊', text='y' * 21000)
+    for index in range(2):
+        _seed_run(container, session, f'最近 {index}', text='ok')
+    latest, _ = container.run_service.create_run(
+        session.id, owner_id=OWNER, tenant_id=TENANT, message='汇总')
+
+    messages = container.assembler.assemble(
+        session.id, latest, budget=_budget(container))
+    tool_contents = [m.content or '' for m in messages
+                     if m.role == LlmMessageRole.TOOL.value]
+    blob = '\n'.join(tool_contents)
+    assert 'SUCCEEDED' in blob, tool_contents       # 最新事实仍在上下文
+    assert '结果一致' not in blob, tool_contents     # 不得声称结果一致
+    snapshots = container.repositories['snapshots'].list_by_run(latest.id)
+    assert snapshots and 'tool:call-r5' in snapshots[0].dropped_ids
+    assert 'tool:call-r20' not in snapshots[0].dropped_ids
+    container.shutdown()
+
+
+def test_l2_changed_result_reaches_l3_memo(tmp_path):
+    """结果变化时 L3 摘要必须能看到最新事实，而不是旧的 RUNNING。"""
+    container, _engine, _sf = _container(
+        tmp_path, name='l2changed-l3.db',
+        settings=CompactionSettings(keep_recent_turns=2))
+    session = new_session(container)
+    args = {'action': 'detail', 'task_id': 'T1'}
+    _seed_run(container, session, '查询任务 T1', tools=[{
+        'call_id': 'call-r5', 'tool': 'task_query', 'arguments': args,
+        'content': json.dumps({'task_id': 'T1', 'status': 'RUNNING'}),
+    }])
+    _seed_run(container, session, '再查任务 T1', tools=[{
+        'call_id': 'call-r20', 'tool': 'task_query', 'arguments': args,
+        'content': json.dumps({'task_id': 'T1', 'status': 'SUCCEEDED'}),
+    }])
+    _seed_run(container, session, '闲聊', text='z' * 30000)
+    for index in range(2):
+        _seed_run(container, session, f'最近 {index}', text='ok')
+    latest, _ = container.run_service.create_run(
+        session.id, owner_id=OWNER, tenant_id=TENANT, message='汇总')
+
+    seen = []
+
+    def summarizer(items):
+        seen.append(list(items))
+        blob = '\n'.join((item.get('content') or '') for item in items)
+        assert 'SUCCEEDED' in blob, blob
+        assert '结果一致' not in blob, blob
+        return {
+            'goal': '查询任务状态',
+            'constraints': ['只读'],
+            'facts': [{'fact': '任务 T1 状态为 SUCCEEDED',
+                       'value': 'SUCCEEDED', 'source_id': 'tool:call-r20'}],
+            'decisions': ['继续'],
+            'artifacts': [],
+            'open_questions': [],
+            'next_steps': ['汇总'],
+        }
+
+    messages = container.assembler.assemble(
+        session.id, latest, budget=_budget(container),
+        memo_summarizer=summarizer)
+    assert seen
+    system = next(m.content for m in messages if m.role == 'system')
+    assert MEMO_PREFIX in system and 'SUCCEEDED' in system
+    snapshot = container.repositories['snapshots'].list_by_run(latest.id)[0]
+    assert snapshot.level.value == 'L3_MEMO'
+    assert snapshot.memo['facts'][0]['source_id'] == 'tool:call-r20'
+    container.shutdown()
+
+
 # ---------------------------------------------------------------- L3
 
 def _memo_payload():
@@ -484,6 +575,39 @@ def test_orchestrator_uses_budget_and_persists_snapshots(tmp_path):
     assert snapshots, '多轮大结果应触发压缩'
     steps = container.repositories['steps']
     assert steps is not None
+    container.shutdown()
+
+
+def test_memo_output_limit_capped_by_output_reserve(tmp_path):
+    """P3：备忘调用上限按 min(配置 2048, 单轮输出预留) 收敛。
+
+    W=8192、输出预留 1024 时，小窗口下申请 2048 会超过 §8.3 的单轮输出上限
+    （min(8k, 10%×W)）；实际请求必须是 1024。
+    """
+    from tests.unit.int2451_agent_fakes import default_provider
+
+    memo_json = json.dumps(_memo_payload(), ensure_ascii=False)
+    llm = FakeLlm([text_turn(memo_json), text_turn('完成')])
+    container, _engine, _sf = build_stack(
+        tmp_path / 'memo-limit.db', llm,
+        executor_factory=lambda orch: InlineRunExecutor(orch),
+        provider=default_provider(effective_context_window=WINDOW,
+                                  max_output_tokens=1024),
+        context_max_runs=20, context_max_messages=1000,
+        artifact_store=FakeArtifactStore())
+    session = new_session(container)
+    # 预置超过模型窗口的历史 → 首次组装强制 L3 备忘
+    for index in range(4):
+        _seed_run(container, session, f'旧任务 {index}', text='w' * 20000)
+    run, created = container.run_service.create_run(
+        session.id, owner_id=OWNER, tenant_id=TENANT, message='开始')
+    assert created
+    container.executor.submit(run.id)
+
+    memo_requests = [item for item in llm.requests
+                     if (item.metadata or {}).get('purpose') == 'context_memo']
+    assert memo_requests, '超过模型窗口应强制触发 L3 备忘'
+    assert [item.max_output_tokens for item in memo_requests] == [1024]
     container.shutdown()
 
 
