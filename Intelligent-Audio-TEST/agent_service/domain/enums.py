@@ -64,6 +64,17 @@ class SandboxTier(str, Enum):
     T2_UNTRUSTED_CODE = 'T2_UNTRUSTED_CODE'
 
 
+class SandboxRuntime(str, Enum):
+    """T2 沙箱运行时（§7，INT-2489）。
+
+    失败/停止原因码统一用应用层 ``SandboxFailureReason``（T1 起已有的唯一枚举，
+    T2 只补充 ``T2_RUNTIME_UNAVAILABLE`` 等取值），不再另造一套魔法值。
+    """
+
+    GVISOR = 'gvisor'
+    FIRECRACKER = 'firecracker'
+
+
 class CompactionLevel(str, Enum):
     """上下文压缩层级（§8.2）。M0 只记录快照，不启用压缩。"""
 
