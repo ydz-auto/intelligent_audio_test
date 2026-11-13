@@ -13,8 +13,9 @@
    用例」链路（``audio_service/application/services/_creation_annotation_mixin``
    与 ``_creation_round_config_mixin``）：
    - 轮次号取标注 ``data.round_number``（缺失按第 1 轮），不凭空造轮次；
-   - ``spl`` / ``playback_device_id`` / ``playback_device_name`` 取标注
-     ``segments[]``，没有就按创建服务的缺省（spl 65.0）；
+   - ``spl`` / ``playback_device_id`` / ``playback_device_name`` **入参显式给定
+     即覆盖**标注 ``segments[]``（与创建服务「入参优先、标注只填空」一致），
+     都没有才按创建服务的缺省（spl 65.0）；
    - 用例参数按 ``algorithm/case-params`` 的 ``annotation_code`` +
      ``field_path``（``segments[].<field>``）抽取，作用域按
      ``common`` / 目标 ``device_type`` 过滤；
@@ -80,6 +81,15 @@ TESTCASE_READ_TOOLS: List[dict] = [
 TESTCASE_READ_TOOL_BY_NAME: Dict[str, dict] = {
     tool['name']: tool for tool in TESTCASE_READ_TOOLS}
 
+# 草案推导的存在性校验回源：播放设备详情（``playback:read``）。
+# **不进**对外工具表（T1 只读动作表 / MCP tools/list），仅供 ToolGateway 在
+# ``testcase_generate`` 里校验 ``playback_device_id``（INT-2530：收 ID 必验存在）。
+PLAYBACK_DEVICE_GET_TOOL: dict = tool_entry(
+    'playback_device_get', '读取播放设备详情（草案播放设备存在性校验）',
+    {'device_id': _int('播放设备 ID', True)},
+    ['playback:read'], 'GET', '/api/v1/playback-devices/{device_id}',
+    path_params=['device_id'])
+
 
 def get_tool(name: str) -> Optional[dict]:
     """按工具名取用例域只读工具（不含 mcp_registry 的工具）。"""
@@ -136,6 +146,41 @@ def normalize_round_number(value: Any) -> Optional[int]:
     text = str(value).strip()
     if text.isdigit() and int(text) > 0:
         return int(text)
+    return None
+
+
+def is_positive_int(value: Any) -> bool:
+    """严格正整数（排除 bool / 浮点 / 字符串）。"""
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def validate_dimension_ids(raw: Any) -> Optional[str]:
+    """逐项校验 ``dimension_ids`` 入参，返回错误文本或 ``None``。
+
+    INT-2529 / INT-2531：数组元素也必须校验——非法元素显式失败，不能像
+    旧实现那样 ``continue`` 静默丢弃（模型会把「全丢了」当成「没挂维度」）。
+    合法项只有两种：正整数 ID，或带正整数 ``id`` 的对象（可选
+    ``round_scope`` ∈ :data:`ROUND_SCOPES`、``device_type`` ∈ DeviceType）。
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        return 'dimension_ids 必须是数组'
+    for item in raw:
+        if is_positive_int(item):
+            continue
+        if isinstance(item, dict):
+            if not is_positive_int(item.get('id')):
+                return f'dimension_ids 对象项必须带正整数 id：{item}'
+            round_scope = item.get('round_scope')
+            if round_scope is not None and round_scope not in ROUND_SCOPES:
+                return (f'dimension_ids 的 round_scope 取值必须是 '
+                        f'{"/".join(ROUND_SCOPES)} 之一：{item}')
+            device_type = item.get('device_type')
+            if device_type is not None and normalize_device_type(device_type) is None:
+                return f'dimension_ids 的 device_type 取值非法：{item}'
+            continue
+        return f'dimension_ids 每项必须是正整数或带 id 的对象：{item}'
     return None
 
 
@@ -215,20 +260,21 @@ def _first_segment_value(segments: Iterable[dict], key: str) -> Any:
 # ---------------------------------------------------------------- 维度解析
 
 
-def _normalize_dimension(item: Any) -> Optional[dict]:
+def _normalize_dimension(item: Any) -> dict:
+    """维度项归一；非法项**抛 ValueError**（不静默丢弃，INT-2529/2531）。"""
     if isinstance(item, dict):
         dim_id = item.get('id')
-        if dim_id is None:
-            return None
+        if not is_positive_int(dim_id):
+            raise ValueError(f'维度项必须带正整数 id：{item}')
         normalized = {'id': dim_id}
         if item.get('round_scope'):
             normalized['round_scope'] = item['round_scope']
         if item.get('device_type'):
             normalized['device_type'] = item['device_type']
         return normalized
-    if isinstance(item, int) and not isinstance(item, bool):
+    if is_positive_int(item):
         return {'id': item}
-    return None
+    raise ValueError(f'维度项必须是正整数或带 id 的对象：{item}')
 
 
 def partition_dimensions(raw: Sequence[Any], device_type: str,
@@ -237,12 +283,12 @@ def partition_dimensions(raw: Sequence[Any], device_type: str,
     """维度归一 → 设备作用域过滤 → ``(逐轮, 整体)`` 两桶（去重保序）。
 
     ``default_round_scope`` 用于只给维度 ID 的入参（``multi`` 表示多轮整体）。
+    非法项抛 ``ValueError``——网关在回源前已用
+    :func:`validate_dimension_ids` 拦一遍，这里再守一层，杜绝静默丢弃。
     """
     normalized: List[dict] = []
     for item in raw or []:
         dim = _normalize_dimension(item)
-        if dim is None:
-            continue
         dim.setdefault('round_scope', default_round_scope)
         if dim.get('device_type') and dim['device_type'] != device_type:
             continue
@@ -313,6 +359,9 @@ def build_case_drafts(*, audios: Sequence[dict],
     返回 ``{'drafts': [...], 'notes': [...], 'device_type': ...}``；
     每个草案含 ``name`` / ``config`` / ``algorithm_params`` /
     ``derived_from`` / ``notes``，且**没有**用例 ID（未落库）。
+
+    ``spl`` / ``playback_device_id`` 是**覆盖**语义：显式给定即压过标注，
+    标注只补缺（与创建服务一致，见 ``_creation_annotation_mixin``）。
     """
     effective_device_type = (normalize_device_type(device_type)
                              or DeviceType.HTTP_API.value)
@@ -324,7 +373,6 @@ def build_case_drafts(*, audios: Sequence[dict],
         dimensions, effective_device_type, dimension_round_scope)
 
     notes: List[str] = []
-    effective_spl = DEFAULT_SPL if spl is None else spl
     drafts: List[dict] = []
 
     for audio in audios:
@@ -356,20 +404,23 @@ def build_case_drafts(*, audios: Sequence[dict],
             audio_entry: Dict[str, Any] = {
                 'audio_id': audio_id,
                 'audio_name': audio_name,
-                # 标注给的 spl 优先，其次是调用方指定，最后是创建服务缺省
-                'spl': (segment_spl if segment_spl is not None
-                        else (effective_spl if spl is not None else DEFAULT_SPL)),
+                # 入参显式 spl 优先，标注只填空，最后是创建服务缺省
+                'spl': (spl if spl is not None
+                        else (segment_spl if segment_spl is not None
+                              else DEFAULT_SPL)),
                 'play_order': 0,
             }
-            resolved_device_id = playback_device_id or segment_device_id
+            resolved_device_id = (playback_device_id if playback_device_id is not None
+                                  else segment_device_id)
             if resolved_device_id is not None:
                 audio_entry['playback_device_id'] = resolved_device_id
             if segment_device_name:
                 # 名 → ID 解析属写侧创建流程；草案原样保留名字并注明未解析
                 audio_entry['playback_device_name'] = segment_device_name
-                draft_notes.append(
-                    f'第 {round_number} 轮的播放设备名「{segment_device_name}」'
-                    '未解析为 ID（草案不落库，创建时按名解析）')
+                if resolved_device_id is None:
+                    draft_notes.append(
+                        f'第 {round_number} 轮的播放设备名「{segment_device_name}」'
+                        '未解析为 ID（草案不落库，创建时按名解析）')
 
             rounds.append({
                 'round_number': round_number,
@@ -418,7 +469,7 @@ def build_case_drafts(*, audios: Sequence[dict],
         notes.append(f'单次最多推导 {MAX_GENERATE_AUDIOS} 条音频，超出部分未处理')
     if algorithm_type and not scoped_params:
         notes.append(
-            f'算法类型 {algorithm_type} 没有可用的用例参数（未配置 case-params），'
+            f'算法类型 {algorithm_type} 未配置用例参数（case-params 为空），'
             'algorithm_params 为空')
     return {'drafts': drafts, 'notes': notes,
             'device_type': effective_device_type}
@@ -427,8 +478,9 @@ def build_case_drafts(*, audios: Sequence[dict],
 __all__ = [
     'ANNOTATION_SEGMENTS_KEY', 'DEFAULT_ROUND_NUMBER', 'DEFAULT_SPL',
     'DRAFT_DESCRIPTION', 'DRAFT_NAME_PREFIX', 'MAX_GENERATE_AUDIOS',
-    'OVERALL_ROUND_SCOPE', 'ROUND_SCOPES', 'TESTCASE_READ_TOOLS',
-    'TESTCASE_READ_TOOL_BY_NAME', 'build_case_drafts',
-    'extract_annotation_value', 'get_tool', 'normalize_device_type',
-    'normalize_round_number', 'partition_dimensions',
+    'OVERALL_ROUND_SCOPE', 'PLAYBACK_DEVICE_GET_TOOL', 'ROUND_SCOPES',
+    'TESTCASE_READ_TOOLS', 'TESTCASE_READ_TOOL_BY_NAME', 'build_case_drafts',
+    'extract_annotation_value', 'get_tool', 'is_positive_int',
+    'normalize_device_type', 'normalize_round_number', 'partition_dimensions',
+    'validate_dimension_ids',
 ]

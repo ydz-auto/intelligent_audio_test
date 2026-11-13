@@ -60,7 +60,8 @@ def test_required_sections_and_frontmatter(name):
 
 def test_testcase_skill_permission_matches_tool_domain():
     assert skill_meta('testcase-authoring').permissions == ('testcase:read',)
-    assert skill_meta('tag-group').permissions == ('tag:read',)
+    # tag-group 同时覆盖 tag_list（tag:read）与 group_list（group:read）
+    assert skill_meta('tag-group').permissions == ('tag:read', 'group:read')
 
 
 @pytest.mark.parametrize('name', SKILLS)
@@ -214,6 +215,14 @@ def test_tag_skill_trigger_accuracy_at_least_90_percent():
     ('平台有哪些标签', 'tag-group'),
     ('用例分组下有多少条用例', 'tag-group'),
     ('想给一批用例批量打标，现在能直接做吗', 'tag-group'),
+    # 自然改写样本（打回复测 P2-3：不由夹具派生）
+    ('这个分组下多少条用例', 'tag-group'),
+    ('某个分组里有多少用例', 'tag-group'),
+    ('分组能不能设成私有', 'tag-group'),
+    ('第 2 轮的参考参数还没生成吗', 'testcase-authoring'),
+    ('参考参数刷新任务的状态', 'testcase-authoring'),
+    ('这个分组下的用例有哪些', 'testcase-authoring'),
+    ('用例一共多少条，按分组怎么分布', 'testcase-authoring'),
 ])
 def test_representative_queries_route_to_own_skill(query, expected):
     assert route(query)[0] == expected, route(query)

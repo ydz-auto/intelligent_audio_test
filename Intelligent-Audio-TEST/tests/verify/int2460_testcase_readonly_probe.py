@@ -6,7 +6,10 @@
 1. ``testcase_query`` 六个动作（list / detail / stats / round_ref_params /
    export_status / refresh_status）逐个回源；
 2. 长尾 MCP 只读工具 ``tag_list`` / ``group_list``；
-3. ``testcase_generate`` 对真实带标注音频推导草案（只发 GET）。
+3. ``testcase_generate`` 对真实带标注音频推导草案（只发 GET）；
+4. 草案入参契约：显式 ``spl`` / ``playback_device_id`` 覆盖标注；不存在的
+   维度 / 播放设备 / 算法类型、非法维度项、负声压一律显式 ``INVALID_ARGUMENTS``
+   （打回复测 P2-1 ~ P2-4）。
 
 脚本**不写任何数据**；配合调用方在运行前后统计 ``test_cases`` 行数即为
 「草案不落库」的证据。输出写 UTF-8 文件，避免 Windows 控制台 GBP 折损。
@@ -111,8 +114,9 @@ def main():
 
     audios = client.request('GET', '/audios?page=1&per_page=20')['data']['items']
     annotated = [a for a in audios if a.get('annotations')][:2]
+    audio_ids = [a['id'] for a in annotated]
     entry, result = run_tool('testcase_generate', {
-        'audio_ids': [a['id'] for a in annotated],
+        'audio_ids': audio_ids,
         'algorithm_type': 'voice_llm',
         'dimension_ids': [121],
     })
@@ -133,6 +137,48 @@ def main():
             ],
         }
     results['generate'] = entry
+
+    # ---- 入参 / 引用资源校验（打回复测：契约必须显式失败，不得静默）----
+    device = client.request(
+        'GET', '/playback-devices?page=1&per_page=1')['data']['items'][0]
+    override_entry, override_result = run_tool('testcase_generate', {
+        'audio_ids': [audio_ids[0]],
+        'algorithm_type': 'voice_llm',
+        'spl': 70,
+        'playback_device_id': device['id'],
+    })
+    if override_result.ok:
+        draft = json.loads(override_result.content)['drafts'][0]
+        audio_entry = draft['config']['rounds'][0]['audios'][0]
+        override_entry['result'] = {
+            'spl': audio_entry.get('spl'),
+            'playback_device_id': audio_entry.get('playback_device_id'),
+            'playback_device_name': audio_entry.get('playback_device_name'),
+            'notes': draft['notes'],
+        }
+    results['override'] = override_entry
+
+    validation_cases = [
+        ('unknown_dimension', {'audio_ids': [audio_ids[0]],
+                               'dimension_ids': [999999]}),
+        ('invalid_dimension_item', {'audio_ids': [audio_ids[0]],
+                                    'dimension_ids': ['abc']}),
+        ('dimension_object_without_id', {
+            'audio_ids': [audio_ids[0]],
+            'dimension_ids': [{'round_scope': 'multi'}]}),
+        ('unknown_playback_device', {'audio_ids': [audio_ids[0]],
+                                     'playback_device_id': 999999}),
+        ('unknown_algorithm_type', {'audio_ids': [audio_ids[0]],
+                                    'algorithm_type': 'no_such_algo'}),
+        ('negative_spl', {'audio_ids': [audio_ids[0]], 'spl': -1}),
+    ]
+    results['validation'] = []
+    for label, arguments in validation_cases:
+        case_entry, case_result = run_tool('testcase_generate', arguments)
+        case_entry['case'] = label
+        case_entry['error_code'] = case_result.error_code
+        results['validation'].append(case_entry)
+
     results['rest_methods'] = sorted({c['method'] for c in rest.calls})
     results['rest_tools'] = [c['tool'] for c in rest.calls]
 
@@ -144,8 +190,15 @@ def main():
     print('long tail ok:', sum(1 for e in results['long_tail'] if e['ok']),
           '/', len(results['long_tail']))
     print('generate ok:', bool(results['generate'] and results['generate']['ok']))
+    print('override:', results['override'].get('result'))
+    print('validation error codes:',
+          [entry['error_code'] for entry in results['validation']])
     print('rest methods:', results['rest_methods'])
-    return 0 if all(c['method'] == 'GET' for c in rest.calls) else 3
+    invalid = [entry['case'] for entry in results['validation']
+               if entry['error_code'] != 'INVALID_ARGUMENTS']
+    print('validation not rejected:', invalid)
+    return 0 if (all(c['method'] == 'GET' for c in rest.calls)
+                 and not invalid) else 3
 
 
 if __name__ == '__main__':

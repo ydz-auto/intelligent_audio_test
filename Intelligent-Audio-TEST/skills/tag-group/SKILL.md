@@ -4,7 +4,7 @@ description: >-
   标签与用例分组口径速查：标签列表与分类归属、标签 / 分组可见性、用例分组列表
   与用例数、批量打标的动作与前置条件（只读解释，写操作在 M2）。
   触发词：标签、标签列表、标签分类、标签归属、标签可见性、批量打标、打标策略、
-  重命名标签、用例分组、分组列表、分组可见性、分组用例数。
+  重命名标签、用例分组、分组、分组列表、分组下、分组里、分组可见性、分组用例数。
   不适用：新增 / 修改 / 删除标签或分组、批量打标执行、分组移动用例（写操作，
   M2 走提案 + 审批）；用例本身的编制与轮次配置（testcase-authoring）；音频标签
   的素材元数据（audio-import）。
@@ -15,6 +15,7 @@ allowed-tools:
   - platform_contract
 permissions:
   - tag:read
+  - group:read
 budgets:
   maxToolCalls: 20
   maxTokens: 30000
@@ -44,12 +45,14 @@ budgets:
 ## 工具用法
 
 本域没有专用意图工具：标签 / 分组列表是**长尾只读 MCP 工具**，先检索再按返回的
-Schema 调用（本 Skill 已声明 `tool_search`，因此允许调用检索到的长尾工具）：
+Schema 调用（本 Skill 已声明 `tool_search`，因此允许调用检索到的长尾工具）。
+本 Skill 声明 `tag:read` + `group:read` 两个权限码：`tag_list` 需要 `tag:read`、
+`group_list` 需要 `group:read`，缺哪一个都会显式返回「无权访问」：
 
 | 工具 | 作用 | 参数 | 目标接口 |
 |---|---|---|---|
 | `tag_list` | 标签列表（分页） | `page`、`per_page`、`keyword` | `GET /api/v1/tags` |
-| `group_list` | 用例分组列表（含 `test_case_count`） | 无（返回全部） | `GET /api/v1/groups` |
+| `group_list` | 用例分组列表（含 `test_case_count`） | `page`、`per_page`（Schema 未声明，网关支持） | `GET /api/v1/groups` |
 
 规则：
 
@@ -57,8 +60,8 @@ Schema 调用（本 Skill 已声明 `tool_search`，因此允许调用检索到�
    的 `inputSchema` 调用；**不要**按记忆拼参数；
 2. `tag_list` 的关键词参数是 `keyword`（不是 `search`）；按分类筛选不在 Schema 里，
    需要时读返回项上的 `category_id` / `category_name` 自行归属，别传不存在的参数；
-3. `group_list` 不接受过滤参数，返回全部分组；分组数量以 `total` 为准，不要数
-   当前页；
+3. `group_list` 不接受过滤参数；分页可传 `page` / `per_page`，分组数量以信封的
+   `total` 为准，不要数当前页；
 4. 分页一律看返回信封：`{items, total, page, per_page, pages}`；
 5. 需要其它只读能力（如按分类看标签）时用 `platform_contract` 查接口前缀，说明
    「当前工具通道未开放该动作」，不要编接口。

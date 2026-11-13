@@ -5,9 +5,10 @@ description: >-
   播放设备 / 逐轮评估维度）、评估维度挂载（逐轮与多轮整体）、用例算法参数、
   轮次参考参数、导入导出状态与统计；并支持由音频标注推导用例草案（只读生成，
   不落库）。
-  触发词：用例、用例列表、用例详情、用例轮次、轮次配置、轮次参考参数、
-  参考参数刷新、刷新状态、用例导出、导出作业、评估维度挂载、用例参数、
-  用例统计、标注生成用例、生成用例草案、复制用例、用例变体。
+  触发词：用例、用例列表、用例详情、用例轮次、轮次配置、轮次参考参数、轮的参考参数、
+  参考参数、用例参考参数、参考参数刷新、刷新状态、用例导出、导出作业、评估维度挂载、
+  用例参数、用例统计、按分组、分组下的用例、分组里的用例、标注生成用例、
+  生成用例草案、复制用例、用例变体。
   不适用：创建 / 修改 / 删除 / 复制用例、批量打标（写操作，M2 走提案 + 审批）；
   标签与用例分组管理（tag-group）；算法参数定义（algorithm-config）；用例执行
   与结果（task-operations）。
@@ -81,12 +82,12 @@ budgets:
 | 参数 | 说明 |
 |---|---|
 | `audio_ids` | 必填，正整数数组（单次最多 20 条） |
-| `algorithm_type` | 算法类型（如 `voice_llm`），用于挑选用例参数与标注 code |
+| `algorithm_type` | 算法类型（如 `voice_llm`），用于挑选用例参数与标注 code；不存在会显式失败 |
 | `device_type` | 目标设备类型：`physical` / `http_api` / `websocket_api`，缺省 `http_api` |
-| `dimension_ids` | 评估维度 ID 列表 |
+| `dimension_ids` | 评估维度列表：正整数 ID 或 `{id, round_scope?, device_type?}` 对象；逐项校验存在性 |
 | `dimension_round_scope` | 维度口径：`single` / `per_round` 逐轮，`multi` 多轮整体 |
-| `group_id` | 目标分组 ID（只回显 + 校验存在性，不落库） |
-| `spl` / `playback_device_id` | 覆盖标注里的声压 / 播放设备 |
+| `group_id` | 目标分组 ID（校验存在性，只回显，不落库） |
+| `spl` / `playback_device_id` | **覆盖**标注里的声压 / 播放设备（显式值优先，标注只补缺） |
 | `inherit_tags` | 是否继承音频标签（默认 true） |
 
 返回形态：
@@ -105,12 +106,19 @@ budgets:
 - 轮次号来自标注 `data.round_number`（缺失按第 1 轮），**不允许**为了「看起来
   完整」多造轮次；
 - 播放设备名 → ID 的解析在**创建**时才做；草案里保留 `playback_device_name`
-  并在 `notes` 说明「未解析」，不要假装已经有 ID；
-- `audio_ids` 里有不存在的音频会整批失败（显式报错），不会跳过；`group_id`
-  不存在同样直接失败——先按报错修参数，不要换 ID 重试猜；
-- 推导要回源读音频详情、算法用例参数、分组列表，除本工具的 `testcase:read`
-  外还需要当前账号有 `audio:read` / `algorithm:read` / `group:read`；缺哪个
-  都会显式返回「无权访问」，不要用别的字段绕过。
+  并在 `notes` 说明「未解析」，不要假装已经有 ID（显式给了 `playback_device_id`
+  时草案直接带 ID，不再报未解析）；
+- `audio_ids` 里有不存在的音频会整批失败（显式报错），不会跳过；`group_id`、
+  `dimension_ids`、`playback_device_id`、`algorithm_type` 同样先校验存在性，
+  不存在直接失败——先按报错修参数，不要换 ID 重试猜；
+- `dimension_ids` 逐项校验：元素只能是正整数或带正整数 `id` 的对象，非法的
+  `round_scope` / `device_type` 也显式报错，**不会**被静默丢弃成「没挂维度」；
+- `spl` / `playback_device_id` 是**覆盖**语义：显式给定就压过标注值（与创建
+  服务一致），没给才取标注，标注没有 spl 按 65.0；
+- 推导要回源读音频详情、算法下拉选项与用例参数、评估维度、播放设备、分组列表，
+  除本工具的 `testcase:read` 外还需要当前账号有 `audio:read` /
+  `algorithm:read` / `evaluation:read` / `playback:read` / `group:read`；
+  缺哪个都会显式返回「无权访问」，不要用别的字段绕过。
 
 ## 用例字段（服务端 snake_case）
 

@@ -23,10 +23,35 @@ from tests.agent_eval.domains.testcase import fixtures
 
 
 class FakeReadOnlyRest:
-    """按工具名返回实测形状响应；非 GET 直接判失败（草案不允许写）。"""
+    """按工具名返回实测形状响应；非 GET 直接判失败（草案不允许写）。
 
-    def __init__(self):
+    可注入分组 / 维度 / 播放设备 / 算法选项集合，用于覆盖存在性校验与分页。
+    """
+
+    def __init__(self, groups=None, dimensions=None, playback_devices=None,
+                 algorithms=None):
         self.calls = []
+        self.groups = list(fixtures.GROUP_LIST['data']['items']
+                           if groups is None else groups)
+        self.dimensions = set(fixtures.DIMENSION_IDS
+                              if dimensions is None else dimensions)
+        self.playback_devices = set(fixtures.PLAYBACK_DEVICE_IDS
+                                    if playback_devices is None else playback_devices)
+        self.algorithms = set(['voice_llm'] if algorithms is None else algorithms)
+
+    @staticmethod
+    def _envelope(data):
+        return {'success': True, 'code': 0, 'message': 'Success', 'data': data}
+
+    def _group_page(self, arguments):
+        page = int(arguments.get('page') or 1)
+        per_page = int(arguments.get('per_page') or 40)
+        start = (page - 1) * per_page
+        items = self.groups[start:start + per_page]
+        total = len(self.groups)
+        pages = (total + per_page - 1) // per_page if per_page else 0
+        return self._envelope({'items': items, 'total': total, 'page': page,
+                               'per_page': per_page, 'pages': pages})
 
     def call(self, tool, arguments, **kwargs):
         self.calls.append({'tool': tool, 'arguments': dict(arguments), **kwargs})
@@ -41,9 +66,33 @@ class FakeReadOnlyRest:
             payload = fixtures.AUDIO_DETAIL_ENVELOPE
         elif name == 'algorithm_case_param_list':
             payload = fixtures.CASE_PARAM_LIST
+        elif name == 'algorithm_options':
+            payload = self._envelope({'algorithms': [
+                {'value': value, 'name': value, 'group_id': None,
+                 'group_name': None, 'icon': None}
+                for value in sorted(self.algorithms)]})
         elif name == 'group_list':
-            payload = fixtures.GROUP_LIST
-        else:  # pragma: no cover - 草案只走这三类只读工具
+            payload = self._group_page(arguments)
+        elif name == 'evaluation_dimension_get':
+            dim_id = arguments.get('dim_id')
+            if dim_id in self.dimensions:
+                payload = self._envelope(dict(fixtures.DIMENSION_ITEM, id=dim_id))
+            else:
+                payload = {'success': False, 'code': 404,
+                           'message': '未找到评估维度'}
+                return RestResult(status=404, payload=payload,
+                                  text=json.dumps(payload, ensure_ascii=False))
+        elif name == 'playback_device_get':
+            device_id = arguments.get('device_id')
+            if device_id in self.playback_devices:
+                payload = self._envelope(
+                    dict(fixtures.PLAYBACK_DEVICE_ITEM, id=device_id))
+            else:
+                payload = {'success': False, 'code': 203,
+                           'message': '未找到播放设备'}
+                return RestResult(status=400, payload=payload,
+                                  text=json.dumps(payload, ensure_ascii=False))
+        else:  # pragma: no cover - 草案只走这些只读工具
             payload = {'success': True, 'data': {}}
         return RestResult(status=200, payload=payload,
                           text=json.dumps(payload, ensure_ascii=False))
@@ -58,7 +107,8 @@ def make_gateway(rest=None, credentials=None):
 
 
 def ctx(permissions=('testcase:read', 'audio:read', 'algorithm:read',
-                     'group:read'), run_id='r1'):
+                     'group:read', 'evaluation:read', 'playback:read'),
+        run_id='r1'):
     return ToolInvocationContext(
         run_id=run_id, session_id='s1', owner_id=7, tenant_id='t1',
         step_id='step1', permissions=tuple(permissions), idempotency_key='k')
@@ -171,6 +221,27 @@ def test_dimension_partition_follows_round_scope_and_device_type():
     assert [dim['id'] for dim in drafts['config']['dimensions']] == [122]
 
 
+def test_explicit_spl_overrides_annotation_in_pure_derivation():
+    default = testcase_tools.build_case_drafts(
+        audios=[fixtures.AUDIO_DETAIL], device_type='physical')['drafts'][0]
+    assert default['config']['rounds'][0]['audios'][0]['spl'] == 65.0
+
+    overridden = testcase_tools.build_case_drafts(
+        audios=[fixtures.AUDIO_DETAIL], device_type='physical', spl=70,
+        playback_device_id=8)['drafts'][0]
+    entry = overridden['config']['rounds'][0]['audios'][0]
+    assert entry['spl'] == 70.0
+    assert entry['playback_device_id'] == 8
+    assert not any('未解析为 ID' in note for note in overridden['notes'])
+
+
+def test_dimension_partition_rejects_invalid_items():
+    """纯函数也不静默丢弃非法维度项（与网关校验同一口径）。"""
+    for bad in ([0], ['abc'], [{}], [{'round_scope': 'multi'}]):
+        with pytest.raises(ValueError):
+            testcase_tools.partition_dimensions(bad, device_type='http_api')
+
+
 def test_audio_without_annotations_falls_back_to_round_one():
     audio = dict(fixtures.AUDIO_DETAIL, annotations=[])
     draft = testcase_tools.build_case_drafts(
@@ -206,11 +277,14 @@ def test_generate_through_gateway_is_read_only_and_not_persisted():
     assert payload['drafts'][0]['config']['rounds']
 
     # 只回源 GET，且没有多余的写调用
-    assert [c['tool']['method'] for c in rest.calls] == ['GET', 'GET']
+    assert all(c['tool']['method'] == 'GET' for c in rest.calls)
     assert [c['tool']['name'] for c in rest.calls] == [
-        'algorithm_case_param_list', 'audio_get']
-    assert rest.calls[0]['arguments'] == {'algorithm_type': 'voice_llm'}
-    assert rest.calls[1]['arguments'] == {'audio_id': fixtures.AUDIO_DETAIL['id']}
+        'algorithm_options', 'algorithm_case_param_list',
+        'evaluation_dimension_get', 'audio_get']
+    assert rest.calls[0]['arguments'] == {}
+    assert rest.calls[1]['arguments'] == {'algorithm_type': 'voice_llm'}
+    assert rest.calls[2]['arguments'] == {'dim_id': 121}
+    assert rest.calls[3]['arguments'] == {'audio_id': fixtures.AUDIO_DETAIL['id']}
 
 
 def test_generate_validates_group_existence_before_deriving():
@@ -220,8 +294,27 @@ def test_generate_validates_group_existence_before_deriving():
     })
     assert result.error_code == INVALID_ARGUMENTS
     assert 'group_id' in result.content
-    names = [c['tool']['name'] for c in rest.calls]
-    assert names == ['group_list']  # 没有继续回源音频
+    # 分组列表按页查全（不只查第一页），失败后不再回源音频
+    assert [c['tool']['name'] for c in rest.calls] == ['group_list']
+    assert rest.calls[0]['arguments'] == {
+        'page': 1, 'per_page': rest.calls[0]['arguments']['per_page']}
+    assert rest.calls[0]['arguments']['per_page'] > 40
+
+
+def test_generate_finds_group_beyond_first_page():
+    """分组数超过单页时，第二页的合法 ID 不能被误判为不存在（INT-2530）。"""
+    filler = [dict(fixtures.GROUP_ITEM, id=f'group-{index}')
+              for index in range(250)]
+    target = fixtures.GROUP_ITEM['id']
+    rest = FakeReadOnlyRest(groups=filler + [fixtures.GROUP_ITEM])
+    result, _ = generate({
+        'audio_ids': [fixtures.AUDIO_DETAIL['id']],
+        'group_id': target,
+    }, rest=rest)
+    assert result.ok, result.content
+    pages = [c['arguments'].get('page') for c in rest.calls
+             if c['tool']['name'] == 'group_list']
+    assert pages == [1, 2]
 
 
 def test_generate_accepts_existing_group():
@@ -232,6 +325,32 @@ def test_generate_accepts_existing_group():
     assert result.ok, result.content
     payload = json.loads(result.content)
     assert payload['drafts'][0]['group_id'] == fixtures.GROUP_ITEM['id']
+
+
+def test_explicit_spl_and_device_override_annotation():
+    """入参覆盖标注（P2-1）：显式 spl / 播放设备压过 segments 原值。"""
+    result, _ = generate({
+        'audio_ids': [fixtures.AUDIO_DETAIL['id']],
+        'spl': 70,
+        'playback_device_id': 8,
+    })
+    assert result.ok, result.content
+    draft = json.loads(result.content)['drafts'][0]
+    entry = draft['config']['rounds'][0]['audios'][0]
+    assert entry['spl'] == 70.0          # 标注 segment 是 65
+    assert entry['playback_device_id'] == 8
+    assert entry['playback_device_name'] == '设备正面（0.5m+0°）'
+    # 设备已解析出 ID，不再报告「未解析」
+    assert not any('未解析为 ID' in note for note in draft['notes'])
+
+
+def test_spl_and_device_fall_back_to_annotation_without_explicit_values():
+    result, _ = generate({'audio_ids': [fixtures.AUDIO_DETAIL['id']]})
+    assert result.ok, result.content
+    entry = json.loads(result.content)['drafts'][0]['config']['rounds'][0]['audios'][0]
+    assert entry['spl'] == 65.0
+    assert 'playback_device_id' not in entry
+    assert entry['playback_device_name'] == '设备正面（0.5m+0°）'
 
 
 def test_generate_fails_whole_batch_on_missing_audio():
@@ -249,12 +368,67 @@ def test_generate_fails_whole_batch_on_missing_audio():
     ({'audio_ids': [1], 'device_type': 'phone'}, 'device_type'),
     ({'audio_ids': [1], 'dimension_round_scope': 'overall'},
      'dimension_round_scope'),
+    # INT-2529/2531：数组元素同样要校验，非法项不得静默丢弃
+    ({'audio_ids': [1], 'dimension_ids': [0]}, 'dimension_ids'),
+    ({'audio_ids': [1], 'dimension_ids': ['abc']}, 'dimension_ids'),
+    ({'audio_ids': [1], 'dimension_ids': [{'round_scope': 'multi'}]},
+     'dimension_ids'),
+    ({'audio_ids': [1], 'dimension_ids': [{'id': 121, 'round_scope': 'overall'}]},
+     'round_scope'),
+    ({'audio_ids': [1], 'dimension_ids': [{'id': 121, 'device_type': 'phone'}]},
+     'device_type'),
+    ({'audio_ids': [1], 'spl': -1}, 'spl'),
+    ({'audio_ids': [1], 'spl': 'loud'}, 'spl'),
+    ({'audio_ids': [1], 'playback_device_id': 0}, 'playback_device_id'),
 ])
 def test_generate_rejects_invalid_arguments_before_rest(arguments, needle):
     result, rest = generate(arguments)
     assert result.error_code == INVALID_ARGUMENTS
     assert needle in result.content
     assert rest.calls == []
+
+
+def test_generate_rejects_unknown_dimension_ids():
+    """P2-2：维度必须存在（INT-2530），不存在显式失败而不是带进草案。"""
+    result, rest = generate({
+        'audio_ids': [fixtures.AUDIO_DETAIL['id']],
+        'dimension_ids': [999999],
+    })
+    assert result.error_code == INVALID_ARGUMENTS
+    assert 'dimension_ids' in result.content and '999999' in result.content
+    assert [c['tool']['name'] for c in rest.calls] == ['evaluation_dimension_get']
+
+
+def test_generate_rejects_unknown_playback_device():
+    """P2-4：播放设备必须存在（INT-2530）。"""
+    result, rest = generate({
+        'audio_ids': [fixtures.AUDIO_DETAIL['id']],
+        'playback_device_id': 999999,
+    })
+    assert result.error_code == INVALID_ARGUMENTS
+    assert 'playback_device_id' in result.content
+    assert [c['tool']['name'] for c in rest.calls] == ['playback_device_get']
+
+
+def test_generate_rejects_unknown_algorithm_type():
+    """P3：不存在的算法类型显式失败，不产出「未配置 case-params」的草案。"""
+    result, rest = generate({
+        'audio_ids': [fixtures.AUDIO_DETAIL['id']],
+        'algorithm_type': 'no_such_algo',
+    })
+    assert result.error_code == INVALID_ARGUMENTS
+    assert 'algorithm_type' in result.content
+    assert [c['tool']['name'] for c in rest.calls] == ['algorithm_options']
+
+
+def test_generate_rejects_unknown_dimension_with_object_form():
+    result, rest = generate({
+        'audio_ids': [fixtures.AUDIO_DETAIL['id']],
+        'dimension_ids': [{'id': 999999, 'round_scope': 'multi'}],
+    })
+    assert result.error_code == INVALID_ARGUMENTS
+    assert '999999' in result.content
+    assert [c['tool']['name'] for c in rest.calls] == ['evaluation_dimension_get']
 
 
 def test_generate_requires_testcase_read_permission():
@@ -290,8 +464,13 @@ def test_gateway_exposes_generate_as_read():
 
 def test_generate_never_targets_a_write_route():
     """所有可被草案生成回源的工具都必须是 GET（静态保证不写库）。"""
-    names = {'audio_get', 'algorithm_case_param_list', 'group_list'}
+    names = {'audio_get', 'algorithm_case_param_list', 'group_list',
+             'algorithm_options', 'evaluation_dimension_get'}
     for name in names:
         tool = intent_tools._lookup_rest_tool(name)
         assert tool is not None, name
         assert tool['method'] == 'GET', name
+    # 播放设备存在性校验走内部工具项（不进对外工具表），同样只读
+    playback = testcase_tools.PLAYBACK_DEVICE_GET_TOOL
+    assert playback['method'] == 'GET'
+    assert playback['permissions'] == ['playback:read']

@@ -12,7 +12,7 @@ INT-2460 交付物之一。M1 的验收口径是「每域 10 条任务 + Skill �
 | `fixtures.py` | 实测形状样例（用例列表项 / 详情 / 轮次配置 / 标签 / 分组 / 带标注的音频详情 / 用例参数） |
 | `skill_support.py` | Skill 装载与确定性触发评测（L1 触发词 + 本域核心词，按词长加权） |
 | `test_testcase_query_tool.py` | `testcase_query` 注册口径、动作 → 网关 GET 路由、10 条 golden task、校验 / 权限 / 404 口径、字段契约 |
-| `test_testcase_generate_tool.py` | `testcase_generate` 纯函数推导、作用域 / 轮次口径、网关端到端只读与不落库、非法参数显式失败 |
+| `test_testcase_generate_tool.py` | `testcase_generate` 纯函数推导、作用域 / 轮次口径、网关端到端只读与不落库、非法参数显式失败、引用资源（维度 / 播放设备 / 算法 / 分组）存在性校验与分组分页 |
 | `test_testcase_skills.py` | 两个 Skill 的装载 / frontmatter / allowed-tools 只读、L2 字段覆盖、标签任务、触发准确率 ≥ 90% |
 | `test_testcase_live_contract.py` | 真机契约核对（默认 skip） |
 

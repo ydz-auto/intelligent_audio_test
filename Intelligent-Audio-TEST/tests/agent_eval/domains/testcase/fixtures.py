@@ -212,6 +212,32 @@ GROUP_LIST = enveloped([GROUP_ITEM], per_page=40)
 AUDIO_DETAIL_ENVELOPE = {'success': True, 'code': 0,
                          'message': 'Success', 'data': AUDIO_DETAIL}
 CASE_PARAM_LIST = enveloped(CASE_PARAMS, per_page=11)
+
+# 算法下拉选项（GET /api/v1/algorithm/options -> data.algorithms[]，真机实测形状）
+ALGORITHM_OPTIONS = {
+    'success': True, 'code': 0, 'message': 'Success',
+    'data': {'algorithms': [{'value': 'voice_llm', 'name': '小艺语音大模型',
+                             'group_id': None, 'group_name': None,
+                             'icon': None}]},
+}
+
+# 评估维度（GET /api/v1/evaluation/dimensions/{dim_id} -> data，真机实测 id）
+DIMENSION_ITEM = {
+    'id': 121, 'name': '拒识成功数量', 'description': '主维度：拒识成功数量。',
+    'keywords': 'reject_judge,n_rate_success,拒识成功数量',
+    'dimension_type': 'main', 'task_type_code': 'reject_judge', 'category_id': 3,
+}
+DIMENSION_IDS = (121,)
+
+# 播放设备（GET /api/v1/playback-devices/{device_id} -> data，真机实测 id）
+PLAYBACK_DEVICE_ITEM = {
+    'id': 8, 'name': '设备正左侧（1m-90°）',
+    'model': 'Analog (3+4) (RME Fireface 802) [Ch 2]', 'device_type': 'dry',
+    'sample_rate': 48000, 'channel_index': 1,
+    'device_unique_id': 'Analog (3+4) (RME Fireface 802) [Ch 2]',
+    'description': 'Analog (3+4) (RME Fireface 802) [Ch 2]',
+}
+PLAYBACK_DEVICE_IDS = (8,)
 EXPORT_JOB_STATUS = {
     'success': True, 'code': 0, 'message': 'Success',
     'data': {'task_id': 'export-20261113-01', 'status': 'running',

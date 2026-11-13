@@ -13,6 +13,8 @@ import os
 
 import pytest
 
+from agent_service.domain.model.entities import ToolCallRequest
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.abspath(os.path.join(_HERE, '..', '..', '..', '..'))
 
@@ -103,18 +105,13 @@ def _recording_rest():
     return RecordingRest()
 
 
-def test_live_generate_draft_is_readonly_and_round_matches_annotation(client):
+def _live_gateway(client):
+    """真实 RestToolClient + 真实 ToolGateway（用户自己的 Authorization）。"""
     from agent_service.application.tool_gateway import SharedToolGateway
-    from agent_service.domain.model.entities import ToolCallRequest
     from agent_service.domain.ports.tool_gateway import ToolInvocationContext
     from agent_service.infrastructure.tools.registry_bridge import (
         RunCredentialRegistry, SharedToolRegistryBridge,
     )
-
-    audios = client.request('GET', '/audios?page=1&per_page=20')['data']['items']
-    annotated = [a for a in audios if a.get('annotations')]
-    assert annotated, '主库前 20 条音频都没有标注，无法核对草案口径'
-    audio = annotated[0]
 
     rest = _recording_rest()
     credentials = RunCredentialRegistry()
@@ -122,8 +119,21 @@ def test_live_generate_draft_is_readonly_and_round_matches_annotation(client):
     gateway = SharedToolGateway(
         bridge=SharedToolRegistryBridge(), rest=rest, credentials=credentials)
     context = ToolInvocationContext(
-        run_id='live', session_id='s', owner_id=int(audio.get('created_by_user_id') or 1),
-        tenant_id='live', step_id='step', permissions=('*',), idempotency_key='k')
+        run_id='live', session_id='s', owner_id=1, tenant_id='live',
+        step_id='step', permissions=('*',), idempotency_key='k')
+    return gateway, rest, context
+
+
+def _annotated_audio(client):
+    audios = client.request('GET', '/audios?page=1&per_page=20')['data']['items']
+    annotated = [a for a in audios if a.get('annotations')]
+    assert annotated, '主库前 20 条音频都没有标注，无法核对草案口径'
+    return annotated[0]
+
+
+def test_live_generate_draft_is_readonly_and_round_matches_annotation(client):
+    gateway, rest, context = _live_gateway(client)
+    audio = _annotated_audio(client)
 
     result = gateway.execute(ToolCallRequest(
         tool_call_id='c1', name='testcase_generate',
@@ -162,3 +172,46 @@ def test_live_generate_draft_is_readonly_and_round_matches_annotation(client):
     if segments and segments[0].get('playback_device_name'):
         assert (draft['config']['rounds'][0]['audios'][0].get('playback_device_name')
                 == segments[0]['playback_device_name'])
+
+
+def test_live_generate_overrides_spl_and_validates_references(client):
+    """P2-1 ~ P2-4 真机复测：入参覆盖标注；引用资源不存在显式失败。"""
+    gateway, rest, context = _live_gateway(client)
+    audio = _annotated_audio(client)
+    device = client.request(
+        'GET', '/playback-devices?page=1&per_page=1')['data']['items'][0]
+    dimension = client.request(
+        'GET', '/evaluation/dimensions?page=1&per_page=1')['data']['items'][0]
+    group = client.request('GET', '/groups?page=1&per_page=1')['data']['items'][0]
+
+    ok = gateway.execute(ToolCallRequest(
+        tool_call_id='c2', name='testcase_generate',
+        arguments={'audio_ids': [audio['id']], 'algorithm_type': 'voice_llm',
+                   'spl': 70, 'playback_device_id': device['id'],
+                   'dimension_ids': [dimension['id']],
+                   'group_id': group['id']}),
+        context)
+    assert ok.ok, ok.content
+    draft = json.loads(ok.content)['drafts'][0]
+    assert draft['group_id'] == group['id']
+    entry = draft['config']['rounds'][0]['audios'][0]
+    assert entry['spl'] == 70.0
+    assert entry['playback_device_id'] == device['id']
+    assert not any('未解析为 ID' in note for note in draft['notes'])
+
+    rejected = [
+        {'audio_ids': [audio['id']], 'dimension_ids': [999999]},
+        {'audio_ids': [audio['id']], 'dimension_ids': ['abc']},
+        {'audio_ids': [audio['id']], 'dimension_ids': [{'round_scope': 'multi'}]},
+        {'audio_ids': [audio['id']], 'playback_device_id': 999999},
+        {'audio_ids': [audio['id']], 'algorithm_type': 'no_such_algo'},
+        {'audio_ids': [audio['id']], 'spl': -1},
+    ]
+    for arguments in rejected:
+        result = gateway.execute(ToolCallRequest(
+            tool_call_id='c3', name='testcase_generate', arguments=arguments),
+            context)
+        assert not result.ok, arguments
+        assert result.error_code == 'INVALID_ARGUMENTS', (arguments, result.content)
+
+    assert all(call['method'] == 'GET' for call in rest.calls), rest.calls

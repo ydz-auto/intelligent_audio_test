@@ -453,8 +453,9 @@ INTENT_TOOLS: List[IntentTool] = [
         description=('由音频标注推导用例草案（**只读生成，不落库**）：复用音频标注的 '
                      '轮次 / 声压 / 播放设备与算法用例参数口径，产出可直接照抄到'
                      '「新建用例」的草案（含 config.rounds、algorithm_params、'
-                     'evaluation.dimensions）。草案没有真实用例 ID，返回后不会写库；'
-                     '创建用例是写操作，M2 才开放。'),
+                     'evaluation.dimensions）。引用资源（算法类型 / 评估维度 / '
+                     '播放设备 / 分组）先回源校验存在性，非法参数显式失败。草案'
+                     '没有真实用例 ID，返回后不会写库；创建用例是写操作，M2 才开放。'),
         parameters=_schema({
             'audio_ids': _prop('array', '源音频 ID 列表（必填，单次最多 '
                                        f'{case_tools.MAX_GENERATE_AUDIOS} 条）',
@@ -462,14 +463,18 @@ INTENT_TOOLS: List[IntentTool] = [
             'algorithm_type': _prop('string', '算法类型（用于挑选用例参数与标注 code）'),
             'device_type': _prop('string', '目标设备类型（缺省 http_api）',
                                  enum=[d.value for d in DeviceType]),
-            'dimension_ids': _prop('array', '评估维度 ID 列表（挂到生成的草案）',
-                                   items={'type': 'integer'}),
+            'dimension_ids': _prop(
+                'array', '评估维度列表：正整数 ID 或 {id, round_scope?, '
+                         'device_type?} 对象（逐项校验存在性，非法项显式失败）',
+                items={'type': ['integer', 'object']}),
             'dimension_round_scope': _prop(
                 'string', '评估维度口径：single/per_round 逐轮、multi 多轮整体',
                 enum=list(case_tools.ROUND_SCOPES)),
-            'group_id': _prop('string', '目标用例分组 ID（仅回显，不落库）'),
-            'spl': _prop('number', '播放声压（缺省取标注，标注没有按 65.0）'),
-            'playback_device_id': _prop('integer', '播放设备 ID（缺省取标注）'),
+            'group_id': _prop('string', '目标用例分组 ID（校验存在性，仅回显不落库）'),
+            'spl': _prop('number', '播放声压（显式值覆盖标注；缺省取标注，'
+                                   '标注没有按 65.0）'),
+            'playback_device_id': _prop(
+                'integer', '播放设备 ID（显式值覆盖标注，校验存在性；缺省取标注）'),
             'inherit_tags': _prop('boolean', '是否继承音频标签（默认 true）'),
         }, required=('audio_ids',)),
         risk='READ', permissions=('testcase:read',), enabled=True,

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any, Dict, Optional, Sequence
 
 from agent_service.domain.enums import ToolRisk
@@ -50,6 +51,29 @@ _NOT_FOUND_TEXT = '资源不存在或无权访问。'
 # 404 语义是「这一轮没有参考参数 / 轮次不存在」而不是越权的只读工具：
 # 沿用上游文案，避免模型把「未生成」回答成「无权访问」。
 _NOT_FOUND_MESSAGE_TOOLS = frozenset({'testcase_round_ref_params'})
+
+# 上游「业务未找到」的 code / 文案口径：部分只读接口对不存在的资源返回
+# 400 + code 203（如播放设备详情），不是 404，也不是真正的参数错误。
+_BUSINESS_NOT_FOUND_CODES = frozenset({203, 404})
+_BUSINESS_NOT_FOUND_TERMS = ('未找到', '不存在', 'not found')
+
+# 分组存在性校验的分页口径（分组数会超过单页默认值，不能只查第一页）
+GROUP_LOOKUP_PER_PAGE = 200
+GROUP_LOOKUP_MAX_PAGES = 50
+
+
+def _business_not_found(result) -> bool:
+    """上游以 400 + 业务 code / 文案表达「资源不存在」。"""
+    payload = getattr(result, 'payload', None)
+    if not isinstance(payload, dict):
+        return False
+    if payload.get('code') in _BUSINESS_NOT_FOUND_CODES:
+        return True
+    message = payload.get('message')
+    if isinstance(message, str):
+        text = message.strip().lower()
+        return any(term in text for term in _BUSINESS_NOT_FOUND_TERMS)
+    return False
 
 
 def _granted(granted: Sequence[str], required: Sequence[str]) -> bool:
@@ -81,6 +105,23 @@ def _envelope_items(payload: Optional[dict]):
         return None
     items = data.get('items')
     return items if isinstance(items, list) else None
+
+
+def _algorithm_values(payload: Optional[dict]):
+    """取算法下拉选项的取值集合（``data.algorithms[].value``）。
+
+    结构不符返回 ``None``（调用方按上游格式异常处理）；空列表是合法结果。
+    """
+    if not isinstance(payload, dict):
+        return None
+    data = payload.get('data')
+    if not isinstance(data, dict):
+        return None
+    rows = data.get('algorithms')
+    if not isinstance(rows, list):
+        return None
+    return {str(row['value']) for row in rows
+            if isinstance(row, dict) and row.get('value') is not None}
 
 
 class SharedToolGateway(ToolGateway):
@@ -191,9 +232,11 @@ class SharedToolGateway(ToolGateway):
         """标注 → 用例草案（INT-2460）。**只读推导**：全程只回源 GET。
 
         - 入参校验显式失败：`audio_ids` 必须是非空正整数列表、
-          `device_type` / `dimension_round_scope` 必须合法、条数不超上限；
-        - `group_id` 存在性校验（INT-2530 教训：收 ID 必须验归属 / 存在，
-          失败显式报错，不静默忽略）；
+          `device_type` / `dimension_round_scope` 必须合法、`dimension_ids`
+          逐项合法（INT-2529/2531）、`spl` / `playback_device_id` 合法、条数不超上限；
+        - 引用资源存在性校验（INT-2530：收 ID 必须验存在，失败显式报错，不静默
+          忽略）：`algorithm_type`、`dimension_ids`、`playback_device_id`、
+          `group_id`（分组分页查全，不只查第一页）；
         - 逐音频回源取详情（顺带完成行级可见性校验），不吞 403/404；
         - 最后交给纯函数 ``build_case_drafts`` 推导，不写任何表。
         """
@@ -226,9 +269,40 @@ class SharedToolGateway(ToolGateway):
                 'dimension_round_scope 取值必须是 '
                 f'{"/".join(case_tools.ROUND_SCOPES)} 之一')
 
+        spl = arguments.get('spl')
+        if spl is not None and (isinstance(spl, bool)
+                                or not isinstance(spl, (int, float))
+                                or not math.isfinite(spl) or spl < 0):
+            return self._fail(call, INVALID_ARGUMENTS,
+                              f'spl 必须是非负数值：{spl}')
+        playback_device_id = arguments.get('playback_device_id')
+        if playback_device_id is not None and not case_tools.is_positive_int(
+                playback_device_id):
+            return self._fail(call, INVALID_ARGUMENTS,
+                              f'playback_device_id 必须是正整数：{playback_device_id}')
+        dimension_error = case_tools.validate_dimension_ids(
+            arguments.get('dimension_ids'))
+        if dimension_error:
+            return self._fail(call, INVALID_ARGUMENTS, dimension_error)
+        dimensions = list(arguments.get('dimension_ids') or [])
+
+        # ---- 引用资源存在性（全部先于草案推导，避免「草案带出不存在的 ID」）----
         algorithm_type = arguments.get('algorithm_type')
         case_params: list = []
         if algorithm_type:
+            options_payload, failure = self._fetch_payload(
+                call, 'algorithm_options', {}, context)
+            if failure is not None:
+                return failure
+            available = _algorithm_values(options_payload)
+            if available is None:
+                return self._fail(call, UPSTREAM_ERROR,
+                                  '算法下拉选项返回格式异常（缺少 data.algorithms）')
+            if str(algorithm_type) not in available:
+                return self._fail(
+                    call, INVALID_ARGUMENTS,
+                    f'algorithm_type={algorithm_type} 不存在，'
+                    f'可选值：{"/".join(sorted(available)) or "（无）"}')
             payload, failure = self._fetch_payload(
                 call, 'algorithm_query',
                 {'action': 'case_params', 'algorithm_type': algorithm_type},
@@ -241,14 +315,39 @@ class SharedToolGateway(ToolGateway):
                                   '算法用例参数返回格式异常（缺少 data.items）')
             case_params = items
 
-        group_id = arguments.get('group_id')
-        if group_id:
-            payload, failure = self._fetch_payload(
-                call, 'group_list', {}, context)
+        missing_dimensions = []
+        for dim in dimensions:
+            dim_id = dim.get('id') if isinstance(dim, dict) else dim
+            exists, failure = self._probe_exists(
+                call, 'evaluation_dimension_get', {'dim_id': dim_id}, context)
             if failure is not None:
                 return failure
-            groups = _envelope_items(payload) or []
-            if not any(str(item.get('id')) == str(group_id) for item in groups):
+            if not exists:
+                missing_dimensions.append(dim_id)
+        if missing_dimensions:
+            return self._fail(
+                call, INVALID_ARGUMENTS,
+                f'dimension_ids 不存在或无权限：{missing_dimensions}，'
+                '请先用 evaluation_query 的 dimensions 动作确认')
+
+        if playback_device_id is not None:
+            exists, failure = self._probe_exists(
+                call, case_tools.PLAYBACK_DEVICE_GET_TOOL,
+                {'device_id': playback_device_id}, context)
+            if failure is not None:
+                return failure
+            if not exists:
+                return self._fail(
+                    call, INVALID_ARGUMENTS,
+                    f'playback_device_id={playback_device_id} 不存在或无权限，'
+                    '请先确认播放设备 ID')
+
+        group_id = arguments.get('group_id')
+        if group_id:
+            exists, failure = self._group_exists(call, str(group_id), context)
+            if failure is not None:
+                return failure
+            if not exists:
                 return self._fail(
                     call, INVALID_ARGUMENTS,
                     f'group_id={group_id} 不存在或无权限，请先用 group_list 确认')
@@ -272,11 +371,11 @@ class SharedToolGateway(ToolGateway):
                 case_params=case_params,
                 algorithm_type=algorithm_type,
                 device_type=normalized_device,
-                dimensions=arguments.get('dimension_ids') or (),
+                dimensions=dimensions,
                 dimension_round_scope=round_scope,
                 group_id=group_id,
-                spl=arguments.get('spl'),
-                playback_device_id=arguments.get('playback_device_id'),
+                spl=spl,
+                playback_device_id=playback_device_id,
                 inherit_tags=bool(arguments.get('inherit_tags', True)),
             )
         except Exception as exc:  # noqa: BLE001 - 推导失败要显式回给模型
@@ -285,6 +384,72 @@ class SharedToolGateway(ToolGateway):
 
         payload = {'mode': 'draft', 'persisted': False, 'writes': 0, **result}
         return self._ok(call, json.dumps(payload, ensure_ascii=False))
+
+    def _group_exists(self, call: ToolCallRequest, group_id: str,
+                      context: ToolInvocationContext):
+        """分页查全分组列表判断存在性（不能用单页默认值误判，INT-2530）。"""
+        page = 1
+        while page <= GROUP_LOOKUP_MAX_PAGES:
+            payload, failure = self._fetch_payload(
+                call, 'group_list',
+                {'page': page, 'per_page': GROUP_LOOKUP_PER_PAGE}, context)
+            if failure is not None:
+                return None, failure
+            items = _envelope_items(payload)
+            if items is None:
+                return None, self._fail(
+                    call, UPSTREAM_ERROR, '分组列表返回格式异常（缺少 data.items）')
+            if any(str(item.get('id')) == group_id for item in items):
+                return True, None
+            total_pages = 1
+            data = (payload or {}).get('data') if isinstance(payload, dict) else None
+            if isinstance(data, dict) and data.get('pages') is not None:
+                try:
+                    total_pages = int(data['pages'])
+                except (TypeError, ValueError):
+                    total_pages = 1
+            if not items or page >= total_pages:
+                return False, None
+            page += 1
+        return False, None
+
+    def _probe_exists(self, call: ToolCallRequest, tool,
+                      arguments: Dict[str, Any],
+                      context: ToolInvocationContext):
+        """回源 GET 单一资源探测存在性 → ``(是否存在, 失败结果)``。
+
+        - 2xx：存在；404 或 400 + 业务未找到：不存在；
+        - 401/403 统一收敛为 PERMISSION_DENIED（不泄漏存在性）；
+        - 其它 4xx/5xx 与不可用：返回失败结果，由调用方原样透出。
+        ``tool`` 可以是工具名（走注册表解析）或工具项（内部校验用）。
+        """
+        if isinstance(tool, str):
+            resolved, merged, resolve_error = self._bridge.resolve_rest(
+                tool, arguments)
+            if resolve_error or resolved is None:
+                return None, self._fail(
+                    call, INVALID_ARGUMENTS, resolve_error or '工具映射不可用')
+            tool, arguments = resolved, merged
+        authorization = self._credentials.get(context.run_id)
+        result = self._rest.call(
+            tool, arguments, authorization=authorization,
+            user_id=context.owner_id, tenant_id=context.tenant_id,
+            permissions=context.permissions)
+        if result.status == 0:
+            return None, self._fail(
+                call, UPSTREAM_UNAVAILABLE, f'目标服务不可用：{result.error}')
+        if result.status in (401, 403):
+            return None, self._fail(call, PERMISSION_DENIED, _DENIED_TEXT)
+        if result.status == 404 or (result.status == 400
+                                    and _business_not_found(result)):
+            return False, None
+        if result.status >= 400:
+            logger.warning('ToolGateway 存在性探测失败 %s tool=%s',
+                           result.status, tool['name'])
+            return None, self._fail(
+                call, UPSTREAM_ERROR,
+                f'目标接口返回 {result.status}：{result.text}')
+        return True, None
 
     def _fetch_payload(self, call: ToolCallRequest, name: str,
                        arguments: Dict[str, Any],
