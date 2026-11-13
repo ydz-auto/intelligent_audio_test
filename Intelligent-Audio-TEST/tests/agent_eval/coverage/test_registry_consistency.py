@@ -60,6 +60,8 @@ SKILL_WRITE_TOOLS = {
     'testcase-authoring': {'testcase_write'},
     'tag-group': {'tag_group_manage'},
     'task-operations': {'task_run'},
+    # INT-2470 算法写（定义 / 参数 / 参考参数 / 映射 / 导入 / 热重载）
+    'algorithm-config': {'algorithm_manage'},
 }
 # M2 起写意图工具开始按域进入 Skill allowed-tools：只有本集合里的写工具可以被
 # Skill 声明（新增写工具必须同时在这里登记，避免「悄悄把写工具塞进 Skill」）。

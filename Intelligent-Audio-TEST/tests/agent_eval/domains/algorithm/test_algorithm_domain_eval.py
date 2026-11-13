@@ -298,23 +298,51 @@ def test_algorithm_config_skill_loads_without_errors():
     assert skill.body_line_count <= 500
 
 
-def test_skill_allowed_tools_are_enabled_readonly():
+def test_skill_allowed_tools_are_enabled_and_domain_scoped():
+    """allowed-tools 只能引用已启用工具；写工具只允许本域的 ``algorithm_manage``。
+
+    INT-2470 起算法域有写章节：其余工具仍必须是只读；写工具只出现在本域
+    Skill 里，且仍走提案 + 审批（``evaluation-config`` / ``testcase-authoring``
+    同口径）。
+    """
     skill = _skill()
     assert skill.meta.allowed_tools
     by_name = {t.name: t for t in intent_tools.INTENT_TOOLS}
+    domain_write = {'algorithm_manage'}
     for name in skill.meta.allowed_tools:
         tool = by_name.get(name)
         assert tool is not None, f'allowed-tools 引用了未注册工具：{name}'
         assert tool.enabled is True, f'allowed-tools 引用了未启用工具：{name}'
-        assert tool.risk == 'READ', f'allowed-tools 引用了写工具：{name}'
-    assert 'algorithm_manage' not in skill.meta.allowed_tools
-    assert set(skill.meta.permissions) <= {'algorithm:read'}
+        if name in domain_write:
+            assert tool.risk in ('WRITE', 'DESTRUCTIVE'), name
+        else:
+            assert tool.risk == 'READ', f'allowed-tools 引用了写工具：{name}'
+    assert 'algorithm_manage' in skill.meta.allowed_tools
+    assert set(skill.meta.permissions) == {
+        'algorithm:read', 'algorithm:definition_manage',
+        'algorithm:param_manage'}
+    # 写工具需要的权限码都要在 Skill 声明里（与 allowed-tools 自洽）
+    for name in skill.meta.allowed_tools:
+        assert set(by_name[name].permissions) <= set(skill.meta.permissions), name
 
 
 def test_skill_l2_documents_every_action():
     body = _skill().body
     for action in ALGORITHM_QUERY_ACTIONS:
         assert f'`{action}`' in body, f'L2 正文没有覆盖动作 {action}'
+
+
+def test_skill_l2_documents_every_write_action_and_risk_rules():
+    """INT-2470 写章节：15 个写动作逐条写明，且覆盖参数变更风险 / 热重载 / 回滚。"""
+    from shared.agent_tools import algorithm_tools
+
+    body = _skill().body
+    for action in algorithm_tools.ACTION_NAMES:
+        assert f'`{action}`' in body, f'L2 写章节没有覆盖动作 {action}'
+    for keyword in ('参数变更风险', '热重载', '回滚', '幂等', 'APPROVAL_REQUIRED'):
+        assert keyword in body, f'L2 写章节缺少「{keyword}」'
+    # 删除动作在动作表里必须标成破坏性（审批人要知道这是软删）
+    assert body.count('DESTRUCTIVE') >= len(algorithm_tools.DELETE_ACTIONS)
 
 
 def test_skill_documents_real_response_shapes_and_permissions():

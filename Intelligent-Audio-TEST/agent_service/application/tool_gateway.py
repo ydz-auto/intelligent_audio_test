@@ -53,6 +53,7 @@ from agent_service.domain.ports.tool_registry import (
     RunCredentialPort, ToolRegistryPort, ToolTransportPort,
 )
 from shared.agent_tools import testcase_tools as case_tools
+from shared.agent_tools import algorithm_tools
 from shared.agent_tools import evaluation_tools
 from shared.agent_tools.intent_tools import redact_for_audit
 from shared.models.common_enums import ReportType
@@ -301,6 +302,12 @@ class SharedToolGateway(ToolGateway):
         # 软删语义），比裸 REST 请求更能让审批人判断影响面。
         if name == 'evaluation_manage':
             diff = evaluation_tools.proposal_diff(dict(arguments or {}))
+            if diff is not None:
+                return diff
+        # 算法域写（INT-2470）：动作 / 目标表 / 变更字段（子实体只给条数）/
+        # 软删或热重载的影响面；热重载不改数据，删除可追溯。
+        if name == 'algorithm_manage':
+            diff = algorithm_tools.proposal_diff(dict(arguments or {}))
             if diff is not None:
                 return diff
         args = dict(arguments or {})
@@ -1069,6 +1076,17 @@ class SharedToolGateway(ToolGateway):
         failure = self._transport_failure(call, tool, result)
         if failure is not None:
             return failure
+        # 语义校验（INT-2470 打回项 P2）：算法热重载的外层信封恒为 success，
+        # 真正结果在内层 data；只看 HTTP 状态会把「缓存没重建」报成成功。
+        # 动作取自原始调用参数（merged 已剔除 action）。
+        if call.name == 'algorithm_manage':
+            action = (call.arguments or {}).get('action')
+            semantic_error = algorithm_tools.validate_result(
+                str(action or ''), result.payload)
+            if semantic_error:
+                logger.warning('ToolGateway 回源语义失败 tool=%s action=%s',
+                               call.name, action)
+                return self._fail(call, UPSTREAM_ERROR, semantic_error)
         return self._ok(call, result.text)
 
     def _transport_failure(self, call: ToolCallRequest, tool: dict,
