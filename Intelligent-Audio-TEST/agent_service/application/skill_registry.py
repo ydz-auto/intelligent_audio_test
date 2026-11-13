@@ -63,11 +63,19 @@ class SkillRegistry:
     # ------------------------------------------------------------ loading
 
     def load(self) -> 'SkillRegistry':
-        """重新扫描并校验。严格模式下有 ERROR 直接抛异常（启动失败）。"""
+        """重新扫描并校验。严格模式下有任何问题直接抛异常（启动失败）。"""
         issues: List[SkillIssue] = []
         accepted: List[Skill] = []
         seen: Set[str] = set()
-        for skill in self._repository.load_all():
+        scan = self._repository.load_all()
+        # 目录级失败（根目录缺失 / 不可读 / 为空、目录缺 SKILL.md）：INT-2506
+        # 统一收进 issues，不再只留在仓储层日志里。
+        for scan_issue in scan.issues:
+            issues.append(SkillIssue(
+                code=scan_issue.code,
+                severity=SkillIssueSeverity.ERROR,
+                skill='', path=scan_issue.path, message=scan_issue.message))
+        for skill in scan.skills:
             found = self._validate(skill)
             fatal = [i for i in found if i.severity is SkillIssueSeverity.ERROR]
             if not fatal and skill.name in seen:
@@ -101,8 +109,12 @@ class SkillRegistry:
                        issue.message)
         logger.info('SkillRegistry 装载完成：%d 个可用 / %d 个问题',
                     len(self._skills), len(self._issues))
-        if errors and not accepted:
-            logger.error('没有任何可用 Skill：skills 目录是否挂载正确？')
+        if not self._skills:
+            # INT-2506：0 个可用 Skill 不能只留 INFO（Skill 层整体消失时看板
+            # / /health / /skills 全是 200，模型会退回凭记忆回答平台口径）。
+            (logger.error if errors else logger.warning)(
+                'Skill 装载结果为空：0 个可用 Skill / %d 个问题，'
+                'skills 目录是否挂载正确？', len(self._issues))
         return self
 
     @property

@@ -180,7 +180,7 @@ def create_app(container=None) -> FastAPI:
     _register_error_handlers(app)
 
     @app.get('/health')
-    def health():
+    def health(request: Request):
         """健康检查：DB / Redis 连通 + T2 运行时可见性（INT-2456）。
 
         - DB 不可用 → 503（无法读写 run/event，容器不可用）；
@@ -210,6 +210,17 @@ def create_app(container=None) -> FastAPI:
             },
             't2_runtime': t2.as_health(),
         }
+        # INT-2506：Skill 装载摘要（计数 + 原因码）。错挂载 / 空目录导致 Skill
+        # 层整体消失时，这里不再与正常态无差别。
+        registry = getattr(
+            getattr(request.app.state, 'container', None),
+            'skill_registry', None)
+        if registry is not None:
+            payload['skills'] = {
+                'loaded': len(registry.skills),
+                'issues': len(registry.issues),
+                'issue_codes': sorted({i.code.value for i in registry.issues}),
+            }
         return JSONResponse(status_code=200 if db_ok else 503, content=payload)
 
     app.include_router(agent_router, prefix='/api/v1/agent', tags=['agent'])
