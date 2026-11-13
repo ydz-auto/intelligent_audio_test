@@ -120,6 +120,13 @@ type UpdateMessagesFn = (updater: (prev: ChatMessage[]) => ChatMessage[]) => voi
 type AiChatSessionState = {
   config: ChatConfig
   messages: ChatMessage[]
+  /**
+   * 平台 Agent 服务端会话 id（INT-2507）。两形态（整页 / 浮窗）与刷新后共用这一份：
+   * 此前挂在宿主组件 ref 上，展开整页或刷新即丢，Agent 会按新会话从零回答。
+   */
+  agentSessionId: string | null
+  /** 平台 Agent 最近一轮 run id（进行中时供宿主挂载后核对；终态清空） */
+  agentRunId: string | null
   /** 已应用的 URL 上下文 id（§3.7 首访/换上下文应用一次；防重复 set） */
   appliedContextKey?: string
   /** URL 上下文名称解析状态（INT-1936；页面据此标失败态） */
@@ -127,9 +134,16 @@ type AiChatSessionState = {
   updateMessages: UpdateMessagesFn
   updateConfig: <K extends keyof ChatConfig>(key: K, value: ChatConfig[K]) => void
   clearMessages: () => void
+  /** 绑定 / 结束平台 Agent 会话（null 结束；下次发送新建会话） */
+  setAgentSession: (sessionId: string | null) => void
+  /** 记录 / 清空当前 run id */
+  setAgentRunId: (runId: string | null) => void
   /** URL 契约（§3.7）：绑定 report/task 上下文（同上下文沿用存档保持会话；名称走真实接口解析） */
   applyInitialContext: (context?: AiChatInitialContext) => void
 }
+
+/** 启动时还原平台 Agent 会话（INT-2507：刷新后续用同一服务端会话） */
+const storedAgentSession = aiChatPrefs.loadAgentSession()
 
 export const useAiChatSession = create<AiChatSessionState>()((set, get) => {
   /**
@@ -161,6 +175,8 @@ export const useAiChatSession = create<AiChatSessionState>()((set, get) => {
   return {
     config: aiChatPrefs.loadConfig() ?? { ...DEFAULT_CONFIG },
     messages: aiChatPrefs.loadMessages() ?? [],
+    agentSessionId: storedAgentSession?.sessionId ?? null,
+    agentRunId: storedAgentSession?.runId ?? null,
     appliedContextKey: undefined,
     contextStatus: 'idle',
     updateMessages: (updater) =>
@@ -168,6 +184,9 @@ export const useAiChatSession = create<AiChatSessionState>()((set, get) => {
     updateConfig: (key, value) =>
       set((state) => ({ config: { ...state.config, [key]: value } })),
     clearMessages: () => set({ messages: [] }),
+    setAgentSession: (sessionId) =>
+      set({ agentSessionId: sessionId, agentRunId: sessionId ? get().agentRunId : null }),
+    setAgentRunId: (runId) => set({ agentRunId: runId }),
     applyInitialContext: (context) => {
       if (!context?.report && !context?.task && !context?.reviewTask) return
       const requestedId = context.report ?? context.task ?? context.reviewTask
@@ -194,5 +213,16 @@ useAiChatSession.subscribe((state, prev) => {
   }
   if (state.config !== prev.config) {
     aiChatPrefs.saveConfig(state.config)
+  }
+  // 平台 Agent 会话 id 随会话持久化（INT-2507）：刷新 / 换宿主后仍续用同一服务端会话
+  if (
+    state.agentSessionId !== prev.agentSessionId ||
+    state.agentRunId !== prev.agentRunId
+  ) {
+    aiChatPrefs.saveAgentSession(
+      state.agentSessionId
+        ? { sessionId: state.agentSessionId, runId: state.agentRunId }
+        : null
+    )
   }
 })

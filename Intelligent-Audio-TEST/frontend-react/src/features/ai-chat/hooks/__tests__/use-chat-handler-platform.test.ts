@@ -1,8 +1,9 @@
 /**
- * useChatHandler 平台 Agent 通道单测（INT-2457 §12.2）：
+ * useChatHandler 平台 Agent 通道单测（INT-2457 §12.2 + INT-2507）：
  * message_delta 逐字渲染、tool_call/tool_result 工具卡、run_finished 终态、
- * 取消（只发一次取消请求）、错误归一（Agent 总开关关闭）。
- * Agent API 用替身；端到端（真实 POST /runs + SSE）待 INT-2451/INT-2456 部署后补证。
+ * 取消（只发一次取消请求）、错误归一（Agent 总开关关闭），以及两个宿主（整页 / 浮窗）
+ * 共享同一 run 状态、不会并发各跑一条 run。
+ * Agent API 用替身；端到端（真实 POST /runs + SSE）见交付评论中的真实栈证据。
  */
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,11 +11,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
 import { MESSAGE_STATUS } from '@/features/ai-chat/constants'
 import { AGENT_ERROR_COPY, AGENT_RUN_STATUS } from '@/domain/models/agent'
-import { CHAT_CHANNEL, type ChatMessage } from '@/domain/models/aiChat'
+import {
+  CHAT_CHANNEL,
+  type ChatMessage,
+  type LlmProvider,
+} from '@/domain/models/aiChat'
+import { AGENT_RUN_PHASE, useAgentRunStore } from '@/application/agent/agent-run-store'
+import { useAiChatSession } from '@/infrastructure/stores/aiChatSessionStore'
 import {
   cancelAgentRun,
   createAgentRun,
   createAgentSession,
+  getAgentSession,
   subscribeAgentRunEvents,
   type SubscribeAgentRunEventsOptions,
 } from '@/infrastructure/api/agentApi'
@@ -28,6 +36,7 @@ vi.mock('@/infrastructure/api/agentApi', async (importOriginal) => {
     createAgentRun: vi.fn(),
     cancelAgentRun: vi.fn(),
     getAgentRun: vi.fn(),
+    getAgentSession: vi.fn(),
     subscribeAgentRunEvents: vi.fn(),
   }
 })
@@ -35,10 +44,22 @@ vi.mock('@/infrastructure/api/agentApi', async (importOriginal) => {
 const createSessionMock = vi.mocked(createAgentSession)
 const createRunMock = vi.mocked(createAgentRun)
 const cancelRunMock = vi.mocked(cancelAgentRun)
+const getSessionMock = vi.mocked(getAgentSession)
 const subscribeMock = vi.mocked(subscribeAgentRunEvents)
 
 let streamOptions: SubscribeAgentRunEventsOptions | null = null
-let latest: ChatMessage[] = []
+
+/** 供应商通道宿主（评估复核弹窗）用的替身供应商 */
+const REVIEW_PROVIDER: LlmProvider = {
+  id: 'p-review',
+  name: '复核供应商',
+  baseUrl: 'https://api.review.example/v1',
+  apiKey: 'sk-review',
+  models: ['review-model'],
+}
+
+/** 共享消息列表（平台通道由 agent-run-store 直接写入 store，不再经调用方 onMessageUpdate） */
+const messages = () => useAiChatSession.getState().messages
 
 function renderPlatformChat(extra?: { systemPrompt?: string }) {
   return renderHook(() =>
@@ -46,17 +67,22 @@ function renderPlatformChat(extra?: { systemPrompt?: string }) {
       channel: CHAT_CHANNEL.PLATFORM,
       config: { chatMode: CHAT_CHANNEL.PLATFORM },
       provider: null,
-      messages: latest,
-      onMessageUpdate: (updater) => {
-        latest = updater(latest)
-      },
+      messages: messages(),
+      onMessageUpdate: useAiChatSession.getState().updateMessages,
       systemPrompt: extra?.systemPrompt,
     })
   )
 }
 
 beforeEach(() => {
-  latest = []
+  window.localStorage.clear()
+  useAgentRunStore.getState().reset()
+  useAiChatSession.setState({
+    messages: [],
+    agentSessionId: null,
+    agentRunId: null,
+  })
+  window.localStorage.clear()
   streamOptions = null
   createSessionMock.mockResolvedValue({ id: 's-1', title: '会话' })
   createRunMock.mockResolvedValue({
@@ -68,10 +94,16 @@ beforeEach(() => {
     streamOptions = options
     return () => undefined
   })
+  getSessionMock.mockResolvedValue({
+    session: { id: 's-1', title: '会话' },
+    messages: [],
+    runs: [],
+  })
 })
 
 afterEach(() => {
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('useChatHandler 平台 Agent 通道', () => {
@@ -83,9 +115,9 @@ describe('useChatHandler 平台 Agent 通道', () => {
     })
 
     expect(result.current.isGenerating).toBe(true)
-    expect(latest).toHaveLength(2)
-    expect(latest[0].from).toBe('user')
-    expect(latest[1].status).toBe(MESSAGE_STATUS.LOADING)
+    expect(messages()).toHaveLength(2)
+    expect(messages()[0].from).toBe('user')
+    expect(messages()[1].status).toBe(MESSAGE_STATUS.LOADING)
     expect(createRunMock).toHaveBeenCalledTimes(1)
 
     act(() => {
@@ -107,8 +139,8 @@ describe('useChatHandler 平台 Agent 通道', () => {
       })
     })
 
-    expect(latest[1].status).toBe(MESSAGE_STATUS.STREAMING)
-    expect(latest[1].versions[0].content).toBe('正在分析')
+    expect(messages()[1].status).toBe(MESSAGE_STATUS.STREAMING)
+    expect(messages()[1].versions[0].content).toBe('正在分析')
 
     act(() => {
       streamOptions?.onEvent({
@@ -120,8 +152,8 @@ describe('useChatHandler 平台 Agent 通道', () => {
       })
     })
 
-    expect(latest[1].status).toBe(MESSAGE_STATUS.COMPLETE)
-    expect(latest[1].versions[0].content).toBe('正在分析')
+    expect(messages()[1].status).toBe(MESSAGE_STATUS.COMPLETE)
+    expect(messages()[1].versions[0].content).toBe('正在分析')
     expect(result.current.isGenerating).toBe(false)
   })
 
@@ -154,7 +186,7 @@ describe('useChatHandler 平台 Agent 通道', () => {
       })
     })
 
-    const calls = latest[1].toolCalls ?? []
+    const calls = messages()[1].toolCalls ?? []
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({
       id: 'tc-1',
@@ -195,9 +227,9 @@ describe('useChatHandler 平台 Agent 通道', () => {
 
     expect(cancelRunMock).toHaveBeenCalledTimes(1)
     expect(result.current.isCancelling).toBe(false)
-    expect(latest[1].status).toBe(MESSAGE_STATUS.COMPLETE)
-    expect(latest[1].runStatus).toBe(AGENT_RUN_STATUS.CANCELLED)
-    expect(latest[1].versions[0].content).toBe('部分输出')
+    expect(messages()[1].status).toBe(MESSAGE_STATUS.COMPLETE)
+    expect(messages()[1].runStatus).toBe(AGENT_RUN_STATUS.CANCELLED)
+    expect(messages()[1].versions[0].content).toBe('部分输出')
   })
 
   it('Agent 总开关关闭（503）→ error 消息 + 中文文案，无杜撰内容', async () => {
@@ -208,11 +240,11 @@ describe('useChatHandler 平台 Agent 通道', () => {
       result.current.sendChat('你好')
     })
 
-    expect(isGeneratingAfterSend(result)).toBe(false)
-    expect(latest[1].status).toBe(MESSAGE_STATUS.ERROR)
-    expect(latest[1].versions[0].content).toBe(AGENT_ERROR_COPY.disabled)
-    expect(latest[1].toolCalls).toBeUndefined()
-    expect(latest[1].sourceRefs).toBeUndefined()
+    expect(result.current.isGenerating).toBe(false)
+    expect(messages()[1].status).toBe(MESSAGE_STATUS.ERROR)
+    expect(messages()[1].versions[0].content).toBe(AGENT_ERROR_COPY.disabled)
+    expect(messages()[1].toolCalls).toBeUndefined()
+    expect(messages()[1].sourceRefs).toBeUndefined()
   })
 
   it('run 失败但已有正文：保留正文 + FAILED 徽标，不清空内容', async () => {
@@ -240,12 +272,116 @@ describe('useChatHandler 平台 Agent 通道', () => {
       })
     })
 
-    expect(latest[1].status).toBe(MESSAGE_STATUS.COMPLETE)
-    expect(latest[1].runStatus).toBe(AGENT_RUN_STATUS.FAILED)
-    expect(latest[1].versions[0].content).toBe('已有正文')
+    expect(messages()[1].status).toBe(MESSAGE_STATUS.COMPLETE)
+    expect(messages()[1].runStatus).toBe(AGENT_RUN_STATUS.FAILED)
+    expect(messages()[1].versions[0].content).toBe('已有正文')
+  })
+
+  it('两宿主同源（INT-2507）：整页与浮窗同时打开时只有一条 run、两侧生成态同步', async () => {
+    const pageHost = renderPlatformChat()
+    const floatingHost = renderPlatformChat()
+
+    await act(async () => {
+      pageHost.result.current.sendChat('整页的问题')
+    })
+    expect(pageHost.result.current.isGenerating).toBe(true)
+    expect(floatingHost.result.current.isGenerating).toBe(true)
+
+    // 浮窗再发：共享单 run 闸拦下
+    await act(async () => {
+      floatingHost.result.current.sendChat('浮窗并发的问题')
+    })
+    expect(createRunMock).toHaveBeenCalledTimes(1)
+    expect(messages()).toHaveLength(2)
+
+    // 事件只写一份 assistant 气泡
+    act(() => {
+      streamOptions?.onEvent({
+        type: 'message_delta',
+        runId: 'r-1',
+        sequence: 1,
+        timestamp: 't',
+        messageId: 'm-1',
+        delta: '唯一',
+      })
+    })
+    expect(messages()).toHaveLength(2)
+    expect(messages()[1].versions[0].content).toBe('唯一')
+
+    act(() => {
+      streamOptions?.onEvent({
+        type: 'run_finished',
+        runId: 'r-1',
+        sequence: 2,
+        timestamp: 't',
+        status: AGENT_RUN_STATUS.SUCCEEDED,
+      })
+    })
+    expect(pageHost.result.current.isGenerating).toBe(false)
+    expect(floatingHost.result.current.isGenerating).toBe(false)
+  })
+
+  it('通道分流（INT-2507 返工）：平台 run 进行中时，供应商通道宿主（评估复核弹窗）不被禁用/取消', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ choices: [{ message: { content: '复核回复' } }] }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const platformHost = renderPlatformChat()
+    await act(async () => {
+      platformHost.result.current.sendChat('平台长任务')
+    })
+    expect(platformHost.result.current.isGenerating).toBe(true)
+
+    // 第三个宿主：评估复核弹窗（不传 channel → 供应商通道的有界会话）
+    const reviewMessages: { current: ChatMessage[] } = { current: [] }
+    const reviewHost = renderHook(() =>
+      useChatHandler({
+        config: { providerId: REVIEW_PROVIDER.id, modelId: 'review-model' },
+        provider: REVIEW_PROVIDER,
+        messages: [],
+        onMessageUpdate: (updater) => {
+          reviewMessages.current = updater(reviewMessages.current)
+        },
+      })
+    )
+
+    // 平台 run 不牵连复核弹窗：生成态 / 取消态 / 平台生命周期字段均为空
+    expect(reviewHost.result.current.isGenerating).toBe(false)
+    expect(reviewHost.result.current.isCancelling).toBe(false)
+    expect(reviewHost.result.current.runPhase).toBe(AGENT_RUN_PHASE.IDLE)
+    expect(reviewHost.result.current.run).toBeNull()
+
+    // 复核弹窗照常发起自己的供应商对话，不新建平台 run
+    await act(async () => {
+      reviewHost.result.current.sendChat('复核追问')
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(reviewMessages.current).toHaveLength(2)
+    expect(createRunMock).toHaveBeenCalledTimes(1)
+
+    // 弹窗点停止：只中断本地供应商生成，不向平台发取消
+    await act(async () => {
+      reviewHost.result.current.stopGeneration()
+    })
+    expect(cancelRunMock).not.toHaveBeenCalled()
+    expect(platformHost.result.current.isGenerating).toBe(true)
+
+    // 平台侧停止仍只取消平台 run，且复核宿主状态不受影响
+    cancelRunMock.mockResolvedValue({
+      id: 'r-1',
+      sessionId: 's-1',
+      status: AGENT_RUN_STATUS.CANCELLED,
+    })
+    await act(async () => {
+      platformHost.result.current.stopGeneration()
+    })
+    expect(cancelRunMock).toHaveBeenCalledTimes(1)
+    expect(cancelRunMock).toHaveBeenCalledWith('r-1')
+    expect(platformHost.result.current.isGenerating).toBe(false)
+    expect(reviewHost.result.current.isGenerating).toBe(false)
   })
 })
-
-function isGeneratingAfterSend(result: { current: { isGenerating: boolean } }): boolean {
-  return result.current.isGenerating
-}

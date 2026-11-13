@@ -1,11 +1,11 @@
 /**
- * AI 对话发送/停止（interfaces 层 hooks；08_AI对话页.md §3.8 + INT-2457 M0）。
+ * AI 对话发送/停止（interfaces 层 hooks；08_AI对话页.md §3.8 + INT-2457 M0 / INT-2507）。
  *
  * 两条通道（§12.2，默认由配置决定 = 平台 Agent）：
- * - platform：POST /agent/sessions/{id}/runs + GET /agent/runs/{id}/events（SSE），
- *   事件流（message_delta / tool_call / tool_result / run_finished / error）驱动消息渲染；
- *   取消走 POST /agent/runs/{id}/cancel（同一 run 只发一次），断线续传与去重在
- *   application/agent/use-agent-run。
+ * - platform：POST /agent/sessions/{id}/runs + GET /agent/runs/{id}/events（SSE），事件流
+ *   （message_delta / tool_call / tool_result / run_finished / error）驱动消息渲染。run 生命周期
+ *   与消息补丁收敛在 application/agent/agent-run-store 的单一实例里（INT-2507）：整页与浮窗
+ *   共用同一 sessionId / phase / 取消闸，本 hook 只下发 send / cancel 并读共享状态。
  * - provider：保留「用户自配 LLM 供应商直连」降级模式（P0-1 拍板后二选一，不长期双轨）；
  *   正文本地逐块渲染模拟打字机（既有行为，未接平台后端）。
  *
@@ -15,12 +15,10 @@ import { useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import {
-  AGENT_ERROR_COPY,
-  AGENT_EVENT_TYPE,
-  AGENT_RUN_STATUS,
-  type AgentRunEvent,
-  type AgentRunStatus,
-} from '@/domain/models/agent'
+  isAgentRunActive,
+  useAgentRun,
+  AGENT_RUN_PHASE,
+} from '@/application/agent/use-agent-run'
 import {
   CHAT_CHANNEL,
   type ChatChannel,
@@ -28,13 +26,7 @@ import {
   type ChatMessage,
   type LlmProvider,
 } from '@/domain/models/aiChat'
-import { useAgentRun } from '@/application/agent/use-agent-run'
-import {
-  AGENT_TOOL_LABELS,
-  AGENT_RUN_PHASE_COPY,
-  ERROR_MESSAGES,
-  MESSAGE_STATUS,
-} from '@/features/ai-chat/constants'
+import { ERROR_MESSAGES, MESSAGE_STATUS } from '@/features/ai-chat/constants'
 import {
   sendChatCompletion,
   type ChatCompletionMessage,
@@ -98,21 +90,6 @@ function buildLoadingMessage(key: string): ChatMessage {
   }
 }
 
-/** 平台 Agent 通道：run 终态 → 消息状态补丁（保留已生成正文，仅标终态徽标） */
-function toTerminalPatch(
-  status: AgentRunStatus,
-  startedAt: number | undefined,
-  now: number
-): Partial<ChatMessage> {
-  return {
-    status: MESSAGE_STATUS.COMPLETE,
-    runStatus: status,
-    completedAt: now,
-    durationMs: startedAt ? now - startedAt : 0,
-    isReasoningStreaming: false,
-  }
-}
-
 export function useChatHandler({
   config,
   provider,
@@ -131,17 +108,11 @@ export function useChatHandler({
   systemPrompt?: string
   channel?: ChatChannel
 }) {
-  const [isGenerating, setIsGenerating] = useState(false)
+  /** 供应商通道本地生成态（平台通道的生成态由共享 store 派生，两宿主同口径） */
+  const [isProviderGenerating, setIsProviderGenerating] = useState(false)
   const runRef = useRef<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const timersRef = useRef<number[]>([])
-
-  /** 平台通道：当前 assistant 消息补丁器（新一轮发送时重置） */
-  const patchAssistantRef = useRef<
-    ((updater: (message: ChatMessage) => ChatMessage) => void) | null
-  >(null)
-  /** 平台通道：已累积正文（message_delta 逐段拼接） */
-  const contentRef = useRef('')
 
   // 最新闭包值（useCallback 内读取避免陈旧）
   const configRef = useRef(config)
@@ -166,117 +137,21 @@ export function useChatHandler({
     timersRef.current = []
   }, [])
 
-  /** 平台通道事件 → 消息补丁（去重已在 use-agent-run 完成） */
-  const handleAgentEvent = useCallback((event: AgentRunEvent) => {
-    switch (event.type) {
-      case AGENT_EVENT_TYPE.MESSAGE_DELTA: {
-        contentRef.current += event.delta
-        const content = contentRef.current
-        patchAssistantRef.current?.((message) => ({
-          ...message,
-          status: MESSAGE_STATUS.STREAMING,
-          startedAt: message.startedAt ?? Date.now(),
-          versions: [
-            { id: message.versions[0]?.id ?? `${message.key}-v1`, content },
-          ],
-        }))
-        return
-      }
-      case AGENT_EVENT_TYPE.TOOL_CALL: {
-        patchAssistantRef.current?.((message) => {
-          const existing = message.toolCalls ?? []
-          const call = {
-            id: event.toolCallId,
-            tool: event.tool,
-            label: AGENT_TOOL_LABELS[event.tool] ?? event.tool,
-            status: 'running' as const,
-            summary: event.summary,
-          }
-          const next = existing.some((item) => item.id === call.id)
-            ? existing.map((item) => (item.id === call.id ? { ...item, ...call } : item))
-            : [...existing, call]
-          return { ...message, toolCalls: next }
-        })
-        return
-      }
-      case AGENT_EVENT_TYPE.TOOL_RESULT: {
-        patchAssistantRef.current?.((message) => ({
-          ...message,
-          toolCalls: (message.toolCalls ?? []).map((call) =>
-            call.id === event.toolCallId
-              ? {
-                  ...call,
-                  status:
-                    event.status === 'SUCCEEDED'
-                      ? ('completed' as const)
-                      : ('error' as const),
-                  summary: event.summary ?? call.summary,
-                  errorCode: event.errorCode,
-                  sourceRefs: event.sourceRefs ?? call.sourceRefs,
-                }
-              : call
-          ),
-        }))
-        return
-      }
-      case AGENT_EVENT_TYPE.RUN_FINISHED: {
-        const patch = patchAssistantRef.current
-        const now = Date.now()
-        patch?.((message) =>
-          message.versions[0]?.content || contentRef.current
-            ? { ...message, ...toTerminalPatch(event.status, message.startedAt, now) }
-            : {
-                ...message,
-                ...toTerminalPatch(event.status, message.startedAt, now),
-                versions: [
-                  {
-                    id: message.versions[0]?.id ?? `${message.key}-v1`,
-                    content:
-                      event.status === AGENT_RUN_STATUS.CANCELLED
-                        ? AGENT_RUN_PHASE_COPY.cancelled
-                        : event.error || AGENT_ERROR_COPY.runFailed,
-                  },
-                ],
-              }
-        )
-        patchAssistantRef.current = null
-        setIsGenerating(false)
-        runRef.current = null
-        return
-      }
-      default:
-        // run_started / approval_required（M2）/ context_compacted：不改变消息正文
-        return
-    }
-  }, [])
-
-  const handleAgentError = useCallback((message: string) => {
-    patchAssistantRef.current?.((current) => ({
-      ...current,
-      status: MESSAGE_STATUS.ERROR,
-      errorCode: 'AGENT_ERROR',
-      versions: [
-        {
-          id: current.versions[0]?.id ?? `${current.key}-v1`,
-          content: message,
-        },
-      ],
-      completedAt: Date.now(),
-      durationMs: current.startedAt ? Date.now() - current.startedAt : 0,
-    }))
-    patchAssistantRef.current = null
-    setIsGenerating(false)
-    runRef.current = null
-  }, [])
-
-  const agentRun = useAgentRun({
-    onEvent: handleAgentEvent,
-    onError: handleAgentError,
-  })
+  /** 平台 Agent run（共享单一实例：两宿主读同一 phase / run / 取消闸） */
+  const agentRun = useAgentRun()
+  const platformActive = isAgentRunActive(agentRun.phase)
+  /**
+   * 通道分流（INT-2507 返工）：平台 run 是平台通道宿主的全局态，只作用于平台通道。
+   * 评估复核弹窗（application/ai-review/use-ai-review-session）不传 channel、走供应商
+   * 通道，是独立有界会话——平台 run 在跑时不得被它禁用输入区，更不得被它取消。
+   */
+  const isPlatformChannel = channelRef.current === CHAT_CHANNEL.PLATFORM
 
   const stopGeneration = useCallback(() => {
+    // 平台通道：取消只作用于共享 store 的当前 run；两宿主同时点停止也只发一次
+    // 取消请求（store 内取消闸）。供应商通道宿主绝不触碰全局平台 run。
     if (channelRef.current === CHAT_CHANNEL.PLATFORM) {
-      // 平台通道：取消由后端下发 CANCELLED 终态；同一 run 只发一次取消请求（use-agent-run 兜底）
+      if (!isAgentRunActive(agentRun.phase)) return
       void agentRun.cancel().then((failure) => {
         if (failure) toast.error(failure)
       })
@@ -307,53 +182,32 @@ export function useChatHandler({
         return message
       })
     )
-    setIsGenerating(false)
+    setIsProviderGenerating(false)
   }, [agentRun, cancelTimers, onMessageUpdate])
-
-  /** 平台通道发送：补 user 消息 + assistant 占位，run 事件驱动后续渲染 */
-  const sendPlatformChat = useCallback(
-    (text: string, options?: SendChatOptions) => {
-      if (runRef.current !== null) return
-      const appendUserMessage = options?.appendUserMessage ?? true
-      const userKey = `user-${Date.now()}`
-      const assistantKey = `assistant-${Date.now()}`
-      const userMessage: ChatMessage = {
-        key: userKey,
-        from: 'user',
-        versions: [{ id: `${userKey}-v1`, content: text }],
-        createdAt: Date.now(),
-      }
-      const loadingMessage = buildLoadingMessage(assistantKey)
-      onMessageUpdate((prev) => [
-        ...(appendUserMessage ? [...prev, userMessage] : prev),
-        loadingMessage,
-      ])
-      setIsGenerating(true)
-      const runToken = Date.now()
-      runRef.current = runToken
-      contentRef.current = ''
-      patchAssistantRef.current = (updater) => {
-        if (runRef.current !== runToken) return
-        onMessageUpdate((prev) =>
-          prev.map((message) =>
-            message.key === assistantKey ? updater(message) : message
-          )
-        )
-      }
-      void agentRun.send(text)
-    },
-    [agentRun, onMessageUpdate]
-  )
 
   const sendChat = useCallback(
     (text: string, options?: SendChatOptions) => {
-      if (channelRef.current === CHAT_CHANNEL.PLATFORM) {
-        sendPlatformChat(text, options)
+      const isPlatformChannel = channelRef.current === CHAT_CHANNEL.PLATFORM
+      // 单 run 纪律按通道分流（INT-2507）：平台通道由共享 run 闸拦截（两宿主同口径），
+      // 供应商通道由本地 runRef 拦截；两者互不牵连，复核弹窗可在平台 run 进行中照常发问。
+      if (
+        isPlatformChannel
+          ? isAgentRunActive(agentRun.phase)
+          : runRef.current !== null
+      ) {
         return
       }
-      // ===== 供应商通道（降级模式，既有行为保持） =====
-      if (runRef.current !== null) return
 
+      if (isPlatformChannel) {
+        // 平台通道：user 气泡 + assistant 占位与后续事件补丁都在共享 store 内完成，
+        // 两个宿主看到同一份消息与同一个 run（不再各持一套补丁器）。
+        void agentRun.send(text, {
+          appendUserMessage: options?.appendUserMessage ?? true,
+        })
+        return
+      }
+
+      // ===== 供应商通道（降级模式，既有行为保持） =====
       const appendUserMessage = options?.appendUserMessage ?? true
       const userKey = `user-${Date.now()}`
       const assistantKey = `assistant-${Date.now()}`
@@ -369,7 +223,7 @@ export function useChatHandler({
         ...(appendUserMessage ? [...prev, userMessage] : prev),
         loadingMessage,
       ])
-      setIsGenerating(true)
+      setIsProviderGenerating(true)
 
       const runId = Date.now()
       runRef.current = runId
@@ -394,7 +248,7 @@ export function useChatHandler({
         })
         runRef.current = null
         abortRef.current = null
-        setIsGenerating(false)
+        setIsProviderGenerating(false)
       }
 
       // 前置校验：对话由用户自配 LLM 供应商驱动（§3.11）
@@ -457,7 +311,7 @@ export function useChatHandler({
               })
               runRef.current = null
               abortRef.current = null
-              setIsGenerating(false)
+              setIsProviderGenerating(false)
             }
           }
           schedule(stream, 120)
@@ -471,7 +325,7 @@ export function useChatHandler({
         }
       })()
     },
-    [onMessageUpdate, schedule, sendPlatformChat]
+    [agentRun, onMessageUpdate, schedule]
   )
 
   /** 清空对话：平台通道同时结束当前会话上下文（下次发送新建会话） */
@@ -480,24 +334,25 @@ export function useChatHandler({
     abortRef.current?.abort()
     abortRef.current = null
     runRef.current = null
-    patchAssistantRef.current = null
-    contentRef.current = ''
-    agentRun.reset()
-    setIsGenerating(false)
+    setIsProviderGenerating(false)
+    // 只有平台通道能复位共享平台会话；供应商通道宿主的清空不得动别的宿主的 run
+    if (channelRef.current === CHAT_CHANNEL.PLATFORM) {
+      agentRun.reset()
+    }
   }, [agentRun, cancelTimers])
-
-  const isCancelling = agentRun.phase === 'cancelling'
 
   return {
     sendChat,
     stopGeneration,
-    isGenerating,
-    /** 取消请求在途（输入区停止钮禁用，防重复） */
-    isCancelling,
-    /** 平台通道生命周期（reconnecting 时页面显示重连提示） */
-    runPhase: agentRun.phase,
-    /** 当前 run（终态含 CANCELLED / FAILED） */
-    run: agentRun.run,
+    /** 生成态按通道分流（INT-2507）：平台宿主看共享 run，供应商宿主只看本地生成 */
+    isGenerating: (isPlatformChannel && platformActive) || isProviderGenerating,
+    /** 取消请求在途（仅平台通道；供应商通道的中断是本地同步的，无取消请求） */
+    isCancelling:
+      isPlatformChannel && agentRun.phase === AGENT_RUN_PHASE.CANCELLING,
+    /** 平台通道生命周期（reconnecting 时页面显示重连提示）；供应商通道无平台 run */
+    runPhase: isPlatformChannel ? agentRun.phase : AGENT_RUN_PHASE.IDLE,
+    /** 当前平台 run（终态含 CANCELLED / FAILED）；供应商通道恒为 null */
+    run: isPlatformChannel ? agentRun.run : null,
     resetChat,
     // Demo 态对话由用户自配 LLM 供应商驱动（§3.11），无平台后端依赖
     pendingRequest: { config },
