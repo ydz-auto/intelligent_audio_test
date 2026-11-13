@@ -16,6 +16,8 @@ os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
+from fastapi.testclient import TestClient
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
 
@@ -24,6 +26,7 @@ def _import_config_value(expr, **overrides):
     """在干净子进程里 import Config 取字段（BaseConfig 字段 import 即固化）。"""
     env = dict(os.environ)
     env.pop('AGENT_TOOL_GATEWAY_BASE_URL', None)
+    env.pop('AGENT_ENABLED', None)
     env.update(overrides)
     env.setdefault('DATABASE_URL', 'sqlite://')
     env.setdefault('OSS_ACCESS_KEY', 'test')
@@ -52,3 +55,81 @@ def test_config_tool_gateway_default_is_loopback():
     """缺省只适合同机直跑：容器内必须在编排层显式覆盖（见 compose）。"""
     assert _import_config_value(
         'Config.TOOL_GATEWAY_BASE_URL') == 'http://127.0.0.1:5000'
+
+
+# ---------------------------------------------------------------- 总开关门控恢复
+
+class _FakeRecovery:
+    def __init__(self):
+        self.calls = 0
+
+    def recover(self):
+        self.calls += 1
+        return ['run-1']
+
+
+class _FakeExecutor:
+    def __init__(self):
+        self.submitted = []
+
+    def submit(self, run_id):
+        self.submitted.append(run_id)
+
+
+class _Container:
+    """最小组合根替身：只用到 recovery / executor / shutdown。"""
+
+    def __init__(self):
+        self.recovery = _FakeRecovery()
+        self.executor = _FakeExecutor()
+
+    def shutdown(self):
+        pass
+
+
+def _run_lifespan(monkeypatch, *, enabled, recovery_on_startup=True):
+    import agent_service.app as agent_app
+    from agent_service.config.config import Config
+
+    monkeypatch.setattr(Config, 'AGENT_ENABLED', enabled)
+    monkeypatch.setattr(Config, 'RECOVERY_ON_STARTUP', recovery_on_startup)
+    container = _Container()
+    app = agent_app.create_app(container=container)
+    with TestClient(app):  # 进入即触发 lifespan 启动段
+        pass
+    return container
+
+
+def test_agent_enabled_defaults_false():
+    """与网关同源、缺省关闭：关闭态不产生任何后台 run。"""
+    assert _import_config_value('Config.AGENT_ENABLED') == 'False'
+
+
+def test_disabled_switch_skips_recovery_and_dispatch(monkeypatch):
+    """卡面验收 3：AGENT_ENABLED=false 时 recover() 与投递一律跳过。"""
+    container = _run_lifespan(monkeypatch, enabled=False)
+    assert container.recovery.calls == 0
+    assert container.executor.submitted == []
+
+
+def test_disabled_switch_wins_over_recovery_flag(monkeypatch):
+    """恢复开关为 true 也不能让关闭态产生后台 run（开关优先）。"""
+    container = _run_lifespan(
+        monkeypatch, enabled=False, recovery_on_startup=True)
+    assert container.recovery.calls == 0
+    assert container.executor.submitted == []
+
+
+def test_enabled_switch_keeps_recovery_behavior(monkeypatch):
+    """卡面验收 3：开启后恢复投递行为不变（recover + submit 各一次）。"""
+    container = _run_lifespan(
+        monkeypatch, enabled=True, recovery_on_startup=True)
+    assert container.recovery.calls == 1
+    assert container.executor.submitted == ['run-1']
+
+
+def test_enabled_switch_still_honours_recovery_flag(monkeypatch):
+    container = _run_lifespan(
+        monkeypatch, enabled=True, recovery_on_startup=False)
+    assert container.recovery.calls == 0
+    assert container.executor.submitted == []

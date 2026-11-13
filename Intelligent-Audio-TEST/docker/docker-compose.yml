@@ -553,7 +553,8 @@ services:
   # compose.override.yml 里对单实例追加 ports 映射。
   #
   # 总开关在网关（AGENT_ENABLED，缺省 false）：本服务随之常驻但不可达，
-  # 关闭态不产生任何后台 run，人工业务流程零影响。
+  # 关闭态不产生任何后台 run，人工业务流程零影响。agent_service 也消费同一个
+  # 开关，但只用于启动期恢复投递门控（INT-2529），不新增第二个开关名。
   agent_service:
     restart: unless-stopped
     build:
@@ -592,6 +593,9 @@ services:
       # ===== 身份（网关转发身份头；直连无头一律 401）=====
       - AGENT_AUTH_REQUIRED=true
       - AGENT_DEFAULT_TENANT_ID=${AGENT_DEFAULT_TENANT_ID:-default}
+      # 总开关同源传入（INT-2529）：仅门控启动期恢复投递，关闭态不产生任何
+      # 后台 run；网关入口门控仍是唯一入口执行点。
+      - AGENT_ENABLED=${AGENT_ENABLED:-false}
       # ===== LLM 运行时（供应商/模型由用户自带，§6.4；此处只有运行时参数）=====
       - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-60}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.2}
@@ -604,6 +608,7 @@ services:
       - AGENT_WORKER_CONCURRENCY=${AGENT_WORKER_CONCURRENCY:-4}
       # ===== SSE 唤醒 / 启动恢复 =====
       - AGENT_EVENT_WAKEUP_BACKEND=${AGENT_EVENT_WAKEUP_BACKEND:-redis}
+      # 启动恢复只在总开关开启时生效（INT-2529：关闭态不产生任何后台 run）。
       - AGENT_RECOVERY_ON_STARTUP=${AGENT_RECOVERY_ON_STARTUP:-true}
       # ===== 沙箱（§7；agent_service 不持有 docker.sock）=====
       # runner_http：执行只经独立 runner/sidecar（AGENT_SANDBOX_RUNNER_URL）；

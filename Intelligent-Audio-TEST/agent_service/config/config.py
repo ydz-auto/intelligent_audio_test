@@ -140,7 +140,12 @@ class Config(BaseConfig):
     TOOL_CREDENTIAL_TTL_SECONDS = _get_int(
         'AGENT_TOOL_CREDENTIAL_TTL_SECONDS', 3600)
 
-    # ===== 重启恢复（§9.2）=====
+    # ===== 总开关（INT-2529，与网关同源）=====
+    # 只用于启动期恢复投递门控：关闭态不产生任何后台 run（网关入口门控不变，
+    # 刻意不新增第二个开关名，避免形成第二套语义）。缺省与网关一致：关闭。
+    AGENT_ENABLED = _get_bool('AGENT_ENABLED', False)
+
+    # ===== 重启恢复（§9.2；仅总开关开启时生效）=====
     RECOVERY_ON_STARTUP = _get_bool('AGENT_RECOVERY_ON_STARTUP', True)
 
     # ===== Skill（§4；顶层只读目录由部署挂载，INT-2456）=====

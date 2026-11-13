@@ -301,11 +301,14 @@ compose 新增 `agent_service`（`docker/Dockerfile.agent_service`），依赖
 - **不发布宿主端口**（与 `api_test_service` 同口径）：它只消费网关转发的
   `X-User-Id` / `X-Tenant-Id` / `X-User-Permissions`，暴露到宿主等于把身份头
   变成可伪造的授权入口。健康探测经 `run_stack.py` 的容器内 exec 完成。
-- **总开关 `AGENT_ENABLED`（缺省 false）**：网关是唯一执行点。关闭时
+- **总开关 `AGENT_ENABLED`（缺省 false）**：网关是唯一入口执行点。关闭时
   `/api/v1/agent` 的会话 / Run / 事件 / 审批 / skills / provider 接口返回
   `503 {"detail":{"code":"AGENT_DISABLED",...}}` 且不转发上游；任务、用例、
   报告等人工流程不经过这些路由，完全不受影响。开启只需在 `docker/.env` 置
-  `AGENT_ENABLED=true` 并重建 `api_gateway` 容器。
+  `AGENT_ENABLED=true` 并重建 `api_gateway` 容器。同一开关也传入
+  `agent_service`，但**只用于启动期恢复投递门控**（INT-2529）：关闭时
+  `recovery.recover()` 与对应 `executor.submit` 一律跳过，保证「关闭态不产生
+  任何后台 run」；不新增第二个开关名，也不形成第二套语义。
 - **三个挂载点**（缺一即启动失败，`Config.validate_mounts`）：
 
   | 容器路径 | 来源 | 读写 |

@@ -156,7 +156,13 @@ def create_app(container=None) -> FastAPI:
             app.state.container = container
 
         container_obj = app.state.container
-        if Config.RECOVERY_ON_STARTUP:
+        # INT-2529：总开关关闭态不产生任何后台 run —— 恢复投递同样门控在
+        # AGENT_ENABLED 之下；网关入口的 require_agent_enabled 仍是唯一入口门，
+        # 这里只是同一条开关在「重启自启」这一侧的落实，不新增第二个开关名。
+        if not Config.AGENT_ENABLED:
+            logger.info(
+                'AGENT_ENABLED=false：跳过启动恢复投递（关闭态不产生后台 run）')
+        elif Config.RECOVERY_ON_STARTUP:
             try:
                 resumable = container_obj.recovery.recover()
                 for run_id in resumable:

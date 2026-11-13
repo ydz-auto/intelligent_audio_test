@@ -86,6 +86,8 @@ def test_agent_service_env_covers_config_contract():
         # INT-2529：意图工具回源必须指向网关容器；缺省 127.0.0.1:5000 在容器内
         # 打到自身（ConnectError），启动与 /health 却全绿，属静默故障。
         'AGENT_TOOL_GATEWAY_BASE_URL=http://api_gateway:5000',
+        # INT-2529：总开关同源传入，关闭态门控启动恢复投递（不产生后台 run）。
+        'AGENT_ENABLED=${AGENT_ENABLED:-false}',
     ):
         assert needle in env, needle
 
