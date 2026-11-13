@@ -675,6 +675,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 | `infrastructure/api/agentApi.ts` | 由占位桩改为真实契约（sessions / runs / events SSE / approvals 占位） | INT-2457 |
 | `infrastructure/dto/` | 新增 Agent DTO 转换，snake_case 只在此层 | INT-2457 |
 | `application/agent/use-agent-run.ts` | 发起 run、订阅 SSE、断线续传、取消 | INT-2457 |
+| `application/agent/use-agent-run.ts` 宿主卸载 | 关闭 / 最小化浮窗、离开 `/ai-chat` 等卸载时，`phase ∈ {preparing,running,reconnecting}` 的 run 发一次 `cancel`（fire-and-forget，失败仅记日志）并提示「已中断当前回答」；建 run 请求在途时等响应返回后补发取消，不留孤儿 run | INT-2521 |
 | `features/ai-chat` | 接真实事件流；保留工具卡与来源卡 | INT-2457 |
 | `features/ai-chat` 审批卡 + Run 时间线 | 审批提案/diff/风险/过期；事件时间线；重连恢复待审批 | INT-2472 |
 | `features/ai-chat` Report Studio 文档面板 | 取数 → 起草 → 版本 → 导出（PDF/PPTX/HTML/MD） | INT-2473 |

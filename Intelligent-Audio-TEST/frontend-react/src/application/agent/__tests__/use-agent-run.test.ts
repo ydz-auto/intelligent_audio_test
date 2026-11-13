@@ -3,11 +3,16 @@
  * API 层用 vi.mock 替身（不发真实请求；端到端证据待后端部署后补）。
  */
 import { act, renderHook } from '@testing-library/react'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentRun, AgentRunEvent } from '@/domain/models/agent'
 import { AGENT_EVENT_TYPE, AGENT_RUN_STATUS } from '@/domain/models/agent'
-import { useAgentRun, AGENT_RUN_PHASE } from '@/application/agent/use-agent-run'
+import {
+  useAgentRun,
+  AGENT_RUN_PHASE,
+  AGENT_RUN_UNMOUNT_CANCEL_COPY,
+} from '@/application/agent/use-agent-run'
 import {
   cancelAgentRun,
   createAgentRun,
@@ -16,6 +21,8 @@ import {
 } from '@/infrastructure/api/agentApi'
 import { ApiError } from '@/infrastructure/api/api-error'
 import type { SubscribeAgentRunEventsOptions } from '@/infrastructure/api/agentApi'
+
+vi.mock('sonner', () => ({ toast: { info: vi.fn(), error: vi.fn() } }))
 
 vi.mock('@/infrastructure/api/agentApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/infrastructure/api/agentApi')>()
@@ -33,6 +40,7 @@ const createSessionMock = vi.mocked(createAgentSession)
 const createRunMock = vi.mocked(createAgentRun)
 const cancelRunMock = vi.mocked(cancelAgentRun)
 const subscribeMock = vi.mocked(subscribeAgentRunEvents)
+const toastInfoMock = vi.mocked(toast.info)
 
 function messageDelta(sequence: number, messageId: string, delta: string): AgentRunEvent {
   return {
@@ -218,5 +226,71 @@ describe('useAgentRun', () => {
       await result.current.send('第三轮')
     })
     expect(createSessionMock).toHaveBeenCalledTimes(2) // 默认新建会话
+  })
+})
+
+/**
+ * INT-2521：宿主卸载（关闭 / 最小化浮窗、切走路由）时必须中止服务端 run，
+ * 否则 run 继续执行成孤儿；无在办 run 时不得多发取消。
+ */
+describe('useAgentRun 卸载取消', () => {
+  it('卸载：存在在办 run → 取消一次', async () => {
+    const { result, unmount } = renderHook(() => useAgentRun())
+    await act(async () => {
+      await result.current.send('帮我出一份长报告')
+    })
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.RUNNING)
+
+    unmount()
+
+    expect(cancelRunMock).toHaveBeenCalledTimes(1)
+    expect(cancelRunMock).toHaveBeenCalledWith('r-1')
+    expect(toastInfoMock).toHaveBeenCalledWith(AGENT_RUN_UNMOUNT_CANCEL_COPY)
+  })
+
+  it('卸载：无在办 run → 不发取消', () => {
+    const { unmount } = renderHook(() => useAgentRun())
+    unmount()
+    expect(cancelRunMock).not.toHaveBeenCalled()
+    expect(toastInfoMock).not.toHaveBeenCalled()
+  })
+
+  it('卸载：run 已终态 → 不发取消', async () => {
+    const { result, unmount } = renderHook(() => useAgentRun())
+    await act(async () => {
+      await result.current.send('你好')
+    })
+    act(() => {
+      streamOptions?.onEvent(runFinished(1))
+    })
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
+
+    unmount()
+    expect(cancelRunMock).not.toHaveBeenCalled()
+  })
+
+  it('卸载：建 run 请求在途 → 返回后补发取消（不留孤儿）', async () => {
+    let resolveRun: ((run: AgentRun) => void) | null = null
+    createRunMock.mockImplementation(
+      () =>
+        new Promise<AgentRun>((resolve) => {
+          resolveRun = resolve
+        })
+    )
+    const { result, unmount } = renderHook(() => useAgentRun())
+    let pending!: Promise<void>
+    await act(async () => {
+      pending = result.current.send('你好')
+    })
+
+    unmount()
+    expect(cancelRunMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveRun?.({ id: 'r-late', sessionId: 's-1', status: AGENT_RUN_STATUS.RUNNING })
+      await pending
+    })
+    expect(cancelRunMock).toHaveBeenCalledTimes(1)
+    expect(cancelRunMock).toHaveBeenCalledWith('r-late')
   })
 })

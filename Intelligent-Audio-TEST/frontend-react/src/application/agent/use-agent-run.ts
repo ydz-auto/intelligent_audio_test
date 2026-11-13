@@ -10,6 +10,7 @@
  * features/ai-chat/hooks/use-chat-handler）。所有对外状态均为 camelCase。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import {
   AGENT_ERROR_COPY,
@@ -49,6 +50,22 @@ const CANCEL_RECONCILE_DELAY_MS = 2_000
 
 /** 会话标题取首条消息前若干字符（后端缺省时也可自行生成，便于会话列表识别） */
 const SESSION_TITLE_MAX_LENGTH = 32
+
+/**
+ * 宿主卸载时仍需中止服务端 run 的阶段（INT-2521）：
+ * idle / cancelling / finished / error 没有在办 run，发取消只会打空。
+ * 浮窗最小化与关闭是卸载语义（agent-workbench 卸载会话组件），「切走路由」同理，
+ * 不取消就会留下无人接收结果的孤儿 run，继续烧模型与工具额度。
+ */
+const IN_FLIGHT_PHASES: readonly AgentRunPhase[] = [
+  AGENT_RUN_PHASE.PREPARING,
+  AGENT_RUN_PHASE.RUNNING,
+  AGENT_RUN_PHASE.RECONNECTING,
+]
+
+/** 卸载 / 最小化中断进行中的回答时的用户提示（否则用户以为它还在答） */
+export const AGENT_RUN_UNMOUNT_CANCEL_COPY =
+  '已中断当前回答：关闭或最小化浮窗、离开当前页面都会结束进行中的对话'
 
 export interface UseAgentRunHandlers {
   /** 去重后的领域事件（消息增量 / 工具卡 / 终态 / 错误） */
@@ -108,6 +125,8 @@ export function useAgentRun(handlers: UseAgentRunHandlers = {}): UseAgentRunResu
   const activeRef = useRef(false)
   /** 取消请求已发出（同一 run 防重复） */
   const cancelRequestedRef = useRef(false)
+  /** 宿主已卸载：卸载后返回的建 run 结果要补发取消，否则服务端留下孤儿 run（INT-2521） */
+  const disposedRef = useRef(false)
   /** 续传游标与去重水位 */
   const lastEventIdRef = useRef<string | null>(null)
   const lastSequenceRef = useRef(-1)
@@ -138,6 +157,18 @@ export function useAgentRun(handlers: UseAgentRunHandlers = {}): UseAgentRunResu
     abortRef.current = null
     clearReconcileTimer()
   }, [clearReconcileTimer])
+
+  /**
+   * 宿主卸载 / 最小化后中止服务端 run（INT-2521）：fire-and-forget，失败只记日志，
+   * 不 setState、不阻塞卸载——此时组件已卸载，界面不再关心结果。
+   */
+  const cancelDetachedRun = useCallback((runId: string) => {
+    cancelRequestedRef.current = true
+    void Promise.resolve(cancelAgentRun(runId)).catch((error: unknown) => {
+      console.warn('[agent] 宿主卸载时取消 run 失败', runId, error)
+    })
+    toast.info(AGENT_RUN_UNMOUNT_CANCEL_COPY)
+  }, [])
 
   const failRun = useCallback(
     (message: string) => {
@@ -277,7 +308,17 @@ export function useAgentRun(handlers: UseAgentRunHandlers = {}): UseAgentRunResu
         }
 
         const run = await createAgentRun(sessionId, { message: text }, buildIdempotencyKey())
-        if (token !== tokenRef.current) return
+        if (token !== tokenRef.current) {
+          // 宿主在请求在途时卸载：run 已在服务端创建，补一次取消，否则就是孤儿 run
+          if (
+            disposedRef.current &&
+            !cancelRequestedRef.current &&
+            !isTerminalRunStatus(run.status)
+          ) {
+            cancelDetachedRun(run.id)
+          }
+          return
+        }
         setRun(run)
 
         if (isTerminalRunStatus(run.status)) {
@@ -292,7 +333,7 @@ export function useAgentRun(handlers: UseAgentRunHandlers = {}): UseAgentRunResu
         failRun(toAgentErrorMessage(err))
       }
     },
-    [emitSyntheticFinished, failRun, finishRun, openStream, setPhase, setRun]
+    [emitSyntheticFinished, failRun, finishRun, cancelDetachedRun, openStream, setPhase, setRun]
   )
 
   const cancel = useCallback(async (): Promise<string | null> => {
@@ -361,17 +402,27 @@ export function useAgentRun(handlers: UseAgentRunHandlers = {}): UseAgentRunResu
     [closeStream, setPhase, setRun]
   )
 
-  // 卸载：断开流与定时器（不 setState）
+  // 卸载：断开流与定时器（不 setState）；在办 run 同时通知服务端取消（INT-2521）
   useEffect(() => {
+    // StrictMode 开发态会 mount → cleanup → mount，重挂后要恢复「未卸载」语义
+    disposedRef.current = false
     return () => {
+      disposedRef.current = true
+      const currentRun = runRef.current
+      const shouldCancel =
+        IN_FLIGHT_PHASES.includes(phaseRef.current) &&
+        currentRun !== null &&
+        !isTerminalRunStatus(currentRun.status) &&
+        !cancelRequestedRef.current
       tokenRef.current += 1
       unsubscribeRef.current?.()
       unsubscribeRef.current = null
       abortRef.current?.abort()
       abortRef.current = null
       if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current)
+      if (shouldCancel && currentRun) cancelDetachedRun(currentRun.id)
     }
-  }, [])
+  }, [cancelDetachedRun])
 
   return { phase, run, streamStatus, error, send, cancel, reset }
 }
