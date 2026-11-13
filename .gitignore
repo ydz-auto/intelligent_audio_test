@@ -80,6 +80,10 @@ dist/
 
 # Test coverage
 coverage/
+# 与覆盖率产物同名的评测目录不是构建产物（INT-2465）
+!Intelligent-Audio-TEST/tests/agent_eval/coverage/
+!Intelligent-Audio-TEST/tests/agent_eval/coverage/**
+Intelligent-Audio-TEST/tests/agent_eval/coverage/**/__pycache__/
 
 # Environment files
 .env

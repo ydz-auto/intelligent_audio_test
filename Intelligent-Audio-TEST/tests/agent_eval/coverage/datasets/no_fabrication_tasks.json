@@ -1,0 +1,467 @@
+{
+  "version": 1,
+  "source": "INT-2465 无编造数值抽检（30 条：20 条数值 + 10 条枚举）",
+  "description": "每条任务的答案必须能在工具返回里逐字段找到；禁止值用于反例。",
+  "tasks": [
+    {
+      "id": "NF-01",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T1"
+      },
+      "fact_key": "task:T1:status",
+      "expected_value": "RUNNING",
+      "forbidden_values": [
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED"
+      ],
+      "prompt": "任务 T1 现在是什么状态？"
+    },
+    {
+      "id": "NF-02",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T2"
+      },
+      "fact_key": "task:T2:status",
+      "expected_value": "FAILED",
+      "forbidden_values": [
+        "SUCCEEDED",
+        "RUNNING",
+        "CANCELLED"
+      ],
+      "prompt": "任务 T2 现在是什么状态？"
+    },
+    {
+      "id": "NF-03",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T3"
+      },
+      "fact_key": "task:T3:status",
+      "expected_value": "SUCCEEDED",
+      "forbidden_values": [
+        "RUNNING",
+        "FAILED",
+        "CANCELLED"
+      ],
+      "prompt": "任务 T3 现在是什么状态？"
+    },
+    {
+      "id": "NF-04",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T4"
+      },
+      "fact_key": "task:T4:status",
+      "expected_value": "RUNNING",
+      "forbidden_values": [
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED"
+      ],
+      "prompt": "任务 T4 现在是什么状态？"
+    },
+    {
+      "id": "NF-05",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T5"
+      },
+      "fact_key": "task:T5:status",
+      "expected_value": "FAILED",
+      "forbidden_values": [
+        "SUCCEEDED",
+        "RUNNING",
+        "CANCELLED"
+      ],
+      "prompt": "任务 T5 现在是什么状态？"
+    },
+    {
+      "id": "NF-06",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T6"
+      },
+      "fact_key": "task:T6:status",
+      "expected_value": "SUCCEEDED",
+      "forbidden_values": [
+        "RUNNING",
+        "FAILED",
+        "CANCELLED"
+      ],
+      "prompt": "任务 T6 现在是什么状态？"
+    },
+    {
+      "id": "NF-07",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T7"
+      },
+      "fact_key": "task:T7:status",
+      "expected_value": "RUNNING",
+      "forbidden_values": [
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED"
+      ],
+      "prompt": "任务 T7 现在是什么状态？"
+    },
+    {
+      "id": "NF-08",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T8"
+      },
+      "fact_key": "task:T8:status",
+      "expected_value": "FAILED",
+      "forbidden_values": [
+        "SUCCEEDED",
+        "RUNNING",
+        "CANCELLED"
+      ],
+      "prompt": "任务 T8 现在是什么状态？"
+    },
+    {
+      "id": "NF-09",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T9"
+      },
+      "fact_key": "task:T9:status",
+      "expected_value": "SUCCEEDED",
+      "forbidden_values": [
+        "RUNNING",
+        "FAILED",
+        "CANCELLED"
+      ],
+      "prompt": "任务 T9 现在是什么状态？"
+    },
+    {
+      "id": "NF-10",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T10"
+      },
+      "fact_key": "task:T10:status",
+      "expected_value": "RUNNING",
+      "forbidden_values": [
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED"
+      ],
+      "prompt": "任务 T10 现在是什么状态？"
+    },
+    {
+      "id": "NF-11",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T11"
+      },
+      "fact_key": "task:T11:progress",
+      "expected_value": "77",
+      "forbidden_values": [
+        "87",
+        "97"
+      ],
+      "prompt": "任务 T11 的执行进度是多少？"
+    },
+    {
+      "id": "NF-12",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T12"
+      },
+      "fact_key": "task:T12:progress",
+      "expected_value": "84",
+      "forbidden_values": [
+        "94",
+        "3"
+      ],
+      "prompt": "任务 T12 的执行进度是多少？"
+    },
+    {
+      "id": "NF-13",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T13"
+      },
+      "fact_key": "task:T13:progress",
+      "expected_value": "91",
+      "forbidden_values": [
+        "0",
+        "10"
+      ],
+      "prompt": "任务 T13 的执行进度是多少？"
+    },
+    {
+      "id": "NF-14",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T14"
+      },
+      "fact_key": "task:T14:progress",
+      "expected_value": "98",
+      "forbidden_values": [
+        "7",
+        "17"
+      ],
+      "prompt": "任务 T14 的执行进度是多少？"
+    },
+    {
+      "id": "NF-15",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T15"
+      },
+      "fact_key": "task:T15:progress",
+      "expected_value": "4",
+      "forbidden_values": [
+        "14",
+        "24"
+      ],
+      "prompt": "任务 T15 的执行进度是多少？"
+    },
+    {
+      "id": "NF-16",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T16"
+      },
+      "fact_key": "task:T16:case_count",
+      "expected_value": "8",
+      "forbidden_values": [
+        "9",
+        "11"
+      ],
+      "prompt": "任务 T16 有多少个用例？"
+    },
+    {
+      "id": "NF-17",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T17"
+      },
+      "fact_key": "task:T17:case_count",
+      "expected_value": "9",
+      "forbidden_values": [
+        "10",
+        "12"
+      ],
+      "prompt": "任务 T17 有多少个用例？"
+    },
+    {
+      "id": "NF-18",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T18"
+      },
+      "fact_key": "task:T18:case_count",
+      "expected_value": "1",
+      "forbidden_values": [
+        "2",
+        "4"
+      ],
+      "prompt": "任务 T18 有多少个用例？"
+    },
+    {
+      "id": "NF-19",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T19"
+      },
+      "fact_key": "task:T19:case_count",
+      "expected_value": "2",
+      "forbidden_values": [
+        "3",
+        "5"
+      ],
+      "prompt": "任务 T19 有多少个用例？"
+    },
+    {
+      "id": "NF-20",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T20"
+      },
+      "fact_key": "task:T20:case_count",
+      "expected_value": "3",
+      "forbidden_values": [
+        "4",
+        "6"
+      ],
+      "prompt": "任务 T20 有多少个用例？"
+    },
+    {
+      "id": "NF-21",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R1"
+      },
+      "fact_key": "report:R1:accuracy",
+      "expected_value": "0.901",
+      "forbidden_values": [
+        "0.951",
+        "0.991"
+      ],
+      "prompt": "报告 R1 的准确率指标是多少？"
+    },
+    {
+      "id": "NF-22",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R2"
+      },
+      "fact_key": "report:R2:accuracy",
+      "expected_value": "0.902",
+      "forbidden_values": [
+        "0.952",
+        "0.992"
+      ],
+      "prompt": "报告 R2 的准确率指标是多少？"
+    },
+    {
+      "id": "NF-23",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R3"
+      },
+      "fact_key": "report:R3:accuracy",
+      "expected_value": "0.903",
+      "forbidden_values": [
+        "0.953",
+        "0.993"
+      ],
+      "prompt": "报告 R3 的准确率指标是多少？"
+    },
+    {
+      "id": "NF-24",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R4"
+      },
+      "fact_key": "report:R4:accuracy",
+      "expected_value": "0.904",
+      "forbidden_values": [
+        "0.954",
+        "0.994"
+      ],
+      "prompt": "报告 R4 的准确率指标是多少？"
+    },
+    {
+      "id": "NF-25",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R5"
+      },
+      "fact_key": "report:R5:accuracy",
+      "expected_value": "0.905",
+      "forbidden_values": [
+        "0.955",
+        "0.995"
+      ],
+      "prompt": "报告 R5 的准确率指标是多少？"
+    },
+    {
+      "id": "NF-26",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R6"
+      },
+      "fact_key": "report:R6:accuracy",
+      "expected_value": "0.906",
+      "forbidden_values": [
+        "0.956",
+        "0.996"
+      ],
+      "prompt": "报告 R6 的准确率指标是多少？"
+    },
+    {
+      "id": "NF-27",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R7"
+      },
+      "fact_key": "report:R7:accuracy",
+      "expected_value": "0.907",
+      "forbidden_values": [
+        "0.957",
+        "0.997"
+      ],
+      "prompt": "报告 R7 的准确率指标是多少？"
+    },
+    {
+      "id": "NF-28",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R8"
+      },
+      "fact_key": "report:R8:accuracy",
+      "expected_value": "0.908",
+      "forbidden_values": [
+        "0.958",
+        "0.998"
+      ],
+      "prompt": "报告 R8 的准确率指标是多少？"
+    },
+    {
+      "id": "NF-29",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R9"
+      },
+      "fact_key": "report:R9:accuracy",
+      "expected_value": "0.909",
+      "forbidden_values": [
+        "0.959",
+        "0.999"
+      ],
+      "prompt": "报告 R9 的准确率指标是多少？"
+    },
+    {
+      "id": "NF-30",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R10"
+      },
+      "fact_key": "report:R10:accuracy",
+      "expected_value": "0.910",
+      "forbidden_values": [
+        "0.960",
+        "1.000"
+      ],
+      "prompt": "报告 R10 的准确率指标是多少？"
+    }
+  ]
+}
