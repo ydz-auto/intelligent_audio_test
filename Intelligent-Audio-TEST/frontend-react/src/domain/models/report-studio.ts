@@ -115,3 +115,108 @@ export interface ReportPackageManifestSummary {
 export function needsChartRebind(doc: StudioDocument): boolean {
   return doc.chartRefs.length > 0 && doc.reportId === null
 }
+
+// ---------------------------------------------------------------------------
+// 对话式工作台：起草 / 版本 / 导出（INT-2473，设计文档 §15.5）
+// ---------------------------------------------------------------------------
+
+/**
+ * 版本快照原因（后端 StudioSnapshotReason 同口径）。
+ * 页面按枚举出中文标签，禁止直接比较后端字符串。
+ */
+export const StudioSnapshotReason = {
+  AI_EDIT: 'ai_edit',
+  MANUAL_EDIT: 'manual_edit',
+  RESTORE: 'restore',
+  IMPORT: 'import',
+} as const
+
+export type StudioSnapshotReasonValue =
+  (typeof StudioSnapshotReason)[keyof typeof StudioSnapshotReason]
+
+export const STUDIO_SNAPSHOT_REASON_LABEL: Record<string, string> = {
+  [StudioSnapshotReason.AI_EDIT]: 'AI 起草',
+  [StudioSnapshotReason.MANUAL_EDIT]: '人工编辑',
+  [StudioSnapshotReason.RESTORE]: '版本恢复',
+  [StudioSnapshotReason.IMPORT]: '文件导入',
+}
+
+/**
+ * 历史版本快照（GET /documents/{id}/versions 单项）。
+ * 后端 `_version_dict` 不返回正文，`markdownContent` 恒为空串——历史正文只能
+ * 通过恢复版本读取（恢复生成新版本并返回最新文档），页面不得把空串当正文展示。
+ */
+export interface StudioDocumentVersion {
+  id: number
+  docId: string
+  version: number
+  markdownContent: string
+  parentVersion: number | null
+  snapshotReason: string
+  createdAt: string | null
+  createdBy: number | null
+}
+
+/** 起草文档入参（POST /documents：绑定平台报告生成新草稿） */
+export interface StudioDocumentCreateInput {
+  reportId: number
+  title?: string
+  markdownContent?: string
+  /** 关联的 Agent 会话（AI 起草时由后端落版本快照原因 ai_edit） */
+  agentSessionId?: string | null
+}
+
+/** 导出格式（后端 StudioExportFormat；PDF/PPTX 依赖渲染器，未部署时返回失败态） */
+export const STUDIO_EXPORT_FORMATS = ['pdf', 'pptx', 'html', 'md'] as const
+export type StudioExportFormat = (typeof STUDIO_EXPORT_FORMATS)[number]
+
+export const STUDIO_EXPORT_FORMAT_LABEL: Record<StudioExportFormat, string> = {
+  pdf: 'PDF',
+  pptx: 'PPTX',
+  html: 'HTML',
+  md: 'Markdown',
+}
+
+/** 导出作业状态（后端 StudioExportStatus） */
+export const StudioExportStatus = {
+  PENDING: 'pending',
+  RUNNING: 'running',
+  DONE: 'done',
+  FAILED: 'failed',
+} as const
+
+export type StudioExportStatusValue =
+  (typeof StudioExportStatus)[keyof typeof StudioExportStatus]
+
+/** 导出作业（POST /documents/{id}/exports 与 GET /exports/{id}） */
+export interface StudioExportJob {
+  exportId: string
+  docId: string
+  version: number
+  format: string
+  theme: string
+  status: StudioExportStatusValue
+  /** 0~100；pending 0 / running 10+ / 终态 100 */
+  progress: number
+  error: string | null
+  createdAt: string | null
+  updatedAt: string | null
+  /** 网关鉴权下载引用（完成后可下载） */
+  downloadRef: string | null
+}
+
+/** 导出是否处于在途状态（按钮防重复 + 轮询区间） */
+export function isStudioExportActive(job: StudioExportJob | null): boolean {
+  return (
+    job?.status === StudioExportStatus.PENDING ||
+    job?.status === StudioExportStatus.RUNNING
+  )
+}
+
+/** 导出作业状态 → 中文文案 */
+export const STUDIO_EXPORT_STATUS_LABEL: Record<StudioExportStatusValue, string> = {
+  [StudioExportStatus.PENDING]: '排队中',
+  [StudioExportStatus.RUNNING]: '导出中',
+  [StudioExportStatus.DONE]: '已完成',
+  [StudioExportStatus.FAILED]: '导出失败',
+}

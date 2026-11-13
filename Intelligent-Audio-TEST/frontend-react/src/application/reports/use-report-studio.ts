@@ -9,12 +9,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 
 import type {
+  StudioDocumentCreateInput,
   StudioDocumentListQuery,
   StudioDocumentUpdateInput,
+  StudioExportFormat,
   StudioUploadInput,
 } from '@/domain/models/report-studio'
+import { isStudioExportActive } from '@/domain/models/report-studio'
 import {
+  createStudioDocument,
+  createStudioExportJob,
   getStudioDocument,
+  getStudioExportJob,
   importReportPackage,
   importStudioDocument,
   listStudioDocumentVersions,
@@ -32,6 +38,8 @@ export const studioDocumentKeys = {
   detail: (docId: string) => [...studioDocumentKeys.all, 'document', docId] as const,
   versions: (docId: string) =>
     [...studioDocumentKeys.all, 'versions', docId] as const,
+  exportJob: (exportId: string) =>
+    [...studioDocumentKeys.all, 'export', exportId] as const,
 }
 
 export function useStudioDocuments(
@@ -152,5 +160,57 @@ export function useImportReportPackage() {
       void queryClient.invalidateQueries({ queryKey: ['report-statistics'] })
       void queryClient.invalidateQueries({ queryKey: ['report-studio'] })
     },
+  })
+}
+
+/**
+ * 起草：绑定平台报告创建 Studio 草稿（对话式工作台「起草」入口）。
+ * 成功后文档列表与详情一起失效，工作台右栏直接切到新草稿。
+ */
+export function useCreateStudioDocument() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: StudioDocumentCreateInput) => createStudioDocument(input),
+    onSuccess: (doc) => {
+      void queryClient.invalidateQueries({ queryKey: studioDocumentKeys.all })
+      void queryClient.invalidateQueries({
+        queryKey: studioDocumentKeys.detail(doc.docId),
+      })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// 导出作业（取数 → 起草 → 版本 → 导出 的最后一环）
+// ---------------------------------------------------------------------------
+
+/** 导出作业轮询间隔（ms）：pending/running 时拉取进度，终态停止 */
+export const STUDIO_EXPORT_POLL_INTERVAL_MS = 1_000
+
+/** 创建导出作业（固定文档版本 + 格式）；按钮防重复由 mutation isPending 把关 */
+export function useCreateStudioExportJob() {
+  return useMutation({
+    mutationFn: (input: {
+      docId: string
+      version: number
+      format: StudioExportFormat
+    }) => createStudioExportJob(input.docId, input.version, input.format),
+  })
+}
+
+/**
+ * 导出作业进度（轮询）：pending/running 每秒刷新，done/failed 停止。
+ * enabled 为 false（尚未创建作业）时不发请求。
+ */
+export function useStudioExportJob(exportId: string | null) {
+  return useQuery({
+    queryKey: studioDocumentKeys.exportJob(exportId ?? ''),
+    queryFn: () => getStudioExportJob(exportId as string),
+    enabled: Boolean(exportId),
+    staleTime: 0,
+    refetchInterval: (query) =>
+      isStudioExportActive(query.state.data ?? null)
+        ? STUDIO_EXPORT_POLL_INTERVAL_MS
+        : false,
   })
 }
