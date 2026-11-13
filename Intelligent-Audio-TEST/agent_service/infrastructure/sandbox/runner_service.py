@@ -45,9 +45,9 @@ from agent_service.infrastructure.sandbox.docker_runner import (
     RUNNER_API_PATH,
     RUNNER_HEALTH_PATH,
     HostCliDockerExecutor,
+    SandboxContainerReaper,
     execution_to_dict,
     invocation_from_dict,
-    validate_invocation,
 )
 from agent_service.infrastructure.sandbox.policy import T2Policy, load_t2_policy
 from agent_service.infrastructure.sandbox.t2_runner import (
@@ -108,7 +108,9 @@ class SandboxRunnerRequestHandler(http_server.BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             invocation = invocation_from_dict(payload.get('invocation') or {})
-            validate_invocation(invocation)
+            # 按 runner 自己的白名单复核调用方送来的规格（镜像 / 解释器 /
+            # 非 root 身份 / 脚本路径 / 资源限额上限），不合规一律 400。
+            self.executor.validate(invocation)
         except (SandboxConfigurationError, KeyError, TypeError, ValueError) as exc:
             logger.warning('拒绝非法 T1 沙箱请求：%s', exc)
             self._respond(400, {'error': str(exc)})
@@ -242,12 +244,11 @@ def main() -> int:
     token = (os.environ.get(RUNNER_TOKEN_ENV) or '').strip()
     bind_host = os.environ.get('AGENT_SANDBOX_RUNNER_BIND', '0.0.0.0')
     port = int(os.environ.get('AGENT_SANDBOX_RUNNER_PORT', str(AGENT_SANDBOX_RUNNER_PORT)))
+    docker_binary = os.environ.get('AGENT_SANDBOX_DOCKER_BIN', 'docker')
     t2_executor = _build_t2_executor()
     try:
         server = SandboxRunnerServer(
-            executor=HostCliDockerExecutor(
-                docker_binary=os.environ.get('AGENT_SANDBOX_DOCKER_BIN', 'docker'),
-            ),
+            executor=HostCliDockerExecutor(docker_binary=docker_binary),
             token=token,
             bind_host=bind_host,
             port=port,
@@ -256,6 +257,19 @@ def main() -> int:
     except SandboxConfigurationError as exc:
         logger.error('沙箱 runner 启动失败：%s', exc)
         return 2
+    # P1-1：runner 崩溃 / 重启后遗留的容器没人回收。启动先同步扫一次，之后后台定时扫。
+    reaper = SandboxContainerReaper(docker_binary=docker_binary)
+    try:
+        reaped = reaper.reap_once()
+        if reaped:
+            logger.warning('启动回收孤儿沙箱容器 %s 个：%s', len(reaped), reaped)
+    except Exception:  # noqa: BLE001 - 回收失败不阻断 runner 提供执行能力
+        logger.exception('启动回收孤儿沙箱容器失败')
+    reaper.start_background()
+    logger.info(
+        '沙箱运行器回收策略：阈值=%ss（timeout+宽限） 间隔=%ss',
+        reaper.threshold_seconds, reaper.interval_seconds,
+    )
     if t2_executor is not None:
         # 不在启动路径上探测 docker info（部分宿主上偶发很慢）：首次 T2 请求时探测，
         # 不可用会以 T2_RUNTIME_UNAVAILABLE 明确失败。
@@ -267,6 +281,7 @@ def main() -> int:
     except KeyboardInterrupt:
         logger.info('沙箱 runner 收到中断，退出')
     finally:
+        reaper.stop()
         server.stop()
     return 0
 

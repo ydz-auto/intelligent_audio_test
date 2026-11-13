@@ -186,6 +186,9 @@ def test_t2_container_env_has_no_credentials_and_fixed_home(tmp_path: Path) -> N
         'PYTHONPATH', 'HOME', 'TMPDIR',
     }
     assert 'HOME=/tmp' in env_pairs, '宿主 home 不可见'
+    assert 'PYTHONPYCACHEPREFIX=/tmp/.pycache' in env_pairs, (
+        '.pyc 必须写到 /tmp（tmpfs），不得进 /work 产物回收（审计 P1-1）'
+    )
     assert not any(looks_like_credential(name) for name in names)
 
 
@@ -454,9 +457,34 @@ def test_phase_shape_validation() -> None:
     with pytest.raises(SandboxConfigurationError):
         T2Phase('bad name', ('python3',))
     with pytest.raises(SandboxConfigurationError):
+        T2Phase('..', ('python3',))
+    with pytest.raises(SandboxConfigurationError):
+        T2Phase('sub/phase', ('python3',))
+    with pytest.raises(SandboxConfigurationError):
         T2Phase('ok', ())
     result = _runner(FakeT2Executor()).run_untrusted_code(_request(phases=()))
     assert result.reason is SandboxFailureReason.INPUT_INVALID
+
+
+def test_unsafe_run_id_rejected_before_container() -> None:
+    """run_id 是产物落盘路径分量，字符集非法即拒绝（审计 P3-3）。"""
+    executor = FakeT2Executor()
+    result = _runner(executor).run_untrusted_code(_request(run_id='..'))
+    assert result.outcome is SandboxOutcome.FAILED
+    assert result.reason is SandboxFailureReason.INPUT_INVALID
+    assert executor.invocations == []
+
+
+def test_executor_exception_is_mapped_to_runner_error() -> None:
+    """执行器抛异常时 run 不得抛异常，映射为 RUNNER_ERROR（审计 P3-3）。"""
+    def _raise(_invocation):
+        raise FileNotFoundError('docker 不存在')
+
+    executor = FakeT2Executor(on_run=_raise)
+    result = _runner(executor).run_untrusted_code(_request())
+    assert result.outcome is SandboxOutcome.FAILED
+    assert result.reason is SandboxFailureReason.RUNNER_ERROR
+    assert '执行器异常' in result.detail
 
 
 # ── 7. 阶段失败映射（失败不静默）───────────────────────────────
@@ -559,7 +587,7 @@ def test_artifacts_collected_with_sha256_and_phase() -> None:
 
 def test_too_many_artifacts_is_budget_exceeded() -> None:
     executor = FakeT2Executor(on_run=_write_work({'a.txt': b'a', 'b.txt': b'b'}))
-    runner = _runner(executor, artifact_policy=SandboxArtifactPolicy(max_artifacts=1))
+    runner = _runner(executor, t2_options=T2RunnerOptions(max_artifacts=1))
     result = runner.run_untrusted_code(_request())
     assert result.outcome is SandboxOutcome.BUDGET_EXCEEDED
     assert result.reason is SandboxFailureReason.ARTIFACT_TOO_MANY
@@ -568,11 +596,42 @@ def test_too_many_artifacts_is_budget_exceeded() -> None:
 def test_oversized_artifact_is_budget_exceeded() -> None:
     executor = FakeT2Executor(on_run=_write_work({'big.bin': b'0' * 2048}))
     runner = _runner(
-        executor, artifact_policy=SandboxArtifactPolicy(max_artifact_bytes=1024)
+        executor, t2_options=T2RunnerOptions(max_artifact_bytes=1024)
     )
     result = runner.run_untrusted_code(_request())
     assert result.outcome is SandboxOutcome.BUDGET_EXCEEDED
     assert result.reason is SandboxFailureReason.ARTIFACT_TOO_LARGE
+
+
+def test_bytecode_cache_is_not_collected_as_artifact() -> None:
+    """编译期的 .pyc / __pycache__ 不是交付产物（审计 P1-1 回归）。"""
+    executor = FakeT2Executor(on_run=_write_work({
+        'report.json': b'{"ok":true}',
+        '.pycache/pkg/main.cpython-311.pyc': b'\x00' * 64,
+        'pkg/__pycache__/driver.cpython-311.pyc': b'\x00' * 64,
+        'pkg/driver.pyc': b'\x00' * 64,
+    }))
+    # 数量上限 1：只有 report.json 计入，字节码不得触发 ARTIFACT_TOO_MANY。
+    runner = _runner(executor, t2_options=T2RunnerOptions(max_artifacts=1))
+    result = runner.run_untrusted_code(_request())
+    assert result.outcome is SandboxOutcome.SUCCEEDED, result.detail
+    assert [a.relative_path for a in result.artifacts] == ['report.json']
+
+
+def test_t2_artifact_limits_come_from_config(monkeypatch) -> None:
+    """``AGENT_SANDBOX_T2_MAX_ARTIFACTS`` 必须真的改变判定（审计 P2-2）。"""
+    from agent_service.infrastructure.sandbox.policy import load_t2_policy
+
+    policy = load_t2_policy(environ={'AGENT_SANDBOX_T2_MAX_ARTIFACTS': '2'})
+    executor = FakeT2Executor(on_run=_write_work({
+        f'out_{index}.txt': b'x' for index in range(10)
+    }))
+    runner = _runner(executor, t2_options=policy.to_runner_options())
+    result = runner.run_untrusted_code(_request())
+    assert result.outcome is SandboxOutcome.BUDGET_EXCEEDED
+    assert result.reason is SandboxFailureReason.ARTIFACT_TOO_MANY
+    assert '2' in result.detail
+    assert '上限 2' in result.detail
 
 
 def test_invalid_artifact_is_failed(monkeypatch) -> None:
@@ -721,6 +780,50 @@ def test_policy_to_runner_options_includes_egress() -> None:
     assert options.egress_enabled is True
     assert options.egress_allowed_hosts == ('api.vendor.example',)
     assert options.require_code_provenance is True
+
+
+def test_policy_to_runner_options_carries_artifact_limits() -> None:
+    policy = T2Policy(artifacts=T2ArtifactLimits(
+        max_artifacts=7,
+        max_artifact_bytes=1024,
+        max_total_bytes=4096,
+    ))
+    options = policy.to_runner_options()
+    assert (options.max_artifacts, options.max_artifact_bytes,
+            options.max_total_bytes) == (7, 1024, 4096)
+    artifact_policy = options.artifact_policy()
+    assert artifact_policy.max_artifacts == 7
+    assert artifact_policy.max_artifact_bytes == 1024
+    assert artifact_policy.max_total_bytes == 4096
+
+
+def test_runtime_constants_single_source_is_domain_enum() -> None:
+    """运行时取值只认 domain 枚举，不在 policy 另造一份（审计 P3-4）。"""
+    from agent_service.domain.enums import SandboxRuntime
+    from agent_service.infrastructure.sandbox import policy as policy_module
+
+    assert policy_module.RUNTIME_GVISOR == SandboxRuntime.GVISOR.value
+    assert policy_module.RUNTIME_FIRECRACKER == SandboxRuntime.FIRECRACKER.value
+
+
+def test_collect_artifacts_bytecode_flag(tmp_path: Path) -> None:
+    """T2 忽略字节码；T1 默认口径不变（不改既有 T1 行为）。"""
+    from agent_service.application.sandbox_runner import collect_artifacts
+
+    work = tmp_path / 'work'
+    (work / 'pkg' / '__pycache__').mkdir(parents=True)
+    (work / 'pkg' / 'mod.pyc').write_bytes(b'\x00')
+    (work / 'pkg' / '__pycache__' / 'mod.cpython-311.pyc').write_bytes(b'\x00')
+    (work / 'report.json').write_text('{}', encoding='utf-8')
+
+    t1_names = sorted(a.relative_path for a in collect_artifacts(work, SandboxArtifactPolicy()))
+    assert 'pkg/mod.pyc' in t1_names, 'T1 默认行为不变（仍按常规文件收集）'
+
+    t2_names = sorted(
+        a.relative_path
+        for a in collect_artifacts(work, SandboxArtifactPolicy(), ignore_bytecode=True)
+    )
+    assert t2_names == ['report.json']
 
 
 def test_default_validation_phases_cover_driver_propose_chain() -> None:

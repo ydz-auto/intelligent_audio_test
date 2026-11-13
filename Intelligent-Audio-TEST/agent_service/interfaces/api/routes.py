@@ -116,6 +116,10 @@ def create_run(session_id: str, payload: CreateRunRequest, request: Request,
         message=payload.message, idempotency_key=idempotency_key,
         permissions=identity.permissions, active_skill=payload.active_skill,
     )
+    # INT-2453：只读 ToolGateway 以用户身份回源网关 REST。Authorization 只在
+    # 进程内按 run 暂存（不落库 / 不进事件），run 结束或 TTL 到期即失效。
+    container.credentials.put(run.id,
+                              request.headers.get('Authorization'))
     if created:
         container.executor.submit(run.id)
         latest = container.repositories['runs'].get(run.id)
@@ -190,10 +194,28 @@ def list_approvals(run_id: str, request: Request,
 @router.get('/skills')
 def list_skills(request: Request,
                 identity: Identity = Depends(get_identity)):
-    """当前用户可见的 Skill 列表（§11；权限 = Skill ∩ 用户权限）。"""
+    """当前用户可见的 Skill 列表（§11；权限 = Skill ∩ 用户权限）。
+
+    INT-2453：同一响应附带当前用户可见的意图工具清单（31 个注册项，
+    ``enabled`` 标明 M0 是否已实现），供前端展示与 Skill allowed-tools 对照。
+    """
+    from shared.agent_tools.intent_tools import ENABLED_TOOLS
+
     container = get_container(request)
     registry = container.skill_registry
     visible = registry.visible_for(identity.permissions)
+    tools = []
+    for descriptor in container.tool_gateway.all_tools():
+        if not _granted(identity.permissions, descriptor.permissions):
+            continue
+        tools.append({
+            'name': descriptor.name,
+            'description': descriptor.description,
+            'parameters': descriptor.parameters,
+            'risk': descriptor.risk.value,
+            'permissions': list(descriptor.permissions),
+            'enabled': descriptor.name in ENABLED_TOOLS,
+        })
     return {
         'items': [
             SkillResponse(
@@ -205,6 +227,18 @@ def list_skills(request: Request,
             ).model_dump()
             for skill in visible
         ],
+        'tools': tools,
+        'tools_count': len(tools),
         'l1_tokens': registry.l1_tokens(identity.permissions),
         'l1_budget_tokens': registry.l1_budget_tokens,
     }
+
+
+def _granted(granted, required) -> bool:
+    """权限 OR 语义；``*`` 通配；required 为空表示仅需登录。"""
+    if not required:
+        return True
+    perms = set(granted or ())
+    if '*' in perms:
+        return True
+    return bool(perms & set(required))

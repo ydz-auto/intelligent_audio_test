@@ -20,7 +20,10 @@ from agent_service.app import create_app
 from agent_service.application.run_worker import InlineRunExecutor
 from agent_service.infrastructure.wakeup import LocalRunWakeup
 from agent_service.wiring import build_container
-from tests.unit.int2451_agent_fakes import FakeLlm, make_engine, text_turn
+from tests.unit.int2451_agent_fakes import (
+    FakeLlm, FakeProviderResolver, TEST_MASTER_KEY, make_engine, text_turn,
+)
+from agent_service.infrastructure.llm.credential_store import CredentialStore
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))
@@ -90,10 +93,11 @@ def _stack(tmp_path, skills_root) -> _Stack:
     llm = FakeLlm([text_turn('好的', '收到')])
     container = build_container(
         session_factory,
-        llm_factory=lambda: llm,
+        provider_resolver=FakeProviderResolver(llm),
         wakeup=LocalRunWakeup(),
         executor_factory=lambda orch: InlineRunExecutor(orch),
         skills_root=str(skills_root),
+        credential_store=CredentialStore.from_secret(TEST_MASTER_KEY),
     )
     return _Stack(TestClient(create_app(container=container)), container, llm)
 

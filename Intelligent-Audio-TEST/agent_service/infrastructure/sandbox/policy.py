@@ -28,6 +28,7 @@ from agent_service.application.sandbox_runner import (
     SandboxConfigurationError,
     T2RunnerOptions,
 )
+from agent_service.domain.enums import SandboxRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +38,9 @@ DEFAULT_CONFIG_PATH = (
     Path(__file__).resolve().parents[2] / 'config' / 'sandbox.yaml'
 )
 
-#: 运行时取值（与 domain/enums.py 的 SandboxRuntime / §7 对齐）。
-RUNTIME_GVISOR = 'gvisor'
-RUNTIME_FIRECRACKER = 'firecracker'
+#: 运行时取值：唯一事实源是 ``domain/enums.py`` 的 ``SandboxRuntime``（不另造魔法值）。
+RUNTIME_GVISOR = SandboxRuntime.GVISOR.value
+RUNTIME_FIRECRACKER = SandboxRuntime.FIRECRACKER.value
 
 _RUNTIME_NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
 
@@ -130,7 +131,7 @@ class T2Policy:
     egress: T2EgressPolicy = field(default_factory=T2EgressPolicy)
 
     def __post_init__(self) -> None:
-        if self.runtime not in (RUNTIME_GVISOR, RUNTIME_FIRECRACKER):
+        if self.runtime not in {item.value for item in SandboxRuntime}:
             raise SandboxConfigurationError(
                 f'T2 运行时非法：{self.runtime!r}（可选 {RUNTIME_GVISOR}/'
                 f'{RUNTIME_FIRECRACKER}）'
@@ -154,6 +155,10 @@ class T2Policy:
             max_input_files=self.input.max_files,
             max_input_file_bytes=self.input.max_file_bytes,
             max_input_total_bytes=self.input.max_total_bytes,
+            # 产物上限同样从 yaml/env 进编排策略（否则 t2.artifact.* 是死配置）。
+            max_artifacts=self.artifacts.max_artifacts,
+            max_artifact_bytes=self.artifacts.max_artifact_bytes,
+            max_total_bytes=self.artifacts.max_total_bytes,
             total_timeout_seconds=self.total_timeout_seconds,
             require_code_provenance=True,
             egress_enabled=self.egress.enabled,

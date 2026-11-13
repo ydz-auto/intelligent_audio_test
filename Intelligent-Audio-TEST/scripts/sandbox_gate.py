@@ -36,8 +36,10 @@ T2_CONTAINER_LABEL = 'agent-sandbox=t2'
 
 T1_TESTS = [
     'test_sandbox_contract.py',
+    'test_sandbox_spec_validation.py',
     'test_sandbox_execution.py',
     'test_sandbox_runner_transport.py',
+    'test_sandbox_lifecycle.py',
 ]
 T2_TESTS = [
     'test_t2_contract.py',
@@ -49,10 +51,11 @@ def _run(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(argv, capture_output=True, text=True, **kwargs)
 
 
-def _preflight_docker(timeout: int = 60) -> tuple[bool, str]:
+def _preflight_docker() -> tuple[bool, str]:
     if shutil.which('docker') is None:
         return False, 'docker CLI 不可用（需要 Docker Desktop / Docker Engine）'
-    info = _run(['docker', 'info', '--format', '{{.ServerVersion}}'], timeout=timeout)
+    # 探活用 `docker version`：部分开发机 `docker info` 会卡到分钟级（已知环境问题）。
+    info = _run(['docker', 'version', '--format', '{{.Server.Version}}'], timeout=120)
     if info.returncode != 0:
         return False, f'docker daemon 不可用：{info.stderr.strip()[:300]}'
     return True, info.stdout.strip()

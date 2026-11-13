@@ -16,19 +16,22 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from agent_service.domain.enums import (
-    CompactionLevel, EventType, RunStatus, StepStatus, ToolCallStatus, ToolRisk,
+    CompactionLevel, ContextWindowSource, EventType, LlmProtocol,
+    ProviderStatus, RunStatus, StepStatus, ToolCallStatus, ToolRisk,
 )
 from agent_service.domain.model.entities import (
-    AgentArtifact, AgentContextSnapshot, AgentRun, AgentRunEvent, AgentSession,
-    AgentStep, AgentToolCall,
+    AgentArtifact, AgentContextSnapshot, AgentLlmProvider, AgentRun,
+    AgentRunEvent, AgentSession, AgentStep, AgentToolCall,
 )
 from agent_service.domain.repositories import (
     ArtifactRepository, ContextSnapshotRepository, EventRepository,
-    RunRepository, SessionRepository, StepRepository, ToolCallRepository,
+    LlmProviderRepository, RunRepository, SessionRepository, StepRepository,
+    ToolCallRepository,
 )
 from agent_service.infrastructure.persistence.models.agent_models import (
     AgentArtifact as AgentArtifactPO,
     AgentContextSnapshot as AgentContextSnapshotPO,
+    AgentLlmProvider as AgentLlmProviderPO,
     AgentRun as AgentRunPO,
     AgentRunEvent as AgentRunEventPO,
     AgentSession as AgentSessionPO,
@@ -106,6 +109,7 @@ def _to_tool_call(row: AgentToolCallPO) -> AgentToolCall:
         risk=ToolRisk(row.risk), status=ToolCallStatus(row.status),
         result=row.result, result_ref=row.result_ref,
         latency_ms=row.latency_ms, permission_decision=row.permission_decision,
+        result_code=row.result_code,
         error=row.error, idempotency_key=row.idempotency_key,
         created_at=row.created_at, updated_at=row.updated_at,
     )
@@ -125,6 +129,24 @@ def _to_snapshot(row: AgentContextSnapshotPO) -> AgentContextSnapshot:
         token_count=row.token_count or 0, dropped_ids=row.dropped_ids or [],
         memo=row.memo or {}, level=CompactionLevel(row.level),
         created_at=row.created_at,
+    )
+
+
+def _to_provider(row: AgentLlmProviderPO) -> AgentLlmProvider:
+    return AgentLlmProvider(
+        id=row.id, owner_id=row.owner_id, tenant_id=row.tenant_id,
+        name=row.name or '', protocol=LlmProtocol(row.protocol),
+        base_url=row.base_url, model=row.model,
+        api_key_ciphertext=row.api_key_ciphertext or '',
+        api_key_mask=row.api_key_mask or '',
+        key_version=int(row.key_version or 1),
+        context_window=row.context_window,
+        context_window_source=ContextWindowSource(
+            row.context_window_source),
+        is_default=bool(row.is_default),
+        status=ProviderStatus(row.status),
+        last_verified_at=row.last_verified_at,
+        created_at=row.created_at, updated_at=row.updated_at,
     )
 
 
@@ -517,7 +539,7 @@ class SqlStepRepository(_BaseRepo, StepRepository):
 
 _UPDATABLE_TOOL_CALL_FIELDS = frozenset({
     'status', 'step_id', 'result', 'result_ref', 'latency_ms',
-    'permission_decision', 'error', 'idempotency_key',
+    'permission_decision', 'result_code', 'error', 'idempotency_key',
 })
 
 
@@ -563,6 +585,18 @@ class SqlToolCallRepository(_BaseRepo, ToolCallRepository):
             db.add(row)
             db.commit()
             return _to_tool_call(row)
+        except IntegrityError:
+            # 并发 / 重复投递已建同一条 tool call：复用已有记录（调用方按
+            # tool_call_id 继续 update，不会重复执行）。键冲突却查不到同
+            # tool_call_id 的记录属于数据异常，原样上抛由 execute() 收口 FAILED，
+            # 绝不静默吞掉其它 DB 错误。
+            db.rollback()
+            existing = self.find(tool_call.run_id, tool_call.tool_call_id)
+            if existing is None:
+                raise
+            logger.debug('工具调用记录已存在，复用 tool_call_id=%s',
+                         tool_call.tool_call_id)
+            return existing
         finally:
             db.close()
 
@@ -670,5 +704,163 @@ class SqlContextSnapshotRepository(_BaseRepo, ContextSnapshotRepository):
                 AgentContextSnapshotPO.run_id == run_id
             ).order_by(AgentContextSnapshotPO.version.asc()).all()
             return [_to_snapshot(r) for r in rows]
+        finally:
+            db.close()
+
+
+# ---------------------------------------------------------------- providers
+
+class SqlLlmProviderRepository(_BaseRepo, LlmProviderRepository):
+    """用户模型供应商仓储：所有查询强制 owner + tenant 过滤。"""
+
+    def add(self, provider: AgentLlmProvider) -> AgentLlmProvider:
+        db = self._session()
+        try:
+            row = AgentLlmProviderPO(
+                id=provider.id, owner_id=provider.owner_id,
+                tenant_id=provider.tenant_id, name=provider.name or '',
+                protocol=provider.protocol.value, base_url=provider.base_url,
+                model=provider.model,
+                api_key_ciphertext=provider.api_key_ciphertext,
+                api_key_mask=provider.api_key_mask or '',
+                key_version=provider.key_version,
+                context_window=provider.context_window,
+                context_window_source=provider.context_window_source.value,
+                is_default=provider.is_default, status=provider.status.value,
+                last_verified_at=provider.last_verified_at,
+                created_at=provider.created_at or utcnow(),
+                updated_at=provider.updated_at or utcnow(),
+            )
+            db.add(row)
+            db.commit()
+            return _to_provider(row)
+        finally:
+            db.close()
+
+    def get_for_owner(self, provider_id: str, owner_id: int,
+                      tenant_id: str) -> Optional[AgentLlmProvider]:
+        db = self._session()
+        try:
+            row = db.query(AgentLlmProviderPO).filter(
+                AgentLlmProviderPO.id == provider_id,
+                AgentLlmProviderPO.owner_id == owner_id,
+                AgentLlmProviderPO.tenant_id == tenant_id,
+                AgentLlmProviderPO.status != ProviderStatus.DELETED.value,
+            ).one_or_none()
+            return _to_provider(row) if row else None
+        finally:
+            db.close()
+
+    def list_for_owner(self, owner_id: int,
+                       tenant_id: str) -> List[AgentLlmProvider]:
+        db = self._session()
+        try:
+            rows = db.query(AgentLlmProviderPO).filter(
+                AgentLlmProviderPO.owner_id == owner_id,
+                AgentLlmProviderPO.tenant_id == tenant_id,
+                AgentLlmProviderPO.status != ProviderStatus.DELETED.value,
+            ).order_by(
+                AgentLlmProviderPO.is_default.desc(),
+                AgentLlmProviderPO.created_at.asc(),
+            ).all()
+            return [_to_provider(r) for r in rows]
+        finally:
+            db.close()
+
+    def get_default(self, owner_id: int,
+                    tenant_id: str) -> Optional[AgentLlmProvider]:
+        db = self._session()
+        try:
+            row = db.query(AgentLlmProviderPO).filter(
+                AgentLlmProviderPO.owner_id == owner_id,
+                AgentLlmProviderPO.tenant_id == tenant_id,
+                AgentLlmProviderPO.is_default.is_(True),
+                AgentLlmProviderPO.status == ProviderStatus.ACTIVE.value,
+            ).first()
+            return _to_provider(row) if row else None
+        finally:
+            db.close()
+
+    def update(self, provider_id: str, owner_id: int, tenant_id: str,
+               **fields) -> bool:
+        if not fields:
+            return True
+        payload = dict(fields)
+        payload['updated_at'] = utcnow()
+        for key in ('protocol', 'status', 'context_window_source'):
+            if key in payload and hasattr(payload[key], 'value'):
+                payload[key] = payload[key].value
+        db = self._session()
+        try:
+            count = db.query(AgentLlmProviderPO).filter(
+                AgentLlmProviderPO.id == provider_id,
+                AgentLlmProviderPO.owner_id == owner_id,
+                AgentLlmProviderPO.tenant_id == tenant_id,
+                AgentLlmProviderPO.status != ProviderStatus.DELETED.value,
+            ).update(payload, synchronize_session=False)
+            db.commit()
+            return count > 0
+        finally:
+            db.close()
+
+    def clear_default(self, owner_id: int, tenant_id: str,
+                      keep_id: Optional[str] = None) -> None:
+        db = self._session()
+        try:
+            query = db.query(AgentLlmProviderPO).filter(
+                AgentLlmProviderPO.owner_id == owner_id,
+                AgentLlmProviderPO.tenant_id == tenant_id,
+                AgentLlmProviderPO.is_default.is_(True),
+            )
+            if keep_id:
+                query = query.filter(AgentLlmProviderPO.id != keep_id)
+            query.update({'is_default': False, 'updated_at': utcnow()},
+                         synchronize_session=False)
+            db.commit()
+        finally:
+            db.close()
+
+    def set_default(self, provider_id: str, owner_id: int,
+                    tenant_id: str) -> bool:
+        db = self._session()
+        try:
+            # 先清旧默认再置新默认：部分唯一索引 (owner_id, tenant_id)
+            # 不允许两条同时为 default（带 WHERE is_default）
+            db.query(AgentLlmProviderPO).filter(
+                AgentLlmProviderPO.owner_id == owner_id,
+                AgentLlmProviderPO.tenant_id == tenant_id,
+                AgentLlmProviderPO.id != provider_id,
+                AgentLlmProviderPO.is_default.is_(True),
+            ).update({'is_default': False, 'updated_at': utcnow()},
+                     synchronize_session=False)
+            hit = db.query(AgentLlmProviderPO).filter(
+                AgentLlmProviderPO.id == provider_id,
+                AgentLlmProviderPO.owner_id == owner_id,
+                AgentLlmProviderPO.tenant_id == tenant_id,
+                AgentLlmProviderPO.status == ProviderStatus.ACTIVE.value,
+            ).update({'is_default': True, 'updated_at': utcnow()},
+                     synchronize_session=False)
+            if not hit:
+                db.rollback()
+                return False
+            db.commit()
+            return True
+        finally:
+            db.close()
+
+    def find_first_active(self, owner_id: int, tenant_id: str,
+                          exclude_id: Optional[str] = None
+                          ) -> Optional[AgentLlmProvider]:
+        db = self._session()
+        try:
+            query = db.query(AgentLlmProviderPO).filter(
+                AgentLlmProviderPO.owner_id == owner_id,
+                AgentLlmProviderPO.tenant_id == tenant_id,
+                AgentLlmProviderPO.status == ProviderStatus.ACTIVE.value,
+            )
+            if exclude_id:
+                query = query.filter(AgentLlmProviderPO.id != exclude_id)
+            row = query.order_by(AgentLlmProviderPO.created_at.asc()).first()
+            return _to_provider(row) if row else None
         finally:
             db.close()

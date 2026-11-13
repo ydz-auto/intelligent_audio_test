@@ -12,8 +12,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from agent_service.domain.enums import RunStatus
 from agent_service.domain.model.entities import (
-    AgentArtifact, AgentContextSnapshot, AgentRun, AgentRunEvent, AgentSession,
-    AgentStep, AgentToolCall,
+    AgentArtifact, AgentContextSnapshot, AgentLlmProvider, AgentRun,
+    AgentRunEvent, AgentSession, AgentStep, AgentToolCall,
 )
 
 
@@ -157,3 +157,42 @@ class ContextSnapshotRepository(ABC):
 
     @abstractmethod
     def list_by_run(self, run_id: str) -> List[AgentContextSnapshot]: ...
+
+
+class LlmProviderRepository(ABC):
+    """用户模型供应商仓储：所有查询强制带 owner_id（+ tenant_id）。"""
+
+    @abstractmethod
+    def add(self, provider: AgentLlmProvider) -> AgentLlmProvider: ...
+
+    @abstractmethod
+    def get_for_owner(self, provider_id: str, owner_id: int,
+                      tenant_id: str) -> Optional[AgentLlmProvider]:
+        """返回未删除的供应商；不存在 / 非本人 / 已删除一律 None。"""
+
+    @abstractmethod
+    def list_for_owner(self, owner_id: int,
+                       tenant_id: str) -> List[AgentLlmProvider]: ...
+
+    @abstractmethod
+    def get_default(self, owner_id: int,
+                    tenant_id: str) -> Optional[AgentLlmProvider]:
+        """取默认供应商（ACTIVE 且 is_default），没有则 None。"""
+
+    @abstractmethod
+    def update(self, provider_id: str, owner_id: int, tenant_id: str,
+               **fields) -> bool: ...
+
+    @abstractmethod
+    def clear_default(self, owner_id: int, tenant_id: str,
+                      keep_id: Optional[str] = None) -> None: ...
+
+    @abstractmethod
+    def set_default(self, provider_id: str, owner_id: int,
+                    tenant_id: str) -> bool:
+        """把指定供应商置为默认（同一用户/租户唯一默认）。"""
+
+    @abstractmethod
+    def find_first_active(self, owner_id: int, tenant_id: str,
+                          exclude_id: Optional[str] = None
+                          ) -> Optional[AgentLlmProvider]: ...

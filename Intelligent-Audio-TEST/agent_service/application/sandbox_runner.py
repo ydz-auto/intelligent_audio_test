@@ -45,12 +45,17 @@ from enum import Enum
 from pathlib import Path
 from typing import Mapping, Protocol, Tuple
 
+from agent_service.domain.enums import SandboxTier
+
 logger = logging.getLogger(__name__)
 
-#: 方案 §7 的沙箱层级取值。INT-2451 的 domain/enums.py 落地后由编排层传
-#: ``SandboxTier`` 的 value 进来；本模块只认下面两个取值。
-SANDBOX_TIER_T1 = 'T1_TRUSTED_SCRIPT'
-SANDBOX_TIER_T2 = 'T2_UNTRUSTED_CODE'
+#: 方案 §7 的沙箱层级取值（唯一事实源：domain/enums.py 的 ``SandboxTier``）。
+SANDBOX_TIER_T1 = SandboxTier.T1_TRUSTED_SCRIPT.value
+SANDBOX_TIER_T2 = SandboxTier.T2_UNTRUSTED_CODE.value
+
+#: 容器内 ``timeout`` 自限到点时的退出码（GNU coreutils 约定）。
+#: 宿主侧计时器消失时容器由它自己结束；判 BUDGET_EXCEEDED，不是 FAILED。
+SANDBOX_TIMEOUT_EXIT_CODE = 124
 
 #: 容器内固定挂载点（T1：Skill 只读、/work 可写；T2：输入只读、/work 可写）。
 SKILL_MOUNT_PATH = '/skill'
@@ -71,6 +76,16 @@ CREDENTIAL_ENV_MARKERS = (
 )
 
 _SCRIPT_RELATIVE_FORBIDDEN = ('..',)
+
+#: T2 阶段名 / run_id 落盘路径分量：只允许安全字符集，且不得为 ``.`` / ``..``
+#: （与 ``policy._RUNTIME_NAME_RE`` 同口径，防止路径穿越/Windows 目录归一化）。
+_SAFE_PHASE_NAME_RE = re.compile(r'^[A-Za-z0-9_.-]{1,64}$')
+_SAFE_RUN_ID_RE = re.compile(r'^[A-Za-z0-9_.-]{1,128}$')
+_UNSAFE_PATH_SEGMENTS = ('.', '..')
+
+#: Python 字节码缓存：不属于交付产物（T2 一律跳过回收，避免 .pyc 脏化产物）。
+_BYTECODE_DIR_NAMES = ('__pycache__', '.pycache')
+_BYTECODE_SUFFIXES = ('.pyc', '.pyo')
 
 
 class SandboxOutcome(str, Enum):
@@ -135,6 +150,31 @@ class T2EgressDeniedError(SandboxConfigurationError):
     """T2 请求了非白名单联网（进容器前拒绝）。"""
 
 
+#: ``--user`` 只接受数值 ``uid[:gid]``；字面量比对会被 ``000`` / ``0:65534`` 绕过。
+_CONTAINER_USER_PATTERN = re.compile(r'^([0-9]{1,10})(?::([0-9]{1,10}))?$')
+_MAX_CONTAINER_UID = 2**32 - 1
+
+
+def parse_container_identity(raw: str) -> tuple[int, int]:
+    """解析容器运行身份 ``uid[:gid]``，按数值判定非 root（方案 §7 硬规则）。
+
+    ``0`` / ``000`` / ``0:0`` / ``0:65534`` / ``root`` 一律拒绝：``000`` 与
+    ``0:65534`` 是字面量比对的漏网写法，``root`` 不是数值身份。调用方（runner）
+    必须用它做白名单校验，不能只信 ``ContainerLimits`` 的构造期检查。
+    """
+    text = str(raw or '').strip()
+    match = _CONTAINER_USER_PATTERN.match(text)
+    if match is None:
+        raise SandboxConfigurationError(f'容器用户必须是数值 uid[:gid]：{raw!r}')
+    uid = int(match.group(1))
+    gid = int(match.group(2)) if match.group(2) else uid
+    if uid == 0:
+        raise SandboxConfigurationError('沙箱容器禁止以 root 运行（uid=0）')
+    if uid > _MAX_CONTAINER_UID or gid > _MAX_CONTAINER_UID:
+        raise SandboxConfigurationError(f'容器用户超出 uid/gid 取值范围：{raw!r}')
+    return uid, gid
+
+
 @dataclass(frozen=True)
 class ContainerLimits:
     """容器级资源上限（方案 §7）。由 infrastructure 从环境变量构造。"""
@@ -159,8 +199,8 @@ class ContainerLimits:
             raise SandboxConfigurationError('pids_limit 必须为正数')
         if self.cpus <= 0:
             raise SandboxConfigurationError('cpus 必须为正数')
-        if self.container_user in ('0', '0:0', 'root'):
-            raise SandboxConfigurationError('沙箱容器禁止以 root 运行')
+        # 按数值判定，不按字面量：``000`` / ``0:65534`` 同样是 uid 0。
+        parse_container_identity(self.container_user)
 
 
 @dataclass(frozen=True)
@@ -194,6 +234,7 @@ class ContainerExecution:
     container_id: str = ''
     killed_by_runner: bool = False
     start_failed: bool = False
+    work_limit_exceeded: bool = False
     error: str = ''
     #: 实际使用的容器运行时（gVisor ``runsc`` / Firecracker）；证据与审计用。
     runtime: str = ''
@@ -249,14 +290,28 @@ class SandboxArtifact:
 
 @dataclass(frozen=True)
 class SandboxRequest:
-    """调用方（单 loop 的 step 执行钩子）传入的 T1 脚本请求。"""
+    """调用方（单 loop 的 step 执行钩子）传入的 T1 脚本请求。
+
+    ``tier`` 用领域枚举 ``SandboxTier``（§5.3 禁魔法值）；JSON 边界按 value
+    传入的字符串在这里一次性转换，未知取值保留原样并由编排层判
+    ``UNSUPPORTED_TIER``。
+    """
 
     skill_name: str
     skill_root: Path
     script: str
     args: Tuple[str, ...] = ()
     env: Mapping[str, str] = field(default_factory=dict)
-    tier: str = SANDBOX_TIER_T1
+    tier: SandboxTier = SandboxTier.T1_TRUSTED_SCRIPT
+
+    def __post_init__(self) -> None:
+        if isinstance(self.tier, SandboxTier):
+            return
+        try:
+            object.__setattr__(self, 'tier', SandboxTier(str(self.tier)))
+        except ValueError:
+            # 未知层级不在这里抛：交给 run_trusted_script 记 UNSUPPORTED_TIER。
+            pass
 
 
 # ── T2 不可信代码（INT-2489）端口与请求类型 ─────────────────────
@@ -287,6 +342,13 @@ class T2Phase:
     def __post_init__(self) -> None:
         if not self.name or any(ch.isspace() for ch in self.name):
             raise SandboxConfigurationError('阶段名非法（不能为空/含空白）')
+        if (
+            not _SAFE_PHASE_NAME_RE.match(self.name)
+            or self.name in _UNSAFE_PATH_SEGMENTS
+        ):
+            raise SandboxConfigurationError(
+                f'阶段名非法（只允许 [A-Za-z0-9_.-]，且不得为 . / ..）：{self.name!r}'
+            )
         if not self.argv:
             raise SandboxConfigurationError(f'阶段 {self.name} 的命令不能为空')
         if any(not isinstance(arg, str) or '\x00' in arg for arg in self.argv):
@@ -358,6 +420,11 @@ class T2RunnerOptions:
     max_input_files: int = 200
     max_input_file_bytes: int = 1024 * 1024
     max_input_total_bytes: int = 2 * 1024 * 1024
+    #: ``/work`` 产物回收上限（T2 独立口径：``sandbox.yaml`` 的 ``t2.artifact``
+    #: 或 ``AGENT_SANDBOX_T2_MAX_*``；T1 仍走 ``AGENT_SANDBOX_MAX_*``）。
+    max_artifacts: int = 32
+    max_artifact_bytes: int = 8 * 1024 * 1024
+    max_total_bytes: int = 32 * 1024 * 1024
     #: 整份计划的总时长硬限（各阶段超时之外的第二道闸）。
     total_timeout_seconds: int = 300
     #: 是否强制要求代码来源标记（生产 True）。
@@ -368,6 +435,14 @@ class T2RunnerOptions:
     egress_network: str = ''
     egress_proxy_url: str = ''
     egress_allowed_hosts: Tuple[str, ...] = ()
+
+    def artifact_policy(self) -> SandboxArtifactPolicy:
+        """T2 产物回收策略 —— 配置即判定（yaml/env 的 knob 必须真的生效）。"""
+        return SandboxArtifactPolicy(
+            max_artifacts=self.max_artifacts,
+            max_artifact_bytes=self.max_artifact_bytes,
+            max_total_bytes=self.max_total_bytes,
+        )
 
     def assert_egress_allowed(self, hosts: Tuple[str, ...]) -> None:
         if not hosts:
@@ -522,22 +597,42 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _is_bytecode_cache(entry: Path, work_dir: Path) -> bool:
+    """``.pyc`` / ``__pycache__`` 等 Python 字节码缓存（不是交付产物）。"""
+    try:
+        # 用未 resolve 的 work_dir 求相对路径：Windows 上 TEMP 可能是跨盘 junction，
+        # resolve() 会把盘符改写掉，导致相对路径求值失败。
+        relative = entry.relative_to(work_dir)
+    except ValueError:  # 理论上不会发生（entry 均来自 work_dir.rglob）
+        return False
+    if relative.suffix.lower() in _BYTECODE_SUFFIXES:
+        return True
+    return any(part in _BYTECODE_DIR_NAMES for part in relative.parts[:-1])
+
+
 def collect_artifacts(
     work_dir: Path,
     policy: SandboxArtifactPolicy,
     *,
     phase: str = '',
+    ignore_bytecode: bool = False,
 ) -> Tuple[SandboxArtifact, ...]:
     """从 ``/work`` 回收产物并逐项校验（T1/T2 共用）。
 
     规则：只收常规文件、拒绝符号链接、拒绝逃出 ``/work``、数量/单文件/总量
     上限。任一不满足即抛 ``SandboxArtifactError``，调用方判失败。
+
+    ``ignore_bytecode=True``（T2）跳过 ``.pyc``/``__pycache__``：编译阶段的字节码
+    缓存既不是交付产物，也不该占用产物数量/体积上限。
     """
     if not work_dir.exists():
         return ()
+    root = work_dir.resolve()
     entries: list[Path] = sorted(work_dir.rglob('*'))
     files: list[Path] = []
     for entry in entries:
+        if ignore_bytecode and _is_bytecode_cache(entry, work_dir):
+            continue
         # 容器内创建的 Linux 符号链接在 Windows 宿主上表现为不可 stat 的条目：
         # 一律按「无法确认类型」拒绝回收，宁可不给产物也不放行未知类型。
         try:
@@ -565,7 +660,7 @@ def collect_artifacts(
             size = path.stat().st_size
         except OSError as exc:
             raise SandboxArtifactError(f'产物无法读取，拒绝回收：{path.name}') from exc
-        if not resolved.is_relative_to(work_dir.resolve()):
+        if not resolved.is_relative_to(root):
             raise SandboxArtifactError(f'产物逃出 /work：{path.name}')
         if size > policy.max_artifact_bytes:
             raise SandboxArtifactTooLargeError(
@@ -629,10 +724,11 @@ class SandboxRunner:
 
     def run_trusted_script(self, request: SandboxRequest) -> SandboxResult:
         started = time.monotonic()
-        if request.tier != SANDBOX_TIER_T1:
+        if request.tier is not SandboxTier.T1_TRUSTED_SCRIPT:
             return self._rejected(
                 SandboxFailureReason.UNSUPPORTED_TIER,
-                f'仅支持 {SANDBOX_TIER_T1}，收到 {request.tier!r}（T2 请求走 run_untrusted_code）',
+                f'仅支持 {SandboxTier.T1_TRUSTED_SCRIPT.value}，收到 {request.tier!r}'
+                '（T2 请求走 run_untrusted_code）',
                 tier=str(request.tier or ''),
             )
         if self._executor is None:
@@ -656,6 +752,7 @@ class SandboxRunner:
             return self._rejected(SandboxFailureReason.INVALID_INVOCATION, str(exc))
 
         work_dir = self._create_work_dir()
+        limits = self._executor.limits
         invocation = ContainerInvocation(
             name=self._container_name(request.skill_name),
             skill_root=str(skill_root),
@@ -663,7 +760,15 @@ class SandboxRunner:
             script_relative_path=script_relative,
             args=tuple(request.args),
             env=dict(request.env),
-            limits=self._executor.limits,
+            # 限额唯一口径 = 执行器（runner）配置，应用层不再另行构造。
+            limits=limits,
+        )
+        logger.info(
+            '沙箱执行 effective limits：skill=%s image=%s user=%s memory=%s cpus=%s '
+            'pids=%s tmpfs=%s timeout=%ss output=%sB',
+            request.skill_name, limits.image, limits.container_user, limits.memory,
+            limits.cpus, limits.pids_limit, limits.tmpfs_size, limits.timeout_seconds,
+            limits.output_limit_bytes,
         )
         try:
             execution = self._executor.run(invocation)
@@ -720,6 +825,7 @@ class SandboxRunner:
         try:
             self._validate_t2_phases(request.phases)
             self._validate_t2_files(request.files, options)
+            self._validate_t2_run_id(request.run_id)
             assert_env_is_credential_free(request.env)
             options.assert_egress_allowed(tuple(request.egress_hosts))
         except T2EgressDeniedError as exc:
@@ -774,6 +880,8 @@ class SandboxRunner:
                     'HTTPS_PROXY': options.egress_proxy_url,
                     'NO_PROXY': '',
                 })
+            # T2 产物口径来自 T2RunnerOptions（yaml/env 配置即判定）。
+            artifact_policy = options.artifact_policy()
             deadline = time.monotonic() + options.total_timeout_seconds
             for index, phase in enumerate(request.phases):
                 remaining = int(deadline - time.monotonic())
@@ -805,7 +913,15 @@ class SandboxRunner:
                     network=network,
                     timeout_seconds=timeout,
                 )
-                execution = executor.run(invocation)
+                try:
+                    execution = executor.run(invocation)
+                except Exception as exc:  # noqa: BLE001 - 执行器异常不得让 run 抛异常
+                    logger.exception('T2 执行器异常（%s）', phase.name)
+                    execution = ContainerExecution(
+                        exit_code=-1,
+                        error=f'执行器异常：{exc}',
+                        runtime=runtime,
+                    )
                 container_id = execution.container_id or container_id
                 mapped = self._map_t2_execution(
                     phase,
@@ -817,7 +933,10 @@ class SandboxRunner:
                 if mapped.succeeded:
                     try:
                         phase_artifacts = collect_artifacts(
-                            work_dir, self._artifact_policy, phase=phase.name
+                            work_dir,
+                            artifact_policy,
+                            phase=phase.name,
+                            ignore_bytecode=True,
                         )
                     except SandboxArtifactTooManyError as exc:
                         mapped = T2PhaseResult(
@@ -907,6 +1026,20 @@ class SandboxRunner:
         names = [phase.name for phase in phases]
         if len(set(names)) != len(names):
             raise SandboxConfigurationError(f'T2 阶段名重复：{names}')
+
+    @staticmethod
+    def _validate_t2_run_id(run_id: str) -> None:
+        """``run_id`` 会成为产物落盘路径分量，进容器前先收口字符集。"""
+        if not run_id:
+            return
+        raw = str(run_id)
+        if (
+            not _SAFE_RUN_ID_RE.match(raw)
+            or raw in _UNSAFE_PATH_SEGMENTS
+        ):
+            raise SandboxConfigurationError(
+                f'run_id 非法（只允许 [A-Za-z0-9_.-]，且不得为 . / ..）：{raw!r}'
+            )
 
     @staticmethod
     def _validate_t2_files(
@@ -1091,12 +1224,21 @@ class SandboxRunner:
             return
         from agent_service.domain.model.entities import AgentArtifact
 
+        artifact_root = self._artifact_root.resolve()
         for artifact, work_dir in sources:
             try:
                 dest = (
-                    self._artifact_root / request.run_id / artifact.phase
+                    artifact_root / request.run_id / artifact.phase
                     / artifact.relative_path
-                )
+                ).resolve()
+                # 二次防线：run_id/阶段名/相对路径都收口过，解析后仍必须落在
+                # 产物根目录内（符号链接、大小写、Windows 归一化）。
+                if not dest.is_relative_to(artifact_root):
+                    logger.warning(
+                        'T2 产物目标逃出产物根目录，跳过落库：%s/%s',
+                        artifact.phase, artifact.relative_path,
+                    )
+                    continue
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(work_dir / artifact.relative_path, dest)
                 repository.add(AgentArtifact(
@@ -1210,6 +1352,11 @@ class SandboxRunner:
                 execution, SandboxFailureReason.TIMEOUT, duration,
                 detail=f'超时终止（{self._executor.limits.timeout_seconds}s）',
             )
+        if execution.work_limit_exceeded:
+            return self._budget(
+                execution, SandboxFailureReason.RESOURCE_LIMIT_EXCEEDED, duration,
+                detail='执行中 /work 写入超过容量上限，容器被终止',
+            )
         if execution.output_truncated:
             return self._budget(
                 execution, SandboxFailureReason.OUTPUT_LIMIT_EXCEEDED, duration,
@@ -1219,6 +1366,13 @@ class SandboxRunner:
             return self._budget(
                 execution, SandboxFailureReason.MEMORY_LIMIT_EXCEEDED, duration,
                 detail=f'内存超限终止（{self._executor.limits.memory}）',
+            )
+        if execution.exit_code == SANDBOX_TIMEOUT_EXIT_CODE:
+            # 容器内 ``timeout`` 自限到点（宿主计时器在此前已消失时的兜底）：
+            # 这是超时，不是脚本非零退出，必须判 BUDGET_EXCEEDED。
+            return self._budget(
+                execution, SandboxFailureReason.TIMEOUT, duration,
+                detail=f'容器内 timeout 自限终止（{self._executor.limits.timeout_seconds}s）',
             )
         if execution.exit_code == 137:
             return self._budget(
@@ -1287,7 +1441,7 @@ class SandboxRunner:
             stderr=execution.stderr,
             duration_ms=duration,
             container_id=execution.container_id,
-            timed_out=execution.timed_out,
+            timed_out=execution.timed_out or reason is SandboxFailureReason.TIMEOUT,
             output_truncated=execution.output_truncated,
             detail=detail,
         )

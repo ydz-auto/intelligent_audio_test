@@ -28,10 +28,11 @@ import pytest
 
 from agent_service.application.sandbox_runner import (
     ContainerLimits,
-    SandboxArtifactPolicy,
     SandboxFailureReason,
     SandboxOutcome,
     T2Phase,
+    T2RunnerOptions,
+    default_validation_phases,
 )
 from tests.agent_sandbox._sandbox_support import docker_cli
 
@@ -376,13 +377,45 @@ def test_oversized_artifact_is_budget_exceeded(run_t2) -> None:
     result = run_t2(
         _files(script),
         (_phase(),),
-        artifact_policy=SandboxArtifactPolicy(max_artifact_bytes=1024 * 1024),
+        options=T2RunnerOptions(max_artifact_bytes=1024 * 1024),
     )
     assert result.outcome is SandboxOutcome.BUDGET_EXCEEDED
     assert result.reason is SandboxFailureReason.ARTIFACT_TOO_LARGE
 
 
 # ── 6. 失败不得静默成功 ────────────────────────────────────────
+
+
+def _multi_module_package(count: int = 44) -> dict[str, str]:
+    files = {f'pkg/mod_{index:02d}.py': f'VALUE = {index}\n' for index in range(count)}
+    files['pkg/__init__.py'] = ''
+    files['tests/test_smoke.py'] = (
+        'import unittest\n\n'
+        'class SmokeTest(unittest.TestCase):\n'
+        '    def test_ok(self):\n'
+        '        self.assertTrue(True)\n'
+    )
+    files['tests/registry_resolve.py'] = 'print("registry resolved")\n'
+    return files
+
+
+def test_default_validation_phases_succeed_for_large_package(run_t2) -> None:
+    """默认四阶段链跑 ≥40 模块的包：编译成功即 SUCCEEDED，.pyc 不算产物。
+
+    审计 P1-1 回归：此前 ``compileall`` 把字节码写进 ``/work``，模块数 >32 时
+    成功编译被判 ``ARTIFACT_TOO_MANY``、不超过 32 时 ``.pyc`` 又被当成产物落库。
+    """
+    result = run_t2(
+        _multi_module_package(),
+        default_validation_phases(),
+        options=T2RunnerOptions(total_timeout_seconds=180),
+    )
+    assert result.outcome is SandboxOutcome.SUCCEEDED, result.detail
+    assert [p.name for p in result.phases] == [
+        'import_compile', 'unit_test', 'mock_contract', 'registry_resolve',
+    ]
+    assert all(p.succeeded for p in result.phases)
+    assert not [a for a in result.artifacts if a.relative_path.endswith('.pyc')]
 
 
 def test_compile_failure_is_failed(run_t2) -> None:

@@ -82,8 +82,9 @@ RUNNER_HTTP_GRACE_SECONDS = 30
 _T2_BASE_ENV: Mapping[str, str] = {
     'PYTHONUNBUFFERED': '1',
     'PYTHONDONTWRITEBYTECODE': '1',
-    # 字节码写 /work（/input 只读）；compileall 因此不会因只读根失败。
-    'PYTHONPYCACHEPREFIX': '/work/.pycache',
+    # 字节码写 /tmp（tmpfs，不参与 /work 产物回收）；compileall 因此不会因只读根
+    # 失败，也不会把 .pyc 当成交付产物（INT-2489 审计 P1-1）。
+    'PYTHONPYCACHEPREFIX': '/tmp/.pycache',
     'PYTHONPATH': '/input',
     'HOME': '/tmp',
     'TMPDIR': '/tmp',
@@ -104,8 +105,8 @@ class DockerRuntimeProbe:
 
 def probe_docker_runtimes(docker_binary: str = 'docker') -> DockerRuntimeProbe:
     result = run_docker_admin(
-        ['info', '--format', '{{json .Runtimes}}'],
         docker_binary,
+        ['info', '--format', '{{json .Runtimes}}'],
         timeout=RUNTIME_PROBE_TIMEOUT_SECONDS,
     )
     if result is None:

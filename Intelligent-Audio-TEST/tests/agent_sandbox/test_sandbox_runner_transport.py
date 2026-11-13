@@ -149,7 +149,7 @@ def test_sidecar_unreachable_fails_closed(tmp_path: Path) -> None:
             name='agent-sandbox-t1-unreachable',
             skill_root=str(skill),
             work_dir=str(work),
-            script_relative_path='x.py',
+            script_relative_path='scripts/x.py',
         )
     )
     assert execution.engine_failed
