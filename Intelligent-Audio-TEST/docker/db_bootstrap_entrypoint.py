@@ -463,6 +463,15 @@ BOOTSTRAP_STEPS = [
     #     齐全。列可 NULL，存量行不迁移；幂等（列存在即 SKIP，全新库 create_all
     #     已含为全 SKIP）；须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/add_agent_tool_call_result_code.py', '--apply'),
+    # ㊾-10 agent_step / agent_context_snapshot 冗余索引下线（INT-2516）：
+    #     `ix_agent_step_run (run_id, "index")` 与 `ix_agent_context_snapshot_run
+    #     (run_id, version)` 与同列同序的唯一约束完全重复，纯写放大。ORM 的
+    #     Index(...) 与 ㊾-8 的 INDEXES 清单已同步移除；本步兜底删存量库的索引。
+    #     按「索引名 + 定义」双匹配才 DROP，定义对不上或覆盖的唯一约束索引
+    #     缺失时跳过并 WARN。幂等（DROP INDEX IF EXISTS，第二次执行全 SKIP）；
+    #     默认 dry-run，引导链必须带 --apply。须排在 ㊾-8 之后、㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/drop_agent_redundant_indexes_int2516.py',
+     '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
@@ -557,6 +566,8 @@ PROD_DDL_SCRIPTS = frozenset({
     'scripts/migrations/202611/add_agent_llm_provider_table.py',
     # INT-2453 agent_tool_call 补 result_code 审计列（纯 DDL，幂等）
     'scripts/migrations/202611/add_agent_tool_call_result_code.py',
+    # INT-2516 agent_step / agent_context_snapshot 冗余索引下线（纯 DDL，幂等）
+    'scripts/migrations/202611/drop_agent_redundant_indexes_int2516.py',
     'scripts/migrations/202610/analyze_stale_statistics_int1741.py',
 })
 
