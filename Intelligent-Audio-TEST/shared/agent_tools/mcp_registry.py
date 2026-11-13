@@ -494,11 +494,14 @@ TOOLS: List[dict] = [
           path_params=['device_id']),
 
     # ---------------- 评估 evaluation（/api/v1/evaluation） ----------------
-    _tool('evaluation_dimension_list', '列出评估维度',
-          {'page': _int('页码'), 'per_page': _int('每页条数'),
-           'keyword': _str('关键词过滤')},
+    # INT-2462：参数名对齐真实网关契约（DimensionListQuery：
+    # category_id / page / per_page / search，响应 {items,total,page,per_page,pages}）。
+    # 旧 Schema 的 keyword 网关不识别，按关键词过滤实际不生效。
+    _tool('evaluation_dimension_list', '列出评估维度（可按分类 / 关键词过滤）',
+          {'category_id': _int('分类 ID（可选）'), 'page': _int('页码'),
+           'per_page': _int('每页条数'), 'search': _str('关键词过滤')},
           ['evaluation:read'], 'GET', '/api/v1/evaluation/dimensions',
-          query_params=['page', 'per_page', 'keyword']),
+          query_params=['category_id', 'page', 'per_page', 'search']),
     _tool('evaluation_dimension_get', '获取评估维度详情',
           {'dim_id': _int('维度 ID', True)},
           ['evaluation:read'], 'GET', '/api/v1/evaluation/dimensions/{dim_id}',

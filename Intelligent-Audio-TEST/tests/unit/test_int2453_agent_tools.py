@@ -88,10 +88,10 @@ def test_intent_registry_has_31_unique_tools():
     assert len(INTENT_TOOLS) == 31
     names = [t.name for t in INTENT_TOOLS]
     assert len(names) == len(set(names))
-    # M0 四个 + M1 音频域 audio_query（INT-2458）
-    assert ENABLED_TOOLS == {
-        'platform_contract', 'tool_search', 'task_query', 'report_query',
-        'audio_query'}
+    # M0 四项常驻 + M1 各域卡按卡启用
+    # （INT-2458 audio_query / INT-2462 evaluation_query）
+    assert {'platform_contract', 'tool_search', 'task_query', 'report_query',
+            'audio_query', 'evaluation_query'} <= ENABLED_TOOLS
 
 
 def test_reserved_tool_names_present_and_disabled():
