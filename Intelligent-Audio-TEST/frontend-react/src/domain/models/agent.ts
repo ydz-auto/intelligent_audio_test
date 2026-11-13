@@ -198,6 +198,18 @@ export type AgentApprovalDecision =
   (typeof AGENT_APPROVAL_DECISION)[keyof typeof AGENT_APPROVAL_DECISION]
 
 /**
+ * 审批决策的 agent_service 字符串业务码（INT-2472 P1）。
+ * `ApiError.code` 只收平台数字码，字符串码保留在 `ApiError.rawCode`。
+ */
+export const AGENT_APPROVAL_ERROR_CODE = {
+  /** DESTRUCTIVE 批准缺 confirm（400）：决策未落库，可带 confirm=true 重发 */
+  CONFIRMATION_REQUIRED: 'APPROVAL_CONFIRMATION_REQUIRED',
+} as const
+
+/** 审批单同时影响的对象数上限（§9.4：单次影响 >20 对象必须单条审批） */
+export const AGENT_APPROVAL_OBJECT_LIMIT = 20
+
+/**
  * 审批提案（后端 ApprovalService.propose 落库形态）：
  * `tool` / `risk` / `arguments` / `args_hash` / `idempotency_key` / `step_id` /
  * `turn` / `requested_by` / `session_id`。arguments 已由后端脱敏，前端只展示不执行。
@@ -455,4 +467,26 @@ export const AGENT_APPROVAL_COPY = {
   /** 计数徽标（与工具卡计数同源） */
   pendingCount: '待审批',
   toolCallCount: '工具调用',
+  /** 破坏性操作二次确认（INT-2467 契约：批准必须带 confirm=true） */
+  destructiveConfirmTitle: '确认执行高危操作？',
+  destructiveConfirmDesc:
+    '该操作不可回滚（重启 / 关机 / 安装 / 卸载 / 批量设备控制等）。确认后服务端才会执行。',
+  /** 单次影响对象数超过上限（§9.4 >20 对象必须逐条审批） */
+  batchObjects: '影响对象',
+  batchConfirmTitle: '批量写操作超过单次审批上限',
+  batchConfirmDesc:
+    '本次提案影响的对象数超过 20 个（§9.4）。必须逐项核对后才能批准；不允许一次批量放行。',
+  batchConfirmPrefix: '本次提案影响',
+  batchConfirmSuffix: '个对象，超过单次审批上限（20 个）',
+  /** 卡片行内提示（不依赖前缀计数，单独成句） */
+  batchLimitHint: '影响对象超过单次审批上限（20 个），须逐项核对后批准',
+  batchObjectToggled: '已核对',
+  batchObjectCount: '已核对',
+  batchConfirmApprove: '逐项核对后批准',
+  /** 二次确认动作与补确认提示 */
+  confirmApprove: '确认批准',
+  confirmTitle: '二次确认',
+  unknownRiskConfirmDesc:
+    '该操作的风险等级未知，按高危处理，需要二次确认后才能批准。',
+  confirmRequired: '该操作需要二次确认，请核对后重新批准',
 } as const

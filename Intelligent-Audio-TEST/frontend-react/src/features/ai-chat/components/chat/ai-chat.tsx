@@ -73,7 +73,9 @@ type AiChatProps = {
   decidingApprovalIds?: string[]
   onDecideApproval?: (
     approvalId: string,
-    decision: AgentApprovalDecision
+    decision: AgentApprovalDecision,
+    /** DESTRUCTIVE 二次确认：仅确认后带 true（后端 INT-2467 契约） */
+    confirm?: boolean
   ) => Promise<string | null>
   onRetryApprovals?: () => void
   /** Run 时间线（事件流有序投影）与 run 快照（预算消耗） */

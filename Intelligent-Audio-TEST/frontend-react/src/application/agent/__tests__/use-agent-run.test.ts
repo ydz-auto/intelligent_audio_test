@@ -642,6 +642,72 @@ describe('useAgentRun 审批卡 + 断线续传（INT-2472）', () => {
     })
   })
 
+  it('决策透传 confirm：DESTRUCTIVE 二次确认后带 confirm=true，WRITE 不带', async () => {
+    const { result } = await startRunWithApproval()
+    await waitFor(() => {
+      expect(result.current.approvals[0]?.status).toBe(
+        AGENT_APPROVAL_STATUS.PENDING
+      )
+    })
+    decideApprovalMock.mockResolvedValue({
+      approval: {
+        id: 'ap-1',
+        runId: 'r-1',
+        toolCallId: 'tc-1',
+        status: AGENT_APPROVAL_STATUS.APPROVED,
+        proposal: { tool: 'device_control', risk: AGENT_TOOL_RISK.DESTRUCTIVE },
+        decidedBy: 1,
+        decidedAt: 't',
+      },
+      runStatus: AGENT_RUN_STATUS.RUNNING,
+    })
+
+    await act(async () => {
+      await result.current.decideApproval('ap-1', 'APPROVE', true)
+    })
+
+    expect(decideApprovalMock).toHaveBeenLastCalledWith('ap-1', 'APPROVE', true)
+
+    act(() => {
+      streamOptions?.onEvent(runFinished(3))
+    })
+  })
+
+  it('400 APPROVAL_CONFIRMATION_REQUIRED：返回补确认文案，不刷新列表、卡片保持待审批', async () => {
+    const { result } = await startRunWithApproval()
+    await waitFor(() => {
+      expect(result.current.approvals[0]?.status).toBe(
+        AGENT_APPROVAL_STATUS.PENDING
+      )
+    })
+    listApprovalsMock.mockClear()
+    decideApprovalMock.mockRejectedValue(
+      new ApiError({
+        httpStatus: 400,
+        code: 'APPROVAL_CONFIRMATION_REQUIRED',
+        detail: '破坏性操作需要二次确认：请带 confirm=true 重新批准',
+      })
+    )
+
+    let failure: string | null = null
+    await act(async () => {
+      failure = await result.current.decideApproval('ap-1', 'APPROVE')
+    })
+
+    expect(failure).toBe(AGENT_APPROVAL_COPY.confirmRequired)
+    // 决策未落库：不需要（也不该）触发审批列表刷新
+    expect(listApprovalsMock).not.toHaveBeenCalled()
+    expect(result.current.approvals[0].status).toBe(
+      AGENT_APPROVAL_STATUS.PENDING
+    )
+    expect(result.current.decidingApprovalIds).toEqual([])
+
+    act(() => {
+      streamOptions?.onEvent(runFinished(3))
+    })
+  })
+
+
   it('断线重连：列表接口恢复待审批卡，已决的只展示不可操作', async () => {
     const { result } = await startRunWithApproval()
     // approval_required 已对齐一次列表（默认空）：等它落定，再让重连拿到两条记录

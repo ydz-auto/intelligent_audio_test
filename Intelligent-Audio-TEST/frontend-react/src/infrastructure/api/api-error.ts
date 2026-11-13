@@ -61,6 +61,12 @@ function resolveUserMessage(payload: {
 export class ApiError extends Error {
   /** 领域业务错误码（响应无业务码时为 null；网络层失败亦为 null） */
   readonly code: ApiErrorCode | null
+  /**
+   * 服务端原始业务码的字符串形态（如 agent_service 的
+   * `APPROVAL_CONFIRMATION_REQUIRED`）。`code` 只收平台数字码，非数字业务码
+   * 保留在这里供调用方分流；无业务码时为 null。
+   */
+  readonly rawCode: string | null
   /** HTTP 状态码（网络层失败为 null） */
   readonly httpStatus: number | null
   /** 服务端原始 message（可为空） */
@@ -78,10 +84,17 @@ export class ApiError extends Error {
 
   constructor(payload: ApiErrorPayload) {
     const code = normalizeCode(payload.code)
+    const rawCode =
+      typeof payload.code === 'string' && payload.code.trim() !== ''
+        ? payload.code.trim()
+        : typeof payload.code === 'number' && Number.isFinite(payload.code)
+          ? String(payload.code)
+          : null
     const message = typeof payload.message === 'string' ? payload.message : ''
     super(message)
     this.name = 'ApiError'
     this.code = code
+    this.rawCode = rawCode
     this.httpStatus = payload.httpStatus ?? null
     this.serverMessage = message
     this.detail = payload.detail

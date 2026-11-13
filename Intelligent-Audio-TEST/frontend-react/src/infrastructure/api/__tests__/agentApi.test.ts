@@ -401,6 +401,30 @@ describe('agentApi 审批决策（INT-2472）', () => {
     expect(JSON.parse(String(init.body))).toEqual({ decision: 'APPROVE' })
   })
 
+  it('decideAgentApproval：DESTRUCTIVE 二次确认的 body 带 confirm=true（INT-2467）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        approval: {
+          id: 'ap-2',
+          run_id: 'r-1',
+          tool_call_id: 'tc-2',
+          status: 'APPROVED',
+          proposal: { tool: 'device_control', risk: 'DESTRUCTIVE' },
+        },
+        run_status: 'RUNNING',
+      })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await decideAgentApproval('ap-2', 'APPROVE', true)
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).toEqual({
+      decision: 'APPROVE',
+      confirm: true,
+    })
+  })
+
   it('decideAgentApproval：409（过期 / 并发）上抛 ApiError，由 store 刷新审批状态', async () => {
     vi.stubGlobal(
       'fetch',

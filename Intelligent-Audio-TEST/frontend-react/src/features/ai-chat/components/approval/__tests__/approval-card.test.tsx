@@ -3,11 +3,12 @@
  * 风险等级与提案展示、过期倒计时到点后按钮不可点、决策请求在途时按钮禁用、
  * 已决状态展示决策人与时间。
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  AGENT_APPROVAL_COPY,
   AGENT_APPROVAL_DECISION,
   AGENT_APPROVAL_STATUS,
   AGENT_TOOL_RISK,
@@ -178,5 +179,148 @@ describe('ApprovalCard', () => {
     )).toBe(AGENT_TOOL_RISK.DESTRUCTIVE)
     // 只有单条决策入口，没有「全部批准」之类的批量按钮
     expect(screen.queryByRole('button', { name: /全部/ })).not.toBeInTheDocument()
+  })
+
+  it('DESTRUCTIVE：批准必须先过二次确认，确认后带 confirm=true（INT-2467）', async () => {
+    const onDecide = vi.fn().mockResolvedValue(null)
+    render(
+      <ApprovalCard
+        approval={buildApproval({
+          proposal: {
+            tool: 'device_control',
+            risk: AGENT_TOOL_RISK.DESTRUCTIVE,
+            arguments: { action: 'reboot', device_id: 7 },
+          },
+        })}
+        deciding={false}
+        onDecide={onDecide}
+      />
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '批准执行' }))
+    // 单击不直接发请求：先弹二次确认
+    expect(onDecide).not.toHaveBeenCalled()
+    expect(screen.getByText('确认执行高危操作？')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '确认批准' }))
+    expect(onDecide).toHaveBeenCalledTimes(1)
+    expect(onDecide).toHaveBeenCalledWith(
+      'ap-1',
+      AGENT_APPROVAL_DECISION.APPROVE,
+      true
+    )
+  })
+
+  it('>20 对象批量写：强制逐项核对，全部勾选后才能批准（不带 confirm）', async () => {
+    const onDecide = vi.fn().mockResolvedValue(null)
+    const deviceIds = Array.from({ length: 21 }, (_, index) => index + 1)
+    render(
+      <ApprovalCard
+        approval={buildApproval({
+          proposal: {
+            tool: 'device_control',
+            risk: AGENT_TOOL_RISK.WRITE,
+            arguments: { action: 'batch', device_ids: deviceIds },
+          },
+        })}
+        deciding={false}
+        onDecide={onDecide}
+      />
+    )
+
+    expect(screen.getByText('影响对象 21')).toBeInTheDocument()
+    expect(document.querySelector('[data-approval-batch-hint]')?.textContent).toContain(
+      '超过单次审批上限'
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '批准执行' }))
+    expect(onDecide).not.toHaveBeenCalled()
+
+    const confirmButton = screen.getByRole('button', { name: '逐项核对后批准' })
+    expect(confirmButton).toBeDisabled()
+
+    const checkboxes = screen.getAllByRole('checkbox')
+    expect(checkboxes).toHaveLength(21)
+    for (const checkbox of checkboxes) {
+      await userEvent.click(checkbox)
+    }
+    expect(confirmButton).not.toBeDisabled()
+
+    await userEvent.click(confirmButton)
+    expect(onDecide).toHaveBeenCalledWith(
+      'ap-1',
+      AGENT_APPROVAL_DECISION.APPROVE
+    )
+  })
+
+  it('>20 对象但 DESTRUCTIVE：逐项核对 + confirm=true 一起生效（§9.4 永远单条）', async () => {
+    const onDecide = vi.fn().mockResolvedValue(null)
+    render(
+      <ApprovalCard
+        approval={buildApproval({
+          proposal: {
+            tool: 'device_control',
+            risk: AGENT_TOOL_RISK.DESTRUCTIVE,
+            arguments: {
+              action: 'batch',
+              device_ids: Array.from({ length: 25 }, (_, index) => index + 1),
+            },
+          },
+        })}
+        deciding={false}
+        onDecide={onDecide}
+      />
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '批准执行' }))
+    const confirmButton = screen.getByRole('button', { name: '确认批准' })
+    expect(confirmButton).toBeDisabled()
+    for (const checkbox of screen.getAllByRole('checkbox')) {
+      await userEvent.click(checkbox)
+    }
+    await userEvent.click(confirmButton)
+    expect(onDecide).toHaveBeenCalledWith('ap-1', 'APPROVE', true)
+  })
+
+  it('风险未知（proposal 无 risk）：按高危处理，批准也要二次确认', async () => {
+    const onDecide = vi.fn().mockResolvedValue(null)
+    render(
+      <ApprovalCard
+        approval={buildApproval({
+          proposal: { tool: 'unknown_write_tool' },
+        })}
+        deciding={false}
+        onDecide={onDecide}
+      />
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '批准执行' }))
+    expect(onDecide).not.toHaveBeenCalled()
+    expect(screen.getByText('二次确认')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '确认批准' }))
+    expect(onDecide).toHaveBeenCalledWith('ap-1', 'APPROVE', true)
+  })
+
+  it('服务端 400 要求补确认（APPROVAL_CONFIRMATION_REQUIRED）：补弹确认后带 confirm 重发', async () => {
+    const onDecide = vi
+      .fn()
+      .mockResolvedValueOnce(AGENT_APPROVAL_COPY.confirmRequired)
+      .mockResolvedValueOnce(null)
+    render(
+      <ApprovalCard approval={buildApproval()} deciding={false} onDecide={onDecide} />
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '批准执行' }))
+    expect(onDecide).toHaveBeenCalledTimes(1)
+    expect(onDecide).toHaveBeenLastCalledWith('ap-1', 'APPROVE')
+
+    // 400 后决策未落库：卡片弹二次确认，确认后带 confirm=true 重发
+    await waitFor(() => {
+      expect(screen.getByText('二次确认')).toBeInTheDocument()
+    })
+    await userEvent.click(screen.getByRole('button', { name: '确认批准' }))
+    expect(onDecide).toHaveBeenCalledTimes(2)
+    expect(onDecide).toHaveBeenLastCalledWith('ap-1', 'APPROVE', true)
   })
 })

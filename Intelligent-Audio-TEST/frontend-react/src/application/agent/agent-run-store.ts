@@ -29,6 +29,7 @@ import { toast } from 'sonner'
 
 import {
   AGENT_APPROVAL_COPY,
+  AGENT_APPROVAL_ERROR_CODE,
   AGENT_APPROVAL_STATUS,
   AGENT_ERROR_COPY,
   AGENT_EVENT_TYPE,
@@ -241,7 +242,9 @@ type AgentRunStoreState = {
    */
   decideApproval: (
     approvalId: string,
-    decision: AgentApprovalDecision
+    decision: AgentApprovalDecision,
+    /** DESTRUCTIVE 的 APPROVE 必须二次确认（INT-2467）：仅此时传 true */
+    confirm?: boolean
   ) => Promise<string | null>
   /**
    * 同步本 run 的审批单（重连 / 恢复 / 决策 409 后）。
@@ -899,7 +902,8 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
 
   const decideApproval = async (
     approvalId: string,
-    decision: AgentApprovalDecision
+    decision: AgentApprovalDecision,
+    confirm = false
   ): Promise<string | null> => {
     // 防重复（§12.2「审批按钮防重复」）：同一审批单的请求在途时直接忽略连点
     if (decidingApprovals.has(approvalId)) return null
@@ -912,7 +916,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     set({ decidingApprovalIds: [...decidingApprovals] })
     const runToken = token
     try {
-      const result = await decideAgentApproval(approvalId, decision)
+      const result = await decideAgentApproval(approvalId, decision, confirm)
       if (runToken !== token) return null
       upsertApproval(result.approval)
       const current = get().run
@@ -936,6 +940,14 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
           // 并发 / 过期 / run 已收口：以服务端列表为准刷新卡片，再给出统一文案
           await get().refreshApprovals()
           return AGENT_APPROVAL_COPY.conflict
+        }
+        if (
+          err.httpStatus === 400 &&
+          err.rawCode === AGENT_APPROVAL_ERROR_CODE.CONFIRMATION_REQUIRED
+        ) {
+          // DESTRUCTIVE 批准缺 confirm（INT-2467）：决策未落库，卡片弹二次确认，
+          // 确认后带 confirm=true 重发。
+          return AGENT_APPROVAL_COPY.confirmRequired
         }
         return toAgentErrorMessage(err)
       }

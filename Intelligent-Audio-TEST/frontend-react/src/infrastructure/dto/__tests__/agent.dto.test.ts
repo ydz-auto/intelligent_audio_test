@@ -9,6 +9,7 @@ import { AGENT_RUN_STATUS } from '@/domain/models/agent'
 import {
   AgentContractError,
   toAgentApproval,
+  toAgentApprovalDecisionDto,
   toAgentApprovalDecisionResult,
   toAgentApprovals,
   toAgentRun,
@@ -430,6 +431,20 @@ describe('agent.dto 审批与时间线（INT-2472）', () => {
     expect(() =>
       toAgentApprovalDecisionResult({} as never)
     ).toThrow(AgentContractError)
+  })
+
+  it('审批决策请求：只有二次确认才带 confirm（INT-2467）', () => {
+    expect(toAgentApprovalDecisionDto('APPROVE')).toEqual({
+      decision: 'APPROVE',
+    })
+    expect(toAgentApprovalDecisionDto('REJECT', true)).toEqual({
+      decision: 'REJECT',
+      confirm: true,
+    })
+    expect(toAgentApprovalDecisionDto('APPROVE', true)).toEqual({
+      decision: 'APPROVE',
+      confirm: true,
+    })
   })
 
   it('run / run_started：budget 上限转 camelCase（时间线展示预算消耗）', () => {

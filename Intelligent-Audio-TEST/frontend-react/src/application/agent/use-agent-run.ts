@@ -58,7 +58,9 @@ export interface UseAgentRunResult {
   /** 审批决策（同一审批单连点只发一次请求；失败返回中文文案） */
   decideApproval: (
     approvalId: string,
-    decision: AgentApprovalDecision
+    decision: AgentApprovalDecision,
+    /** DESTRUCTIVE 二次确认：仅确认后带 true（后端 INT-2467 契约） */
+    confirm?: boolean
   ) => Promise<string | null>
   /** 同步本 run 的审批单（重连恢复 / 面板重试） */
   refreshApprovals: (options?: {

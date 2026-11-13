@@ -123,6 +123,11 @@ export interface AgentApprovalDto {
 /** POST /agent/approvals/{id}/decision 请求体（后端 ApprovalDecisionRequest） */
 export interface AgentApprovalDecisionDto {
   decision: string
+  /**
+   * 破坏性操作二次确认（INT-2467）：DESTRUCTIVE 的 APPROVE 必须带 true，
+   * 拒绝不需要；WRITE 不带（缺省 false），与后端语义一致。
+   */
+  confirm?: boolean
 }
 
 /** POST /agent/approvals/{id}/decision 响应（后端 ApprovalDecisionResponse） */
@@ -329,9 +334,12 @@ export function toAgentApproval(dto: AgentApprovalDto): AgentApproval {
 }
 
 export function toAgentApprovalDecisionDto(
-  decision: string
+  decision: string,
+  confirm = false
 ): AgentApprovalDecisionDto {
-  return { decision }
+  // 只有显式二次确认才带 confirm：WRITE / REJECT 的请求体保持 `{decision}`
+  // 单口径，避免前端多发一个后端并不需要的字段。
+  return confirm ? { decision, confirm: true } : { decision }
 }
 
 /**

@@ -285,16 +285,19 @@ export async function listAgentApprovals(
  * POST /agent/approvals/{id}/decision —— 批准 / 拒绝一条写操作提案（§9.4）。
  * 服务端保证：只有 run 归属者本人可决策；并发审批只有一个生效，其余 409；
  * 过期单 409 且不执行。响应 `{approval, run_status}` 供卡片就地更新。
+ * `confirm` 只对 DESTRUCTIVE 的 APPROVE 传 true（INT-2467 二次确认契约），
+ * 缺省不带该字段。
  */
 export async function decideAgentApproval(
   approvalId: string,
   decision: AgentApprovalDecision,
+  confirm = false,
   options?: ApiRequestOptions
 ): Promise<AgentApprovalDecisionResult> {
   const dto = await request<AgentApprovalDecisionResponseDto>(
     'POST',
     AGENT_API_PATHS.approvalDecision(approvalId),
-    toAgentApprovalDecisionDto(decision),
+    toAgentApprovalDecisionDto(decision, confirm),
     options
   )
   return toAgentApprovalDecisionResult(dto)

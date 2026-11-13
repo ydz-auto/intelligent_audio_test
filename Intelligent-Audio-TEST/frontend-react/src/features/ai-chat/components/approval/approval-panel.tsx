@@ -56,7 +56,9 @@ type ApprovalPanelProps = {
   runFinished?: boolean
   onDecide: (
     approvalId: string,
-    decision: AgentApprovalDecision
+    decision: AgentApprovalDecision,
+    /** DESTRUCTIVE 二次确认：仅确认后带 true（后端 INT-2467 契约） */
+    confirm?: boolean
   ) => Promise<string | null>
   onRetry?: () => void
 }
