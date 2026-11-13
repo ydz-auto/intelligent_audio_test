@@ -11,6 +11,9 @@
 - 预算与压缩阈值按有效窗口 W 计算（默认 2×W；单轮输出 ≤ min(8k, 10%×W)），
   不写死 128k；
 - 工具调用并行执行，结果按 tool_call_id 回灌；
+- 工具按 ``ToolDescriptor.sandbox_tier`` 分派：``T0_NONE`` 走 ToolGateway，
+  ``T1_TRUSTED_SCRIPT`` 走沙箱（脚本在容器内，工具调用在沙箱外），T2 明确拒绝；
+  沙箱失败按 ``FAILED`` / ``BUDGET_EXCEEDED`` 收口 run，不静默成功。
 - 每个 step / tool call / event 都持久化，事件 sequence 严格递增；
 - 只读工具自动执行；写操作在 M2 走审批，M0 一律拒绝；
 - 任何模型 / 工具调用都计入 run 预算。
@@ -21,12 +24,18 @@ import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from agent_service.application.cancel_registry import CancelRegistry
 from agent_service.application.context_assembler import ContextAssembler
+from agent_service.application.sandbox_dispatch import (
+    SandboxFailure, SandboxFailureLog, SandboxToolExecutor, disabled_executor,
+)
+from agent_service.application.sandbox_runner import (
+    SandboxFailureReason, SandboxOutcome,
+)
 from agent_service.domain.enums import (
-    EventType, RunStatus, StepStatus, ToolCallStatus, ToolRisk,
+    EventType, RunStatus, SandboxTier, StepStatus, ToolCallStatus, ToolRisk,
 )
 from agent_service.domain.exceptions import (
     InvalidRunTransition, LlmConfigurationError, LlmInvocationError,
@@ -75,6 +84,19 @@ def _has_permission(granted: Sequence[str],
     return bool(perms & set(required))
 
 
+def _as_sandbox_tier(value) -> Optional[SandboxTier]:
+    """把 descriptor 的沙箱层级收敛成枚举；未知取值返回 ``None``。
+
+    ``None`` 由沙箱分派层按 ``UNSUPPORTED_TIER`` 拒绝执行（不降级成 T0）。
+    """
+    if isinstance(value, SandboxTier):
+        return value
+    try:
+        return SandboxTier(str(value))
+    except ValueError:
+        return None
+
+
 @dataclass
 class OrchestratorSettings:
     """Loop 行为参数（全部来自配置）。"""
@@ -102,7 +124,8 @@ class RunOrchestrator:
                  provider_resolver: LlmProviderResolver,
                  tool_gateway: ToolGateway, side_effects: SideEffectChecker,
                  wakeup: RunWakeup, cancel_registry: CancelRegistry,
-                 settings: OrchestratorSettings):
+                 settings: OrchestratorSettings,
+                 sandbox: Optional[SandboxToolExecutor] = None):
         self._sessions = sessions
         self._runs = runs
         self._events = events
@@ -112,6 +135,9 @@ class RunOrchestrator:
         self._assembler = assembler
         self._provider_resolver = provider_resolver
         self._tool_gateway = tool_gateway
+        # 未装配执行器时 T1 调用显式失败（RUNNER_ERROR），绝不降级成 T0。
+        self._sandbox = sandbox or disabled_executor(
+            max_result_chars=settings.tool_result_max_chars)
         self._side_effects = side_effects
         self._wakeup = wakeup
         self._cancel_registry = cancel_registry
@@ -157,6 +183,16 @@ class RunOrchestrator:
 
     def _loop(self, run_id: str) -> None:
         run = self._runs.get(run_id)
+        # §7 硬规则 5 的恢复口子：崩溃可能停在「沙箱失败已落库」与「run 收口」
+        # 之间。重启后本方法会开新 step，模型新一轮给出的是新的 tool_call_id，
+        # 已落库的失败调用不会再进 _execute_one —— 若不在进入模型循环前按落库
+        # 原因码收口，模型回一段文本就会把 run 判 SUCCEEDED，沙箱失败静默丢失。
+        persisted_step, persisted_failure = self._persisted_sandbox_failure(
+            run_id)
+        if persisted_failure is not None:
+            self._finish_sandbox_failure(
+                run_id, persisted_step, persisted_failure)
+            return
         try:
             provider = self._provider_resolver.resolve_for_run(run)
         except LlmProviderNotConfigured as exc:
@@ -333,10 +369,15 @@ class RunOrchestrator:
                              reason='max_tool_calls')
                 return
 
-            results = self._execute_batch(
+            results, sandbox_failure = self._execute_batch(
                 run, step.id, calls, turn, permissions=permissions,
                 allowed_tools=allowed_tools,
                 allow_discovered=allow_discovered)
+            if sandbox_failure is not None:
+                # §7 硬规则 5：沙箱失败不得让 run 静默成功。step 判失败，
+                # run 按 outcome 收口为 FAILED / BUDGET_EXCEEDED，事件带原因码。
+                self._finish_sandbox_failure(run_id, step.id, sandbox_failure)
+                return
             if any(result.error_code == 'RESTART_WRITE_UNVERIFIED'
                    for result in results):
                 self._finish(
@@ -493,29 +534,35 @@ class RunOrchestrator:
                        turn: int, *,
                        permissions: Sequence[str] = (),
                        allowed_tools: Optional[frozenset] = None,
-                       allow_discovered: bool = True) -> List[ToolResult]:
+                       allow_discovered: bool = True
+                       ) -> Tuple[List[ToolResult], Optional[SandboxFailure]]:
         workers = max(1, min(int(self._settings.tool_max_concurrency or 1),
                              len(calls)))
         # 已落库的 tool 事件每批查一次（定向查询，不整条 run 全扫）
         emitted = self._emitted_tool_events(run.id)
+        # 沙箱失败按批次收集：同一批并行执行，结束后取唯一一条收口 run。
+        failures = SandboxFailureLog()
         # 注册表每批只读一次：一次读取失败 → 整批拒绝，不留「逐条降级」的口子
         descriptors = self._descriptor_map()
         if descriptors is None:
-            return [self._execute_one(run, step_id, call, turn, emitted, None)
-                    for call in calls]
+            results = [self._execute_one(
+                run, step_id, call, turn, emitted, None, failures)
+                for call in calls]
+            return results, failures.winner()
         results: List[ToolResult] = []
         if workers == 1:
             for call in calls:
                 results.append(self._execute_one(
                     run, step_id, call, turn, emitted, descriptors,
-                    permissions=permissions, allowed_tools=allowed_tools,
+                    failures, permissions=permissions,
+                    allowed_tools=allowed_tools,
                     allow_discovered=allow_discovered))
-            return results
+            return results, failures.winner()
         with ThreadPoolExecutor(max_workers=workers,
                                 thread_name_prefix='agent-tool') as pool:
             futures = {
                 pool.submit(self._execute_one, run, step_id, call, turn,
-                            emitted, descriptors,
+                            emitted, descriptors, failures,
                             permissions=permissions,
                             allowed_tools=allowed_tools,
                             allow_discovered=allow_discovered): call
@@ -526,12 +573,13 @@ class RunOrchestrator:
                 # 落库等内部错误，必须上抛让 execute() 收口 FAILED，不能吞掉
                 # 后照常执行（§9.2 每个 tool call 必须持久化 / §13.5 可审计）。
                 results.append(future.result())
-        return results
+        return results, failures.winner()
 
     def _execute_one(self, run: AgentRun, step_id: str,
                      call: ToolCallRequest, turn: int,
                      emitted: set,
                      descriptors: Optional[Dict[str, ToolDescriptor]],
+                     failures: SandboxFailureLog,
                      *, permissions: Sequence[str] = (),
                      allowed_tools: Optional[frozenset] = None,
                      allow_discovered: bool = True) -> ToolResult:
@@ -582,6 +630,9 @@ class RunOrchestrator:
             # PENDING 表示「落库后还没开始执行」（含进程重启后重置的只读调用），
             # 必须继续执行，不能拿空结果冒充已完成。
             result = self._result_from_record(existing)
+            # 崩溃可能发生在「沙箱失败落库」与「run 收口」之间：复用失败结果时
+            # 仍要把 run 级信号补回，否则重启会让沙箱失败静默变成成功。
+            self._recover_sandbox_failure(existing, failures)
             self._ensure_tool_result_event(run.id, result, turn, emitted)
             return result
 
@@ -694,14 +745,29 @@ class RunOrchestrator:
             idempotency_key=idempotency_key,
         )
         started = utcnow()
+        sandbox_failure: Optional[SandboxFailure] = None
+        # §7 硬规则 1：业务工具调用在沙箱外（ToolGateway），脚本在沙箱内；
+        # 按 descriptor 的沙箱层级分派，T1 不经过 ToolGateway。
+        tier = _as_sandbox_tier(descriptor.sandbox_tier)
         try:
-            result = self._tool_gateway.execute(call, context)
+            if tier is SandboxTier.T0_NONE:
+                result = self._tool_gateway.execute(call, context)
+            else:
+                result, sandbox_failure = self._sandbox.execute(
+                    call, descriptor.sandbox_tier)
         except Exception as exc:  # noqa: BLE001 - 工具失败回灌模型，不炸 Loop
             logger.exception('工具执行失败 tool=%s', call.name)
             result = ToolResult(
                 tool_call_id=call.tool_call_id, tool=call.name,
                 ok=False, content=f'工具执行失败: {exc}',
                 error_code='TOOL_EXECUTION_ERROR')
+            if tier is not SandboxTier.T0_NONE:
+                # 沙箱分派本身出异常也不能让 run 静默继续：按 RUNNER_ERROR 收口。
+                sandbox_failure = SandboxFailure(
+                    outcome=SandboxOutcome.FAILED,
+                    reason=SandboxFailureReason.RUNNER_ERROR,
+                    tool_call_id=call.tool_call_id,
+                    detail=f'沙箱分派异常：{exc}')
         latency_ms = int((utcnow() - started).total_seconds() * 1000)
         content = result.content or ''
         if len(content) > self._settings.tool_result_max_chars > 0:
@@ -715,17 +781,25 @@ class RunOrchestrator:
             final_status = ToolCallStatus.DENIED
         else:
             final_status = ToolCallStatus.FAILED
+        stored_result = {'ok': result.ok, 'content': result.content,
+                         'error_code': result.error_code}
+        if sandbox_failure is not None:
+            # 落库 outcome/reason 供断点恢复时重建 run 级失败信号（见
+            # _recover_sandbox_failure），不给沙箱留「重启后静默成功」的口子。
+            stored_result['sandbox_outcome'] = sandbox_failure.outcome.value
+            stored_result['sandbox_reason'] = sandbox_failure.reason.value
         self._tool_calls.update(
             call.tool_call_id, run.id,
             status=final_status,
-            result={'ok': result.ok, 'content': result.content,
-                    'error_code': result.error_code},
+            result=stored_result,
             latency_ms=latency_ms,
             permission_decision=('deny' if result.error_code == 'PERMISSION_DENIED'
                                  else 'allow'),
             result_code=result.error_code or ('OK' if result.ok else 'TOOL_FAILED'),
             error=None if result.ok else (result.error_code or 'TOOL_FAILED'))
         self._append_tool_result(run.id, result, turn, emitted)
+        if sandbox_failure is not None:
+            failures.record(sandbox_failure)
         return result
 
     def _reject_unregistered(self, run: AgentRun, step_id: str,
@@ -849,13 +923,100 @@ class RunOrchestrator:
 
     # ------------------------------------------------------------ finish
 
+    def _recover_sandbox_failure(self, record: AgentToolCall,
+                                 failures: SandboxFailureLog) -> None:
+        """断点恢复：把已落库的沙箱失败信号补回本批次（不重跑容器）。"""
+        failure = self._sandbox_failure_from_record(record)
+        if failure is not None:
+            failures.record(failure)
+
+    def _persisted_sandbox_failure(
+            self, run_id: str) -> Tuple[Optional[str],
+                                        Optional[SandboxFailure]]:
+        """读取本 run 已落库的沙箱失败记录，供 Loop 入口补回收口。
+
+        正常路径上沙箱失败会立即收口 run；只有「失败落库后、run 收口前」
+        进程崩溃，run 才会带着失败记录重新进入 Loop。此时新 step 拿到的是
+        模型新一轮调用（新的 tool_call_id），旧失败不会再进 ``_execute_one``，
+        必须在发起任何模型轮次前按落库原因码收口，否则会被静默当成成功。
+        返回 ``(失败记录所属 step_id, 失败信号)``；无失败时 ``(None, None)``。
+        """
+        try:
+            records = self._tool_calls.list_by_run(run_id)
+        except Exception:  # noqa: BLE001 - 读取失败不阻断 Loop 正常执行
+            logger.warning('读取 run 工具记录失败 run=%s', run_id, exc_info=True)
+            return None, None
+        failures = SandboxFailureLog()
+        step_by_call: Dict[str, Optional[str]] = {}
+        for record in records:
+            failure = self._sandbox_failure_from_record(record)
+            if failure is None:
+                continue
+            failures.record(failure)
+            step_by_call[record.tool_call_id] = record.step_id
+        winner = failures.winner()
+        if winner is None:
+            return None, None
+        return step_by_call.get(winner.tool_call_id), winner
+
+    def _sandbox_failure_from_record(
+            self, record: AgentToolCall) -> Optional[SandboxFailure]:
+        """从已落库的 tool_call 重建沙箱失败信号（未知原因码按无信号处理）。"""
+        stored = record.result or {}
+        outcome = stored.get('sandbox_outcome')
+        reason = stored.get('sandbox_reason')
+        if not outcome or not reason:
+            return None
+        try:
+            sandbox_outcome = SandboxOutcome(outcome)
+            sandbox_reason = SandboxFailureReason(reason)
+        except ValueError:
+            logger.warning('恢复沙箱失败信号遇到未知原因码：%s/%s',
+                           outcome, reason)
+            return None
+        return SandboxFailure(
+            outcome=sandbox_outcome, reason=sandbox_reason,
+            tool_call_id=record.tool_call_id,
+            detail=self._sandbox_detail_from_record(record),
+        )
+
+    @staticmethod
+    def _sandbox_detail_from_record(record: AgentToolCall) -> str:
+        """从落库的 tool_result 还原人读的失败详情（与首次收口文案对齐）。"""
+        stored = record.result or {}
+        try:
+            payload = json.loads(str(stored.get('content') or '{}'))
+        except (TypeError, ValueError):
+            payload = None
+        if isinstance(payload, dict):
+            detail = payload.get('detail')
+            if detail:
+                return str(detail)
+        return record.error or str(stored.get('content') or '')
+
+    def _finish_sandbox_failure(self, run_id: str, step_id: Optional[str],
+                                failure: SandboxFailure) -> None:
+        """沙箱失败收口：step FAILED + run FAILED / BUDGET_EXCEEDED + 原因码。"""
+        reason = failure.reason.value
+        detail = failure.detail or reason
+        message = f'{reason}: {detail}'
+        self._append_error(run_id, reason, message)
+        if step_id:
+            self._steps.finish(step_id, StepStatus.FAILED, message)
+        target = (RunStatus.BUDGET_EXCEEDED
+                  if failure.outcome is SandboxOutcome.BUDGET_EXCEEDED
+                  else RunStatus.FAILED)
+        self._finish(run_id, target, reason=reason, error=message,
+                     reason_code=reason)
+
     def _append_error(self, run_id: str, code: str, message: str) -> None:
         self._events.append(run_id, EventType.ERROR, {
             'code': code, 'message': message})
 
     def _finish(self, run_id: str, status: RunStatus,
                 *, error: Optional[str] = None,
-                reason: Optional[str] = None) -> None:
+                reason: Optional[str] = None,
+                reason_code: Optional[str] = None) -> None:
         current = self._runs.get(run_id)
         if current is None or current.status.is_terminal:
             return
@@ -865,11 +1026,14 @@ class RunOrchestrator:
             finished_at=utcnow())
         if not hit:
             return
-        self._events.append(run_id, EventType.RUN_FINISHED, {
+        payload = {
             'status': status.value,
             'reason': reason,
             'error': error,
-        })
+        }
+        if reason_code:
+            payload['reason_code'] = reason_code
+        self._events.append(run_id, EventType.RUN_FINISHED, payload)
         self._wakeup.notify(run_id)
 
 

@@ -140,6 +140,9 @@ class ToolCallRepository(ABC):
     def recent(self, run_id: str, limit: int) -> List[AgentToolCall]: ...
 
     @abstractmethod
+    def list_by_run(self, run_id: str) -> List[AgentToolCall]: ...
+
+    @abstractmethod
     def list_running(self, run_id: str) -> List[AgentToolCall]: ...
 
 
