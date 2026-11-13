@@ -2,8 +2,9 @@
 """INT-2458 M1 音频域只读：audio_query 意图工具 + audio-import Skill + golden tasks。
 
 验收锚点（卡面可测标准 1~5）：
-1. 列表 / 详情 / 按 MD5 / 目录树 / 特征 / 质量等 10 个动作全部可解析到真实 REST；
-2. 返回字段口径以真实 REST 为准（MCP 映射与 REST 字段逐字一致，见 by_md5 / by_ids）；
+1. 列表 / 详情 / 按 MD5 / 目录树 / 特征 / 质量等 9 个动作全部可解析到真实 REST；
+2. 返回字段口径以真实 REST 为准（MCP 映射与 REST 字段逐字一致，见 by_md5）；
+   ``by_ids`` 为宿主语境通道，Agent 侧不暴露（INT-2530，见文件末尾用例）；
 3. Skill 触发数据（tests/agent_eval/domains/audio）覆盖全部动作，统一评测归 m1-08；
 4. 越权 / 不存在资源返回普通拒绝文本，不泄漏存在性；
 5. 每次调用落 agent_tool_call（在 audit 用例与 INT-2453 通用审计用例中覆盖）。
@@ -20,7 +21,7 @@ import pytest
 from agent_service.application.skill_registry import SkillRegistry
 from agent_service.application.tool_gateway import (
     INVALID_ARGUMENTS, PERMISSION_DENIED, RESOURCE_NOT_FOUND, SharedToolGateway,
-    TOOL_NOT_ENABLED,
+    TOOL_NOT_ENABLED, UNKNOWN_TOOL,
 )
 from agent_service.application.run_worker import InlineRunExecutor
 from agent_service.domain.enums import SkillIssueSeverity, ToolCallStatus
@@ -34,8 +35,8 @@ from agent_service.infrastructure.tools.registry_bridge import (
 )
 from shared.agent_tools import intent_tools, mcp_registry
 from shared.agent_tools.intent_tools import (
-    ACTION_REQUIRED, AUDIO_QUERY_ACTIONS, ENABLED_TOOLS, INTENT_TOOL_BY_NAME,
-    INTENT_TOOLS,
+    ACTION_REQUIRED, AUDIO_QUERY_ACTIONS, AUDIO_QUERY_PARAMS, ENABLED_TOOLS,
+    INTENT_TOOL_BY_NAME, INTENT_TOOLS,
 )
 from tests.unit.int2451_agent_fakes import (
     FakeLlm, build_stack, text_turn, tool_turn,
@@ -55,14 +56,15 @@ AUDIO_WRITE_PERMISSIONS = frozenset({
 
 # ---------------------------------------------------------------- 注册表
 
-def test_audio_query_enabled_with_ten_actions():
+def test_audio_query_enabled_with_nine_actions():
     tool = INTENT_TOOL_BY_NAME['audio_query']
     assert tool.enabled is True and tool.kind == 'intent_rest'
     assert tool.risk == 'READ'
     assert 'audio_query' in ENABLED_TOOLS
     enum = tool.parameters['properties']['action']['enum']
     assert enum == list(AUDIO_QUERY_ACTIONS)
-    assert len(set(enum)) == 10
+    assert len(set(enum)) == 9
+    assert 'by_ids' not in enum
 
 
 def test_action_mappings_are_existing_audio_readonly_mcp_tools():
@@ -78,7 +80,6 @@ def test_action_mappings_are_existing_audio_readonly_mcp_tools():
 def test_action_required_fields_match_rest_contract():
     assert ACTION_REQUIRED['audio_query'] == {
         'detail': ('audio_id',),
-        'by_ids': ('ids',),
         'by_md5': ('md5_list',),
         'features': ('audio_id',),
         'quality': ('audio_id',),
@@ -144,10 +145,45 @@ def test_resolve_detail_and_path_param():
     assert mcp_registry.build_path(tool, merged) == '/api/v1/audios/12'
 
 
-def test_resolve_by_ids_posts_ids_body():
+def test_by_ids_action_is_not_callable():
+    """INT-2530：by_ids 是宿主语境批量读通道，Agent 侧口径上不可调用。"""
+    assert 'by_ids' not in INTENT_TOOL_BY_NAME[
+        'audio_query'].parameters['properties']['action']['enum']
+    # 动作表 / 参数表里都不再有它
+    assert 'by_ids' not in AUDIO_QUERY_ACTIONS
+    assert 'by_ids' not in ACTION_REQUIRED['audio_query']
+    assert 'by_ids' not in AUDIO_QUERY_PARAMS
+    assert 'ids' not in INTENT_TOOL_BY_NAME['audio_query'].parameters['properties']
+    # 直调解析层也被拒（模型可能凭记忆编 action）
     tool, merged, error = _resolve('by_ids', ids=[11, 12, 13])
-    assert error is None and tool['name'] == 'audio_get_by_ids'
-    assert mcp_registry.build_body(tool, merged) == {'ids': [11, 12, 13]}
+    assert tool is None and merged is None
+    assert error is not None and '取值必须是' in error
+
+
+def test_by_ids_mcp_tool_not_exposed_to_agent_channel():
+    """INT-2530：MCP 长尾同名工具也不得经 tool_search / 直呼回到 Agent 通道。
+
+    REST ``/api/v1/audios/by-ids`` 与对外 MCP 注册表保持不变（宿主语境），
+    只是 Agent 侧的索引 / 解析层把它排除。
+    """
+    from shared.agent_tools import search
+    # 注册表本身仍在（REST / 外部 MCP surface 不变）
+    assert mcp_registry.get_tool('audio_get_by_ids') is not None
+    # tool_search 不返回
+    for query in ('按 ID 批量获取音频', 'audio_get_by_ids', '批量 音频'):
+        names = [t['name'] for t in
+                 search.search(query, ['*'], limit=30)['tools']]
+        assert 'audio_get_by_ids' not in names, (query, names)
+    assert 'audio_get_by_ids' not in intent_tools.TOOL_INDEX_BY_NAME
+    # platform_contract 精确命中也不返回它的 Schema
+    result = intent_tools.platform_contract('audio_get_by_ids')
+    assert result.get('tool') is None or \
+        result['tool'].get('name') != 'audio_get_by_ids'
+    # 直呼被解析层拒绝
+    tool, merged, error = intent_tools.resolve_rest_call(
+        'audio_get_by_ids', {'ids': [11]})
+    assert tool is None and error is not None
+    assert '不在 Agent 可用通道内' in error
 
 
 def test_resolve_by_md5_posts_md5_list_body():
@@ -283,7 +319,7 @@ def test_validation_rejects_wrong_enum_and_type():
     assert '取值必须是' in intent_tools.validate_arguments(
         schema, {'action': 'tree'})
     assert '类型应为 array' in intent_tools.validate_arguments(
-        schema, {'action': 'by_ids', 'ids': 11})
+        schema, {'action': 'list', 'tags': 'noise'})
     assert intent_tools.validate_arguments(schema, {'action': 'list'}) is None
 
 
@@ -294,6 +330,19 @@ def test_tool_search_and_platform_contract_expose_audio_query():
     result = intent_tools.platform_contract('audio_query')
     assert result['tool']['name'] == 'audio_query'
     assert result['tool']['inputSchema']['required'] == ['action']
+
+
+def test_skill_and_template_no_longer_teach_by_ids():
+    """INT-2530 验收 2：Skill 文本与对外模板不得再出现 by_ids 用法示例。"""
+    with open(os.path.join(SKILLS_ROOT, 'audio-import', 'SKILL.md'),
+              encoding='utf-8') as handle:
+        skill_text = handle.read()
+    assert 'by_ids' not in skill_text and 'by-ids' not in skill_text
+    with open(os.path.join(PROJECT_ROOT, 'api_gateway', 'skill_templates',
+                           'SKILL.md'), encoding='utf-8') as handle:
+        template = handle.read()
+    assert '-d \'{"md5_list":["d41d8cd98f00b204e9800998ecf8427e"]}\'' in template
+    assert '-d \'{"md5":"' not in template
 
 
 # ---------------------------------------------------------------- 网关
@@ -371,6 +420,16 @@ def test_gateway_rejects_missing_required_before_rest():
     rest = FakeRestClient()
     result = _gateway(rest).execute(_call('detail'), _ctx())
     assert result.error_code == INVALID_ARGUMENTS
+    assert rest.calls == []
+
+
+def test_gateway_rejects_by_ids_direct_call_without_calling_rest():
+    """INT-2530：即使模型直呼 MCP 工具名，也不得回源 by-ids 枚举他人音频。"""
+    rest = FakeRestClient()
+    result = _gateway(rest).execute(
+        ToolCallRequest('c2', 'audio_get_by_ids', {'ids': [11, 12]}), _ctx())
+    assert not result.ok
+    assert result.error_code == UNKNOWN_TOOL
     assert rest.calls == []
 
 
