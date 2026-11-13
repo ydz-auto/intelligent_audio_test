@@ -231,15 +231,18 @@ TOOLS: List[dict] = [
           ['testcase:import_export'], 'POST', '/api/v1/testcases/import'),
 
     # ---------------- 音频 audio（/api/v1/audios） ----------------
-    _tool('audio_list', '列出音频（支持关键词 / 格式 / 类型 / 目录 / 标签等过滤参数）',
+    # 过滤参数与 REST 实际生效口径对齐（INT-2458 复核）：
+    # folder 在 audio_service 列表过滤器里从未读取，传了会静默返回全量，
+    # 故不对外暴露（补目录过滤属 FEAT，另开卡）；duration 只认档位。
+    _tool('audio_list', '列出音频（支持关键词 / 格式 / 类型 / 采样率 / 标签等过滤参数）',
           {'keyword': _str('关键词过滤'),
            'page': _int('页码'),
            'per_page': _int('每页条数'),
            'format': _str('音频格式过滤（如 wav / mp3）'),
            'audio_type': _str('音频类型过滤（如 dry / noise）'),
-           'folder': _str('目录过滤'),
-           'sample_rate': _str('采样率过滤'),
-           'duration': _str('时长区间过滤'),
+           'sample_rate': _str('采样率过滤（kHz 值，如 48）'),
+           'duration': _str('时长档位过滤',
+                            enum=['short', 'medium', 'long']),
            'tags': {'type': 'array', 'items': {'type': 'string'},
                     'description': '标签过滤（字符串按 and）'},
            'direction': _str('语种方向过滤'),
@@ -247,7 +250,7 @@ TOOLS: List[dict] = [
            'visibility': _str('可见性过滤', enum=['shared', 'private'])},
           ['audio:read'], 'GET', '/api/v1/audios',
           query_params=['keyword', 'page', 'per_page', 'format', 'audio_type',
-                        'folder', 'sample_rate', 'duration', 'tags',
+                        'sample_rate', 'duration', 'tags',
                         'direction', 'algorithm_type', 'visibility']),
     _tool('audio_get', '获取音频详情',
           {'audio_id': _int('音频 ID', True)},

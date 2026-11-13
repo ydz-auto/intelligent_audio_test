@@ -25,7 +25,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from tests.ui.utils.api_client import ApiClient  # noqa: E402
 
 from agent_service.application.tool_gateway import (  # noqa: E402
-    PERMISSION_DENIED, SharedToolGateway,
+    INVALID_ARGUMENTS, PERMISSION_DENIED, SharedToolGateway,
 )
 from agent_service.domain.model.entities import ToolCallRequest  # noqa: E402
 from agent_service.domain.ports.tool_gateway import ToolInvocationContext  # noqa: E402
@@ -154,6 +154,87 @@ def main():
                        audio_id=audio_id, page=1, per_page=5),
             client.request(
                 'GET', f'/audios/{audio_id}/playback-history?page=1&per_page=5'))
+
+    # ---------------- 复核打回项（INT-2458 第二轮） ----------------
+
+    # 打回 1：folder_tree 的 sample_rate 曾在工具层无任何可用形态
+    # （字符串回源 400，数字被 Schema 拒绝）。现在三种写法都归一成 Hz。
+    direct_tree_rate = client.request(
+        'POST', '/audios/folder-tree', {'depth': 1, 'sample_rate': 48000})
+    for label, value in (('number 48000', 48000),
+                         ('string "48000"', '48000'),
+                         ('string "48 kHz"', '48 kHz'),
+                         ('string "48"', '48')):
+        compare(f'folder_tree sample_rate={label} 逐字段一致',
+                run_action(gateway, context, 'folder_tree',
+                           depth=1, sample_rate=value),
+                direct_tree_rate)
+
+    # 打回 2：list 的 folder 过滤服务端未实现，工具层不再暴露该参数
+    folder_result = run_action(gateway, context, 'list', page=1, per_page=1,
+                               folder='环境理解')
+    check('list folder 参数被显式拒绝（不再静默返回全量）',
+          (not folder_result.ok
+           and folder_result.error_code == INVALID_ARGUMENTS
+           and '不支持参数' in folder_result.content),
+          f'{folder_result.error_code}: {folder_result.content[:120]}')
+
+    # 打回 3：duration 只认档位（REST 真实口径），非档位值被拒绝
+    short_direct = client.request(
+        'GET', '/audios', params={'page': 1, 'per_page': 5,
+                                  'duration': 'short'})
+    compare('list duration=short 逐字段一致',
+            run_action(gateway, context, 'list', page=1, per_page=5,
+                       duration='short'),
+            short_direct)
+    range_result = run_action(gateway, context, 'list', page=1, per_page=1,
+                              duration='0-60')
+    check('list duration 区间写法被拒绝',
+          (not range_result.ok
+           and range_result.error_code == INVALID_ARGUMENTS
+           and 'duration' in range_result.content),
+          f'{range_result.error_code}: {range_result.content[:120]}')
+
+    # 打回 3/4：sample_rate 单位归一 + tags 字符串 AND
+    rate_direct = client.request(
+        'GET', '/audios', params={'page': 1, 'per_page': 5,
+                                  'sample_rate': '48'})
+    compare('list sample_rate="48 kHz" 归一为 kHz 后逐字段一致',
+            run_action(gateway, context, 'list', page=1, per_page=5,
+                       sample_rate='48 kHz'),
+            rate_direct)
+    compare('list sample_rate=48000(Hz) 归一为 kHz 后逐字段一致',
+            run_action(gateway, context, 'list', page=1, per_page=5,
+                       sample_rate=48000),
+            rate_direct)
+
+    tags_payload = client.request('GET', '/audios/tags')
+    tag_items = (tags_payload.get('data') or {}).get('items') or []
+    if tag_items:
+        tag = tag_items[0]
+        compare('list tags 字符串 AND 与直连一致',
+                run_action(gateway, context, 'list', page=1, per_page=5,
+                           tags=[tag]),
+                client.request('GET', '/audios',
+                               params={'page': 1, 'per_page': 5,
+                                       'tags': tag}))
+        compare('folder_tree tags OR 对象与直连一致',
+                run_action(gateway, context, 'folder_tree', depth=1,
+                           tags=[{'name': tag, 'mode': 'or'}]),
+                client.request('POST', '/audios/folder-tree',
+                               {'depth': 1,
+                                'tags': [{'name': tag, 'mode': 'or'}]}))
+    else:
+        check('标签库为空，跳过 tags 过滤实机比对', True)
+
+    # 打回 4：list 的 tags 对象 OR 写法不再被放行（GET 服务端解析不了对象）
+    or_result = run_action(gateway, context, 'list', page=1, per_page=1,
+                           tags=[{'name': 'noise', 'mode': 'or'}])
+    check('list tags 对象写法被显式拒绝',
+          (not or_result.ok
+           and or_result.error_code == INVALID_ARGUMENTS
+           and '只支持字符串' in or_result.content),
+          f'{or_result.error_code}: {or_result.content[:120]}')
 
     # 负例 1：不存在的资源 → 普通拒绝文本，不泄漏存在性、不抛异常。
     # 注意：audio_service 对「音频不存在」的 gRPC 错误经网关透传后是 HTTP 400 +

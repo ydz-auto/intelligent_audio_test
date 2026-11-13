@@ -30,7 +30,8 @@ budgets:
 
 ## 何时用
 
-- 用户问音频列表、按关键词 / 格式 / 类型 / 目录 / 标签筛音频；
+- 用户问音频列表、按关键词 / 格式 / 类型 / 采样率 / 时长档位 / 标签筛音频
+  （目录结构改用 `folder_tree` 看）；
 - 查看某个音频的完整元数据、标签、标注、已配算法；
 - 导入前查重：同一 MD5 是否已在库里（命中即秒传复用，不会新建记录）；
 - 了解目录树结构，判断目录层级会不会变成标签；
@@ -64,9 +65,20 @@ budgets:
 | `algorithms` | `GET /api/v1/audios/{id}/algorithms` | 已配算法关系 | `audio_id` |
 | `playback_history` | `GET /api/v1/audios/{id}/playback-history` | 播放历史分页 | `audio_id` |
 
-列表 / 目录树可用过滤：`keyword`、`format`、`audio_type`、`folder`（仅 list）、
-`sample_rate`、`duration`、`tags`、`direction`、`algorithm_type`、`visibility`
-（`shared` / `private`，仅 list）；目录树另加 `parent_path`、`depth`（默认 1）。
+列表 / 目录树可用过滤：`keyword`、`format`、`audio_type`、`sample_rate`、
+`duration`、`tags`、`direction`、`algorithm_type`；`visibility` 仅 `list`；
+目录树另加 `parent_path`、`depth`（默认 1）。
+
+- `sample_rate`：写 `48`（kHz）、`48000`（Hz）或 `"48 kHz"` 都行，工具统一归一；
+  列表按 kHz 精确匹配，目录树按 Hz ±100 容差。
+- `duration`：只认档位 `short`（≤30 秒）/ `medium`（30~300 秒）/ `long`（>300 秒），
+  **不是任意区间**，其它写法会被拒绝。
+- `tags`：`list` 只收字符串数组（AND，全命中）；`{name, mode: "or"}` 对象只在
+  `folder_tree` 有效（`list` 走 GET，服务端解析不了对象）。
+- **目录过滤没有实现**：`list` 不提供 `folder` 参数（服务端会静默返回全量）。
+  要看目录用 `folder_tree`；缩小列表范围用 `keyword` / 标签 / 格式。
+- 动作不支持的参数（如给 `detail` 传 `page`、给 `list` 传 `folder`）会返回
+  「不支持参数」，不会静默忽略——不要换个动作名重试同一个参数。
 
 ## 字段口径（与 REST 一致）
 
@@ -144,10 +156,16 @@ budgets:
 - **格式按内容判定，不按扩展名**：导入会用解码器探测真实音频内容，改名的文本文件
   或损坏文件会因无法解码被拒（MIME 与扩展名都不作准）。平台没有统一的单文件大小
   上限（前端直传按 5MB/片分片），不要向用户承诺具体上限。
-- **标签过滤语义**：`tags` 传字符串按 AND（全部命中）；要 OR 语义传
-  `{name, mode: "or"}` 对象。拼错标签名只会过滤掉数据，不会报错。
-- **`sample_rate` / `duration` 是字符串口径**：目录树按 ±100Hz 容差匹配采样率，
-  列表与目录树的时长都是区间过滤，不是精确值。
+- **标签过滤语义**：`list` 的 `tags` 传字符串数组按 AND（全部命中）；
+  OR 语义只有 `folder_tree` 支持（`{name, mode: "or"}` 对象，走 POST body）。
+  拼错标签名只会过滤掉数据，不会报错。
+- **`duration` 只认档位**：`short` / `medium` / `long`，不是「0-60」这类区间；
+  传区间会被工具层拒绝，不要把它当精确时长过滤。
+- **`sample_rate` 单位**：列表要 kHz（`48`），目录树要 Hz（`48000`）。
+  直接用工具时三种写法（`48` / `48000` / `"48 kHz"`）都接受并自动归一；
+  但 `duration` / `sample_rate` 的解析失败在 REST 侧是**静默跳过**的，
+  工具层已改成显式报错——收到「无法解析」不要换个值硬试。
+- **`list` 没有 `folder` 过滤**：服务端没实现，传了会返回全量（工具层已移除该参数）。
 - **不要用 stats 外推**：`total_size` / `total_duration` 是可见行汇总的展示字符串，
   不要拿去算单条平均值。
 - **改动未提交前不要承诺数量**：列表会随库变化，报数量时说明是「当前查询时点」。

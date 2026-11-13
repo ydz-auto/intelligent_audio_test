@@ -100,11 +100,16 @@ def test_by_md5_mcp_schema_uses_rest_body_field():
 
 
 def test_audio_list_and_playback_history_expose_real_filters():
+    """只暴露服务端真正生效的过滤参数（folder 未实现，不得声明）。"""
     listing = mcp_registry.get_tool('audio_list')
-    for name in ('format', 'audio_type', 'folder', 'sample_rate', 'duration',
+    for name in ('format', 'audio_type', 'sample_rate', 'duration',
                  'tags', 'direction', 'algorithm_type', 'visibility'):
         assert name in listing['inputSchema']['properties'], name
         assert name in listing['query_params'], name
+    assert 'folder' not in listing['inputSchema']['properties']
+    assert 'folder' not in listing['query_params']
+    assert listing['inputSchema']['properties']['duration']['enum'] == \
+        ['short', 'medium', 'long']
     history = mcp_registry.get_tool('audio_playback_history')
     assert history['inputSchema']['properties']['page']['type'] == 'integer'
     assert history['query_params'] == ['page', 'per_page']
@@ -165,6 +170,100 @@ def test_resolve_playback_history_query_params():
     assert error is None and tool['name'] == 'audio_playback_history'
     assert mcp_registry.build_path(tool, merged) == \
         '/api/v1/audios/12/playback-history?page=2&per_page=5'
+
+
+# ------------------------------------------------ 参数口径（复核打回 1~4）
+
+def test_audio_query_schema_has_no_unimplemented_folder_filter():
+    schema = INTENT_TOOL_BY_NAME['audio_query'].parameters
+    assert 'folder' not in schema['properties']
+    _, _, error = _resolve('list', folder='环境理解')
+    assert error is not None and '不支持参数' in error
+
+
+def test_unsupported_param_per_action_is_rejected():
+    """动作不支持的可选参数不能静默透传（服务端会静默忽略过滤条件）。"""
+    _, _, error = _resolve('detail', audio_id=1, page=2)
+    assert error is not None and '不支持参数' in error
+    _, _, error = _resolve('folder_tree', depth=1, visibility='shared')
+    assert error is not None and '不支持参数' in error
+    # 必填参数不受「动作可选参数」限制
+    assert _resolve('playback_history', audio_id=1, page=2)[2] is None
+
+
+def test_sample_rate_normalized_to_hz_for_folder_tree():
+    for value, expected in [(48000, 48000), ('48000', 48000), ('48 Hz', 48),
+                            (44100, 44100), ('44100', 44100)]:
+        tool, merged, error = _resolve('folder_tree', sample_rate=value)
+        assert error is None, value
+        assert mcp_registry.build_body(tool, merged) == {
+            'sample_rate': expected}, value
+
+
+def test_sample_rate_khz_string_normalized_for_folder_tree():
+    for value in ('48', '48 kHz', '48kHz', ' 48 kHz '):
+        tool, merged, error = _resolve('folder_tree', sample_rate=value)
+        assert error is None, value
+        assert mcp_registry.build_body(tool, merged) == {
+            'sample_rate': 48000}, value
+
+
+def test_sample_rate_normalized_to_khz_for_list():
+    """列表 REST 只认 kHz 数值（"48 kHz" → 48）；工具层统一归一后再发。"""
+    for value in (48000, '48000', '48 kHz', '48', 48):
+        tool, merged, error = _resolve('list', sample_rate=value)
+        assert error is None, value
+        path = mcp_registry.build_path(tool, merged)
+        assert 'sample_rate=48' in path, (value, path)
+
+
+def test_sample_rate_unparsable_is_explicit_error():
+    _, _, error = _resolve('list', sample_rate='高采样率')
+    assert error is not None and '无法解析' in error
+
+
+def test_duration_must_be_bucket():
+    schema = INTENT_TOOL_BY_NAME['audio_query'].parameters
+    assert schema['properties']['duration']['enum'] == [
+        'short', 'medium', 'long']
+    for bucket in ('short', 'medium', 'long'):
+        assert _resolve('list', duration=bucket)[2] is None
+    assert '取值必须是' in intent_tools.validate_arguments(
+        schema, {'action': 'list', 'duration': '0-60'})
+    # 绕过 Schema 直调解析层也要拦住（服务端会静默忽略区间写法）
+    _, _, error = _resolve('list', duration='0-60')
+    assert error is not None and '档位' in error
+
+
+def test_list_tags_only_accept_strings():
+    tool, merged, error = _resolve('list', tags=['noise', 'dry'])
+    assert error is None
+    assert 'tags=noise' in mcp_registry.build_path(tool, merged)
+
+    _, _, error = _resolve('list', tags=[{'name': 'noise', 'mode': 'or'}])
+    assert error is not None and '只支持字符串' in error
+
+
+def test_folder_tree_tags_accept_or_objects():
+    tool, merged, error = _resolve(
+        'folder_tree', tags=[{'name': 'noise', 'mode': 'or'}, 'dry'])
+    assert error is None
+    body = mcp_registry.build_body(tool, merged)
+    assert body['tags'] == [{'name': 'noise', 'mode': 'or'}, 'dry']
+
+    _, _, error = _resolve('folder_tree', tags=[{'mode': 'or'}])
+    assert error is not None and 'name' in error
+
+
+def test_sample_rate_schema_accepts_string_or_number():
+    schema = INTENT_TOOL_BY_NAME['audio_query'].parameters
+    assert schema['properties']['sample_rate']['type'] == ['string', 'number']
+    assert intent_tools.validate_arguments(
+        schema, {'action': 'list', 'sample_rate': 48000}) is None
+    assert intent_tools.validate_arguments(
+        schema, {'action': 'list', 'sample_rate': '48 kHz'}) is None
+    assert '类型应为' in intent_tools.validate_arguments(
+        schema, {'action': 'list', 'sample_rate': True})
 
 
 @pytest.mark.parametrize('action', ['detail', 'features', 'quality',
