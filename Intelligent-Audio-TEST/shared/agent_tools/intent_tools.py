@@ -64,7 +64,9 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import (
+    Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple,
+)
 
 from shared.agent_tools import contract as platform_contract_catalog
 from shared.agent_tools import device_tools
@@ -1338,6 +1340,55 @@ def _lookup_rest_tool(name: str) -> Optional[dict]:
     return get_tool(name) or case_tools.get_tool(name)
 
 
+class DomainActionMap(NamedTuple):
+    """一个意图工具的动作表与静态目标解析器（INT-2562）。
+
+    写域（``evaluation_manage``）与 Agent 专用目标（``device_query`` 的 SPL
+    子集）不在 ``_REST_ACTION_MAP`` 里，动作表放在各自的域模块。这里登记
+    一次，注册期风险探针按本表自动枚举 —— 新增域卡不必再手改探针。
+    """
+    actions: Tuple[str, ...]
+    target: Callable[[str], Optional[dict]]
+
+
+# 意图工具名 → 域动作表（INT-2562）。新增 ``kind='intent_rest'`` 的域工具
+# 时必须在此登记，否则 ``test_risk_probe_covers_every_rest_mapping`` 会判红：
+# 未登记的域对风险探针不可见，写操作可以按只读直发、绕开审批链（INT-2559
+# P1-1 的 fail-open 形态）。
+DOMAIN_ACTION_MAPS: Dict[str, DomainActionMap] = {
+    # 设备动作走 MCP GET 目标，SPL 动作走本模块的 Agent 专用只读目标；
+    # ``rest_target`` 是执行期同一条解析（条件路由含 status_history）。
+    'device_query': DomainActionMap(
+        device_tools.DEVICE_QUERY_ACTION_NAMES,
+        lambda action: device_tools.rest_target(action, {})),
+    # 评估写动作：前 6 项在 MCP 注册表，后 2 项是 evaluation_tools 的
+    # Agent 专用写目标（分类更新 / 删除）。
+    'evaluation_manage': DomainActionMap(
+        tuple(evaluation_tools.EVALUATION_MANAGE_ACTIONS),
+        evaluation_tools.rest_target),
+}
+
+
+def rest_action_targets() -> List[Tuple[str, str, Optional[dict]]]:
+    """所有映射到 REST 的意图动作：(意图工具名, 动作, 静态 REST 目标定义)。
+
+    注册期风险探针的唯一事实源（INT-2562）：
+    - ``_REST_ACTION_MAP``：只读业务域意图工具的动作表；
+    - ``DOMAIN_ACTION_MAPS``：写域与 Agent 专用目标（``device_query`` 的设备 /
+      SPL 动作、``evaluation_manage`` 的评估写动作）。
+
+    新增域只需登记到 ``DOMAIN_ACTION_MAPS`` 就自动进入探针，不必再改测试。
+    """
+    rows: List[Tuple[str, str, Optional[dict]]] = []
+    for name, mapping in _REST_ACTION_MAP.items():
+        for action, target_name in mapping.items():
+            rows.append((name, action, _lookup_rest_tool(target_name)))
+    for name, domain in DOMAIN_ACTION_MAPS.items():
+        for action in domain.actions:
+            rows.append((name, action, domain.target(action)))
+    return rows
+
+
 def permissions_for(name: str,
                     arguments: Optional[Dict[str, Any]] = None
                     ) -> Optional[Tuple[str, ...]]:
@@ -1776,7 +1827,8 @@ __all__ = [
     'ALWAYS_AVAILABLE_TOOLS',
     'AUDIO_QUERY_ACTIONS', 'AUDIT_REDACTED_ARGUMENTS',
     'CONDITIONAL_REQUIRED', 'DASHBOARD_QUERY_ACTIONS',
-    'DASHBOARD_QUERY_PARAMS', 'ENABLED_TOOLS', 'EVALUATION_MANAGE_ACTIONS',
+    'DASHBOARD_QUERY_PARAMS', 'DOMAIN_ACTION_MAPS', 'DomainActionMap',
+    'ENABLED_TOOLS', 'EVALUATION_MANAGE_ACTIONS',
     'EVALUATION_QUERY_ACTIONS',
     'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool',
     'LOCAL_INTENT_TOOL_NAMES', 'LOCAL_TOOL_NAMES', 'LOG_DIAGNOSE_ACTIONS',
@@ -1795,6 +1847,7 @@ __all__ = [
     'conditional_required',
     'permissions_for',
     'platform_contract', 'redact_for_audit',
-    'required_for_action', 'resolve_rest_call', 'risk_of', 'tool_search',
+    'required_for_action', 'resolve_rest_call', 'rest_action_targets',
+    'risk_of', 'tool_search',
     'validate_arguments', 'validate_report_compare',
 ]

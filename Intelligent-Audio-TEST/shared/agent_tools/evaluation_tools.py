@@ -144,6 +144,18 @@ def _lookup(action: str) -> Optional[dict]:
     return get_mcp_tool(name) or get_tool(name)
 
 
+def rest_target(action: str) -> Optional[dict]:
+    """动作 → 静态目标工具定义（不做参数校验）；非法动作返回 None。
+
+    执行期走 ``resolve_call``（校验后再解析），注册期风险探针（INT-2562）
+    只需要静态目标来决定这个动作是不是写：两处共用同一张
+    ``EVALUATION_MANAGE_ACTIONS``，不另立第二份映射。
+    """
+    if action not in EVALUATION_MANAGE_ACTIONS:
+        return None
+    return _lookup(action)
+
+
 def action_permissions(action: Any) -> Optional[Tuple[str, ...]]:
     """动作所需权限；非法动作返回 None（由解析层给出明确的 action 错误）。"""
     return EVALUATION_MANAGE_PERMISSIONS.get(action)
@@ -277,5 +289,5 @@ __all__ = [
     'EVALUATION_SHARE', 'EVALUATION_WRITE_TOOLS', 'REEVALUATE_BODY_FIELDS',
     'REEVALUATE_MODES', 'REEVALUATE_TYPES', 'VISIBILITY_VALUES',
     'action_permissions', 'get_tool', 'proposal_diff', 'resolve_call',
-    'validate_arguments',
+    'rest_target', 'validate_arguments',
 ]

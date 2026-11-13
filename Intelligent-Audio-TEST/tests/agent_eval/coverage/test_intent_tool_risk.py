@@ -10,7 +10,9 @@ INT-2559 P1-1 的 fail-open：``IntentTool.risk`` 曾默认 ``'READ'``，漏写 
 2. 注册期正方向：任何映射到非 GET REST 动作的意图工具必须是 WRITE /
    DESTRUCTIVE。四个 POST 只承载查询体的只读端点
    （``READ_ONLY_NON_GET_TOOLS``）显式白名单放行，且白名单本身受紧校验；
-   探针覆盖完整性另有断言，避免新 REST 工具躲开检查；
+   探针覆盖完整性另有断言，避免新 REST 工具躲开检查。探针行统一取自
+   ``intent_tools.rest_action_targets()``（INT-2562：共读 ``_REST_ACTION_MAP``
+   与 ``DOMAIN_ACTION_MAPS``，写域 / Agent 专用目标不再需要手改本文件）；
 3. 注册期反方向：WRITE / DESTRUCTIVE 工具必须真的映射到写动作、有本地写
    实现或尚未启用（防止只读工具被误标成写，把 classification 变成噪声）；
 4. 同源：``SharedToolRegistryBridge`` 的 ``ToolDescriptor.risk`` 逐项等于
@@ -35,7 +37,7 @@ from agent_service.domain.enums import ToolRisk
 from agent_service.infrastructure.tools.registry_bridge import (
     RunCredentialRegistry, SharedToolRegistryBridge,
 )
-from shared.agent_tools import device_tools, intent_tools, mcp_registry
+from shared.agent_tools import intent_tools, mcp_registry
 
 
 # ---------------------------------------------------------------- 探针
@@ -43,21 +45,12 @@ from shared.agent_tools import device_tools, intent_tools, mcp_registry
 def _rest_action_targets():
     """所有映射到 REST 的意图动作：(意图工具名, 动作, REST 目标定义)。
 
-    三处映射都要覆盖，否则新增的写映射可能躲开风险断言：
-    - ``_REST_ACTION_MAP``（业务域意图工具）；
-    - ``device_tools.DEVICE_QUERY_ACTIONS``（设备域 MCP GET 目标）；
-    - ``device_tools.DEVICE_SPL_TARGETS``（SPL 域 Agent 专用只读目标）。
+    行集合由 ``intent_tools.rest_action_targets()`` 给出（INT-2562）：注册表
+    内的 ``_REST_ACTION_MAP``（只读业务域）与 ``DOMAIN_ACTION_MAPS``（写域与
+    Agent 专用目标 —— 设备 / SPL、评估写）一起枚举。探针不再手工列模块：
+    漏登记一个域会被 ``test_risk_probe_covers_every_rest_mapping`` 抓到。
     """
-    rows = []
-    for name, mapping in intent_tools._REST_ACTION_MAP.items():
-        for action, target_name in mapping.items():
-            rows.append((name, action,
-                         intent_tools._lookup_rest_tool(target_name)))
-    for action, target_name in device_tools.DEVICE_QUERY_ACTIONS.items():
-        rows.append(('device_query', action, mcp_registry.get_tool(target_name)))
-    for action, target in device_tools.DEVICE_SPL_TARGETS.items():
-        rows.append(('device_query', action, target))
-    return rows
+    return intent_tools.rest_action_targets()
 
 
 def _write_targets():
@@ -197,6 +190,26 @@ def test_risk_guard_catches_write_mapping_declared_read():
     assert len(offenders) == 1, offenders
     assert 'task_query.create' in offenders[0]
     assert 'POST task_create' in offenders[0]
+
+
+def test_risk_guard_catches_every_registered_rest_writer_declared_read():
+    """护栏自证（INT-2562）：每个有写动作的意图工具改成 READ 都必须被抓。
+
+    这是上一条的实测版：行取自注册表（``rest_action_targets``），不靠人工
+    构造。INT-2469 的 ``evaluation_manage`` 合入后漏进探针，就是这条在
+    评估域没有落地 —— 只要域动作表登记进 ``DOMAIN_ACTION_MAPS``，它的写
+    动作（POST / PUT / PATCH / DELETE）就会出现在这里；把 ``risk`` 退回
+    ``READ`` 会被 ``_risk_violations`` 判红，不再有 fail-open 旁路。
+    """
+    write_rows = _write_targets()
+    expected = {name for name, _action, _target in write_rows}
+    if not expected:  # pragma: no cover - 当前树必含写域（evaluation_manage）
+        pytest.skip('当前树没有任何映射到写动作的已启用意图工具')
+    offenders = _risk_violations(
+        [(name, 'READ', action, target) for name, action, target in write_rows])
+    flagged = {line.split('.', 1)[0] for line in offenders}
+    assert flagged == expected, (
+        f'以下意图工具的写动作被标成 READ 却没被抓到：{expected - flagged}')
 
 
 # ---------------------------------------------------------------- 注册期·反方向
