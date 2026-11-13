@@ -123,10 +123,23 @@ describe('DocumentPanel 上下文空态', () => {
       sourceKind: 'task',
       sourceId: '451',
     })
-    expect(screen.getByText('任务关联报告解析失败')).toBeInTheDocument()
+    expect(screen.getByText(/任务关联报告解析失败/)).toBeInTheDocument()
+    expect(screen.getByText(/网络错误/)).toBeInTheDocument()
     expect(screen.queryByText('该任务暂无关联报告')).not.toBeInTheDocument()
     screen.getByRole('button', { name: '重试' }).click()
     expect(onRetryResolve).toHaveBeenCalledTimes(1)
+  })
+
+  it('解析失败的文案是空串时也走错误块（空串不得落进「暂无关联报告」）', () => {
+    renderPanel({
+      reportId: null,
+      resolveError: '',
+      sourceKind: 'task',
+      sourceId: '451',
+    })
+    expect(screen.getByTestId('studio-task-resolve-error')).toBeInTheDocument()
+    expect(screen.getByText('任务关联报告解析失败')).toBeInTheDocument()
+    expect(screen.queryByText('该任务暂无关联报告')).not.toBeInTheDocument()
   })
 
   it('真正没有绑定上下文 → 仍提示先绑定报告上下文', () => {

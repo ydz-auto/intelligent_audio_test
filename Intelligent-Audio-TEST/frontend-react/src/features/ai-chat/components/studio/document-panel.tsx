@@ -317,10 +317,14 @@ export function DocumentPanel({
               <div data-testid='studio-task-resolving'>
                 <LoadingBlock label='正在解析任务关联报告…' />
               </div>
-            ) : resolveError ? (
+            ) : resolveError !== null ? (
               <div data-testid='studio-task-resolve-error'>
                 <ErrorBlock
-                  message='任务关联报告解析失败'
+                  message={
+                    resolveError
+                      ? `任务关联报告解析失败：${resolveError}`
+                      : '任务关联报告解析失败'
+                  }
                   onRetry={() => onRetryResolve?.()}
                 />
               </div>

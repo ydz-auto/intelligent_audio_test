@@ -40,6 +40,7 @@ import {
 import { ProviderManager } from '@/features/ai-chat/components/input/provider-manager'
 import { DocumentPanel } from '@/features/ai-chat/components/studio/document-panel'
 import { DEFAULT_CHAT_CHANNEL, DEMO_COPY } from '@/features/ai-chat/constants'
+import { resolveTaskReportErrorMessage } from '@/features/ai-chat/lib/task-report-error'
 import {
   useAiChatSession,
   type AiChatContextStatus,
@@ -146,13 +147,13 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
   /**
    * 任务 → 报告解析态：解析中 / 接口失败要与「该任务没有报告」「未绑定上下文」
    * 分开显示（404 = 该任务确实没有报告，由 fetchReportIdByTask 吞成 null）。
+   * 失败文案走 ApiError.userMessage：网络失败 / 只有 detail 的错误体 message 为空，
+   * 用原始 message 会让面板把「解析失败」误显示成「该任务暂无关联报告」。
    */
   const isTaskResolvePending = isTaskContext && taskReportQuery.isLoading
   const taskResolveError =
     isTaskContext && taskReportQuery.isError
-      ? taskReportQuery.error instanceof Error
-        ? taskReportQuery.error.message
-        : '任务关联报告解析失败'
+      ? resolveTaskReportErrorMessage(taskReportQuery.error)
       : null
 
   const selectedContextOption = contextOptions.find(
