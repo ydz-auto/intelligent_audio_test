@@ -8,19 +8,27 @@
  *
  * 原 `useAgentRun(handlers)` 的组件内状态与回调已移除：事件 → 消息补丁改由 store 唯一完成，
  * 宿主不再各自注册补丁器（那正是两条 run 重复写一份消息列表的来源）。
+ *
+ * INT-2521 的「宿主卸载就取消在办 run」在单实例下会误伤另一宿主（浮窗展开整页 / 最小化都是
+ * 卸载语义，但 run 本该继续），因此收窄为：宿主用 `useAgentRunHost` 登记存活，**只有最后一个
+ * 宿主按取消语义离场**（浮窗「关闭」、离开 `/ai-chat` 路由）才取消；详见 store 的
+ * `detachHost` / `AGENT_RUN_UNMOUNT_CANCEL_COPY`。
  */
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import {
   AGENT_RUN_PHASE,
+  AGENT_RUN_UNMOUNT_CANCEL_COPY,
   isAgentRunActive,
   useAgentRunStore,
+  type AgentRunHostDetachReason,
+  type AgentRunHostKind,
   type AgentRunPhase,
 } from '@/application/agent/agent-run-store'
 import type { AgentRun } from '@/domain/models/agent'
 import type { AgentStreamStatus } from '@/infrastructure/api/agentApi'
 
-export { AGENT_RUN_PHASE, isAgentRunActive }
+export { AGENT_RUN_PHASE, AGENT_RUN_UNMOUNT_CANCEL_COPY, isAgentRunActive }
 export type { AgentRunPhase }
 
 export interface UseAgentRunResult {
@@ -52,4 +60,31 @@ export function useAgentRun(): UseAgentRunResult {
   }, [])
 
   return { phase, run, streamStatus, error, send, cancel, reset }
+}
+
+/**
+ * 宿主存活登记（INT-2521 按 INT-2507 A5–A7 收窄）：整页 `/ai-chat` 与浮窗各登记一次。
+ *
+ * - 浮窗「最小化」「展开整页」、整页 ↔ 浮窗切换都是暂时卸载：传 `'keep'`（默认），
+ *   不取消在办 run —— 单实例下另一宿主仍会展示同一轮流式输出；
+ * - 浮窗「关闭」由关闭按钮先 `detachAgentRunHost('workbench', 'cancel')` 声明意图；
+ * - 整页卸载 = 离开 `/ai-chat` 路由：传 `'cancel'`。
+ *
+ * 只有「最后一个宿主按取消语义离场」才真正中止在办 run（两宿主同开时卸载一侧不误伤另一侧）。
+ * 离场判定带一个宽限窗口，StrictMode `mount → cleanup → mount` 与切换形态时的瞬时全卸不会误取消。
+ */
+export function useAgentRunHost(
+  host: AgentRunHostKind,
+  onUnmount: AgentRunHostDetachReason = 'keep'
+): void {
+  // 卸载时读最新语义（父组件可能按「关闭 / 最小化」切换传值）
+  const reasonRef = useRef(onUnmount)
+  reasonRef.current = onUnmount
+
+  useEffect(() => {
+    useAgentRunStore.getState().attachHost(host)
+    return () => {
+      useAgentRunStore.getState().detachHost(host, reasonRef.current)
+    }
+  }, [host])
 }

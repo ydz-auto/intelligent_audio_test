@@ -23,6 +23,7 @@
  * 该轮气泡按「事件流中断」收口；服务端会话上下文不受影响，下一轮追问仍延续同一会话。
  */
 import { create } from 'zustand'
+import { toast } from 'sonner'
 
 import {
   AGENT_ERROR_COPY,
@@ -67,6 +68,42 @@ export const AGENT_RUN_PHASE = {
 
 export type AgentRunPhase =
   (typeof AGENT_RUN_PHASE)[keyof typeof AGENT_RUN_PHASE]
+
+/**
+ * 平台 Agent run 的宿主：整页 `/ai-chat`（page）与全局浮窗（workbench）可同时挂载，
+ * INT-2507 之后两者订阅同一份 store。
+ */
+export type AgentRunHostKind = 'page' | 'workbench'
+
+/**
+ * 宿主离场语义（INT-2521 按 A5–A7 收窄）：
+ * - `cancel`：浮窗「关闭」、离开 `/ai-chat` 路由 —— 用户明确结束这一侧；
+ * - `keep`：浮窗「最小化」「展开整页」、整页 ↔ 浮窗切换 —— 只是宿主暂时卸载，run 应继续。
+ */
+export type AgentRunHostDetachReason = 'cancel' | 'keep'
+
+/**
+ * 宿主离场中断进行中回答时的用户提示（INT-2521 文案，按 A5 收窄口径：
+ * 最小化 / 展开整页不再中断，只有关闭浮窗与离开页面会结束进行中的对话）。
+ */
+export const AGENT_RUN_UNMOUNT_CANCEL_COPY =
+  '已中断当前回答：关闭浮窗或离开当前页面会结束进行中的对话'
+
+/**
+ * 宿主离场时仍需中止服务端 run 的阶段（INT-2521）：idle / cancelling / finished / error
+ * 没有在办 run，发取消只会打空。
+ */
+const IN_FLIGHT_PHASES: readonly AgentRunPhase[] = [
+  AGENT_RUN_PHASE.PREPARING,
+  AGENT_RUN_PHASE.RUNNING,
+  AGENT_RUN_PHASE.RECONNECTING,
+]
+
+/**
+ * 最后一个宿主离场后的宽限（ms）：切换形态 / StrictMode `mount → cleanup → mount` 会
+ * 让宿主瞬时全卸再挂，同一提交内重新登记即视为未离场，不取消在办 run。
+ */
+const HOST_DETACH_GRACE_MS = 0
 
 /** 是否有一轮 run 在办（输入区禁用 / 停止钮可用的唯一判据，两宿主同口径） */
 export function isAgentRunActive(phase: AgentRunPhase): boolean {
@@ -172,6 +209,13 @@ type AgentRunStoreState = {
    * 收口刷新打断的气泡。会话已失效（404/410）则清掉本地会话 id。
    */
   restore: () => Promise<void>
+  /** 宿主登记（整页 / 浮窗；同 kind 多次挂载按一次计） */
+  attachHost: (host: AgentRunHostKind) => void
+  /**
+   * 宿主注销（INT-2521 收窄）：只有最后一个宿主按 `cancel` 语义离场才中止在办 run；
+   * `keep`（最小化 / 展开整页 / 切换形态）不动 run。宽限窗口内重新登记则视为未离场。
+   */
+  detachHost: (host: AgentRunHostKind, reason?: AgentRunHostDetachReason) => void
 }
 
 export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
@@ -195,6 +239,11 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
   /** 已恢复校验过的会话 id（同会话只查一次 getAgentSession） */
   let restoredSessionId: string | null = null
   let restoreInFlight: Promise<void> | null = null
+  /** 已登记存活的宿主（整页 / 浮窗）：只有最后一个宿主离场才中止在办 run */
+  const attachedHosts = new Set<AgentRunHostKind>()
+  let hostDetachTimer: ReturnType<typeof setTimeout> | null = null
+  /** 最后一个宿主按 cancel 语义离场时建 run 请求仍在途：响应返回后补发取消（INT-2521） */
+  let detachCancelPending = false
 
   const session = () => useAiChatSession.getState()
 
@@ -209,6 +258,53 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       clearTimeout(reconcileTimer)
       reconcileTimer = null
     }
+  }
+
+  /**
+   * 最后一个宿主已按取消语义离场（INT-2521）：在办的 run 没人接收结果，通知服务端取消。
+   * fire-and-forget（失败只记日志），但走 `cancel()` 的同一取消闸与终态收口，
+   * 保证「全局只发一次 cancelAgentRun」且消息列表里的气泡落可读终态。
+   */
+  const abandonInFlightRun = () => {
+    const { phase, run } = get()
+    if (!IN_FLIGHT_PHASES.includes(phase)) return
+    if (run && !isTerminalRunStatus(run.status)) {
+      const runId = run.id
+      toast.info(AGENT_RUN_UNMOUNT_CANCEL_COPY)
+      void get()
+        .cancel()
+        .then((failure) => {
+          if (failure) {
+            console.warn('[agent] 宿主离场时取消 run 失败', runId, failure)
+          }
+        })
+      return
+    }
+    // 建 run 请求仍在途（PREPARING 且 run 尚未落库）：响应返回后补发取消，不留孤儿 run
+    detachCancelPending = true
+  }
+
+  const attachHost = (host: AgentRunHostKind) => {
+    attachedHosts.add(host)
+    // 宽限窗口内重新登记 = 切换形态 / StrictMode 双挂载，不算离场
+    if (hostDetachTimer) {
+      clearTimeout(hostDetachTimer)
+      hostDetachTimer = null
+    }
+  }
+
+  const detachHost = (
+    host: AgentRunHostKind,
+    reason: AgentRunHostDetachReason = 'keep'
+  ) => {
+    attachedHosts.delete(host)
+    if (reason !== 'cancel') return
+    if (hostDetachTimer) return
+    hostDetachTimer = setTimeout(() => {
+      hostDetachTimer = null
+      if (attachedHosts.size > 0) return
+      abandonInFlightRun()
+    }, HOST_DETACH_GRACE_MS)
   }
 
   /** 只补当前 run 的 assistant 气泡（消息列表两宿主共享，补丁只做一次） */
@@ -473,6 +569,22 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       set({ run })
       session().setAgentRunId(run.id)
 
+      if (detachCancelPending) {
+        // 建 run 在途时最后一个宿主已按取消语义离场：补发取消，不进事件流（INT-2521）
+        detachCancelPending = false
+        if (!isTerminalRunStatus(run.status)) {
+          toast.info(AGENT_RUN_UNMOUNT_CANCEL_COPY)
+          void get()
+            .cancel()
+            .then((failure) => {
+              if (failure) {
+                console.warn('[agent] 宿主离场时取消 run 失败', run.id, failure)
+              }
+            })
+          return
+        }
+      }
+
       if (isTerminalRunStatus(run.status)) {
         emitSyntheticFinished(run, run.status, run.error)
         finishRun(run.status, run.error)
@@ -538,6 +650,11 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     token += 1
     active = false
     cancelRequested = false
+    detachCancelPending = false
+    if (hostDetachTimer) {
+      clearTimeout(hostDetachTimer)
+      hostDetachTimer = null
+    }
     lastEventId = null
     lastSequence = -1
     lastDeltaSequences.clear()
@@ -669,5 +786,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     cancel,
     reset,
     restore,
+    attachHost,
+    detachHost,
   }
 })

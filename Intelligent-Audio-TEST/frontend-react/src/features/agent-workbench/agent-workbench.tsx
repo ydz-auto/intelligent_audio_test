@@ -19,6 +19,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { useAgentRunHost } from '@/application/agent/use-agent-run'
+import { useAgentRunStore } from '@/application/agent/agent-run-store'
 import { AgentConnectButton } from '@/components/layout/components/agent-connect-button'
 
 import {
@@ -56,6 +58,10 @@ function AgentWorkbenchSession({
     updateConfig,
     clearMessages,
   } = useChatState()
+
+  // 宿主登记（INT-2521 按 A5–A7 收窄）：最小化 / 展开整页都是暂时卸载，传 'keep' 不取消在办
+  // run；浮窗「关闭」由头行关闭钮先声明取消语义（见 AgentWorkbench 的 handleClose）。
+  useAgentRunHost('workbench', 'keep')
   const {
     providers,
     addProvider,
@@ -245,6 +251,15 @@ export function AgentWorkbench() {
     void navigate({ to: '/ai-chat' })
   }
 
+  /**
+   * 关闭浮窗（INT-2521 收窄的取消路径之一）：先以 `cancel` 语义注销浮窗宿主再收起——
+   * 若整页 /ai-chat 仍开着，store 判定「非最后一个宿主」不取消，另一侧继续展示流式输出。
+   */
+  const handleClose = () => {
+    useAgentRunStore.getState().detachHost('workbench', 'cancel')
+    setOpen(false)
+  }
+
   const floatingWindow = (
     <div className='bg-background fixed right-4 bottom-4 z-50 flex w-[min(28rem,calc(100vw-1rem))] max-h-[min(44rem,calc(100svh-5rem))] flex-col overflow-hidden rounded-2xl border shadow-2xl'>
       {/* 头行（§3.1B）：Demo 徽标 §3.10 落点②；INT-1153 二轮返工：炫彩
@@ -287,7 +302,7 @@ export function AgentWorkbench() {
           <Button
             aria-label='关闭'
             className='text-muted-foreground hover:text-foreground size-7'
-            onClick={() => setOpen(false)}
+            onClick={handleClose}
             type='button'
             variant='ghost'
           >

@@ -1,21 +1,27 @@
 /**
- * use-agent-run 单测（INT-2457 §12.2 + INT-2507 单实例回归）：
+ * use-agent-run 单测（INT-2457 §12.2 + INT-2507 单实例回归 + INT-2521 宿主离场取消）：
  * 平台 Agent 的会话 id / run 生命周期收敛在 application/agent/agent-run-store 的模块级
  * 单一实例里。这里覆盖：
  * - 发起 run、SSE 事件去重、重连态、取消防重复、错误归一、reset 语义；
  * - 两宿主（整页 / 浮窗）订阅同一份状态：一侧发 run，另一侧同 phase、无法并发发送；
  * - 展开整页（宿主卸载 → 重新挂载）后仍续用同一服务端会话；
- * - 刷新恢复：getAgentSession 校验会话 / 回填历史 / 会话失效清 id。
+ * - 刷新恢复：getAgentSession 校验会话 / 回填历史 / 会话失效清 id；
+ * - INT-2521（按 A5–A7 收窄）：只有最后一个宿主按取消语义离场才中止在办 run。
  * API 层用 vi.mock 替身（不发真实请求；端到端真实栈证据见交付评论）。
  */
+import { StrictMode } from 'react'
+
 import { act, renderHook, waitFor } from '@testing-library/react'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentRun, AgentRunEvent } from '@/domain/models/agent'
 import { AGENT_EVENT_TYPE, AGENT_RUN_STATUS } from '@/domain/models/agent'
 import {
   useAgentRun,
+  useAgentRunHost,
   AGENT_RUN_PHASE,
+  AGENT_RUN_UNMOUNT_CANCEL_COPY,
 } from '@/application/agent/use-agent-run'
 import { useAgentRunStore } from '@/application/agent/agent-run-store'
 import {
@@ -28,6 +34,8 @@ import {
 import { ApiError } from '@/infrastructure/api/api-error'
 import type { SubscribeAgentRunEventsOptions } from '@/infrastructure/api/agentApi'
 import { useAiChatSession } from '@/infrastructure/stores/aiChatSessionStore'
+
+vi.mock('sonner', () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }))
 
 vi.mock('@/infrastructure/api/agentApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/infrastructure/api/agentApi')>()
@@ -47,6 +55,14 @@ const createRunMock = vi.mocked(createAgentRun)
 const cancelRunMock = vi.mocked(cancelAgentRun)
 const getSessionMock = vi.mocked(getAgentSession)
 const subscribeMock = vi.mocked(subscribeAgentRunEvents)
+const toastInfoMock = vi.mocked(toast.info)
+
+/** 离场宽限窗口（store 判定「最后一个宿主离场」用 setTimeout(0)）走完 */
+function flushDetachGrace() {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, 0)
+  })
+}
 
 function messageDelta(sequence: number, messageId: string, delta: string): AgentRunEvent {
   return {
@@ -75,7 +91,11 @@ let streamOptions: SubscribeAgentRunEventsOptions | null = null
 /** 共享状态复位（模块级 store 跨用例存活，必须每个用例清干净） */
 function resetSharedState() {
   window.localStorage.clear()
+  // reset() 同时清掉上一个用例遗留的离场宽限定时器与在途补取消标记
   useAgentRunStore.getState().reset()
+  // 宿主登记表跨用例清理（'keep' 语义：不触发取消）
+  useAgentRunStore.getState().detachHost('page', 'keep')
+  useAgentRunStore.getState().detachHost('workbench', 'keep')
   useAiChatSession.setState({
     messages: [],
     agentSessionId: null,
@@ -92,6 +112,12 @@ beforeEach(() => {
     id: 'r-1',
     sessionId: 's-1',
     status: AGENT_RUN_STATUS.RUNNING,
+  })
+  // 取消默认落终态（避免用例结束后还挂 2s 的核对定时器污染下一个用例）
+  cancelRunMock.mockResolvedValue({
+    id: 'r-1',
+    sessionId: 's-1',
+    status: AGENT_RUN_STATUS.CANCELLED,
   })
   subscribeMock.mockImplementation((_runId, options) => {
     streamOptions = options
@@ -386,5 +412,196 @@ describe('useAgentRun 刷新恢复（getAgentSession）', () => {
     await waitFor(() => {
       expect(useAiChatSession.getState().agentSessionId).toBeNull()
     })
+  })
+})
+
+/**
+ * INT-2521 按 INT-2507 A5–A7 收窄后的口径：
+ * - A5：浮窗最小化 / 展开整页 / 整页 ↔ 浮窗切换**不取消**在办 run，另一宿主重新挂载仍能看到
+ *   流式输出与最终回复；
+ * - A6：浮窗「关闭」与离开 `/ai-chat` 路由各发一次 `cancelAgentRun`；两宿主同开时卸载一侧
+ *   不误取消另一侧；
+ * - A7：StrictMode `mount → cleanup → mount` 不误取消；建 run 请求在途时离场，响应返回后
+ *   补发取消（INT-2521 原逻辑保留）。
+ */
+describe('useAgentRun 宿主离场取消（INT-2521 收窄）', () => {
+  /** 按真实宿主形态挂载：浮窗 `keep`（最小化 / 展开都是暂时卸载）、整页 `cancel`（离开路由） */
+  function mountHost(host: 'page' | 'workbench', reason: 'cancel' | 'keep') {
+    return renderHook(() => {
+      useAgentRunHost(host, reason)
+      return useAgentRun()
+    })
+  }
+
+  it('A5：浮窗最小化 / 展开整页（keep 卸载）不取消，另一宿主重新挂载后仍能收到流式输出与最终回复', async () => {
+    const float = mountHost('workbench', 'keep')
+    await act(async () => {
+      await float.result.current.send('帮我出一份长报告')
+    })
+    expect(float.result.current.phase).toBe(AGENT_RUN_PHASE.RUNNING)
+
+    // 最小化 / 展开整页 = 浮窗会话组件卸载，但 run 应继续
+    float.unmount()
+    await act(async () => {
+      await flushDetachGrace()
+    })
+    expect(cancelRunMock).not.toHaveBeenCalled()
+
+    // 整页宿主重新挂载：订阅同一份 store，事件仍然落到同一条 assistant 气泡
+    const page = mountHost('page', 'cancel')
+    act(() => {
+      streamOptions?.onEvent(messageDelta(1, 'm-1', '报告正文'))
+      streamOptions?.onEvent(runFinished(2))
+    })
+    expect(page.result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
+    expect(useAiChatSession.getState().messages[1].versions[0].content).toBe('报告正文')
+    expect(cancelRunMock).not.toHaveBeenCalled()
+  })
+
+  it('A6：浮窗「关闭」（最后一个宿主，cancel 语义）→ 取消一次并提示', async () => {
+    const float = mountHost('workbench', 'keep')
+    await act(async () => {
+      await float.result.current.send('你好')
+    })
+
+    await act(async () => {
+      useAgentRunStore.getState().detachHost('workbench', 'cancel')
+      float.unmount()
+      await flushDetachGrace()
+    })
+
+    expect(cancelRunMock).toHaveBeenCalledTimes(1)
+    expect(cancelRunMock).toHaveBeenCalledWith('r-1')
+    expect(toastInfoMock).toHaveBeenCalledWith(AGENT_RUN_UNMOUNT_CANCEL_COPY)
+  })
+
+  it('A6：离开 /ai-chat 路由（整页卸载，cancel 语义）→ 取消一次', async () => {
+    const page = mountHost('page', 'cancel')
+    await act(async () => {
+      await page.result.current.send('你好')
+    })
+
+    await act(async () => {
+      page.unmount()
+      await flushDetachGrace()
+    })
+
+    expect(cancelRunMock).toHaveBeenCalledTimes(1)
+    expect(cancelRunMock).toHaveBeenCalledWith('r-1')
+  })
+
+  it('A6：两宿主同开时卸载一侧不误取消另一侧（关闭浮窗，整页仍开着）', async () => {
+    const page = mountHost('page', 'cancel')
+    const float = mountHost('workbench', 'keep')
+    await act(async () => {
+      await page.result.current.send('你好')
+    })
+
+    await act(async () => {
+      useAgentRunStore.getState().detachHost('workbench', 'cancel')
+      float.unmount()
+      await flushDetachGrace()
+    })
+
+    expect(cancelRunMock).not.toHaveBeenCalled()
+    expect(page.result.current.phase).toBe(AGENT_RUN_PHASE.RUNNING)
+  })
+
+  it('A6：重复关闭（两次 cancel 语义离场）全局只发一次 cancelAgentRun', async () => {
+    mountHost('workbench', 'keep')
+    const float = mountHost('workbench', 'keep')
+    await act(async () => {
+      await float.result.current.send('你好')
+    })
+
+    await act(async () => {
+      useAgentRunStore.getState().detachHost('workbench', 'cancel')
+      useAgentRunStore.getState().detachHost('workbench', 'cancel')
+      float.unmount()
+      await flushDetachGrace()
+    })
+
+    expect(cancelRunMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('A7：StrictMode mount → cleanup → mount 不误取消在办 run', async () => {
+    const float = mountHost('workbench', 'keep')
+    await act(async () => {
+      await float.result.current.send('你好')
+    })
+    // 最小化：浮窗作为唯一宿主正常离场（keep），在办 run 保留
+    float.unmount()
+
+    // 整页在 StrictMode 下首挂：cleanup 会以 cancel 语义注销，但同一提交内重新 attach
+    renderHook(() => useAgentRunHost('page', 'cancel'), { wrapper: StrictMode })
+    await act(async () => {
+      await flushDetachGrace()
+    })
+
+    expect(cancelRunMock).not.toHaveBeenCalled()
+    expect(useAgentRunStore.getState().phase).toBe(AGENT_RUN_PHASE.RUNNING)
+  })
+
+  it('A7：建 run 请求在途时按 cancel 语义离场 → 响应返回后补发取消一次（不留孤儿 run）', async () => {
+    let resolveRun: ((run: AgentRun) => void) | null = null
+    createRunMock.mockImplementation(
+      () =>
+        new Promise<AgentRun>((resolve) => {
+          resolveRun = resolve
+        })
+    )
+    const page = mountHost('page', 'cancel')
+    let pending!: Promise<void>
+    await act(async () => {
+      pending = page.result.current.send('你好')
+    })
+
+    // 此时 run 还没落库，没有可取消的对象
+    await act(async () => {
+      page.unmount()
+      await flushDetachGrace()
+    })
+    expect(cancelRunMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveRun?.({ id: 'r-late', sessionId: 's-1', status: AGENT_RUN_STATUS.RUNNING })
+      await pending
+      await flushDetachGrace()
+    })
+
+    expect(cancelRunMock).toHaveBeenCalledTimes(1)
+    expect(cancelRunMock).toHaveBeenCalledWith('r-late')
+    expect(toastInfoMock).toHaveBeenCalledWith(AGENT_RUN_UNMOUNT_CANCEL_COPY)
+  })
+
+  it('无在办 run 时离场不发取消', async () => {
+    const page = mountHost('page', 'cancel')
+    page.unmount()
+
+    await act(async () => {
+      await flushDetachGrace()
+    })
+
+    expect(cancelRunMock).not.toHaveBeenCalled()
+    expect(toastInfoMock).not.toHaveBeenCalled()
+  })
+
+  it('run 已终态时离场不发取消', async () => {
+    const page = mountHost('page', 'cancel')
+    await act(async () => {
+      await page.result.current.send('你好')
+    })
+    act(() => {
+      streamOptions?.onEvent(runFinished(1))
+    })
+    expect(page.result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
+
+    page.unmount()
+    await act(async () => {
+      await flushDetachGrace()
+    })
+
+    expect(cancelRunMock).not.toHaveBeenCalled()
+    expect(toastInfoMock).not.toHaveBeenCalled()
   })
 })

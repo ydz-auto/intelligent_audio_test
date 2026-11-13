@@ -676,6 +676,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 | `infrastructure/dto/` | 新增 Agent DTO 转换，snake_case 只在此层 | INT-2457 |
 | `application/agent/use-agent-run.ts` | 发起 run、订阅 SSE、断线续传、取消 | INT-2457 |
 | `application/agent/agent-run-store.ts` | run 生命周期收敛为模块级单一实例：会话 id（含 run id）随 `aiChatSessionStore` 持久化，整页 / 浮窗共用同一 phase、消息补丁与取消闸；宿主挂载时用 `GET /agent/sessions/{id}` 校验会话、回填历史、收口刷新打断的气泡 | INT-2507 |
+| `application/agent/agent-run-store.ts` 宿主离场 | 宿主（整页 / 浮窗）登记存活；**只有最后一个宿主按取消语义离场**（浮窗「关闭」、离开 `/ai-chat` 路由）才给 `phase ∈ {preparing,running,reconnecting}` 的 run 发一次 `cancel` 并提示「已中断当前回答」——浮窗「最小化」「展开整页」与整页 ↔ 浮窗切换不取消（INT-2507 单实例下另一宿主仍在展示该 run）；建 run 请求在途时等响应返回后补发取消，不留孤儿 run；离场判定有宽限窗口，StrictMode 双挂载不会误取消 | INT-2521（按 INT-2507 A5–A7 收窄） |
 | `features/ai-chat` | 接真实事件流；保留工具卡与来源卡 | INT-2457 |
 | `features/ai-chat` 审批卡 + Run 时间线 | 审批提案/diff/风险/过期；事件时间线；重连恢复待审批 | INT-2472 |
 | `features/ai-chat` Report Studio 文档面板 | 取数 → 起草 → 版本 → 导出（PDF/PPTX/HTML/MD） | INT-2473 |

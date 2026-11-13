@@ -25,6 +25,7 @@ import {
   type ChatConfig,
 } from '@/domain/models/aiChat'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
+import { useAgentRunHost } from '@/application/agent/use-agent-run'
 import { useChatConversation } from '@/features/ai-chat/hooks/use-chat-conversation'
 import { useChatState } from '@/features/ai-chat/hooks/use-chat-state'
 import { useLlmProviders } from '@/features/ai-chat/hooks/use-llm-providers'
@@ -104,6 +105,10 @@ const DEMO_DOCUMENT = [
 ].join('\n')
 
 export function AiChatPage({ initialContext }: AiChatPageProps) {
+  // 宿主登记（INT-2521 收窄）：离开 /ai-chat 路由是明确的取消语义；浮窗若仍开着，
+  // 由 store 判断「最后一个宿主才取消」，不误伤另一宿主。
+  useAgentRunHost('page', 'cancel')
+
   const {
     config,
     messages,
