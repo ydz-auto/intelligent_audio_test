@@ -171,6 +171,24 @@ def test_skills_root_missing_fails_startup_with_reason_code(tmp_path):
         'SKILLS_ROOT_MISSING', 'EMPTY_SKILLS_ROOT']
 
 
+def test_skills_endpoint_surfaces_directory_level_issue(tmp_path):
+    """INT-2506：有 Skill 能装载时，/skills 仍能看出目录级原因码（不被 200 抹平）。"""
+    root = tmp_path / 'skills'
+    root.mkdir()
+    shutil.copytree(os.path.join(SKILLS_ROOT, 'platform-reference'),
+                    root / 'platform-reference')
+    os.makedirs(str(root / 'no-skill-md'))
+    stack = _stack(tmp_path, root)
+    with stack.client as client:
+        body = client.get('/api/v1/agent/skills', headers=OWNER).json()
+        assert body['skills_count'] == 1
+        assert body['issues_count'] == 1
+        issue = body['issues'][0]
+        assert issue['code'] == 'SKILL_FILE_MISSING'
+        assert issue['severity'] == 'ERROR'
+        assert issue['skill'] == '' and issue['path']
+
+
 def test_health_reports_skill_load_summary(tmp_path, skills_root, monkeypatch):
     """INT-2506：/health 能看到装载了几个 Skill、几个问题、问题码。
 
