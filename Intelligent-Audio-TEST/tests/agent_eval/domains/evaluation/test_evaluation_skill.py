@@ -43,15 +43,20 @@ def test_required_sections_and_frontmatter():
     assert '## 验收' in body
 
 
-def test_allowed_tools_exist_and_are_readonly():
+def test_allowed_tools_exist_and_are_declared_read_or_m2_write():
+    """M1 只挂只读工具；INT-2469 起写入口 `evaluation_manage` 也在白名单内。"""
     meta = skill_meta()
     assert meta.allowed_tools, 'allowed-tools 不能为空'
     for name in meta.allowed_tools:
         tool = intent_tools.INTENT_TOOL_BY_NAME.get(name)
         assert tool is not None, f'未注册工具：{name}'
         assert tool.enabled is True, f'工具未启用：{name}'
+        if name == 'evaluation_manage':
+            assert ToolRisk(tool.risk) is ToolRisk.WRITE
+            continue
         assert ToolRisk(tool.risk) is ToolRisk.READ, f'非只读工具：{name}'
     assert 'evaluation_query' in meta.allowed_tools
+    assert 'evaluation_manage' in meta.allowed_tools
 
 
 def test_skill_explains_scoring_by_quoting_fields():
@@ -68,10 +73,14 @@ def test_skill_explains_scoring_by_quoting_fields():
 
 def test_skill_documents_scope_topics():
     body = skill_body()
-    for topic in ('导入导出', '健康检查', '重评估前置条件', '可见性'):
+    for topic in ('导入导出', '健康检查', '重评估前置条件', '可见性',
+                  '失败处置', '修改影响面'):
         assert topic in body, topic
-    # 写动作边界必须写明
-    assert 'M2' in body and '审批' in body
+    # 写动作边界必须写明：提案 → 审批 → 执行，且不得把提案说成已执行
+    assert 'evaluation_manage' in body
+    assert '提案' in body and '审批' in body
+    assert 'APPROVAL_REQUIRED' in body
+    assert '软删' in body
 
 
 def test_trigger_accuracy_at_least_90_percent():

@@ -251,14 +251,15 @@ def test_skills_endpoint_lists_31_tools_without_duplicates(tmp_path):
         #   INT-2459 device_query，含 SPL 只读子集 / INT-2460 testcase_query + testcase_generate /
         #   INT-2461 task_diagnose + log_diagnose + dashboard_query /
         #   INT-2463 report_compare；report_query 由 M0 最小版扩全字段 /
-        #   INT-2490 memory_search + memory_write）
+        #   INT-2490 memory_search + memory_write / INT-2469 evaluation_manage）
         # 精确等值：新增启用工具必须在本卡同步更新该集合，避免无意多启用。
         assert enabled == {'platform_contract', 'tool_search', 'task_query',
                            'report_query', 'audio_query', 'evaluation_query',
                            'algorithm_query', 'device_query',
                            'testcase_query', 'testcase_generate',
                            'task_diagnose', 'log_diagnose', 'dashboard_query',
-                           'report_compare', 'memory_search', 'memory_write'}
+                           'report_compare', 'memory_search', 'memory_write',
+                           'evaluation_manage'}
 
         low = client.get('/api/v1/agent/skills',
                          headers={'X-User-Id': '8', 'X-Tenant-Id': 't1',
