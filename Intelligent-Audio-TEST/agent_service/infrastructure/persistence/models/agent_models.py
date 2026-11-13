@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""agent_service PO 模型（落地方案 §10，M0 前七张表）。
+"""agent_service PO 模型（落地方案 §10）。
 
 表：agent_session / agent_run / agent_run_event / agent_step /
     agent_tool_call / agent_artifact / agent_context_snapshot
     + agent_llm_provider（INT-2488 用户自带供应商密钥库）
-（agent_approval 属 M2，本卡不建。）
+    + agent_approval（INT-2466 写操作审批单）
 
 口径：
 - 主键统一 UUID 字符串（分布式 worker 与断点恢复不依赖自增序列）；
@@ -139,6 +139,45 @@ class AgentToolCall(Base):
     idempotency_key = Column(String(255), nullable=True,
                              comment='run_id + step_id + tool_call_id + tool + args_hash')
     created_at = Column(DateTime, nullable=False, default=utcnow, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=utcnow,
+                        server_default=func.now(), onupdate=utcnow)
+
+
+class AgentApproval(Base):
+    """写调用审批单（INT-2466，§10）。
+
+    - 一次 tool call 一张单：``(run_id, tool_call_id)`` 唯一，重复提案幂等；
+    - ``proposal`` / ``diff`` 是审批人可见的内容（参数已按审计口径脱敏）；
+    - ``decision_permissions`` 是决策时的实时权限快照，执行前据此重新校验
+      「审批后权限是否还在」，不回读 run 发起时的旧权限；
+    - 决策 / 过期都是 ``WHERE status='PENDING'`` 的条件更新，并发审批只有
+      一个请求生效；
+    - ``(status, expires_at)`` 索引服务过期扫描与待办列表。
+    """
+
+    __tablename__ = 'agent_approval'
+    __table_args__ = (
+        UniqueConstraint('run_id', 'tool_call_id',
+                         name='uq_agent_approval_run_call'),
+        Index('ix_agent_approval_status_expires', 'status', 'expires_at'),
+        Index('ix_agent_approval_run', 'run_id', 'created_at'),
+    )
+
+    id = Column(_PK, primary_key=True)
+    run_id = Column(_PK, nullable=False)
+    tool_call_id = Column(String(128), nullable=False,
+                          comment='模型返回的 tool_call_id')
+    proposal = Column(JSON, nullable=False, default=dict,
+                      comment='审批人可见的提案（参数已脱敏）')
+    diff = Column(JSON, nullable=True, comment='变更预览 / diff（工具提供）')
+    status = Column(String(20), nullable=False, comment='ApprovalStatus')
+    expires_at = Column(DateTime, nullable=True, comment='过期时间（UTC naive）')
+    decided_by = Column(BigInteger, nullable=True, comment='决策人 user_id')
+    decided_at = Column(DateTime, nullable=True)
+    decision_permissions = Column(JSON, nullable=True,
+                                  comment='决策时的实时权限快照')
+    created_at = Column(DateTime, nullable=False, default=utcnow,
+                        server_default=func.now())
     updated_at = Column(DateTime, nullable=False, default=utcnow,
                         server_default=func.now(), onupdate=utcnow)
 

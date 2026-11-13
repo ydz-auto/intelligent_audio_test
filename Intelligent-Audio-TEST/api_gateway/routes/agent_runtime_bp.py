@@ -221,6 +221,16 @@ async def proxy_approvals(run_id: str, request: Request):
     return await _forward(request, 'GET')
 
 
+@router.post('/approvals/{approval_id}/decision')
+async def proxy_approval_decision(approval_id: str, request: Request):
+    """写操作审批决议（INT-2466，§11）。
+
+    身份 / 租户 / 权限由网关注入；审批单归属与决策互斥由 agent_service
+    判定（非本人 run 的审批单 404，并发审批只有一个生效）。
+    """
+    return await _forward(request, 'POST')
+
+
 @router.get('/runs/{run_id}/context-snapshots')
 async def proxy_context_snapshots(run_id: str, request: Request):
     """上下文压缩快照（INT-2454；调试模式下由 agent_service 带回备忘）。"""

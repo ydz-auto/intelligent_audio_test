@@ -9,9 +9,10 @@
 | POST | /api/v1/agent/memory/proposals/{id}/reject | 拒绝：无副作用 |
 | GET  | /api/v1/agent/memory/break-glass | 读取正文（需专用权限，留审计）|
 
-审批占位边界：M2 的审批服务（INT-2466）未合入前，``memory_write`` 的提案
-在这里由**本人**审批；INT-2466 合入后本组端点改为委托审批服务，响应结构
-不变（``approval_id`` / ``path`` / ``status``）。
+审批边界：``memory_write`` 的正文不落库，故不并入 INT-2466 的
+``agent_approval`` 通用审批表；本组端点继续承载记忆写入的提案 / 审批
+（文件式提案，审批前不落盘，``approval_id`` / ``path`` / ``status`` 结构不变）。
+业务写工具的通用审批见 ``/api/v1/agent/approvals/{id}/decision``。
 """
 import logging
 

@@ -15,7 +15,9 @@
   ``T1_TRUSTED_SCRIPT`` 走沙箱（脚本在容器内，工具调用在沙箱外），T2 明确拒绝；
   沙箱失败按 ``FAILED`` / ``BUDGET_EXCEEDED`` 收口 run，不静默成功。
 - 每个 step / tool call / event 都持久化，事件 sequence 严格递增；
-- 只读工具自动执行；写操作在 M2 走审批，M0 一律拒绝；
+- 只读工具自动执行；写操作一律「提案 → 审批 → 幂等执行」（INT-2466，
+  WRITE / DESTRUCTIVE 生成 ``agent_approval`` 后 run 转 WAITING_APPROVAL，
+  审批后经权限 / 注册表复核再执行，拒绝 / 过期不执行）；
 - 任何模型 / 工具调用都计入 run 预算。
 """
 import hashlib
@@ -24,8 +26,9 @@ import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from agent_service.application.approval_service import ApprovalService
 from agent_service.application.cancel_registry import CancelRegistry
 from agent_service.application.context_assembler import ContextAssembler
 from agent_service.application.sandbox_dispatch import (
@@ -35,8 +38,8 @@ from agent_service.application.sandbox_runner import (
     SandboxFailureReason, SandboxOutcome,
 )
 from agent_service.domain.enums import (
-    EventType, LlmMessageRole, RunStatus, SandboxTier, StepStatus,
-    ToolCallStatus, ToolRisk,
+    ApprovalStatus, EventType, LlmMessageRole, RunStatus, SandboxTier,
+    StepStatus, ToolCallStatus, ToolRisk,
 )
 from agent_service.domain.exceptions import (
     InvalidRunTransition, LlmConfigurationError, LlmInvocationError,
@@ -45,7 +48,8 @@ from agent_service.domain.exceptions import (
 from agent_service.domain.model.budget import RunBudget
 from agent_service.domain.model.context_budget import ContextBudget
 from agent_service.domain.model.entities import (
-    AgentRun, AgentToolCall, LlmMessage, ToolCallRequest, ToolResult,
+    AgentApproval, AgentRun, AgentToolCall, LlmMessage, ToolCallRequest,
+    ToolResult,
 )
 from agent_service.domain.ports.llm import (
     LlmFinished, LlmRequest, LlmTextDelta, LlmToolCalls, LlmUsage,
@@ -56,7 +60,7 @@ from agent_service.domain.ports.llm_provider import (
 from agent_service.domain.ports.run_wakeup import RunWakeup
 from agent_service.domain.ports.side_effects import SideEffectChecker
 from agent_service.domain.ports.tool_gateway import (
-    ToolDescriptor, ToolGateway, ToolInvocationContext,
+    ToolApproval, ToolDescriptor, ToolGateway, ToolInvocationContext,
 )
 from shared.agent_tools.intent_tools import (
     ALWAYS_AVAILABLE_TOOLS, redact_for_audit,
@@ -79,6 +83,12 @@ logger = logging.getLogger(__name__)
 # 注册表里查不到的工具不可信：按最高风险记账（fail-closed），并一律拒绝执行。
 # 绝不把未知工具降级成 READ —— 那会让写操作绕过「提案 + 审批」门禁（§5.2 硬规则 5）。
 _UNKNOWN_TOOL_RISK = ToolRisk.DESTRUCTIVE
+
+# 写审批相关结果码（工具结果 / 审计 result_code 共用同一口径）
+APPROVAL_REQUIRED = 'APPROVAL_REQUIRED'
+APPROVAL_REJECTED = 'APPROVAL_REJECTED'
+APPROVAL_EXPIRED = 'APPROVAL_EXPIRED'
+APPROVAL_EXECUTION_DENIED = 'APPROVAL_EXECUTION_DENIED'
 
 # L3 备忘的固定 schema 提示（§8.2）：只允许 JSON；事实必须带来源消息 ID。
 _MEMO_SYSTEM_PROMPT = (
@@ -173,6 +183,7 @@ class RunOrchestrator:
                  tool_gateway: ToolGateway, side_effects: SideEffectChecker,
                  wakeup: RunWakeup, cancel_registry: CancelRegistry,
                  settings: OrchestratorSettings,
+                 approvals: ApprovalService,
                  sandbox: Optional[SandboxToolExecutor] = None):
         self._sessions = sessions
         self._runs = runs
@@ -187,6 +198,7 @@ class RunOrchestrator:
         self._sandbox = sandbox or disabled_executor(
             max_result_chars=settings.tool_result_max_chars)
         self._side_effects = side_effects
+        self._approvals = approvals
         self._wakeup = wakeup
         self._cancel_registry = cancel_registry
         self._settings = settings
@@ -240,6 +252,10 @@ class RunOrchestrator:
         if persisted_failure is not None:
             self._finish_sandbox_failure(
                 run_id, persisted_step, persisted_failure)
+            return
+        # §9.2 写审批：恢复 / 审批后重新进入 Loop 时，先把已决提案落实
+        # （批准 → 幂等执行；拒绝 / 过期 → 记为拒绝结果），仍在等待则退出。
+        if self._settle_approvals(run_id):
             return
         try:
             provider = self._provider_resolver.resolve_for_run(run)
@@ -440,6 +456,15 @@ class RunOrchestrator:
                     run_id, RunStatus.FAILED,
                     error='RESTART_WRITE_UNVERIFIED: 中断的写操作需人工确认')
                 return
+            if self._has_unsettled_write(run_id):
+                # 写操作已生成提案但还没有结果：本批不写 tool_result（会让
+                # 模型误以为已完成）。先结算「本批执行期间已被批准的」提案，
+                # 仍有未决则把 run 转 WAITING_APPROVAL 并退出。
+                if self._settle_approvals(run_id):
+                    return
+                if self._has_unsettled_write(run_id):
+                    self._enter_waiting_approval(run_id)
+                    return
             if self._consecutive_failures(run_id) >= \
                     self._settings.max_consecutive_tool_failures > 0:
                 self._append_error(
@@ -847,23 +872,11 @@ class RunOrchestrator:
 
         if risk.requires_approval and not self._tool_gateway.proposal_capable(
                 call.name):
-            # 无提案原语的写操作一律拒绝（审批链路 M2 落地）。
-            # 有提案原语的工具（memory_write，INT-2490）交给网关生成待审批
-            # 提案：审批前不产生任何副作用，结果码同样是 APPROVAL_REQUIRED。
-            message = '写操作需要审批，当前未启用直接执行'
-            self._tool_calls.update(
-                call.tool_call_id, run.id,
-                status=ToolCallStatus.DENIED,
-                permission_decision='approval_required',
-                result={'ok': False, 'content': message,
-                        'error_code': 'APPROVAL_REQUIRED'},
-                result_code='APPROVAL_REQUIRED',
-                error=message)
-            result = ToolResult(
-                tool_call_id=call.tool_call_id, tool=call.name,
-                ok=False, content=message, error_code='APPROVAL_REQUIRED')
-            self._append_tool_result(run.id, result, turn, emitted)
-            return result
+            # 通用写审批（INT-2466）：WRITE / DESTRUCTIVE 一律先提案，不执行。
+            # 自带提案原语的工具（memory_write，INT-2490）沿用网关原地提案。
+            return self._propose_write(
+                run, step_id, call, turn, emitted, risk,
+                idempotency_key, args_hash, permissions)
 
         self._tool_calls.update(call.tool_call_id, run.id,
                                 status=ToolCallStatus.RUNNING)
@@ -937,6 +950,304 @@ class RunOrchestrator:
         if sandbox_failure is not None:
             failures.record(sandbox_failure)
         return result
+
+    # ------------------------------------------------------- write approvals
+
+    def _propose_write(self, run: AgentRun, step_id: str,
+                       call: ToolCallRequest, turn: int, emitted: set,
+                       risk: ToolRisk, idempotency_key: str,
+                       args_hash: str,
+                       permissions: Sequence[str]) -> ToolResult:
+        """WRITE / DESTRUCTIVE 提案路径（§5.2 硬规则 5 / §9.4）。
+
+        - 提案前按**当前**权限与参数校验：无权用户不能生成提案；
+        - 提案落 ``agent_approval``（一次 tool call 一张单，重复提交幂等）；
+        - 工具调用状态置 ``WAITING_APPROVAL``，**不写 tool_result**：写操作
+          还没有结果，回灌会让模型把「待审批」当成「已完成」；
+        - run 由调用方在本批结束后转 ``WAITING_APPROVAL``，不做任何副作用。
+        """
+        required = self._tool_gateway.required_permissions(
+            call.name, call.arguments)
+        if required is None:
+            return self._write_rejection(
+                run, call, turn, emitted,
+                code='TOOL_NOT_REGISTERED', decision='tool_not_registered',
+                message=f'工具未注册，拒绝提案：{call.name}')
+        if not _has_permission(permissions, required):
+            return self._write_rejection(
+                run, call, turn, emitted,
+                code='PERMISSION_DENIED', decision='deny',
+                message='无权发起该写操作，未生成提案。')
+        validation = self._tool_gateway.validate_call(
+            call.name, call.arguments)
+        if validation:
+            return self._write_rejection(
+                run, call, turn, emitted,
+                code='INVALID_ARGUMENTS', decision='deny', message=validation)
+
+        approval, _created = self._approvals.propose(
+            run, step_id=step_id, call=call, risk=risk, turn=turn,
+            idempotency_key=idempotency_key, args_hash=args_hash)
+        # 崩溃可能发生在「落库 tool call」与「写 tool_call 事件」之间：补事件
+        existing = self._tool_calls.find(run.id, call.tool_call_id)
+        if existing is not None:
+            self._ensure_tool_call_event(run.id, existing, turn, emitted)
+        message = '已生成待审批提案（未执行、无副作用）；批准后才会执行。'
+        self._tool_calls.update(
+            call.tool_call_id, run.id,
+            status=ToolCallStatus.WAITING_APPROVAL,
+            permission_decision='approval_required',
+            result={
+                'ok': False,
+                'content': message,
+                'error_code': APPROVAL_REQUIRED,
+                'approval_id': approval.id,
+                'expires_at': (approval.expires_at.isoformat()
+                               if approval.expires_at else None),
+            },
+            result_code=APPROVAL_REQUIRED,
+            error=None)
+        return ToolResult(
+            tool_call_id=call.tool_call_id, tool=call.name, ok=False,
+            content=message, error_code=APPROVAL_REQUIRED)
+
+    def _write_rejection(self, run: AgentRun, call: ToolCallRequest,
+                         turn: int, emitted: set, *,
+                         code: str, decision: str,
+                         message: str) -> ToolResult:
+        """提案前置校验失败：记账 + 回灌失败结果，绝不生成提案。"""
+        self._tool_calls.update(
+            call.tool_call_id, run.id,
+            status=ToolCallStatus.DENIED,
+            permission_decision=decision,
+            result={'ok': False, 'content': message, 'error_code': code},
+            result_code=code, error=message)
+        result = ToolResult(
+            tool_call_id=call.tool_call_id, tool=call.name,
+            ok=False, content=message, error_code=code)
+        self._append_tool_result(run.id, result, turn, emitted)
+        return result
+
+    def _settle_approvals(self, run_id: str) -> bool:
+        """进入模型循环前处置本 run 的写调用与审批单。
+
+        返回 ``True`` 表示本次不应发起模型请求：
+        - 仍有未决提案 → run 转 WAITING_APPROVAL；
+        - 审批通过但执行前复核失败 → run 已收口 FAILED。
+
+        崩溃窗口兜底：写调用已落库但提案还没落（进程在最窄的窗口被杀）时，
+        按落库记录重建提案（幂等），不让 run 卡在「无提案的 PENDING 写」上。
+        """
+        run = self._runs.get(run_id)
+        if run is None or run.status.is_terminal:
+            return False
+        records = [record for record in self._tool_calls.list_by_run(run_id)
+                   if record.risk is not ToolRisk.READ
+                   # 自带提案原语的工具（memory_write）不走通用审批表
+                   and not self._tool_gateway.proposal_capable(record.tool)
+                   and record.status in (ToolCallStatus.PENDING,
+                                         ToolCallStatus.WAITING_APPROVAL)]
+        if not records:
+            return False
+        approvals = {item.tool_call_id: item
+                     for item in self._approvals.list_for_run(run_id)}
+        emitted = self._emitted_tool_events(run_id)
+        waiting = False
+        for record in records:
+            approval = approvals.get(record.tool_call_id)
+            if approval is None:
+                turn = self._turn_for_call(run_id, record.tool_call_id)
+                self._repropose_write(run, record, turn, emitted)
+                waiting = True
+                continue
+            turn = int((approval.proposal or {}).get('turn') or 0)
+            if approval.status is ApprovalStatus.PENDING:
+                waiting = True
+                continue
+            if approval.status is ApprovalStatus.REJECTED:
+                self._settle_write_denied(
+                    run, record, turn, emitted, APPROVAL_REJECTED,
+                    '审批未通过，写操作未执行。', 'approval_rejected')
+                continue
+            if approval.status is ApprovalStatus.EXPIRED:
+                self._settle_write_denied(
+                    run, record, turn, emitted, APPROVAL_EXPIRED,
+                    '审批已过期，写操作未执行。', 'approval_expired')
+                continue
+            if self._execute_approved(run, record, approval, turn, emitted):
+                return True
+        if waiting:
+            self._enter_waiting_approval(run_id)
+            return True
+        return False
+
+    def _repropose_write(self, run: AgentRun, record: AgentToolCall,
+                         turn: int, emitted: set) -> AgentApproval:
+        """按落库记录重建提案（崩溃窗口兜底；propose 本身幂等）。"""
+        call = ToolCallRequest(
+            tool_call_id=record.tool_call_id, name=record.tool,
+            arguments=record.arguments or {})
+        approval, _created = self._approvals.propose(
+            run, step_id=record.step_id, call=call, risk=record.risk,
+            turn=turn,
+            idempotency_key=record.idempotency_key or '',
+            args_hash=record.args_hash)
+        self._ensure_tool_call_event(run.id, record, turn, emitted)
+        self._tool_calls.update(
+            record.tool_call_id, run.id,
+            status=ToolCallStatus.WAITING_APPROVAL,
+            permission_decision='approval_required',
+            result={
+                'ok': False,
+                'content': '已生成待审批提案（未执行、无副作用）；批准后才会执行。',
+                'error_code': APPROVAL_REQUIRED,
+                'approval_id': approval.id,
+                'expires_at': (approval.expires_at.isoformat()
+                               if approval.expires_at else None),
+            },
+            result_code=APPROVAL_REQUIRED,
+            error=None)
+        return approval
+
+    def _turn_for_call(self, run_id: str, tool_call_id: str) -> int:
+        """从 tool_call 事件取调用所属轮次（崩溃恢复补事件分组用）。"""
+        for event in self._events.list_by_types(
+                run_id, (EventType.TOOL_CALL,), self._settings.event_scan_limit):
+            payload = event.payload or {}
+            if payload.get('tool_call_id') == tool_call_id:
+                return int(payload.get('turn') or 0)
+        return 0
+
+    def _settle_write_denied(self, run: AgentRun, record: AgentToolCall,
+                             turn: int, emitted: set, code: str,
+                             message: str, decision: str) -> ToolResult:
+        """拒绝 / 过期：记失败结果并回灌模型（无任何副作用）。"""
+        self._tool_calls.update(
+            record.tool_call_id, run.id,
+            status=ToolCallStatus.DENIED,
+            permission_decision=decision,
+            result={'ok': False, 'content': message, 'error_code': code},
+            result_code=code, error=message)
+        result = ToolResult(
+            tool_call_id=record.tool_call_id, tool=record.tool, ok=False,
+            content=message, error_code=code)
+        self._append_tool_result(run.id, result, turn, emitted)
+        return result
+
+    def _execute_approved(self, run: AgentRun, record: AgentToolCall,
+                          approval: AgentApproval, turn: int,
+                          emitted: set) -> bool:
+        """执行一条已批准的写调用；返回 ``True`` 表示 run 已收口、停止循环。
+
+        幂等 / 并发：先做 DB 条件迁移（WAITING_APPROVAL → RUNNING），抢不到
+        说明别的执行者已接手，本线程不再执行（同一 Idempotency-Key 只落一次）。
+        """
+        call = ToolCallRequest(
+            tool_call_id=record.tool_call_id, name=record.tool,
+            arguments=record.arguments or {})
+        failure = self._approvals.check_execution(approval, record)
+        if failure is not None:
+            code, message = failure
+            self._tool_calls.update(
+                record.tool_call_id, run.id,
+                status=ToolCallStatus.FAILED,
+                permission_decision='deny',
+                result={'ok': False, 'content': message, 'error_code': code,
+                        'approval': self._approval_audit(approval)},
+                result_code=code, error=message)
+            result = ToolResult(
+                tool_call_id=record.tool_call_id, tool=record.tool,
+                ok=False, content=message, error_code=code)
+            self._append_tool_result(run.id, result, turn, emitted)
+            self._append_error(
+                run.id, APPROVAL_EXECUTION_DENIED,
+                f'{code}: {message}')
+            self._finish(
+                run.id, RunStatus.FAILED,
+                error=f'{APPROVAL_EXECUTION_DENIED}: {code}')
+            return True
+
+        if not self._tool_calls.claim(
+                run.id, record.tool_call_id,
+                (ToolCallStatus.WAITING_APPROVAL, ToolCallStatus.PENDING),
+                ToolCallStatus.RUNNING):
+            # 已被并发执行者抢到（重复决策 / 重复恢复）：不重复产生副作用
+            return False
+
+        context = ToolInvocationContext(
+            run_id=run.id, session_id=run.session_id, owner_id=run.owner_id,
+            tenant_id=run.tenant_id, step_id=record.step_id,
+            permissions=tuple(approval.decision_permissions or ()),
+            idempotency_key=record.idempotency_key or '',
+            approval=ToolApproval(
+                approval_id=approval.id,
+                risk=record.risk,
+                proposal=dict(approval.proposal or {}),
+                diff=approval.diff),
+        )
+        started = utcnow()
+        try:
+            result = self._tool_gateway.execute(call, context)
+        except Exception as exc:  # noqa: BLE001 - 工具失败回灌模型，不炸 Loop
+            logger.exception('审批后写操作执行失败 tool=%s', call.name)
+            result = ToolResult(
+                tool_call_id=call.tool_call_id, tool=call.name, ok=False,
+                content=f'工具执行失败: {exc}',
+                error_code='TOOL_EXECUTION_ERROR')
+        latency_ms = int((utcnow() - started).total_seconds() * 1000)
+        if result.ok:
+            final_status = ToolCallStatus.COMPLETED
+        elif result.error_code in ('PERMISSION_DENIED', 'APPROVAL_REQUIRED'):
+            final_status = ToolCallStatus.DENIED
+        else:
+            final_status = ToolCallStatus.FAILED
+        self._tool_calls.update(
+            record.tool_call_id, run.id,
+            status=final_status,
+            result={'ok': result.ok, 'content': result.content,
+                    'error_code': result.error_code,
+                    'approval': self._approval_audit(approval)},
+            latency_ms=latency_ms,
+            # 审计三问：谁发起（run.owner_id）、谁批准（decided_by）、
+            # 产生什么副作用（result / result_code）
+            permission_decision='approved',
+            result_code=result.error_code or ('OK' if result.ok else 'TOOL_FAILED'),
+            error=None if result.ok else (result.error_code or 'TOOL_FAILED'))
+        self._append_tool_result(run.id, result, turn, emitted)
+        return False
+
+    @staticmethod
+    def _approval_audit(approval: AgentApproval) -> Dict[str, Any]:
+        return {
+            'approval_id': approval.id,
+            'decided_by': approval.decided_by,
+            'decided_at': (approval.decided_at.isoformat()
+                           if approval.decided_at else None),
+        }
+
+    def _has_unsettled_write(self, run_id: str) -> bool:
+        """本 run 是否还有「没有结果」的通用写调用（PENDING / WAITING_APPROVAL）。"""
+        for record in self._tool_calls.list_by_run(run_id):
+            if record.risk is ToolRisk.READ:
+                continue
+            if self._tool_gateway.proposal_capable(record.tool):
+                continue
+            if record.status in (ToolCallStatus.PENDING,
+                                 ToolCallStatus.WAITING_APPROVAL):
+                return True
+        return False
+
+    def _enter_waiting_approval(self, run_id: str) -> None:
+        current = self._runs.get(run_id)
+        if current is None or current.status.is_terminal:
+            return
+        if current.status is RunStatus.WAITING_APPROVAL:
+            return
+        RunStateMachine.assert_transition(
+            current.status, RunStatus.WAITING_APPROVAL)
+        if self._runs.transition_if(
+                run_id, {current.status}, RunStatus.WAITING_APPROVAL):
+            self._wakeup.notify(run_id)
 
     def _reject_unregistered(self, run: AgentRun, step_id: str,
                              call: ToolCallRequest, turn: int, emitted: set,
@@ -1171,6 +1482,12 @@ class RunOrchestrator:
         if reason_code:
             payload['reason_code'] = reason_code
         self._events.append(run_id, EventType.RUN_FINISHED, payload)
+        # run 收口后未决提案一律作废（不执行；已完成的写不回滚，§9.2-4）
+        try:
+            self._approvals.cancel_pending(run_id, current.owner_id)
+        except Exception:  # noqa: BLE001 - 收尾失败不掩盖 run 的最终状态
+            logger.warning('run 收口时作废未决审批失败 run=%s', run_id,
+                           exc_info=True)
         self._wakeup.notify(run_id)
 
 

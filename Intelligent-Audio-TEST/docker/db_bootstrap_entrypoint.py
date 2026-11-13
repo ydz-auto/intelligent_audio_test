@@ -472,6 +472,13 @@ BOOTSTRAP_STEPS = [
     #     默认 dry-run，引导链必须带 --apply。须排在 ㊾-8 之后、㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/drop_agent_redundant_indexes_int2516.py',
      '--apply'),
+    # ㊾-11 agent_approval 写操作审批单（INT-2466，落地方案 §9.4 / §10）：
+    #     proposal / diff / status / expires_at / decided_by / decided_at /
+    #     decision_permissions，唯一约束 (run_id, tool_call_id)，
+    #     (status, expires_at) 索引服务待办与过期扫描。幂等（表/约束/索引
+    #     均 IF NOT EXISTS，约束先查 pg_constraint），全新库为全 SKIP；
+    #     默认 dry-run，引导链必须带 --apply。须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_agent_approval_table.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
@@ -568,6 +575,8 @@ PROD_DDL_SCRIPTS = frozenset({
     'scripts/migrations/202611/add_agent_tool_call_result_code.py',
     # INT-2516 agent_step / agent_context_snapshot 冗余索引下线（纯 DDL，幂等）
     'scripts/migrations/202611/drop_agent_redundant_indexes_int2516.py',
+    # INT-2466 agent_approval 写操作审批单（结构 DDL，幂等）
+    'scripts/migrations/202611/add_agent_approval_table.py',
     'scripts/migrations/202610/analyze_stale_statistics_int1741.py',
 })
 

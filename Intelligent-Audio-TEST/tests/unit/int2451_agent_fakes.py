@@ -38,7 +38,7 @@ from shared.utils.time_utils import utcnow
 _AGENT_TABLES = [
     'agent_session', 'agent_run', 'agent_run_event', 'agent_step',
     'agent_tool_call', 'agent_artifact', 'agent_context_snapshot',
-    'agent_llm_provider',
+    'agent_llm_provider', 'agent_approval',
 ]
 
 TEST_MASTER_KEY = base64.b64encode(b'int2451-test-master-key-32byte!!').decode()
@@ -116,6 +116,18 @@ class FakeToolGateway(ToolGateway):
     def describe(self, names):
         wanted = set(names)
         return tuple(t for t in self._tools if t.name in wanted)
+
+    def risk_of(self, name):
+        for tool in self._tools:
+            if tool.name == name:
+                return tool.risk
+        return None
+
+    def required_permissions(self, name, arguments=None):
+        for tool in self._tools:
+            if tool.name == name:
+                return tuple(tool.permissions)
+        return None
 
     def execute(self, call: ToolCallRequest, context) -> ToolResult:
         with self._lock:

@@ -23,7 +23,8 @@ import os
 # 模型全集应有的表数（新增表必须同时改这里）
 # INT-2451：agent_service 7 张运行底座表登记后 101 → 108
 # INT-2488：agent_llm_provider（用户模型供应商密钥库）108 → 109
-EXPECTED_TABLE_COUNT = 109
+# INT-2466：agent_approval（写操作审批单）109 → 110
+EXPECTED_TABLE_COUNT = 110
 
 # 确保项目根目录在 sys.path 中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

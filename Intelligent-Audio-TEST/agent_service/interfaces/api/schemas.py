@@ -62,6 +62,32 @@ class SessionDetailResponse(BaseModel):
     runs: list = Field(default_factory=list)
 
 
+class ApprovalResponse(BaseModel):
+    """一张写调用审批单（§10 agent_approval；与 React AgentApprovalDto 对齐）。"""
+
+    id: str
+    run_id: str
+    tool_call_id: str
+    status: str
+    proposal: Dict[str, Any] = Field(default_factory=dict)
+    diff: Optional[Dict[str, Any]] = None
+    expires_at: Optional[str] = None
+    decided_by: Optional[int] = None
+    decided_at: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class ApprovalDecisionRequest(BaseModel):
+    """审批决议：``APPROVE`` / ``REJECT``（大小写不敏感）。"""
+
+    decision: str = Field(min_length=1)
+
+
+class ApprovalDecisionResponse(BaseModel):
+    approval: ApprovalResponse
+    run_status: str
+
+
 class SkillResponse(BaseModel):
     """当前用户可见的 Skill（§11 GET /api/v1/agent/skills）。"""
 
