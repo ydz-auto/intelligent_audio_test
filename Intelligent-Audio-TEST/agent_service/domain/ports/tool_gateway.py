@@ -100,6 +100,27 @@ class ToolGateway(ABC):
         """
         return False
 
+    def approval_waived(self, name: str,
+                        arguments: Optional[Dict[str, Any]] = None, *,
+                        run_id: str = '', session_id: str = '',
+                        permissions: Sequence[str] = ()) -> bool:
+        """本调用是否可以跳过「新建审批单」（INT-2492 探索计划放行）。
+
+        只有 ``ui_action`` 会用：``dry_run`` / ``validate`` 无副作用；同一探索
+        计划（同 run + 同设备）首个动作审批通过后，后续动作自动放行。默认
+        ``False``：测试替身与其它工具一律走通用审批。
+        """
+        return False
+
+    def release_exploration(self, run_id: str, *, status: Any = None,
+                            error: Optional[str] = None) -> None:
+        """run 收口时释放探索会话资源（设备租约 / 轨迹收尾）。默认无探索。
+
+        ``status`` / ``error`` 是 run 的终态与失败原因，用于给 ``ui_trace``
+        记准确的 ``stop_reason``（取消 → ``USER_CANCEL``）。
+        """
+        return None
+
     def required_permissions(self, name: str,
                              arguments: Optional[Dict[str, Any]] = None
                              ) -> Optional[Sequence[str]]:

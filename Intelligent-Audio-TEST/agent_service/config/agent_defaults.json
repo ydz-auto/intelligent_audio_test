@@ -64,5 +64,10 @@
     "publish_enabled": false,
     "max_result_chars": 6000,
     "max_diff_chars": 4000
+  },
+  "exploration": {
+    "max_actions": 30,
+    "max_seconds": 300,
+    "lease_ttl_seconds": 900
   }
 }
