@@ -255,7 +255,8 @@ class ApprovalService:
         required = self._gateway.required_permissions(call.tool, arguments)
         if required is None:
             return ('TOOL_NOT_REGISTERED', '工具已不存在，审批作废，写操作未执行')
-        risk = self._gateway.risk_of(call.tool)
+        risk = (self._gateway.risk_for(call.tool, arguments)
+                or self._gateway.risk_of(call.tool))
         if risk is None or not risk.requires_approval:
             return ('TOOL_NOT_REGISTERED', '工具已不可用，审批作废，写操作未执行')
         validation = self._gateway.validate_call(call.tool, arguments)

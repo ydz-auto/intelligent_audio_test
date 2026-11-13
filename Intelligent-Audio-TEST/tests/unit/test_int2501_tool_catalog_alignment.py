@@ -29,11 +29,13 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
 _PENDING_PERMISSION_SPEC = set()
 
 # 本卡按 RBAC / MCP 事实源改正的 7 个预留工具
+# INT-2468：tag_group_manage 启用后补批量打标要用的 testcase:update / :delete。
 _EXPECTED_PERMISSIONS = {
     'audio_import': {'audio:upload'},
     'audio_annotate': {'audio:update'},
     'tag_group_manage': {'tag:create', 'tag:update', 'tag:delete',
-                         'group:create', 'group:update', 'group:delete'},
+                         'group:create', 'group:update', 'group:delete',
+                         'testcase:update', 'testcase:delete'},
     'evaluation_manage': {'evaluation:dim_manage',
                           'evaluation:category_manage',
                           'evaluation:execute', 'evaluation:share'},
@@ -136,10 +138,11 @@ def test_fixed_tools_use_fact_source_permission_codes():
     rbac = _rbac_codes()
     # INT-2461 启用 dashboard_query（首页只读）；INT-2469 启用 evaluation_manage
     # （M2 写工具，权限码补上可见性分享 evaluation:share）；INT-2467 启用
-    # 音频 / 设备 / SPL 写与驱动提案
+    # 音频 / 设备 / SPL 写与驱动提案；INT-2468 启用用例 / 标签 / 任务写意图
     enabled_later = {'dashboard_query', 'evaluation_manage', 'audio_import',
                      'audio_annotate', 'device_control', 'spl_calibrate',
-                     'driver_propose'}
+                     'driver_propose', 'testcase_write', 'tag_group_manage',
+                     'task_run'}
     for name, expected in _EXPECTED_PERMISSIONS.items():
         tool = intent_tools.INTENT_TOOL_BY_NAME[name]
         assert set(tool.permissions) == expected, name

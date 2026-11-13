@@ -251,7 +251,8 @@ def test_skills_endpoint_lists_31_tools_without_duplicates(tmp_path):
         #   INT-2459 device_query，含 SPL 只读子集 / INT-2460 testcase_query + testcase_generate /
         #   INT-2461 task_diagnose + log_diagnose + dashboard_query /
         #   INT-2463 report_compare；report_query 由 M0 最小版扩全字段 /
-        #   INT-2490 memory_search + memory_write / INT-2469 evaluation_manage）
+        #   INT-2490 memory_search + memory_write / INT-2469 evaluation_manage /
+        #   INT-2468 用例·标签·任务写意图）
         # 精确等值：新增启用工具必须在本卡同步更新该集合，避免无意多启用。
         assert enabled == {'platform_contract', 'tool_search', 'task_query',
                            'report_query', 'audio_query', 'evaluation_query',
@@ -262,7 +263,9 @@ def test_skills_endpoint_lists_31_tools_without_duplicates(tmp_path):
                            'evaluation_manage',
                            # INT-2467 音频 / 设备 / SPL 写 + 驱动提案
                            'audio_import', 'audio_annotate', 'device_control',
-                           'spl_calibrate', 'driver_propose'}
+                           'spl_calibrate', 'driver_propose',
+                           # INT-2468 用例 / 标签 / 任务写
+                           'testcase_write', 'tag_group_manage', 'task_run'}
 
         low = client.get('/api/v1/agent/skills',
                          headers={'X-User-Id': '8', 'X-Tenant-Id': 't1',

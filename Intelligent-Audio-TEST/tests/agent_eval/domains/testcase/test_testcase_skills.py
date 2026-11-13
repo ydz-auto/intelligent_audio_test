@@ -59,20 +59,30 @@ def test_required_sections_and_frontmatter(name):
 
 
 def test_testcase_skill_permission_matches_tool_domain():
-    assert skill_meta('testcase-authoring').permissions == ('testcase:read',)
-    # tag-group 同时覆盖 tag_list（tag:read）与 group_list（group:read）
-    assert skill_meta('tag-group').permissions == ('tag:read', 'group:read')
+    # INT-2468：M2 写意图工具挂进 Skill 后，Skill 权限码覆盖工具的写域
+    assert skill_meta('testcase-authoring').permissions == (
+        'testcase:read', 'testcase:create', 'testcase:update',
+        'testcase:copy', 'testcase:delete')
+    # tag-group 同时覆盖 tag_list（tag:read）/ group_list（group:read）与
+    # batch_tag 用到的 testcase 写域
+    assert skill_meta('tag-group').permissions == (
+        'tag:read', 'group:read', 'tag:create', 'tag:update', 'tag:delete',
+        'group:create', 'group:update', 'group:delete',
+        'testcase:update', 'testcase:delete')
 
 
 @pytest.mark.parametrize('name', SKILLS)
-def test_allowed_tools_exist_and_are_readonly(name):
+def test_allowed_tools_exist_and_are_enabled(name):
     meta = skill_meta(name)
     assert meta.allowed_tools, 'allowed-tools 不能为空'
     for tool_name in meta.allowed_tools:
         tool = intent_tools.INTENT_TOOL_BY_NAME.get(tool_name)
         assert tool is not None, f'未注册工具：{tool_name}'
         assert tool.enabled is True, f'工具未启用：{tool_name}'
-        assert ToolRisk(tool.risk) is ToolRisk.READ, f'非只读工具：{tool_name}'
+        # M2 写意图（INT-2468）只能出现在对应域的 Skill 里，且仍走审批
+        if ToolRisk(tool.risk) is not ToolRisk.READ:
+            assert tool_name in {'testcase_write', 'tag_group_manage',
+                                 'task_run'}, f'未登记的写工具：{tool_name}'
         assert set(tool.permissions) <= set(meta.permissions), (
             f'{name} 的 allowed-tools {tool_name} 需要 {tool.permissions}，'
             f'但 Skill 只声明了 {meta.permissions}')
@@ -80,14 +90,16 @@ def test_allowed_tools_exist_and_are_readonly(name):
 
 def test_testcase_skill_allowed_tools_cover_its_intent_tools():
     allowed = set(skill_meta('testcase-authoring').allowed_tools)
-    assert {'testcase_query', 'testcase_generate'} <= allowed
-    assert 'testcase_write' not in allowed
-    # 标签域没有专用意图工具：靠 tool_search 发现 tag_list / group_list
+    assert {'testcase_query', 'testcase_generate', 'testcase_write'} <= allowed
+    # 标签域只读靠 tool_search 发现 tag_list / group_list；写操作挂
+    # tag_group_manage（INT-2468）
     tag_allowed = set(skill_meta('tag-group').allowed_tools)
     assert 'tool_search' in tag_allowed
-    assert 'tag_group_manage' not in tag_allowed
-    for write_tool in ('testcase_write', 'tag_group_manage', 'audio_import'):
-        assert write_tool not in allowed | tag_allowed
+    assert 'tag_group_manage' in tag_allowed
+    # 域写工具不跨 Skill：用例写只归 testcase-authoring，标签写只归 tag-group
+    assert 'tag_group_manage' not in allowed
+    assert 'testcase_write' not in tag_allowed
+    assert 'audio_import' not in allowed | tag_allowed
 
 
 # ---------------------------------------------------------------- L2 覆盖
@@ -100,6 +112,31 @@ def test_testcase_skill_documents_every_query_action():
                   'algorithm_type', 'dimension_id', 'lab_id', 'visibility',
                   'favorite', 'only_deleted', 'include_deleted'):
         assert field in body, f'列表过滤参数未说明 {field}'
+
+
+def test_testcase_skill_documents_write_actions():
+    """INT-2468：写意图章节覆盖动作、审批三态与破坏性口径。"""
+    from shared.agent_tools import testcase_write_tools
+
+    body = skill_body('testcase-authoring')
+    for action in testcase_write_tools.ACTION_NAMES:
+        assert f'`{action}`' in body, f'L2 正文没有覆盖写动作 {action}'
+    for keyword in ('testcase_write', '提案', '审批', 'DESTRUCTIVE', '软删',
+                    '回收站', 'tag_mode', 'body'):
+        assert keyword in body, keyword
+
+
+def test_tag_group_skill_documents_write_actions():
+    from shared.agent_tools import tag_group_tools
+
+    body = skill_body('tag-group')
+    for action in tag_group_tools.ACTION_NAMES:
+        assert f'`{action}`' in body, f'L2 正文没有覆盖写动作 {action}'
+    for keyword in ('tag_group_manage', tag_group_tools.BATCH_ADD_TAGS,
+                    tag_group_tools.BATCH_REMOVE_TAGS,
+                    tag_group_tools.BATCH_RENAME_TAG, 'cascade',
+                    'DESTRUCTIVE', '提案', '审批'):
+        assert keyword in body, keyword
 
 
 def test_testcase_skill_documents_generate_contract():

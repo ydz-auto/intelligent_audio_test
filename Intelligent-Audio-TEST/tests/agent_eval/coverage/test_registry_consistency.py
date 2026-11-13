@@ -47,12 +47,17 @@ M1_SKILLS = frozenset({
 })
 MCP_TOTAL = 207
 
-#: INT-2467（M2）：各 Skill 携带的**本域写工具**；其余 allowed-tools 仍须只读。
+#: INT-2467 / INT-2468（M2）：各 Skill 携带的**本域写工具**；其余 allowed-tools
+#: 仍须只读。写工具仍走提案 + 审批，Skill 只负责「什么时候该发起写提案」。
 SKILL_WRITE_TOOLS = {
     'audio-import': {'audio_import', 'audio_annotate'},
     'device-operations': {'device_control'},
     'spl-calibration': {'spl_calibrate'},
     'driver-proposal': {'driver_propose'},
+    # INT-2468 用例 / 标签 / 任务写
+    'testcase-authoring': {'testcase_write'},
+    'tag-group': {'tag_group_manage'},
+    'task-operations': {'task_run'},
 }
 # M2 起写意图工具开始按域进入 Skill allowed-tools：只有本集合里的写工具可以被
 # Skill 声明（新增写工具必须同时在这里登记，避免「悄悄把写工具塞进 Skill」）。

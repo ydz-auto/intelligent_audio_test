@@ -57,6 +57,17 @@ class ToolRegistryPort(ABC):
     def risk_of(self, name: str) -> Optional[ToolRisk]:
         """工具风险；未知工具返回 None。"""
 
+    def risk_for(self, name: str,
+                 arguments: Optional[Dict[str, Any]] = None
+                 ) -> Optional[ToolRisk]:
+        """按调用参数解析的动作级风险（默认回落到工具级声明）。
+
+        写意图工具（``testcase_write`` / ``tag_group_manage`` / ``task_run``）
+        的删除类动作是 ``DESTRUCTIVE``；审批单与审计记录动作级值，审批门禁
+        不变（WRITE / DESTRUCTIVE 都要先提案再执行）。
+        """
+        return self.risk_of(name)
+
     @abstractmethod
     def validate(self, name: str, arguments: Any) -> Optional[str]:
         """参数 Schema 校验；返回错误文本或 None。"""
