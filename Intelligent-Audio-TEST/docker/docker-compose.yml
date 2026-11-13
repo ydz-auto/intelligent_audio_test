@@ -180,6 +180,15 @@ services:
       - JWT_EXPIRE_HOURS=${JWT_EXPIRE_HOURS:-24}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
       - DATA_TRANSFER_TMP_DIR=/app/storage/data_transfer
+      # INT-2456：Agent 运行底座代理与总开关。开关默认关闭：关闭时
+      # /api/v1/agent 的会话 / Run / provider 接口返回 503 AGENT_DISABLED，
+      # 不转发到 agent_service；任务/用例/报告等人工流程完全不受影响。
+      # 开启需在 .env 置 AGENT_ENABLED=true（agent_service 不发布宿主端口，
+      # 只能经网关访问，网关是该开关的唯一执行点）。
+      - AGENT_SERVICE_URL=http://agent_service:5011
+      - AGENT_ENABLED=${AGENT_ENABLED:-false}
+      - AGENT_SERVICE_TIMEOUT_SECONDS=${AGENT_SERVICE_TIMEOUT_SECONDS:-30}
+      - AGENT_DEFAULT_TENANT_ID=${AGENT_DEFAULT_TENANT_ID:-default}
     volumes:
       # 与 task_service 共享：数据导入/导出 ZIP 中转（INT-25），两容器必须挂同一卷
       - data_transfer_tmp:/app/storage/data_transfer
@@ -537,6 +546,105 @@ services:
       retries: 5
       start_period: 20s
 
+  # ==================== Agent 运行底座（INT-2456，方案 07 §12.1）====================
+  # 唯一 Agent Loop 宿主。**不发布宿主端口**（与 api_test_service 同口径）：
+  # agent_service 只消费网关转发来的身份头（X-User-Id / X-Tenant-Id），
+  # 暴露到宿主等于把身份头变成可伪造的授权入口。宿主调试按需在
+  # compose.override.yml 里对单实例追加 ports 映射。
+  #
+  # 总开关在网关（AGENT_ENABLED，缺省 false）：本服务随之常驻但不可达，
+  # 关闭态不产生任何后台 run，人工业务流程零影响。
+  agent_service:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.agent_service
+      args: *backend-build-args
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
+      - REDIS_URL=redis://redis:6379
+      # shared.infrastructure.config.BaseConfig 在导入期强校验 OSS 凭据
+      # （按各服务统一口径），即便 M0 不用对象存储也必须注入，否则启动即
+      # ConfigValidationError。取值与其余后端服务同源。
+      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=agent_service
+      - SERVICE_NAME=agent_service
+      - PORT=5011
+      # dev/prod 口径决定主密钥是否强制（prod 缺 AGENT_CREDENTIAL_MASTER_KEY
+      # 时本服务启动失败，方案 07 §13-8）；缺省 dev 与现役栈一致。
+      - LOG_ENVIRONMENT=${LOG_ENVIRONMENT:-dev}
+      # ===== 用户模型供应商密钥库（INT-2488 / §6.4）=====
+      # 生产必填：32 字节 base64 或 hex，或 {"版本": "密钥"} JSON 支持轮换。
+      # 缺失时 dev 仅告警（provider 保存/解密 503），prod 拒绝启动。
+      - AGENT_CREDENTIAL_MASTER_KEY=${AGENT_CREDENTIAL_MASTER_KEY:-}
+      - AGENT_CREDENTIAL_KEY_VERSION=${AGENT_CREDENTIAL_KEY_VERSION:-1}
+      # 平台 Key 分支未实现，只保留 false 位（置 true 服务拒绝启动）。
+      - AGENT_ALLOW_PLATFORM_KEY=false
+      - AGENT_MODEL_CATALOG_PATH=/app/agent_service/config/model_catalog.json
+      # ===== 三个卷的路径（挂载见下方 volumes，缺一即启动失败）=====
+      - AGENT_SKILLS_ROOT=/app/skills
+      - AGENT_MEMORY_ROOT=/app/memory
+      # ===== 身份（网关转发身份头；直连无头一律 401）=====
+      - AGENT_AUTH_REQUIRED=true
+      - AGENT_DEFAULT_TENANT_ID=${AGENT_DEFAULT_TENANT_ID:-default}
+      # ===== LLM 运行时（供应商/模型由用户自带，§6.4；此处只有运行时参数）=====
+      - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-60}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.2}
+      # ===== 每 run 预算（§9.3；缺省取 agent_service/config/agent_defaults.json）=====
+      - AGENT_MAX_ROUNDS=${AGENT_MAX_ROUNDS:-12}
+      - AGENT_MAX_TOOL_CALLS=${AGENT_MAX_TOOL_CALLS:-40}
+      - AGENT_MAX_TOKENS=${AGENT_MAX_TOKENS:-0}
+      - AGENT_MAX_DURATION_SECONDS=${AGENT_MAX_DURATION_SECONDS:-600}
+      - AGENT_MAX_OUTPUT_BYTES=${AGENT_MAX_OUTPUT_BYTES:-262144}
+      - AGENT_WORKER_CONCURRENCY=${AGENT_WORKER_CONCURRENCY:-4}
+      # ===== SSE 唤醒 / 启动恢复 =====
+      - AGENT_EVENT_WAKEUP_BACKEND=${AGENT_EVENT_WAKEUP_BACKEND:-redis}
+      - AGENT_RECOVERY_ON_STARTUP=${AGENT_RECOVERY_ON_STARTUP:-true}
+      # ===== 沙箱（§7；agent_service 不持有 docker.sock）=====
+      # runner_http：执行只经独立 runner/sidecar（AGENT_SANDBOX_RUNNER_URL）；
+      # 未部署 runner 时 execute 明确失败，不回落本机 docker。
+      - AGENT_SANDBOX_EXECUTOR_MODE=${AGENT_SANDBOX_EXECUTOR_MODE:-runner_http}
+      - AGENT_SANDBOX_RUNNER_URL=${AGENT_SANDBOX_RUNNER_URL:-}
+      - AGENT_SANDBOX_RUNNER_TOKEN=${AGENT_SANDBOX_RUNNER_TOKEN:-}
+      # T2 可信运行时（gVisor runsc / Firecracker）：缺失时 T2 请求报
+      # T2_RUNTIME_UNAVAILABLE，绝不静默降级 T1（方案 07 §7，INT-2456 拍板#2）。
+      - AGENT_T2_RUNTIME=${AGENT_T2_RUNTIME:-runsc}
+    volumes:
+      # skills/ 顶层只读（§12.1「skills/ 顶层只读挂载」）：Skill 单一事实源，
+      # 任何容器内写入都是缺陷，故 ro。
+      - ../skills:/app/skills:ro
+      # 长期记忆写卷（§8.6）：按 tenant/owner 隔离的文件树，跨重启保留。
+      - agent_memory:/app/memory
+      # 配置目录只读：model_catalog.json（窗口/输出上限）+ agent_defaults.json
+      # （预算/压缩/Skill 阈值）。改配置需重启容器，避免运行期口径漂移。
+      - ../agent_service/config:/app/agent_service/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db_bootstrap:
+        condition: service_completed_successfully
+      api_gateway:
+        condition: service_healthy
+    healthcheck:
+      # /health 校验 DB / Redis 连通（INT-2456：不再是静态 ok）。
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5011/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
   api_test_service:
     restart: unless-stopped
     build:
@@ -615,6 +723,9 @@ services:
 volumes:
   # INT-81：服务运行日志/业务日志统一卷
   service_logs:
+  # INT-2456：agent_service 长期记忆卷（§8.6 按 tenant/owner 隔离的文件树；
+  # 不建表、不走 OSS，重启与镜像重建后保留）。
+  agent_memory:
   postgres_data:
   rustfs_data:
   # 网关 ↔ task_service 数据导入/导出 ZIP 中转卷（INT-25 链路依赖）

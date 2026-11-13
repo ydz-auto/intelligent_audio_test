@@ -27,7 +27,7 @@ WSL2 稳定性），只能靠「构建前体检 + 串行单服务 + 崩溃后按
 # 只体检引擎，不构建（20s 内必回，不跑无限等）
 python docker/build_stack.py --check
 
-# 构建全部 9 个容器化后端服务（audio/device 跑宿主机，无镜像）
+# 构建全部 10 个容器化后端服务（audio/device 跑宿主机，无镜像）
 python docker/build_stack.py
 
 # 常规发版：只构建这一批变动的服务（推荐）
@@ -78,7 +78,7 @@ python docker/build_stack.py --project int1820-verify api_gateway
 
 ## 3. 故障 A：apt 源 502 —— 已修
 
-### 3.1 改了什么（`docker/Dockerfile.*`，9 个后端镜像统一）
+### 3.1 改了什么（`docker/Dockerfile.*`，10 个后端镜像统一）
 
 覆盖 `build_stack.py` 的 `BACKEND_SERVICES` 全量：`api_gateway` / `task_service` /
 `evaluation_service` / `e2e_test_service` / `report_service` / `algorithm_service` /
@@ -292,6 +292,50 @@ docker inspect -f '{{.State.ExitCode}}' intelligent-audio-test-db_bootstrap-1
   `python docker/run_stack.py up`。
 - 不要在构建期间并发跑宿主机重活（批量测试 / 前端打包 / 全量迁移）。
 - 不改业务代码：本卡只动 `docker/` 下的构建链路与脚本。
+
+### 8.1 Agent 运行底座（agent_service，INT-2456）
+
+compose 新增 `agent_service`（`docker/Dockerfile.agent_service`），依赖
+`postgres` / `redis` / `db_bootstrap` / `api_gateway`，`restart: unless-stopped`。
+
+- **不发布宿主端口**（与 `api_test_service` 同口径）：它只消费网关转发的
+  `X-User-Id` / `X-Tenant-Id` / `X-User-Permissions`，暴露到宿主等于把身份头
+  变成可伪造的授权入口。健康探测经 `run_stack.py` 的容器内 exec 完成。
+- **总开关 `AGENT_ENABLED`（缺省 false）**：网关是唯一执行点。关闭时
+  `/api/v1/agent` 的会话 / Run / 事件 / 审批 / skills / provider 接口返回
+  `503 {"detail":{"code":"AGENT_DISABLED",...}}` 且不转发上游；任务、用例、
+  报告等人工流程不经过这些路由，完全不受影响。开启只需在 `docker/.env` 置
+  `AGENT_ENABLED=true` 并重建 `api_gateway` 容器。
+- **三个挂载点**（缺一即启动失败，`Config.validate_mounts`）：
+
+  | 容器路径 | 来源 | 读写 |
+  |---|---|---|
+  | `/app/skills` | `../skills` | ro（Skill 单一事实源） |
+  | `/app/memory` | 命名卷 `agent_memory` | rw（长期记忆，按 tenant/owner 隔离） |
+  | `/app/agent_service/config` | `../agent_service/config` | ro（模型目录/预算/压缩阈值） |
+
+- **`/health`**：DB 不可用 → 503（无法读写 run/event）；Redis 不可用 →
+  200 + `degraded`（只影响 SSE 唤醒，已退化为轮询）；`t2_runtime` 字段给出
+  强隔离运行时可见性结论。
+- **主密钥**：`AGENT_CREDENTIAL_MASTER_KEY` 在 `LOG_ENVIRONMENT=prod` 下必填，
+  缺失即启动失败（§13-8）；dev 缺省仅告警，provider 保存/解密返回 503。
+
+#### T2 运行时（gVisor runsc / Firecracker）
+
+`T2_UNTRUSTED_CODE` 需要强隔离运行时；缺失时请求报
+`T2_RUNTIME_UNAVAILABLE`，**不静默降级 T1**。启用方式：
+
+1. 在运行时所在主机（宿主或 runner 镜像）安装 gVisor 并按官方文档把
+   `runsc` 注册进 Docker 的 `runtimes`（或部署 Firecracker）；
+2. 使 `runsc` 出现在 `agent_service` 的 `PATH` 上，或把
+   `AGENT_T2_RUNTIME` 指到可执行文件名；
+3. 验收：`docker compose exec agent_service python -c "import
+   json,urllib.request;print(urllib.request.urlopen('http://localhost:5011/health').read().decode())"`
+   的 `t2_runtime.status` 为 `available`（`detail` 带版本行）。
+
+> 本机开发环境（Windows + Docker Desktop）默认**没有** `runsc`，
+> `t2_runtime.status` 会是 `unavailable`，属预期结论而非缺陷；T2 真机用例
+> 在 `tests/agent_sandbox` 里按运行时缺失 skip。
 
 ## 9. 演示前端部署（15173 / 16173）的三道护栏（INT-2012）
 

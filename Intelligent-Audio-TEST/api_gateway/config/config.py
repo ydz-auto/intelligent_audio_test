@@ -125,6 +125,17 @@ class Config(BaseConfig):
         os.environ.get('AGENT_SERVICE_SSE_READ_TIMEOUT_SECONDS', '0'))
     AGENT_DEFAULT_TENANT_ID = os.environ.get('AGENT_DEFAULT_TENANT_ID', 'default')
 
+    # INT-2456：Agent 总开关（方案 07 §13-1 / 03 §7「AGENT_ENABLED=false」）。
+    # 默认关闭。关闭时 /api/v1/agent 的会话 / Run / 事件 / 审批 / provider
+    # 接口返回 503 + code=AGENT_DISABLED，**不转发**到 agent_service；任务、
+    # 用例、报告等人工流程不经过这些路由，完全不受影响。agent_service 不发布
+    # 宿主端口，网关是该开关的唯一执行点（不写第二套口径）。
+    # 按调用时环境求值而非进程初始化时冻结：灰度切换与测试注入都以即时值为准。
+    @classmethod
+    def agent_enabled(cls) -> bool:
+        return os.environ.get('AGENT_ENABLED', 'false').strip().lower() in (
+            '1', 'true', 'yes', 'on')
+
     # ===== 报告对比（INT-1406）=====
     # 跨任务大结果集同步聚合的 GenerateCompareReport gRPC 调用显式超时（秒）。
     # 客户端默认 deadline 为 60s（GRPC_CLIENT_DEADLINE_SECONDS），跨任务大结果集

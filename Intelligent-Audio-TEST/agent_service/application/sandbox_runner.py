@@ -105,6 +105,9 @@ class SandboxFailureReason(str, Enum):
 
     NONE = 'NONE'
     UNSUPPORTED_TIER = 'UNSUPPORTED_TIER'
+    #: T2 强隔离运行时（runsc / firecracker）不可用（INT-2456 拍板#2）。
+    #: 与 UNSUPPORTED_TIER 分开：前者是「运行时没装」，后者是「层级不支持」。
+    T2_RUNTIME_UNAVAILABLE = 'T2_RUNTIME_UNAVAILABLE'
     SCRIPT_NOT_FOUND = 'SCRIPT_NOT_FOUND'
     SCRIPT_OUTSIDE_SKILL = 'SCRIPT_OUTSIDE_SKILL'
     INVALID_INVOCATION = 'INVALID_INVOCATION'
@@ -699,6 +702,7 @@ class SandboxRunner:
         t2_options: T2RunnerOptions | None = None,
         artifact_repository=None,
         artifact_root: Path | None = None,
+        t2_runtime_probe: Callable[[], Tuple[bool, str]] | None = None,
     ) -> None:
         self._executor = executor
         self._artifact_policy = artifact_policy or SandboxArtifactPolicy.from_env()
@@ -707,6 +711,10 @@ class SandboxRunner:
         self._t2_options = t2_options or T2RunnerOptions()
         self._artifact_repository = artifact_repository
         self._artifact_root = Path(artifact_root) if artifact_root is not None else None
+        # T2 强隔离运行时的可见性探测（返回 (可用, 说明)）。默认不注入 =
+        # 无法证明 runsc/firecracker 可用，按 fail-closed 报 T2_RUNTIME_UNAVAILABLE。
+        # 装配点见 infrastructure/sandbox/t2_runtime.py:probe_t2_runtime。
+        self._t2_runtime_probe = t2_runtime_probe
 
     # ── 公开入口 ────────────────────────────────────────────────
     def run_by_tier(self, request) -> SandboxResult:
@@ -724,6 +732,21 @@ class SandboxRunner:
 
     def run_trusted_script(self, request: SandboxRequest) -> SandboxResult:
         started = time.monotonic()
+        if request.tier is SandboxTier.T2_UNTRUSTED_CODE:
+            # 拍板#2：T2 缺失强隔离运行时必须明确失败，不得静默降级 T1。
+            available, detail = self._probe_t2_runtime()
+            if not available:
+                return self._rejected(
+                    SandboxFailureReason.T2_RUNTIME_UNAVAILABLE,
+                    detail or 'T2 强隔离运行时（runsc/firecracker）不可用',
+                )
+            # 运行时在位但 T2 执行器属后续里程碑：仍按层级不支持拒绝，
+            # 不使用 T1 容器冒充 T2。
+            return self._rejected(
+                SandboxFailureReason.UNSUPPORTED_TIER,
+                f'{SandboxTier.T2_UNTRUSTED_CODE.value} 执行器未纳入 M0，'
+                f'仅执行 {SandboxTier.T1_TRUSTED_SCRIPT.value}',
+            )
         if request.tier is not SandboxTier.T1_TRUSTED_SCRIPT:
             return self._rejected(
                 SandboxFailureReason.UNSUPPORTED_TIER,
@@ -1454,6 +1477,17 @@ class SandboxRunner:
     @staticmethod
     def _sha256(path: Path) -> str:
         return sha256_file(path)
+
+    def _probe_t2_runtime(self) -> Tuple[bool, str]:
+        """T2 运行时可见性（fail-closed：未注入即视为不可用）。"""
+        if self._t2_runtime_probe is None:
+            return False, ('未注入 T2 运行时探测：无法证明 runsc/firecracker '
+                           '可用，T2_UNTRUSTED_CODE 拒绝执行')
+        try:
+            available, detail = self._t2_runtime_probe()
+        except Exception as exc:  # noqa: BLE001 - 探测异常同样按不可用处理
+            return False, f'T2 运行时探测异常：{exc}'
+        return bool(available), str(detail or '')
 
     @staticmethod
     def _rejected(
