@@ -40,6 +40,9 @@ from enum import Enum
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from shared.agent_tools import driver_tools
+# INT-2577：动作枚举的唯一事实源在共享常量模块（device_service 白名单校验也要用），
+# 此处保持 ``ui_exploration.UiActionType`` 导入路径与 ``__all__`` 不变。
+from shared.constants.ui_capture import UiActionType  # noqa: F401
 
 # ---------------------------------------------------------------- 预算 / 上限
 
@@ -78,22 +81,7 @@ LOCATOR_FALLBACK_REASON_KEY = driver_tools.LOCATOR_FALLBACK_REASON_KEY
 CONTRACT_KINDS: Tuple[str, ...] = ('OPENAPI', 'PROTO', 'WS')
 
 
-class UiActionType(str, Enum):
-    """设备 UI 动作（卡面七种，接口值即枚举值）。"""
-
-    TAP = 'TAP'
-    LONG_PRESS = 'LONG_PRESS'
-    SWIPE = 'SWIPE'
-    INPUT_TEXT = 'INPUT_TEXT'
-    BACK = 'BACK'
-    HOME = 'HOME'
-    WAIT = 'WAIT'
-
-    @property
-    def needs_target(self) -> bool:
-        """需要元素定位的动作（其余是全局手势 / 系统动作）。"""
-        return self in (UiActionType.TAP, UiActionType.LONG_PRESS,
-                        UiActionType.INPUT_TEXT)
+#: 设备 UI 动作七枚举见 ``shared.constants.ui_capture.UiActionType``（INT-2577）。
 
 
 class ExplorationStopReason(str, Enum):

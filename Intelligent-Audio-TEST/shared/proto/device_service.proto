@@ -139,6 +139,20 @@ service LaboratoryConfigService {
   rpc GetLaboratorySummary(GetLaboratorySummaryRequest) returns (GetLaboratorySummaryResponse);
 }
 
+// ===== 设备 UI 探索服务（INT-2569 / INT-2577，设备侧 UI 探索通道 1/4） =====
+// 三个 RPC 同 SN 串行（与任务执行同一把 SN 锁），响应沿用 success/message/data 约定，
+// 并新增 string code 透传显式业务码（DEVICE_NOT_FOUND / PLATFORM_UNSUPPORTED /
+// UI_CAPTURE_UNAVAILABLE / TREE_TOO_LARGE / ELEMENT_NOT_FOUND / ACTION_NOT_ALLOWED / BUSY），
+// 调用方按 code 判型，不靠 message 字符串。
+service DeviceUiService {
+  // 读当前页 UI 树（平台原始结构，不裁剪；裁剪在 agent 侧）
+  rpc DumpUiTree(DumpUiTreeRequest) returns (DumpUiTreeResponse);
+  // 下发一个 UiActionType 动作（七枚举白名单）
+  rpc PerformUiAction(PerformUiActionRequest) returns (PerformUiActionResponse);
+  // 截取当前屏并上传对象存储，返回对象键
+  rpc CaptureUiScreenshot(CaptureUiScreenshotRequest) returns (CaptureUiScreenshotResponse);
+}
+
 // ==================== DeviceService Messages ====================
 
 message CreateDriverRequest {
@@ -1016,4 +1030,40 @@ message GetLaboratorySummaryResponse {
   string message = 2;
   string data = 3;  // JSON: {device_count, playback_device_count, test_case_count}
   int32 code = 4;
+}
+
+// ==================== DeviceUiService Messages（INT-2577） ====================
+
+message DumpUiTreeRequest {
+  int32 device_id = 1;
+}
+message DumpUiTreeResponse {
+  bool success = 1;
+  string message = 2;
+  string code = 3;  // 显式业务码（UiCaptureErrorCode）
+  string data = 4;  // JSON: {platform, format, payload, node_count, degraded, degrade_reason}
+}
+
+message PerformUiActionRequest {
+  int32 device_id = 1;
+  string action_type = 2;  // UiActionType 七枚举：TAP / LONG_PRESS / SWIPE / INPUT_TEXT / BACK / HOME / WAIT
+  string node = 3;         // JSON 定位键：{resource_id, key, text, bounds, ...}
+  string params = 4;       // JSON 动作参数：SWIPE direction+duration / INPUT_TEXT text / WAIT seconds
+}
+message PerformUiActionResponse {
+  bool success = 1;
+  string message = 2;
+  string code = 3;
+  string data = 4;  // JSON: {action_type, performed, elapsed_ms}；BUSY 时附 {holder, waited_seconds, queue_ahead}
+}
+
+message CaptureUiScreenshotRequest {
+  int32 device_id = 1;
+  string label = 2;  // 调用方标签（写日志 / 便于回放定位，不参与对象键）
+}
+message CaptureUiScreenshotResponse {
+  bool success = 1;
+  string message = 2;
+  string code = 3;
+  string data = 4;  // JSON: {screenshot_ref, format, width, height}
 }

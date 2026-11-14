@@ -17,7 +17,7 @@ algorithm_service）只创建一个 channel，
 
 - e2e_test_service gRPC server（端口 50051）：ExecutionService
 - audio_service gRPC server（端口 50052）：AudioService / PlaybackService / AudioConfigService / RenderService（INT-67 混音双出口）
-- device_service gRPC server（端口 50053）：DeviceService / DeviceResultService / EnvDeviceService / DeviceConfigService / PlaybackConfigService / SPLConfigService
+- device_service gRPC server（端口 50053）：DeviceService / DeviceResultService / EnvDeviceService / DeviceConfigService / PlaybackConfigService / SPLConfigService / LaboratoryConfigService / DeviceUiService（INT-2577）
 - task_service gRPC server（端口 51061）：ExecutionService / TaskConfigService / TestCaseConfigService / TagConfigService / AlgorithmConfigService
 - api_test_service gRPC server（端口 51071）：APITestService
 - evaluation_service gRPC server（端口 51091）：EvaluationService / EvaluationConfigService
@@ -61,6 +61,7 @@ from shared.clients._grpc_stubs import (
     get_playback_config_service_stub,
     get_spl_config_service_stub,
     get_laboratory_config_service_stub,
+    get_device_ui_service_stub,
     get_execution_service_stub,
     get_task_config_service_stub,
     get_published_task_config_service_stub,

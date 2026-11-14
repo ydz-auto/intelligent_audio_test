@@ -9,6 +9,7 @@
 - PlaybackConfigServiceServicer
 - SPLConfigServiceServicer
 - LaboratoryConfigServiceServicer（INT-655 实验室 CRUD）
+- DeviceUiServiceServicer（INT-2577 设备 UI 探索：读树 / 动作 / 截图）
 
 端口：50053
 """
@@ -46,6 +47,7 @@ from device_service.interfaces.grpc.servicers import (
     PlaybackConfigServiceServicer,
     SPLConfigServiceServicer,
     LaboratoryConfigServiceServicer,
+    DeviceUiServiceServicer,
 )
 
 # 注入 LoggingPort 实现（domain 层通过 ABC 代理访问日志）
@@ -111,6 +113,8 @@ def start_grpc_server(port=DEVICE_SERVICE_GRPC_PORT):
     device_grpc.add_PlaybackConfigServiceServicer_to_server(PlaybackConfigServiceServicer(), server)
     device_grpc.add_SPLConfigServiceServicer_to_server(SPLConfigServiceServicer(), server)
     device_grpc.add_LaboratoryConfigServiceServicer_to_server(LaboratoryConfigServiceServicer(), server)
+    # 设备 UI 探索三 RPC（INT-2577，同 SN 串行 + 截图上传 OSS）
+    device_grpc.add_DeviceUiServiceServicer_to_server(DeviceUiServiceServicer(), server)
     server.add_insecure_port(f'[::]:{port}')
     server.start()
     logger.info("device_service gRPC server started on port %s", port)
