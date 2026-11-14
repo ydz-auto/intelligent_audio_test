@@ -327,6 +327,21 @@ class AgentSkillRepository(ABC):
         """
 
     @abstractmethod
+    def apply_edit(self, skill_id: str, *, from_status: SkillStatus,
+                   row_fields: Dict[str, Any],
+                   version: AgentSkillVersion,
+                   review: AgentSkillReview) -> bool:
+        """一个事务内完成编辑提交：迁移 + 版本行 + 当前行 + 审计（INT-2594）。
+
+        ``row_fields`` 是当前行的新值（含 ``status``）；仓储以
+        ``WHERE id=? AND status=from_status`` 做条件更新，未命中（状态已被
+        并发请求改走）时返回 ``False`` 且一条都不写。命中后写入版本快照与
+        ``EDIT`` 审计行，三步同生同灭 —— 任一步失败整体回滚，不会留下
+        「已发布版本被改成 DRAFT 却没有版本 / 审计」的中间态，也不会留下
+        孤儿版本号挡住后续重试。
+        """
+
+    @abstractmethod
     def delete(self, skill_id: str) -> bool:
         """删除当前行；版本行保留（历史 run 依赖其回放）。"""
 

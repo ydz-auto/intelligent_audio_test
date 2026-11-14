@@ -214,29 +214,35 @@ class SkillReviewService:
         INT-2594 P1：只拦创建人不够 —— 管理员 B 可以提交管理员 A 的草稿，
         再以 B 身份批准，A 全程不参与，第二人复核同样失效。因此还要拒绝
         「最近一次提交该版本的人」（``SUBMIT`` 审计行的 ``reviewer_id``）。
+
+        ``submit`` 是「先条件迁移、后追加审计」，同一人并发提交 + 审批时
+        仍有「状态已 PENDING_REVIEW、提交行尚未落库」的窗口：查不到当前
+        版本的提交人时按 fail-closed 拒绝（可刷新重试），不放行无法核对
+        第二人复核的决策。
         """
         creators = {value for value in (row.created_by, row.owner_id)
                     if value is not None}
         if actor_id in creators:
             raise SkillSelfReviewForbidden(
                 '创建人不得审批自己提交的 Skill 版本：请由其他租户管理员审批')
-        if actor_id == self._submitted_by(row):
+        submitter = self._submitted_by(row)
+        if submitter is None:
+            raise SkillStatusInvalid(
+                '审核链缺少本次提交记录，请刷新后重试')
+        if actor_id == submitter:
             raise SkillSelfReviewForbidden(
                 '提交人不得审批自己提交的 Skill 版本：请由其他租户管理员审批')
 
     def _submitted_by(self, row: AgentSkill) -> Optional[int]:
-        """该版本最近一次提交人（无 ``SUBMIT`` 记录返回 ``None``）。"""
+        """该版本最近一次提交人（无当前版本的 ``SUBMIT`` 记录返回 ``None``）。"""
         if self._reviews is None:
             return None
         submitter: Optional[int] = None
-        fallback: Optional[int] = None
         for review in self._reviews.list_for_skill(row.id):  # created_at 升序
-            if review.action is not SkillReviewAction.SUBMIT:
-                continue
-            fallback = review.reviewer_id
-            if review.version == row.version:
+            if (review.action is SkillReviewAction.SUBMIT
+                    and review.version == row.version):
                 submitter = review.reviewer_id
-        return submitter if submitter is not None else fallback
+        return submitter
 
 
 __all__ = ['ReviewResult', 'SkillReviewService']

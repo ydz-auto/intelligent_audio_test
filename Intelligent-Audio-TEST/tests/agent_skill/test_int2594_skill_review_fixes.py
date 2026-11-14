@@ -11,9 +11,15 @@
   显式 ``EDIT`` 边并写审计、``DISABLED`` 无出边直接 409。
 - **P3** ``agent:skill:admin`` 权限码无效：只授该码的自定义角色过得了网关
   却被服务端 403；修复后网关按「管理员级授予」下发 ``X-User-Is-Admin``，
-  服务端双条件成立。
+  服务端复核成立。
+
+返工口径（审计打回项）：``ACTIVE`` 保存的「资源写 → 状态迁移 → 版本行 →
+当前行 → EDIT 审计」任一失败都不得把已发布版本留在 DRAFT 且无审计的中间态
+（资源写排在事务前，其余四件事在同一仓储事务里提交）；``submit`` 的
+「先迁移、后审计」窗口在 ``decide`` 侧按 fail-closed 拒绝。
 """
 import os
+from datetime import datetime, timezone
 
 os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
@@ -31,6 +37,9 @@ from agent_service.domain.enums import (
 )
 from agent_service.domain.exceptions import (
     SkillSelfReviewForbidden, SkillStatusInvalid,
+)
+from agent_service.domain.model.agent_skill import (
+    AgentSkillReview, AgentSkillVersion,
 )
 from agent_service.domain.services.skill_tenancy import is_tenant_admin
 from shared.constants.permissions import SKILL_ADMIN_PERMISSION
@@ -126,6 +135,26 @@ def test_third_admin_can_approve_after_another_admin_submitted(tmp_path):
     assert _status(container, view.id) is SkillStatus.ACTIVE
 
 
+def test_decide_fails_closed_while_submit_audit_not_yet_landed(tmp_path):
+    """submit 的「先迁移、后审计」窗口：查不到提交人时不放行审批。
+
+    同一人并发 submit + decide 时，可能出现状态已是 PENDING_REVIEW、SUBMIT
+    审计行尚未落库的瞬间；此时无法核对提交人，按 fail-closed 拒绝（可刷新
+    重试），而不是让同一人自批。
+    """
+    container, skills, reviews = _stack(tmp_path)
+    view = create_tenant_skill(skills, owner_id=CREATOR_ID)
+    repository = container.repositories['skills']
+    # 模拟并发窗口：只迁移状态，不写 SUBMIT 审计行
+    assert repository.transition_if(
+        view.id, [SkillStatus.DRAFT], SkillStatus.PENDING_REVIEW)
+
+    with pytest.raises(SkillStatusInvalid):
+        _decide(reviews, view.id, SkillReviewDecision.APPROVE,
+                actor=SUBMITTER_ID)
+    assert _status(container, view.id) is SkillStatus.PENDING_REVIEW
+
+
 # ---------------------------------------------------------------- P2 编辑绕过
 
 
@@ -149,6 +178,102 @@ def test_active_tenant_edit_uses_edit_edge_and_writes_audit(tmp_path):
     assert edits[0].reviewer_id == CREATOR_ID
     # 回到 DRAFT 后不参与自动触发，须重新提交 + 审批
     assert updated.status.participates_in_trigger is False
+
+
+def test_active_tenant_edit_store_failure_keeps_status_and_audit(tmp_path):
+    """资源存储失败：状态仍 ACTIVE、版本不变、无 EDIT 审计（返工阻塞项）。
+
+    修复前 ``transition_if`` 排在 ``_store_resources`` 之前：一次存储抖动就
+    把已发布版本静默打回 DRAFT，而内容 / 版本 / 审计都没落库。
+    """
+    container, store = build_skill_stack(
+        tmp_path, golden=StaticGoldenTasks(GATE_GOLDEN))
+    skills, reviews = container.skill_service, container.skill_review_service
+    resource = {'references/guide.md': '# 指南\n'}
+    view = create_tenant_skill(skills, draft_payload(resources=resource))
+    _submit(reviews, view.id, actor=CREATOR_ID)
+    _decide(reviews, view.id, SkillReviewDecision.APPROVE, actor=SUBMITTER_ID)
+    repository = container.repositories['skills']
+    before = repository.get(view.id)
+    audit_before = _history(reviews, view.id)
+
+    written = []
+    real_put = store.put
+
+    def fail_put(key, data, content_type='application/octet-stream'):
+        written.append(key)
+        raise RuntimeError('OSS 存储抖动')
+
+    store.put = fail_put
+    new_resource = {'references/guide.md': '# 指南 v2\n'}
+    with pytest.raises(RuntimeError):
+        skills.update(
+            view.id, draft_payload(body=demo_body('编辑后的正文'),
+                                   resources=new_resource),
+            owner_id=CREATOR_ID, tenant_id=TENANT_ID,
+            permissions=['*'], is_admin=True)
+    assert written, '资源存储未被调用，用例没有命中失败路径'
+
+    after = repository.get(view.id)
+    assert after.status is SkillStatus.ACTIVE
+    assert after.version == before.version
+    assert after.content_hash == before.content_hash
+    assert _history(reviews, view.id) == audit_before
+
+    # 存储恢复后原样重试可以成功：没有孤儿版本号挡住 version + 1
+    store.put = real_put
+    updated = skills.update(
+        view.id, draft_payload(body=demo_body('存储恢复后重试'),
+                               resources=new_resource),
+        owner_id=CREATOR_ID, tenant_id=TENANT_ID,
+        permissions=['*'], is_admin=True)
+    assert updated.status is SkillStatus.DRAFT
+    assert updated.version == str(int(before.version) + 1)
+    edits = [row for row in _history(reviews, view.id)
+             if row.action is SkillReviewAction.EDIT]
+    assert len(edits) == 1
+    assert edits[0].status_from is SkillStatus.ACTIVE
+    assert edits[0].status_to is SkillStatus.DRAFT
+
+
+def test_apply_edit_rolls_back_state_when_audit_write_fails(tmp_path):
+    """事务边界：条件迁移已执行、审计写失败 → 状态与版本整体回滚。
+
+    这是 ``apply_edit`` 与旧「先迁移后写审计」的区别：迁移、版本行、当前行、
+    审计四件事同生同灭，不会留下「已发布版本变成 DRAFT 但没有审计」的中间态。
+    """
+    container, skills, reviews = _stack(tmp_path)
+    view = _activate(container, skills, reviews)
+    repository = container.repositories['skills']
+    before = repository.get(view.id)
+    next_version = str(int(before.version) + 1)
+
+    def bad_review():
+        return AgentSkillReview(
+            id='bad-review', skill_id=view.id, version=before.version,
+            action='BOGUS',  # 让 PO 构造在条件迁移之后抛错
+            status_from=SkillStatus.ACTIVE, status_to=SkillStatus.DRAFT,
+            reviewer_id=CREATOR_ID, tenant_id=TENANT_ID,
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None))
+
+    apply_edit = getattr(repository, 'apply_edit', None)
+    assert callable(apply_edit), 'AgentSkillRepository 缺少事务写入口 apply_edit'
+    with pytest.raises(AttributeError):
+        apply_edit(
+            view.id, from_status=SkillStatus.ACTIVE,
+            row_fields={'status': SkillStatus.DRAFT.value,
+                        'version': next_version},
+            version=AgentSkillVersion(
+                skill_id=view.id, version=next_version,
+                content_hash='rolled-back', body=demo_body('回滚验证')),
+            review=bad_review())
+
+    after = repository.get(view.id)
+    assert after.status is SkillStatus.ACTIVE
+    assert after.version == before.version
+    assert repository.get_version(view.id, next_version) is None
+    assert [row for row in _history(reviews, view.id)
+            if row.action is SkillReviewAction.EDIT] == []
 
 
 def test_disabled_tenant_edit_is_rejected(tmp_path):

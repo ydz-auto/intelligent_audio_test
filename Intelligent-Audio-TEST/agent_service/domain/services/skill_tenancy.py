@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 """TENANT 级作用域的写权限判定（INT-2551 §4.4「来源与优先级」）。
 
-``TENANT`` 层「可写 = 租户管理员」。判定是**双条件**，两条都在服务端
-复核，任一缺失即拒绝（前端隐藏入口不算数）：
+``TENANT`` 层「可写 = 租户管理员」。判定由服务端复核，缺一即拒绝
+（前端隐藏入口不算数）：
 
-1. RBAC 权限码 ``agent:skill:admin``（网关已按它鉴权，服务端再验一次，
-   防止绕过网关直接调用本服务 / 内部调用只带一半凭据）；
-2. 租户管理员角色：网关按认证身份解析出的 ``is_admin`` 标记，经
-   ``X-User-Is-Admin`` 下发，本服务不自行解析令牌。管理员级授予有两种
-   来源（INT-2594 P3）：内置 admin 角色的通配 ``*``，或显式授予自定义
-   租户管理员角色的 ``agent:skill:admin`` —— 后者此前过得了网关却被本服务
-   403，权限码形同虚设。
+1. 管理员级权限码：通配 ``*``（内置 admin 角色）或专属码
+   ``agent:skill:admin``（显式授予自定义租户管理员角色）。网关按同一
+   permissions 集合鉴权，服务端再验一次，防止绕过网关直连本服务；
+2. 租户管理员标记：网关按认证身份解析出的 ``is_admin``，经
+   ``X-User-Is-Admin`` 下发，本服务不自行解析令牌。
+
+注意两半**同源**（都来自同一个 permissions 集合，见
+``shared.constants.permissions.has_admin_credential``），不是两个独立凭据；
+保留服务端复核是为了拦截「绕过网关的内部调用只带一半凭据」。若需要真正
+独立的管理员来源，属于另一次设计口径调整（INT-2594 P3 审计备注）。
 
 租户归属单独由 ``tenant_id`` 保证（``X-Tenant-Id`` 由网关按部署租户下发，
 客户端伪造无效）：管理员只能写**本租户**的 TENANT Skill。
@@ -29,7 +32,7 @@ TENANT_ADMIN_PERMISSION = SKILL_ADMIN_PERMISSION
 
 def is_tenant_admin(*, permissions: Iterable[str] = (),
                     is_admin: bool = False) -> bool:
-    """双条件是否都满足（只读判定，不抛异常）。"""
+    """管理员级授予是否成立（只读判定，不抛异常）。"""
     if not is_admin:
         return False
     granted = {item for item in (permissions or ()) if item}
@@ -39,7 +42,7 @@ def is_tenant_admin(*, permissions: Iterable[str] = (),
 
 def ensure_tenant_admin(*, permissions: Iterable[str] = (),
                         is_admin: bool = False) -> None:
-    """不满足双条件即抛 ``SKILL_REVIEW_FORBIDDEN``（对外 403）。"""
+    """不满足管理员级授予即抛 ``SKILL_REVIEW_FORBIDDEN``（对外 403）。"""
     if is_tenant_admin(permissions=permissions, is_admin=is_admin):
         return
     granted = {item for item in (permissions or ()) if item}
