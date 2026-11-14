@@ -9,6 +9,20 @@ import type {
   AgentToolRisk,
 } from './agent'
 
+/**
+ * run 结束后的「沉淀为 Skill」草案建议（agent_service 的 skill_draft_suggested
+ * 事件归一结果；事件不落库，用户确认后才创建 DRAFT）。
+ */
+export interface ChatSkillSuggestion {
+  suggestedName: string
+  description: string
+  toolsUsed: string[]
+  sourceSkill?: string
+  /** 服务端回执：事件不落库（恒 false） */
+  created: boolean
+  requiresConfirmation: boolean
+}
+
 export type ChatMessageRole = 'user' | 'assistant' | 'system'
 
 export type ChatMessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
@@ -108,6 +122,8 @@ export interface ChatMessage {
    * 在消息尾部显示状态徽标；成功完成不显示。
    */
   runStatus?: AgentRunStatus
+  /** 「沉淀为 Skill」草案建议（run 正常结束且 ≥2 个工具时由后端下发） */
+  skillSuggestion?: ChatSkillSuggestion
 }
 
 /**

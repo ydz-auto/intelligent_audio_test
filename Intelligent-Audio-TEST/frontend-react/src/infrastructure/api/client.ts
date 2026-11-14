@@ -204,6 +204,8 @@ async function buildApiError(response: Response): Promise<ApiError> {
     code?: unknown
     errors?: unknown
     data?: unknown
+    /** INT-2550：Agent Skill 逐项校验明细（{code, severity, field, message}[]） */
+    issues?: unknown
   } = {}
   try {
     const text = await response.text()
@@ -219,6 +221,8 @@ async function buildApiError(response: Response): Promise<ApiError> {
     errors: payload.errors,
     // INT-2315：429「已有导出任务在进行」把在办 task_id 放在 data，页面据此接管轮询
     data: payload.data,
+    // INT-2550：Skill 保存 / 发布 / 导入的逐项校验明细在顶层 issues，页面按 field 定位
+    issues: payload.issues,
   })
 }
 

@@ -77,6 +77,8 @@ export const AGENT_EVENT_TYPE = {
   TOOL_RESULT: 'tool_result',
   APPROVAL_REQUIRED: 'approval_required',
   CONTEXT_COMPACTED: 'context_compacted',
+  /** run 正常结束且本次调用 ≥2 个工具时下发的「沉淀为 Skill」草案建议（不落库） */
+  SKILL_DRAFT_SUGGESTED: 'skill_draft_suggested',
   RUN_FINISHED: 'run_finished',
   ERROR: 'error',
 } as const
@@ -373,6 +375,25 @@ export interface AgentContextCompactedEvent extends AgentRunEventBase {
   debug?: boolean
 }
 
+/**
+ * 「把本次流程沉淀为 Skill」草案建议（§4.4 第 7 条第④项）。
+ *
+ * 后端只在 run 正常结束且实际调用 ≥2 个工具时下发；事件不落库
+ * （`created=false`、`requires_confirmation=true`），用户确认后由会话页引导到
+ * `/agent-skills` 新建 DRAFT，绝不自动创建或发布。
+ */
+export interface AgentSkillDraftSuggestedEvent extends AgentRunEventBase {
+  type: typeof AGENT_EVENT_TYPE.SKILL_DRAFT_SUGGESTED
+  suggestedName: string
+  description: string
+  toolsUsed: string[]
+  /** 本次 run 激活的 Skill（无则为空） */
+  sourceSkill?: string
+  /** 回执：事件不落库（服务端恒 false） */
+  created: boolean
+  requiresConfirmation: boolean
+}
+
 export interface AgentRunFinishedEvent extends AgentRunEventBase {
   type: typeof AGENT_EVENT_TYPE.RUN_FINISHED
   status: AgentRunStatus
@@ -399,6 +420,7 @@ export type AgentRunEvent =
   | AgentToolResultEvent
   | AgentApprovalRequiredEvent
   | AgentContextCompactedEvent
+  | AgentSkillDraftSuggestedEvent
   | AgentRunFinishedEvent
   | AgentErrorEvent
 
