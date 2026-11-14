@@ -46,6 +46,7 @@ except Exception:  # noqa: BLE001
     pass
 
 import httpx
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -55,7 +56,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from tests.ui import smoke_frontend_int1854 as sm  # noqa: E402
 from tests.ui.utils.api_client import ApiClient  # noqa: E402
 
-ART = os.path.join(sm.ART_ROOT, 'int2550')
+ART = os.path.join(os.path.dirname(sm.ART_ROOT), 'int2550')
 RESULT = {
     'kind': 'react',
     'art': ART,
@@ -83,21 +84,22 @@ def record(step, status, detail=''):
     log('%s: %s %s' % (step, status, detail))
 
 
-def step_ok(name, **payload):
-    RESULT['checks'][name] = {'ok': True, **payload}
-    record(name, 'PASS', json.dumps(payload, ensure_ascii=False)[:300])
+def step_ok(check, **payload):
+    """payload 里允许出现 name 等业务字段，故形参不叫 name。"""
+    RESULT['checks'][check] = {'ok': True, **payload}
+    record(check, 'PASS', json.dumps(payload, ensure_ascii=False)[:300])
 
 
-def step_fail(name, reason, **payload):
-    RESULT['checks'][name] = {'ok': False, 'reason': reason, **payload}
-    record(name, 'FAIL', reason)
-    raise AssertionError('%s: %s' % (name, reason))
+def step_fail(check, reason, **payload):
+    RESULT['checks'][check] = {'ok': False, 'reason': reason, **payload}
+    record(check, 'FAIL', reason)
+    raise AssertionError('%s: %s' % (check, reason))
 
 
-def step_skip(name, reason):
-    RESULT['checks'][name] = {'ok': None, 'skipped': reason}
-    RESULT['skipped'].append({'step': name, 'reason': reason})
-    record(name, 'SKIP', reason)
+def step_skip(check, reason):
+    RESULT['checks'][check] = {'ok': None, 'skipped': reason}
+    RESULT['skipped'].append({'step': check, 'reason': reason})
+    record(check, 'SKIP', reason)
 
 
 def write_artifacts():
@@ -219,6 +221,22 @@ def text_of(drv, selector):
         selector)
 
 
+def wait_or_shot(drv, condition, key, timeout=20):
+    """等待条件；失败先截图 + 记当前页面文案，再抛出（探针失败要能自证现场）。"""
+    try:
+        return WebDriverWait(drv, timeout).until(condition)
+    except Exception:  # noqa: BLE001
+        shot(drv, 'fail_%s' % key)
+        RESULT['notes'].append({
+            'step': key,
+            'body': drv.find_element(By.TAG_NAME, 'body').text[:1500],
+            'testids': drv.execute_script(
+                "return [...document.querySelectorAll('[data-testid]')]"
+                ".map(e=>e.getAttribute('data-testid')).slice(0,40)"),
+        })
+        raise
+
+
 def rows(drv):
     return drv.find_elements(By.CSS_SELECTOR, '[data-testid="agent-skill-row"]')
 
@@ -230,6 +248,16 @@ def row_by_name(drv, name):
     return None
 
 
+def tab_count(drv, group, label):
+    """页签右侧的计数（TabTrigger 文案 = 标签 + 换行 + 数字）。"""
+    for element in drv.find_elements(
+            By.CSS_SELECTOR, '[data-testid^="skill-%s-tab-"]' % group):
+        parts = [part.strip() for part in (element.text or '').split('\n')]
+        if parts and parts[0] == label:
+            return int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+    return None
+
+
 def click_button(row, text):
     for btn in row.find_elements(By.TAG_NAME, 'button'):
         if text in (btn.text or ''):
@@ -237,10 +265,60 @@ def click_button(row, text):
     raise AssertionError('行内未找到按钮：%s' % text)
 
 
+def click_row_action(drv, name, text, expect_selector, key=None, timeout=30):
+    """点行内动作并等预期元素出现；行被重渲染后旧句柄点击会静默失效，需重取重试。"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        row = row_by_name(drv, name)
+        if row is not None:
+            try:
+                click(drv, click_button(row, text))
+            except Exception:  # 行被重渲染 → 旧句柄失效，重取后重试
+                pass
+        try:
+            WebDriverWait(drv, 5).until(EC.presence_of_element_located(
+                (By.CSS_SELECTOR, expect_selector)))
+            return
+        except Exception:  # noqa: BLE001
+            time.sleep(0.5)
+    wait_or_shot(drv, EC.presence_of_element_located(
+        (By.CSS_SELECTOR, expect_selector)), key or text, timeout=1)
+
+
+def open_editor(drv, name, timeout=30):
+    """点行内「编辑」并等编辑器就绪。
+
+    列表查询在挂载后会再取一次，行节点可能被重渲染替换；持有旧句柄的 JS click
+    会静默无效，所以按「点一次 → 短等 → 没开就重新取行再点」重试。
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        row = row_by_name(drv, name)
+        if row is not None:
+            try:
+                click(drv, click_button(row, '编辑'))
+            except Exception:  # 行被重渲染 → 旧句柄失效，重取后重试
+                pass
+        try:
+            WebDriverWait(drv, 5).until(EC.presence_of_element_located(
+                (By.CSS_SELECTOR, '#agent-skill-body')))
+            time.sleep(1.2)
+            return
+        except Exception:  # noqa: BLE001
+            time.sleep(0.5)
+    wait_or_shot(drv, EC.presence_of_element_located(
+        (By.CSS_SELECTOR, '#agent-skill-body')), 'open_editor', timeout=1)
+
+
 def tab_by_text(drv, text):
-    for btn in drv.find_elements(By.CSS_SELECTOR, '[data-testid^="skill-"][data-testid$="-tab-"]'):
-        if text in (btn.text or ''):
-            return btn
+    # 来源 / 状态页签先按 data-testid 精确定位：页面别处也有含「全部」的按钮
+    # （顶栏「算法 / 全部算法」），按文字兜底会点错元素。
+    for group in ('scope', 'status'):
+        for element in drv.find_elements(
+                By.CSS_SELECTOR, '[data-testid^="skill-%s-tab-"]' % group):
+            label = (element.text or '').split('\n')[0].strip()
+            if label == text:
+                return element
     for btn in drv.find_elements(By.TAG_NAME, 'button'):
         if text in (btn.text or ''):
             return btn
@@ -301,8 +379,8 @@ def shot_network(drv, key='net_summary'):
         'td,th{border:1px solid #444;padding:4px 6px;text-align:left}'
         'th{background:#222}</style></head><body>'
         '<h3>/api/v1/agent/skills 请求与状态码</h3>'
-        '<table><tr><th>方法</th><th>URL</th><th>状态</th></tr>%s</table>'
-        '</body></html>' % rows
+        '<table><tr><th>方法</th><th>URL</th><th>状态</th></tr>' + rows +
+        '</table></body></html>'
     )
     drv.get('data:text/html;charset=utf-8,' + html.replace('#', '%23'))
     time.sleep(0.5)
@@ -352,10 +430,19 @@ def run(drv, base, skill_api):
     if custom:
         step_skip('1_empty_state', '账号已有自定义 Skill，空态改用 API 断言')
     else:
-        body_text = drv.find_element(By.TAG_NAME, 'body').text
-        if '还没有自定义 Skill' not in body_text:
-            step_fail('1_empty_state', '无自定义 Skill 时未显示空态')
-        step_ok('1_empty_state', platform_rows=len(platform))
+        # 列表非空（平台内置照常列出）时，页面把「无自定义 Skill」空态渲染为列表顶部
+        # 提示条 + 「新建 Skill」主按钮（空态组件只在整个列表为空 / 筛选为空时出现）
+        hints = drv.find_elements(By.CSS_SELECTOR, '[data-testid="skill-empty-custom-hint"]')
+        if not hints:
+            step_fail('1_empty_state', '无自定义 Skill 时未显示空态提示区')
+        hint_text = hints[0].text
+        if '新建' not in hint_text:
+            step_fail('1_empty_state', '空态提示区缺新建入口：%s' % hint_text[:120])
+        if not any('新建 Skill' in (b.text or '')
+                   for b in drv.find_elements(By.TAG_NAME, 'button')):
+            step_fail('1_empty_state', '空态下没有「新建 Skill」主按钮')
+        step_ok('1_empty_state', platform_rows=len(platform),
+                hint=hint_text[:120])
     shot(drv, 'light_list')
     set_theme(drv, True)
     shot(drv, 'dark_list')
@@ -363,7 +450,6 @@ def run(drv, base, skill_api):
 
     # 2 页签计数与筛选
     open_skill_page(drv, base)
-    scope_all = tab_by_text(drv, '全部')
     scope_user = tab_by_text(drv, '我的')
     scope_platform = tab_by_text(drv, '平台内置')
     if not (scope_user and scope_platform):
@@ -372,9 +458,15 @@ def run(drv, base, skill_api):
     time.sleep(1)
     if any(row.get_attribute('data-skill-scope') != 'PLATFORM' for row in rows(drv)):
         step_fail('2_scope_filter', '切到「平台内置」后仍出现非平台行')
-    step_ok('2_scope_filter', platform_rows=len(rows(drv)))
-    click(drv, scope_all)
+    platform_count = len(rows(drv))
+    step_ok('2_scope_filter', platform_rows=platform_count)
+    # 页签由受控组件重渲染，点回「全部」必须重新取元素句柄（旧句柄已脱离 DOM，
+    # JS click 静默无效 → 页面停留在「平台内置」会让后面新建的 USER 行不可见）
+    click(drv, tab_by_text(drv, '全部'))
     time.sleep(1)
+    if len(rows(drv)) < platform_count:
+        step_fail('2_scope_reset', '切回「全部」后列表条数倒退：%d < %d'
+                  % (len(rows(drv)), platform_count))
 
     # 11 只读约束（平台行只有 fork / 导出）
     platform_rows = [row for row in rows(drv) if row.get_attribute('data-skill-scope') == 'PLATFORM']
@@ -395,8 +487,20 @@ def run(drv, base, skill_api):
     type_into(drv, '#agent-skill-description', '探针创建：任务诊断草稿。触发词：探针。')
     type_into(drv, '#agent-skill-body', valid_body(name))
     click(drv, [b for b in drv.find_elements(By.TAG_NAME, 'button') if b.text.strip() == '保存'][-1])
-    WebDriverWait(drv, 25).until(EC.visibility_of_element_located(
-        (By.CSS_SELECTOR, '[data-skill-name="%s"]' % name)))
+    try:
+        WebDriverWait(drv, 25).until(EC.visibility_of_element_located(
+            (By.CSS_SELECTOR, '[data-skill-name="%s"]' % name)))
+    except Exception:  # noqa: BLE001
+        capture_net(drv)
+        shot(drv, 'fail_create_draft')
+        RESULT['notes'].append({
+            'step': '3_create_draft',
+            'rows': [r.get_attribute('data-skill-name') for r in rows(drv)][:6],
+            'dialog_open': bool(drv.find_elements(By.CSS_SELECTOR, '#agent-skill-name')),
+            'issues': [e.text for e in drv.find_elements(
+                By.CSS_SELECTOR, '[data-testid="skill-editor-issues"]')],
+        })
+        raise
     created_row = row_by_name(drv, name)
     if created_row.get_attribute('data-skill-status') != 'DRAFT':
         step_fail('3_create_draft', '新建后状态不是 DRAFT')
@@ -409,9 +513,7 @@ def run(drv, base, skill_api):
     step_ok('3_persist_after_reload', name=name)
 
     # 4 校验反馈（服务器逐项）
-    click_button(row_by_name(drv, name), '编辑')
-    WebDriverWait(drv, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, '#agent-skill-body')))
-    time.sleep(1.5)
+    open_editor(drv, name)
     # 4a 名称格式：前端即时提示（保存前拦截）
     type_into(drv, '#agent-skill-name', 'My_Skill')
     click(drv, [b for b in drv.find_elements(By.TAG_NAME, 'button') if b.text.strip() == '保存'][-1])
@@ -424,7 +526,8 @@ def run(drv, base, skill_api):
     # 4b 缺 ## Gotchas（服务端）
     type_into(drv, '#agent-skill-body', '# 无小节\n\n## 步骤\n\n- 无\n')
     click(drv, [b for b in drv.find_elements(By.TAG_NAME, 'button') if b.text.strip() == '保存'][-1])
-    WebDriverWait(drv, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="skill-issue-list"]')))
+    wait_or_shot(drv, EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="skill-issue-list"]')),
+                 'missing_section_issues')
     body_text = drv.find_element(By.TAG_NAME, 'body').text
     if 'MISSING_REQUIRED_SECTION' not in body_text and '缺少' not in body_text:
         step_fail('4b_missing_section', '缺 ## Gotchas 未回显原因')
@@ -435,7 +538,8 @@ def run(drv, base, skill_api):
     type_into(drv, '#agent-skill-body', valid_body(name))
     type_into(drv, '#agent-skill-allowed-tools', 'no_such_tool')
     click(drv, [b for b in drv.find_elements(By.TAG_NAME, 'button') if b.text.strip() == '保存'][-1])
-    WebDriverWait(drv, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="skill-issue-list"]')))
+    wait_or_shot(drv, EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="skill-issue-list"]')),
+                 'unknown_tool_issues')
     body_text = drv.find_element(By.TAG_NAME, 'body').text
     if 'UNKNOWN_TOOL' not in body_text and '未注册工具' not in body_text:
         step_fail('4c_unknown_tool', 'allowed-tools 未注册工具未回显原因')
@@ -466,25 +570,33 @@ def run(drv, base, skill_api):
     click(drv, [b for b in drv.find_elements(By.TAG_NAME, 'button') if b.text.strip() == '取消'][-1])
     time.sleep(1)
 
-    # 6 fork platform-reference
+    # 6 fork platform-reference（UI_FORK_TARGET 仅供环境排障时换目标，验收仍用默认值）
+    fork_target = os.environ.get('UI_FORK_TARGET', 'platform-reference')
     platform_rows = [r for r in rows(drv) if r.get_attribute('data-skill-scope') == 'PLATFORM']
-    target = None
-    for candidate in platform_rows:
-        if candidate.get_attribute('data-skill-name') == 'platform-reference':
-            target = candidate
-    if target is None:
-        step_fail('6_fork', '列表没有 platform-reference')
-    click_button(target, 'fork')
-    WebDriverWait(drv, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, '#agent-skill-fork-name')))
+    if not any(candidate.get_attribute('data-skill-name') == fork_target
+               for candidate in platform_rows):
+        step_fail('6_fork', '列表没有 %s' % fork_target)
+    click_row_action(drv, fork_target, 'fork',
+                     '#agent-skill-fork-name', 'fork_dialog')
     fork_name = PREFIX + 'copy-' + str(int(time.time()))
     type_into(drv, '#agent-skill-fork-name', fork_name)
     click(drv, [b for b in drv.find_elements(By.TAG_NAME, 'button') if 'fork' in b.text][-1])
-    WebDriverWait(drv, 25).until(EC.presence_of_element_located(
-        (By.CSS_SELECTOR, '[data-skill-name="%s"]' % fork_name)))
+    try:
+        WebDriverWait(drv, 25).until(EC.presence_of_element_located(
+            (By.CSS_SELECTOR, '[data-skill-name="%s"]' % fork_name)))
+    except Exception:  # noqa: BLE001
+        capture_net(drv)
+        shot(drv, 'fail_fork')
+        RESULT['notes'].append({
+            'step': '6_fork',
+            'fork_target': fork_target,
+            'dialog': [e.text for e in drv.find_elements(By.CSS_SELECTOR, '[role="dialog"]')],
+        })
+        raise
     forked = row_by_name(drv, fork_name)
     if forked.get_attribute('data-skill-status') != 'DRAFT':
         step_fail('6_fork', 'fork 后不是 DRAFT')
-    step_ok('6_fork', name=fork_name)
+    step_ok('6_fork', name=fork_name, target=fork_target)
 
     # 7 导入
     workdir = os.path.join(ART, 'packages')
@@ -514,29 +626,58 @@ def run(drv, base, skill_api):
 
     import_cases = []
     for label, path in (('missing_description', missing_desc), ('path_traversal', traversal)):
-        before = len(rows(drv))
-        click(drv, tab_by_text(drv, '导入 zip'))
-        WebDriverWait(drv, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, '#agent-skill-import-file')))
-        drv.find_element(By.CSS_SELECTOR, '#agent-skill-import-file').send_keys(path)
-        click(drv, [b for b in drv.find_elements(By.TAG_NAME, 'button') if '开始导入' in b.text][-1])
-        WebDriverWait(drv, 30).until(EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="skill-import-result"]')))
-        after = len(rows(drv))
+        for attempt in range(3):
+            try:
+                before = len(rows(drv))
+                click(drv, tab_by_text(drv, '导入 zip'))
+                WebDriverWait(drv, 15).until(EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, '#agent-skill-import-file')))
+                drv.find_element(By.CSS_SELECTOR, '#agent-skill-import-file').send_keys(path)
+                click(drv, [b for b in drv.find_elements(By.TAG_NAME, 'button')
+                            if '开始导入' in b.text][-1])
+                wait_or_shot(drv, EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, '[data-testid="skill-import-result"]')),
+                    'import_%s' % label, timeout=30)
+                shot(drv, 'import_invalid_%s' % label)
+                after = len(rows(drv))
+                break
+            except (StaleElementReferenceException, TimeoutException):
+                if attempt == 2:
+                    raise
+                time.sleep(1)
         if after != before:
             step_fail('7_import_invalid_%s' % label, '非法包导致列表新增条目')
         import_cases.append(label)
-        shot(drv, 'import_invalid_%s' % label)
-        click(drv, [b for b in drv.find_elements(By.TAG_NAME, 'button') if b.text.strip() == '取消'][-1])
+        try:
+            click(drv, [b for b in drv.find_elements(By.TAG_NAME, 'button')
+                        if b.text.strip() == '取消'][-1])
+        except StaleElementReferenceException:
+            pass
         time.sleep(0.8)
     step_ok('7_import_invalid', cases=import_cases)
 
     # 8 导出：下载 zip，服务端原字节；根级 SKILL.md 存在
     download_dir = ART
-    click_button(row_by_name(drv, name), '导出')
-    time.sleep(4)
-    downloaded = [f for f in os.listdir(download_dir) if f.endswith('.zip')]
-    if not downloaded:
-        step_fail('8_export', '未生成导出 zip')
-    exported = os.path.join(download_dir, downloaded[-1])
+    before_zips = {f for f in os.listdir(download_dir) if f.endswith('.zip')}
+    exported = None
+    deadline = time.time() + 30
+    while time.time() < deadline and exported is None:
+        row = row_by_name(drv, name)
+        if row is not None:
+            try:
+                click(drv, click_button(row, '导出'))
+            except Exception:  # 行被重渲染 → 旧句柄失效，重取后重试
+                pass
+        for _ in range(8):
+            time.sleep(1)
+            fresh = [f for f in os.listdir(download_dir)
+                     if f.endswith('.zip') and f not in before_zips]
+            if fresh:
+                exported = os.path.join(download_dir, fresh[-1])
+                break
+    if exported is None:
+        wait_or_shot(drv, EC.presence_of_element_located(
+            (By.CSS_SELECTOR, '[data-skill-name]')), 'export_download', timeout=1)
     with zipfile.ZipFile(exported) as zf:
         names = zf.namelist()
         if 'SKILL.md' not in names:
@@ -544,13 +685,11 @@ def run(drv, base, skill_api):
         content = zf.read('SKILL.md').decode('utf-8')
     if name not in content:
         step_fail('8_export', '导出 SKILL.md 与被保存内容不一致')
-    step_ok('8_export', filename=downloaded[-1], entries=names)
+    step_ok('8_export', filename=os.path.basename(exported), entries=names)
     shot(drv, 'export_dialog')
 
     # 9 发布门槛（golden tasks 不足 → 拦截且仍 DRAFT）
-    click_button(row_by_name(drv, name), '编辑')
-    WebDriverWait(drv, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, '#agent-skill-body')))
-    time.sleep(1.5)
+    open_editor(drv, name)
     publish_buttons = [b for b in drv.find_elements(By.TAG_NAME, 'button')
                        if b.text.strip() in ('发布', '重新尝试发布')]
     if not publish_buttons:
@@ -572,12 +711,14 @@ def run(drv, base, skill_api):
     time.sleep(1)
 
     # 10 停用（二次确认 → DISABLED，状态页签计数同步）
-    click_button(row_by_name(drv, name), '停用')
-    WebDriverWait(drv, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, '[role="alertdialog"]')))
+    click_row_action(drv, name, '停用', '[role="alertdialog"]', 'disable_dialog')
     click(drv, [b for b in drv.find_elements(By.TAG_NAME, 'button') if b.text.strip() == '停用'][-1])
     WebDriverWait(drv, 25).until(lambda d: row_by_name(d, name) is not None and
                                  row_by_name(d, name).get_attribute('data-skill-status') == 'DISABLED')
-    step_ok('10_disable')
+    disabled_count = tab_count(drv, 'status', '已停用')
+    if not disabled_count:
+        step_fail('10_disable', '停用后「已停用」页签计数未同步：%s' % disabled_count)
+    step_ok('10_disable', disabled_tab_count=disabled_count)
     shot(drv, 'disabled_row')
 
     capture_net(drv)

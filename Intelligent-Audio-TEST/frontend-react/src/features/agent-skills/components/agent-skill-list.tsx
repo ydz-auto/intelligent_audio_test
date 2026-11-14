@@ -143,7 +143,10 @@ export function AgentSkillList({
   return (
     <div className='grid gap-3'>
       {!hasCustomSkills && (
-        <div className='border-primary/20 bg-primary/5 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5'>
+        <div
+          className='border-primary/20 bg-primary/5 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5'
+          data-testid='skill-empty-custom-hint'
+        >
           <p className='text-muted-foreground text-xs leading-5'>
             {AGENT_SKILLS_COPY.emptyCustomDescription}
           </p>
