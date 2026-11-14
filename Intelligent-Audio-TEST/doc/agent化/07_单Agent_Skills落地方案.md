@@ -592,6 +592,54 @@ UiAutoDev 元素卡片通过受认证的桥接事件进入会话，不作为新�
 - 遇到登录、验证码、实名/支付页，立即以 `LOGIN_REQUIRED` / `CAPTCHA` 停止，交给用户接管，不尝试绕过。
 - 探索轨迹是 `driver_propose` 的输入之一：动作序列 + 页面树 + 截图，用来生成稳定的元素定位和生命周期步骤。
 
+#### 服务端通道（INT-2569 定稿，INT-2577 / INT-2578 实现）
+
+> **实现演进裁定（INT-2597 一致性审计，2026-11-14）**：本节此前只写工具层口径，没有服务端通道的
+> 契约。设备侧 UI 能力已由 INT-2577（device_service 三 RPC）与 INT-2578（网关三端点）实现，以下
+> 为实现后的契约事实，逐条与 V10.11.2 代码一致（`github/V10.11.2 = 92145961a`）：动作白名单与业务码
+> 见 `shared/constants/ui_capture.py`，网关路由见 `api_gateway/routes/device_bp.py`，服务端语义见
+> `device_service/interfaces/grpc/device_ui_servicers.py`。
+
+拓扑固定为 agent 适配器 → 网关 REST（带 run 的 `Authorization`）→ `device_service` gRPC
+`DeviceUiService`；权限与审计执行点在网关（`require_permission`），**不允许 agent 直连 gRPC 绕过
+网关**（INT-2569 D1）。三个端点：
+
+| 方法 | 路径 | 权限 | 请求体 |
+|---|---|---|---|
+| POST | `/api/v1/test-devices/{device_id}/ui/tree` | `device:read` | `{}` |
+| POST | `/api/v1/test-devices/{device_id}/ui/screenshot` | `device:read` | `{"label": "a3"}`（可选，网关限长 64；不参与对象键，当前仅透传给 gRPC） |
+| POST | `/api/v1/test-devices/{device_id}/ui/action` | `device:control` | `{"action_type": "TAP", "node": {...}, "params": {...}}` |
+
+响应统一 `to_response(...)` 信封 `{success, message, code, data}`，成功 `code` 为空串；`data` 与
+gRPC 同形（网关只做 JSON 解码，不二次包装、不做业务归一化）：
+
+- tree：`{platform, format, payload, node_count, degraded, degrade_reason}`。`platform` ∈
+  `ANDROID` / `HARMONYOS`，`format` ∈ `ANDROID_XML` / `HARMONY_COMPONENTS`；`payload` 是平台原始
+  结构文本，**不裁剪也不截断**（`MAX_TREE_NODES=200` 的裁剪只在 agent 适配器 `crop_nodes` 生效），
+  设备侧对 `payload` 设 8 MB 上限。
+- action：`{action_type, performed, elapsed_ms}`；`BUSY` 时附 `{holder, waited_seconds, queue_ahead}`。
+- screenshot：`{screenshot_ref, format, width, height}`；`screenshot_ref` 是 OSS 对象键，
+  **不返回 base64、不落数据库**。
+
+动作白名单与错误码是单一事实源 `shared/constants/ui_capture.py`：动作取 `UiActionType` 七枚举
+（`UI_ACTION_TYPE_VALUES`，网关与 device_service 同一份），非枚举值 400 `ACTION_NOT_ALLOWED` 且
+不下发，device_service 侧二次校验。业务码 → HTTP：
+
+| code | HTTP | 说明 |
+|---|---|---|
+| `DEVICE_NOT_FOUND` | 404 | 设备不存在 |
+| `ACTION_NOT_ALLOWED` | 400 | 非七枚举；网关侧请求体校验失败（动作 / 截图共用此码） |
+| `ELEMENT_NOT_FOUND` / `TREE_TOO_LARGE` / `PLATFORM_UNSUPPORTED` | 400 | 元素定位失败 / 树超 8 MB / 平台不支持 |
+| `BUSY` | 409 | 同 SN 锁等待超出预算 |
+| `UI_CAPTURE_UNAVAILABLE` | 503 | 驱动不可用或上游不可达（附 `degrade_reason`） |
+| 未登记码 | 500 | 网关与 device_service 契约不一致，不掩成 400 |
+
+`code` 全程原样透传，**调用方按 `code` 判型，不靠 message 字符串**。每次动作调
+`write_device_audit(AuditEvent.DEVICE_CONTROL_EXECUTED, 'device_ui', {...})`，成功 / 被白名单拦截 /
+设备拒绝都记（`device_id` / `action_type` / `node` / `params` / `success` / `code`，operator 由审计
+助手补）；旁路写入失败不影响业务结果。审批、预算、破坏性拦截仍在 agent 层（INT-2492），网关既不
+复制也不绕过。残留口径见 §16。
+
 #### 交付包
 
 ```text
@@ -931,6 +979,9 @@ M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参�
 | GET | `/api/v1/agent/memory/break-glass` | 管理端读取正文，需 `memory:break_glass`，留审计 |
 | GET | `/api/v1/agent/skill` | 外部 Skill zip 下载（保留） |
 | POST | `/api/v1/mcp` | 外部 MCP（保留） |
+| POST | `/api/v1/test-devices/{device_id}/ui/tree` | 设备 UI 树（`device:read`；平台原始结构，不裁剪）——INT-2569 / INT-2578 |
+| POST | `/api/v1/test-devices/{device_id}/ui/screenshot` | 设备截图（`device:read`；只回 `screenshot_ref` 对象键）——INT-2569 / INT-2578 |
+| POST | `/api/v1/test-devices/{device_id}/ui/action` | 设备 UI 动作（`device:control`；`UiActionType` 七枚举白名单）——INT-2569 / INT-2578 |
 
 SSE 事件载荷统一包含 `run_id`、`sequence`、`type`、`timestamp`；`message_delta` 带 `message_id`，避免重连重复拼接。
 
@@ -1082,6 +1133,19 @@ tests/agent_eval/coverage/       # M1 汇总评测：清单一致性 / 长尾 / 
 | R6 | `testcase_generate` 与创建服务是第二份推导实现 | `testcase_tools.py:204-234` vs `audio_service/application/services/_creation_annotation_mixin.py:174-204` | 补一致性回归或抽共享纯函数（后续卡） |
 | R7 | `testcase_query.export_status` 声明 `testcase:read`，端点要 `testcase:import_export` | `shared/agent_tools/intent_tools.py` | 权限码对齐（M2） |
 | R8 | 网关 `POST /reports/{id}/cases/search` 无 `require_permission` | `api_gateway/routes/report_bp.py:181` | 补 `report:read`（见 §13 第 10 条） |
+
+### 已登记残留（INT-2597 一致性审计，2026-11-14）
+
+审计对象：设备 UI 网关三端点（INT-2578 交付提交 `f328f2bf2`，已合入 `V10.11.2`）。§6.6「服务端
+通道」为本次回写的契约事实；以下为不阻塞的 P3 残留，均由 INT-2579（agent 适配器）或后续卡收口。
+
+| # | 残留 | 位置 | 处置 |
+|---|---|---|---|
+| S1 | 请求体校验失败（缺 `action_type` / 类型错 / 截图 `label` 超长）复用 `ACTION_NOT_ALLOWED`，`UiCaptureErrorCode` 无独立「参数非法」码；截图参数错也报动作类码，消费方按 `code` 分支时语义偏斜 | `api_gateway/application/services/device/device_ui_service.py:117-137` | 如需精确分支，回评审新增 `INVALID_ARGUMENT` 或改用框架 422；当前 400 满足卡面 |
+| S2 | 动作请求体校验失败不写设备审计（七枚举拦截与设备侧失败都写），与卡面「每次动作写一条审计」的字面口径有差；该路径未下发设备动作 | `api_gateway/application/services/device/device_ui_service.py:131-137` | 统一审计口径时一并收口 |
+| S3 | `CaptureUiScreenshot.label` 只透传到 gRPC：device_service 未消费（不进对象键、也未写日志 / 回放定位），与 proto 字段注释不一致 | `device_service/interfaces/grpc/device_ui_servicers.py:192-195` | 卡 1（INT-2577）遗留，按需补日志或改注释 |
+| S4 | `CommandResultDTO.code` 由 `int` 放宽为 `int \| str`，同一 DTO 承载 HTTP 数字码与设备 UI 字符串业务码 | `api_gateway/domain/dto/api_gateway_acl_dto.py:293-295` | 类型折中，注释已写明；新码只有设备 UI 三条路径产生 |
+| S5 | `doc/接口文档/04_测试设备管理.md` / `doc/接口实现文档/04_测试设备管理-接口实现文档.md` 未收录 `ui/*` 三端点 | `doc/接口文档/04_测试设备管理.md`、`doc/接口实现文档/04_测试设备管理-接口实现文档.md` | 契约以 §6.6 / §11 为准；接口参考文档随文档批次补齐 |
 
 开放问题（需负责人后续拍板）：
 
