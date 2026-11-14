@@ -66,6 +66,11 @@ def _forward_headers(request: Request) -> dict:
     permissions = getattr(request.state, 'permissions', None) or []
     if permissions:
         headers['X-User-Permissions'] = ','.join(permissions)
+    # INT-2551：管理员角色标记（与 AuthMiddleware 的 is_admin 判定同一口径）。
+    # 无条件覆盖：客户端伪造的 X-User-Is-Admin 一律作废，agent_service 用它
+    # 复核「租户管理员」双条件里的角色那一半。
+    headers['X-User-Is-Admin'] = (
+        'true' if '*' in permissions else 'false')
     for name in ('Content-Type', 'Idempotency-Key', 'Last-Event-ID', 'Accept'):
         value = request.headers.get(name)
         if value:

@@ -3,12 +3,12 @@
 from agent_service.infrastructure.persistence.models.agent_models import (  # noqa: F401
     AgentApproval, AgentArtifact, AgentContextSnapshot, AgentLlmProvider,
     AgentRun, AgentRunEvent, AgentRunSkill, AgentSession, AgentSkill,
-    AgentSkillVersion, AgentStep, AgentToolCall,
+    AgentSkillReview, AgentSkillVersion, AgentStep, AgentToolCall,
 )
 
 __all__ = [
     'AgentSession', 'AgentRun', 'AgentRunEvent', 'AgentStep',
     'AgentToolCall', 'AgentArtifact', 'AgentContextSnapshot',
     'AgentLlmProvider', 'AgentApproval', 'AgentSkill', 'AgentSkillVersion',
-    'AgentRunSkill',
+    'AgentRunSkill', 'AgentSkillReview',
 ]

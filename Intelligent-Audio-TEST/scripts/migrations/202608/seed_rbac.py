@@ -4,7 +4,8 @@ RBAC 种子数据初始化
 ===================================
 
 向 permissions / roles / role_permissions 表插入系统内置数据：
-  - 133 个权限点（permissions；INT-2549 新增 agent:skill:read/manage）
+  - 134 个权限点（permissions；INT-2549 新增 agent:skill:read/manage，
+    INT-2551 新增 agent:skill:admin）
   - 5 个系统角色（roles: admin / tester / algo_engineer / device_admin / guest）
   - 超级通配权限 * → admin
   - tester / algo_engineer / device_admin / guest 各自的角色-权限映射
@@ -40,7 +41,7 @@ POSTGRES_URI = os.environ.get(
 
 
 # ========================================================================
-# 权限点定义（133 个）
+# 权限点定义（134 个）
 # ========================================================================
 
 PERMISSIONS = [
@@ -202,6 +203,8 @@ PERMISSIONS = [
     # 自定义 Skill (2)（INT-2549：本人 Skill 的读 / 写与管理）
     ('agent:skill:read', '查看自己的自定义 Skill'),
     ('agent:skill:manage', '创建 / 修改 / 发布 / 停用 / 导入导出自己的 Skill'),
+    # TENANT 级共享 Skill (1)（INT-2551：租户管理员的写入口 + 发布审核）
+    ('agent:skill:admin', '管理同租户共享 Skill（创建 / 审核 / 强制停用）'),
     # 超级通配 (1)
     ('*', '超级权限（通配所有操作）'),
 ]

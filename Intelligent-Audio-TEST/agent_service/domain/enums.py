@@ -211,9 +211,14 @@ class SkillStatus(str, Enum):
     只有 ``ACTIVE`` 参与自动触发与 L1 列表；``DRAFT`` 需过发布门槛才转
     ``ACTIVE``；``DISABLED`` 立即从 L1 / 激活候选消失（在办 run 按
     ``agent_run_skill`` 快照继续）。
+
+    INT-2551：``TENANT`` 级多一个 ``PENDING_REVIEW``（提交审核后、管理员
+    决策前）。该状态**冻结内容**（PUT 被拒，须先 withdraw），且同样不参与
+    自动触发。``USER`` 级不经过该状态（本人显式发布），由状态机拒绝。
     """
 
     DRAFT = 'DRAFT'
+    PENDING_REVIEW = 'PENDING_REVIEW'
     ACTIVE = 'ACTIVE'
     DISABLED = 'DISABLED'
 
@@ -221,6 +226,43 @@ class SkillStatus(str, Enum):
     def participates_in_trigger(self) -> bool:
         """是否进入自动触发候选 / L1 列表。"""
         return self is SkillStatus.ACTIVE
+
+    @property
+    def is_frozen(self) -> bool:
+        """内容是否冻结（审核中不许改，必须先撤回）。"""
+        return self is SkillStatus.PENDING_REVIEW
+
+
+class SkillReviewAction(str, Enum):
+    """``agent_skill_review.action`` 取值（INT-2551 审核流状态机的迁移动作）。
+
+    每个动作对应状态机里唯一一条迁移；``REJECT`` 与 ``WITHDRAW`` 都回
+    ``DRAFT``，但语义不同（审批人驳回 / 提交人撤回），审计链必须能区分。
+    """
+
+    SUBMIT = 'SUBMIT'
+    APPROVE = 'APPROVE'
+    REJECT = 'REJECT'
+    WITHDRAW = 'WITHDRAW'
+    DISABLE = 'DISABLE'
+
+    @property
+    def requires_reason(self) -> bool:
+        """驳回必须带原因（其余动作原因可空）。"""
+        return self is SkillReviewAction.REJECT
+
+
+class SkillReviewDecision(str, Enum):
+    """``POST /skills/{id}/review`` 的请求取值（与 ``SkillReviewAction`` 区分）。"""
+
+    APPROVE = 'APPROVE'
+    REJECT = 'REJECT'
+
+    @property
+    def action(self) -> SkillReviewAction:
+        return (SkillReviewAction.APPROVE
+                if self is SkillReviewDecision.APPROVE
+                else SkillReviewAction.REJECT)
 
 
 class SkillIssueCode(str, Enum):
@@ -285,6 +327,11 @@ class SkillErrorCode(str, Enum):
     SKILL_IMPORT_INVALID = 'SKILL_IMPORT_INVALID'
     SKILL_INJECTION_DETECTED = 'SKILL_INJECTION_DETECTED'
     SKILL_GATE_FAILED = 'SKILL_GATE_FAILED'
+    # ---- INT-2551 TENANT 级共享 + 发布审核流 ----
+    # 非本租户管理员（缺 agent:skill:admin 权限码或缺管理员角色）
+    SKILL_REVIEW_FORBIDDEN = 'SKILL_REVIEW_FORBIDDEN'
+    # 创建人审批自己提交的版本
+    SKILL_SELF_REVIEW_FORBIDDEN = 'SKILL_SELF_REVIEW_FORBIDDEN'
 
 
 # ---------------------------------------------------------------- 长期记忆（INT-2490）

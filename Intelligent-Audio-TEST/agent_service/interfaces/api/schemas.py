@@ -241,6 +241,41 @@ class SkillReplayItem(BaseModel):
     body: str = ''
 
 
+# ---------------------------------------------------------------- 审核流（INT-2551）
+
+class SkillReviewRequest(BaseModel):
+    """``POST /skills/{id}/review`` 请求体：``{decision, reason?}``。
+
+    ``decision`` 只接受 ``APPROVE`` / ``REJECT``（大小写不敏感）；
+    ``REJECT`` 时 ``reason`` 必填（服务层校验，缺省 400）。
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    decision: str = Field(min_length=1)
+    reason: Optional[str] = None
+
+
+class SkillReviewSchema(BaseModel):
+    """一条审核链记录（``agent_skill_review`` 的对外投影）。"""
+
+    id: str
+    skill_id: str
+    version: str
+    action: str
+    status_from: str
+    status_to: str
+    reviewer_id: Optional[int] = None
+    reason: str = ''
+    created_at: Optional[str] = None
+
+
+class SkillReviewResponse(BaseModel):
+    skill: SkillViewSchema
+    review: SkillReviewSchema
+    gate: SkillGateSchema
+
+
 # ---------------------------------------------------------------- providers
 
 class CreateProviderRequest(BaseModel):

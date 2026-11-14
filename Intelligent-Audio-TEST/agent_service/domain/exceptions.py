@@ -212,6 +212,25 @@ class SkillGateFailed(SkillServiceError):
     code = SkillErrorCode.SKILL_GATE_FAILED.value
 
 
+class SkillReviewForbidden(SkillServiceError):
+    """非本租户管理员调用 TENANT 级写入 / 审核（INT-2551）。
+
+    双条件缺一即拒绝：网关 RBAC 权限码 ``agent:skill:admin`` 与服务端复核
+    的租户管理员角色都在应用层再校验一次 —— 前端隐藏入口不算数。
+    """
+
+    code = SkillErrorCode.SKILL_REVIEW_FORBIDDEN.value
+
+
+class SkillSelfReviewForbidden(SkillServiceError):
+    """创建人审批自己提交的版本（``SKILL_SELF_REVIEW_FORBIDDEN``）。
+
+    自审自批在同一版本上没有任何第二人复核，等于绕过审核流。
+    """
+
+    code = SkillErrorCode.SKILL_SELF_REVIEW_FORBIDDEN.value
+
+
 # ---------------------------------------------------------------- 长期记忆（INT-2490）
 
 

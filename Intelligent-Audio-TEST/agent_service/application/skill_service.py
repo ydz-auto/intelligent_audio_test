@@ -29,14 +29,17 @@ from agent_service.application.skill_registry import (
 )
 from agent_service.application.skill_trigger import matches as trigger_matches
 from agent_service.domain.enums import (
-    SkillIssueCode, SkillIssueSeverity, SkillScope, SkillStatus,
+    SkillIssueCode, SkillIssueSeverity, SkillReviewAction, SkillScope,
+    SkillStatus,
 )
 from agent_service.domain.exceptions import (
     SkillImportInvalid, SkillInjectionDetected, SkillNameConflict,
     SkillNotFound, SkillPermissionEscalation, SkillServiceError,
     SkillStatusInvalid,
 )
-from agent_service.domain.model.agent_skill import AgentSkill, AgentSkillVersion
+from agent_service.domain.model.agent_skill import (
+    AgentSkill, AgentSkillReview, AgentSkillVersion,
+)
 from agent_service.domain.model.skill import (
     FIELD_ALLOWED_TOOLS, FIELD_BUDGETS, FIELD_DESCRIPTION, FIELD_NAME,
     FIELD_PERMISSIONS, FIELD_VERSION, REQUIRED_SECTIONS,
@@ -45,8 +48,10 @@ from agent_service.domain.model.skill import (
 from agent_service.domain.ports.golden_tasks import GoldenTaskProvider
 from agent_service.domain.ports.skill_repository import SkillResourceStore
 from agent_service.domain.repositories import (
-    AgentRunSkillRepository, AgentSkillRepository,
+    AgentRunSkillRepository, AgentSkillRepository, SkillReviewRepository,
 )
+from agent_service.domain.services.skill_review_state import target_status
+from agent_service.domain.services.skill_tenancy import ensure_tenant_admin
 from agent_service.domain.services.skill_visibility import (
     merge_skill_layers, to_domain_skill,
 )
@@ -159,7 +164,9 @@ class SkillService:
                  guard: Optional[SkillGuard] = None,
                  known_tools: Optional[Callable[[], Iterable[str]]] = None,
                  settings: Optional[SkillSettings] = None,
-                 platform_resources: Optional[Callable[[Any], Mapping[str, str]]] = None):
+                 platform_resources: Optional[Callable[[Any], Mapping[str, str]]] = None,
+                 reviews: Optional[SkillReviewRepository] = None,
+                 review_clock: Optional[Callable[[], datetime]] = None):
         self._repository = repository
         self._run_skills = run_skills
         self._registry = registry
@@ -170,6 +177,10 @@ class SkillService:
         self._settings = settings or SkillSettings()
         # 平台 Skill 的资源文本读取（fork 时随草稿复制；infrastructure 注入）
         self._platform_resources = platform_resources
+        # INT-2551：TENANT 级停用要落一条审核链审计（谁、哪版、什么理由）；
+        # 仓储只追加。未注入时拒绝 TENANT 停用，不静默丢审计。
+        self._reviews = reviews
+        self._review_clock = review_clock or _now
 
     # ------------------------------------------------------------ 查询
 
@@ -231,24 +242,45 @@ class SkillService:
 
     def create(self, payload: SkillDraftPayload, *, owner_id: int,
                tenant_id: str, permissions: Iterable[str] = (),
-               created_by: Optional[int] = None) -> SkillView:
-        """新建草稿（在线编辑的 POST；也用于「沉淀建议」用户确认后落库）。"""
+               created_by: Optional[int] = None,
+               scope: SkillScope = SkillScope.USER,
+               is_admin: bool = False) -> SkillView:
+        """新建草稿（在线编辑的 POST；也用于「沉淀建议」用户确认后落库）。
+
+        INT-2551：``scope=TENANT`` 时是「同租户共享」的草稿，写入口要求
+        租户管理员双条件（权限码 + 角色），``tenant_id`` 由服务端按登录身份
+        填、``owner_id`` 记创建人；``PLATFORM`` 层只读，不接受创建。
+        """
+        if scope is SkillScope.TENANT:
+            ensure_tenant_admin(permissions=permissions, is_admin=is_admin)
+        elif scope is not SkillScope.USER:
+            raise SkillServiceError('PLATFORM 层只读，不能创建 Skill')
         return self._create(payload, owner_id=owner_id, tenant_id=tenant_id,
                             permissions=permissions,
-                            created_by=created_by or owner_id)
+                            created_by=created_by or owner_id, scope=scope)
 
     def update(self, skill_id: str, payload: SkillDraftPayload, *,
                owner_id: int, tenant_id: str,
-               permissions: Iterable[str] = ()) -> SkillView:
-        """保存（version +1）。ACTIVE Skill 编辑后回到 DRAFT，需重新发布。"""
+               permissions: Iterable[str] = (),
+               is_admin: bool = False) -> SkillView:
+        """保存（version +1）。ACTIVE Skill 编辑后回到 DRAFT，需重新发布。
+
+        INT-2551：``PENDING_REVIEW`` 期间内容冻结（``SKILL_STATUS_INVALID``），
+        必须先撤回；TENANT 行仅租户管理员可改（租户内任意一条，不限创建人）。
+        """
         row = self._owned_row(skill_id, owner_id=owner_id,
-                              tenant_id=tenant_id, writable=True)
+                              tenant_id=tenant_id, writable=True,
+                              permissions=permissions, is_admin=is_admin)
         if row is None:
             raise SkillNotFound(skill_id)
+        if row.status.is_frozen:
+            raise SkillStatusInvalid(
+                f'状态 {row.status.value} 期间内容冻结，不能保存；'
+                '请先撤回审核（POST /skills/{id}/withdraw）')
         if payload.name and payload.name != row.name:
             self._assert_name_available(
-                payload.name, owner_id=owner_id, tenant_id=tenant_id,
-                exclude_id=row.id)
+                payload.name, scope=row.scope, owner_id=owner_id,
+                tenant_id=tenant_id, exclude_id=row.id)
         current = self._repository.get_version(row.id, row.version)
         name = payload.name or row.name
         description = (payload.description
@@ -285,41 +317,98 @@ class SkillService:
         self._refresh_registry()
         return self._view_from_row(self._require_row(row.id))
 
-    def disable(self, skill_id: str, *, owner_id: int,
-                tenant_id: str) -> SkillView:
+    def disable(self, skill_id: str, *, owner_id: int, tenant_id: str,
+                permissions: Iterable[str] = (),
+                is_admin: bool = False,
+                reason: str = '') -> SkillView:
+        """强制停用：立即从 L1 / 激活候选消失；在办 run 按快照继续。
+
+        INT-2551：TENANT 行租户管理员可停用本租户**任意**一条（不限创建人），
+        且必须落一条 ``DISABLE`` 审计（谁、哪版、什么理由）。
+        """
         row = self._owned_row(skill_id, owner_id=owner_id,
-                              tenant_id=tenant_id, writable=True)
+                              tenant_id=tenant_id, writable=True,
+                              permissions=permissions, is_admin=is_admin)
         if row is None:
             raise SkillNotFound(skill_id)
         if row.status is not SkillStatus.DISABLED:
-            self._repository.update(
-                row.id, status=SkillStatus.DISABLED.value, updated_at=_now())
+            if row.scope is SkillScope.TENANT:
+                target_status(row.status, SkillReviewAction.DISABLE)
+                if self._reviews is None:
+                    raise SkillStatusInvalid(
+                        'TENANT 级停用缺少审计仓储，拒绝执行（不静默丢审计）')
+            status_from = row.status
+            # 条件迁移：并发的两次停用只有一次生效，审计也只落一条
+            if not self._repository.transition_if(
+                    row.id, [status_from], SkillStatus.DISABLED):
+                raise SkillStatusInvalid('Skill 状态已被其他请求变更，请刷新后重试')
+            if row.scope is SkillScope.TENANT:
+                self._append_review(
+                    row, action=SkillReviewAction.DISABLE,
+                    status_from=status_from, status_to=SkillStatus.DISABLED,
+                    reviewer_id=owner_id, reason=reason)
             self._refresh_registry()
         return self._view_from_row(self._require_row(row.id))
 
-    def delete(self, skill_id: str, *, owner_id: int, tenant_id: str) -> None:
-        """删除当前行；版本行保留（历史 run 回放仍可读到旧内容）。"""
+    def delete(self, skill_id: str, *, owner_id: int, tenant_id: str,
+               permissions: Iterable[str] = (),
+               is_admin: bool = False) -> None:
+        """删除当前行；版本行保留（历史 run 回放仍可读到旧内容）。
+
+        TENANT 共享 Skill 不提供删除：共享资产的退出机制是「强制停用」，
+        删除会丢掉同租户可见性语义（审计链虽在，但列表里凭空消失）。
+        """
         row = self._owned_row(skill_id, owner_id=owner_id,
-                              tenant_id=tenant_id, writable=True)
+                              tenant_id=tenant_id, writable=True,
+                              permissions=permissions, is_admin=is_admin)
         if row is None:
             raise SkillNotFound(skill_id)
+        if row.scope is SkillScope.TENANT:
+            raise SkillStatusInvalid(
+                'TENANT 共享 Skill 不支持删除，请使用停用（disable）')
         self._repository.delete(row.id)
         self._refresh_registry()
 
     def publish(self, skill_id: str, *, owner_id: int, tenant_id: str,
-                permissions: Iterable[str] = ()) -> PublishResult:
+                permissions: Iterable[str] = (),
+                is_admin: bool = False) -> PublishResult:
         """发布门槛：≥3 条 golden tasks 且触发判定通过 → ACTIVE。
 
         注入检测在此额外执行：命中即拒绝（草稿仍保留），不静默降级。
+
+        INT-2551：``TENANT`` 级**没有**这条旁路 —— 必须走
+        ``submit-review`` + 管理员审批，否则等于绕过审核流直接 ACTIVE。
         """
         row = self._owned_row(skill_id, owner_id=owner_id,
-                              tenant_id=tenant_id, writable=True)
+                              tenant_id=tenant_id, writable=True,
+                              permissions=permissions, is_admin=is_admin)
         if row is None:
             raise SkillNotFound(skill_id)
+        if row.scope is SkillScope.TENANT:
+            raise SkillStatusInvalid(
+                'TENANT 级 Skill 发布须走审核流：'
+                'POST /skills/{id}/submit-review 后由其他租户管理员审批')
         if row.status is SkillStatus.ACTIVE:
             raise SkillStatusInvalid('Skill 已是 ACTIVE，无需重复发布')
         if row.status is SkillStatus.DISABLED:
             raise SkillStatusInvalid('DISABLED 的 Skill 不能直接发布，请先另存为草稿')
+        skill, gate = self.evaluate_publish(row, permissions=permissions)
+        if not gate.passed:
+            return PublishResult(skill=row, gate=gate)
+        self._repository.update(
+            row.id, status=SkillStatus.ACTIVE.value, updated_at=_now())
+        self._refresh_registry()
+        return PublishResult(skill=self._require_row(row.id), gate=gate)
+
+    def evaluate_publish(self, row: AgentSkill, *,
+                         permissions: Iterable[str] = ()
+                         ) -> Tuple[Skill, GateResult]:
+        """保存期校验复查 + 注入检测 + 发布门槛（发布 / 提交审核 / 批准共用）。
+
+        INT-2551：TENANT 级提交审核与批准都要跑**完全相同**的这一套，
+        不复制、不放宽任何一条规则；只在审批点复跑，防止审批期间规则或
+        权限变化被漏掉。
+        """
         version = self._repository.get_version(row.id, row.version)
         body = version.body if version is not None else ''
         frontmatter = (version.frontmatter if version is not None
@@ -345,13 +434,7 @@ class SkillService:
                 '（草稿仍可保存，ACTIVE 不生效）',
                 issues=[_guard_issue_to_skill(item, row.name)
                         for item in injection])
-        gate = self._evaluate_gate(row)
-        if not gate.passed:
-            return PublishResult(skill=row, gate=gate)
-        self._repository.update(
-            row.id, status=SkillStatus.ACTIVE.value, updated_at=_now())
-        self._refresh_registry()
-        return PublishResult(skill=self._require_row(row.id), gate=gate)
+        return skill, self._evaluate_gate(row)
 
     def fork(self, source_id: str, *, owner_id: int, tenant_id: str,
              permissions: Iterable[str] = (), name: str = '',
@@ -527,14 +610,15 @@ class SkillService:
 
     def _create(self, payload: SkillDraftPayload, *, owner_id: int,
                 tenant_id: str, permissions: Iterable[str],
-                created_by: Optional[int]) -> SkillView:
+                created_by: Optional[int],
+                scope: SkillScope = SkillScope.USER) -> SkillView:
         name = (payload.name or '').strip()
         description = (payload.description or '').strip()
         frontmatter = dict(payload.frontmatter or {})
         # 名称 / 描述以请求体为准写回 frontmatter（见 update 处同一口径）
         frontmatter[FIELD_NAME] = name
         frontmatter[FIELD_DESCRIPTION] = description
-        self._assert_name_available(name, owner_id=owner_id,
+        self._assert_name_available(name, scope=scope, owner_id=owner_id,
                                     tenant_id=tenant_id)
         body = normalize_body(payload.body or '')
         resources = self._prepare_resources('', payload.resources)
@@ -553,7 +637,7 @@ class SkillService:
             body=body, frontmatter=frontmatter, resources=stored,
             created_by=created_by, created_at=now))
         row = self._repository.add(AgentSkill(
-            id=skill_id, scope=SkillScope.USER, name=name,
+            id=skill_id, scope=scope, name=name,
             description=description, version=version,
             status=SkillStatus.DRAFT, content_hash=hash_value,
             frontmatter=frontmatter, resources=stored,
@@ -729,22 +813,41 @@ class SkillService:
                     row.name, len(tasks), len(hits))
         return GateResult(golden_tasks=len(tasks), passed=True)
 
-    def _assert_name_available(self, name: str, *, owner_id: int,
-                               tenant_id: str,
+    def _assert_name_available(self, name: str, *,
+                               scope: SkillScope = SkillScope.USER,
+                               owner_id: int, tenant_id: str,
                                exclude_id: Optional[str] = None) -> None:
+        """同名规则（§4.4）：PLATFORM 不可覆盖；同作用域内同名拒绝。
+
+        TENANT 与 USER 同名不算冲突（USER 优先并标注遮蔽），因此这里只查
+        **目标作用域**这一层。TENANT 层按租户查，跨租户同名互不影响。
+        """
         if not name:
             return
         platform_names = {skill.name for skill in self._platform_skills()}
         if name in platform_names:
             raise SkillNameConflict(
                 f'与平台内置 Skill 同名：{name}（请改名或 fork）')
-        same_user = self._repository.find_by_name(
-            SkillScope.USER, name, owner_id=owner_id)
-        if same_user is not None and same_user.id != exclude_id:
+        if scope is SkillScope.TENANT:
+            same_scope = self._repository.find_by_name(
+                SkillScope.TENANT, name, tenant_id=tenant_id)
+        else:
+            same_scope = self._repository.find_by_name(
+                SkillScope.USER, name, owner_id=owner_id)
+        if same_scope is not None and same_scope.id != exclude_id:
             raise SkillNameConflict(f'同一作用域已有同名 Skill：{name}')
 
     def _owned_row(self, skill_id: str, *, owner_id: int, tenant_id: str,
-                   writable: bool = False) -> Optional[AgentSkill]:
+                   writable: bool = False,
+                   permissions: Iterable[str] = (),
+                   is_admin: bool = False) -> Optional[AgentSkill]:
+        """按作用域解析可见行；``writable`` 时再校验写权限。
+
+        - ``USER``：只对本人可见 / 可写（非本人一律 404，不泄漏存在性）；
+        - ``TENANT``：同租户可见；写要求租户管理员双条件，非管理员显式
+          403（同租户用户本来就能看到这条，隐藏存在性没有意义）；
+        - ``PLATFORM``：只读挂载，写入口恒 404。
+        """
         if not skill_id or skill_id.startswith(PLATFORM_ID_PREFIX):
             return None
         row = self._repository.get(skill_id)
@@ -754,10 +857,12 @@ class SkillService:
             return None
         if row.scope is SkillScope.USER and row.owner_id != owner_id:
             return None
-        if row.scope is SkillScope.TENANT and row.tenant_id != tenant_id:
-            return None
-        if writable and row.scope is not SkillScope.USER:
-            return None  # TENANT 写入口归 INT-2551
+        if row.scope is SkillScope.TENANT:
+            if row.tenant_id != tenant_id:
+                return None  # 跨租户：404，不泄漏「存在但无权」
+            if writable:
+                ensure_tenant_admin(permissions=permissions,
+                                    is_admin=is_admin)
         return row
 
     def _require_row(self, skill_id: str) -> AgentSkill:
@@ -765,6 +870,63 @@ class SkillService:
         if row is None:
             raise SkillNotFound(skill_id)
         return row
+
+    def require_row(self, skill_id: str) -> AgentSkill:
+        """按 id 取当前行（内部调用；对外可见性判定用 ``get``）。"""
+        return self._require_row(skill_id)
+
+    # ------------------------------------------------------------ 审核流支撑
+
+    def tenant_review_row(self, skill_id: str, *, owner_id: int,
+                          tenant_id: str) -> AgentSkill:
+        """解析可进审核流的行（INT-2551）。
+
+        - 不存在 / PLATFORM / 跨租户 / 非本人 USER → ``SKILL_NOT_FOUND``
+          （404，不泄漏存在性）；
+        - 本人 ``USER`` 行 → ``SKILL_STATUS_INVALID``：USER 级不走审核流，
+          本人显式发布即可。
+        """
+        row = (None if not skill_id or skill_id.startswith(PLATFORM_ID_PREFIX)
+               else self._repository.get(skill_id))
+        if row is None or row.scope is SkillScope.PLATFORM:
+            raise SkillNotFound(skill_id)
+        if row.scope is SkillScope.USER:
+            if row.owner_id != owner_id:
+                raise SkillNotFound(skill_id)
+            raise SkillStatusInvalid(
+                'USER 级 Skill 不走审核流：请直接发布')
+        if row.tenant_id != tenant_id:
+            raise SkillNotFound(skill_id)  # 跨租户：404
+        return row
+
+    def refresh_registry(self) -> None:
+        """自定义 Skill 状态变化后立即重载 L1 / 激活候选。"""
+        self._refresh_registry()
+
+    def append_review(self, row: AgentSkill, *,
+                      action: SkillReviewAction,
+                      status_from: SkillStatus, status_to: SkillStatus,
+                      reviewer_id: Optional[int], reason: str = ''
+                      ) -> AgentSkillReview:
+        """追加一条审核链审计（只追加；仓储缺失即失败，不静默丢审计）。"""
+        return self._append_review(
+            row, action=action, status_from=status_from, status_to=status_to,
+            reviewer_id=reviewer_id, reason=reason)
+
+    def _append_review(self, row: AgentSkill, *,
+                       action: SkillReviewAction,
+                       status_from: SkillStatus, status_to: SkillStatus,
+                       reviewer_id: Optional[int], reason: str = ''
+                       ) -> AgentSkillReview:
+        if self._reviews is None:
+            raise SkillStatusInvalid(
+                '审核链仓储未装配，拒绝执行（不静默丢审计）')
+        review = AgentSkillReview(
+            id=str(uuid.uuid4()), skill_id=row.id, version=row.version,
+            action=action, status_from=status_from, status_to=status_to,
+            reviewer_id=reviewer_id, reason=reason or '',
+            tenant_id=row.tenant_id, created_at=self._review_clock())
+        return self._reviews.add(review)
 
     def _resolve_visible_skill(self, skill_id: str, *, owner_id: int,
                                tenant_id: str,

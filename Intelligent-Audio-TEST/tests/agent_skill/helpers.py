@@ -143,13 +143,31 @@ def create_draft(service, payload=None, *, owner_id=OWNER_ID,
                           created_by=owner_id)
 
 
+def create_tenant_skill(service, payload=None, *, owner_id=OWNER_ID,
+                        tenant_id=TENANT_ID, permissions=('*',),
+                        is_admin=True):
+    """TENANT 级共享 Skill 草稿（INT-2551；默认用管理员身份创建）。"""
+    from agent_service.domain.enums import SkillScope
+    return service.create(
+        payload or draft_payload(), owner_id=owner_id, tenant_id=tenant_id,
+        permissions=list(permissions), created_by=owner_id,
+        scope=SkillScope.TENANT, is_admin=is_admin)
+
+
+# INT-2551：能通过 ≥3 条 golden tasks 门槛的触发词组合
+GATE_GOLDEN = {
+    'demo-skill': ['演示 一下', '样例 给我', '帮我看样例'],
+    'demo-skill-2': ['演示 一下', '样例 给我', '帮我看样例'],
+}
+
+
 def issues_codes(exc) -> List[str]:
     return [issue.code.value for issue in getattr(exc, 'issues', ())]
 
 
 __all__ = [
-    'DEMO_BODY', 'InMemoryResourceStore', 'OTHER_USER_ID', 'OWNER_ID',
-    'PROJECT_ROOT', 'SKILLS_ROOT', 'StaticGoldenTasks', 'TENANT_ID',
-    'build_skill_stack', 'create_draft', 'demo_body', 'demo_tools',
-    'draft_payload', 'issues_codes',
+    'DEMO_BODY', 'GATE_GOLDEN', 'InMemoryResourceStore', 'OTHER_USER_ID',
+    'OWNER_ID', 'PROJECT_ROOT', 'SKILLS_ROOT', 'StaticGoldenTasks',
+    'TENANT_ID', 'build_skill_stack', 'create_draft', 'create_tenant_skill',
+    'demo_body', 'demo_tools', 'draft_payload', 'issues_codes',
 ]
