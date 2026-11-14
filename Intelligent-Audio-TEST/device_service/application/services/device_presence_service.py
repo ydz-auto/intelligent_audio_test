@@ -20,6 +20,7 @@ from typing import Optional
 
 from shared.config.query_constants import QueryConstants
 from shared.models.common_enums import DeviceStatusEventType
+from shared.models.database import remove_db_session
 from shared.utils.config_manager import config_manager
 from shared.utils.query_utils import now_cst
 from device_service.infrastructure.drivers.adb_track import is_device_online
@@ -48,6 +49,20 @@ def _belongs_to_system(device_system: Optional[str], watched_system: str) -> boo
     if not device_key or not watched_key:
         return False
     return device_key == watched_key or device_key in watched_key or watched_key in device_key
+
+
+def _end_round_session() -> None:
+    """后台监听线程的轮次收尾：清掉当前线程的 DB session，释放只读事务。
+
+    INT-2590：监听线程与进程同生命周期、永不退出，收尾必须落在「每轮」而不是
+    「线程退出时」。本轮写路径（``update_device_statuses`` / ``record_status_events``）
+    都在内部 commit，``remove_db_session`` 不会吞掉未提交写（与软删除清理线程同模式）。
+    收尾失败不得影响监听主流程，这里吞异常并记 debug。
+    """
+    try:
+        remove_db_session()
+    except Exception:  # noqa: BLE001 - 收尾失败不得影响监听主流程
+        logger.debug("[DevicePresence] 轮次收尾 remove_db_session 失败", exc_info=True)
 
 
 class DevicePresenceService:
@@ -118,9 +133,17 @@ class DevicePresenceService:
                     if self._stop_event.is_set():
                         break
                     attempt = 0
-                    self.reconcile(system, snapshot)
+                    try:
+                        self.reconcile(system, snapshot)
+                    finally:
+                        # 每个快照对账结束即收尾：随后会阻塞在监听流上，不在此刻
+                        # 结束事务，本轮事务会一直悬挂到下一次设备事件（INT-2590）。
+                        _end_round_session()
             except Exception:
                 logger.warning("[DevicePresence] %s 监听流异常", system, exc_info=True)
+            finally:
+                # 监听流断开/抛异常退出时同样收尾，再进入重连退避
+                _end_round_session()
             if self._stop_event.is_set():
                 break
             attempt += 1
