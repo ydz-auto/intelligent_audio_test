@@ -134,6 +134,11 @@ type AiChatSessionState = {
   updateMessages: UpdateMessagesFn
   updateConfig: <K extends keyof ChatConfig>(key: K, value: ChatConfig[K]) => void
   clearMessages: () => void
+  /**
+   * 「沉淀为 Skill」建议卡「忽略」（INT-2584）：只把该条消息上的建议清掉（卡片消失），
+   * 不发请求、不落服务端；随既有消息持久化一起保存，刷新后该消息回到无卡片状态。
+   */
+  dismissSkillSuggestion: (messageKey: string) => void
   /** 绑定 / 结束平台 Agent 会话（null 结束；下次发送新建会话） */
   setAgentSession: (sessionId: string | null) => void
   /** 记录 / 清空当前 run id */
@@ -184,6 +189,20 @@ export const useAiChatSession = create<AiChatSessionState>()((set, get) => {
     updateConfig: (key, value) =>
       set((state) => ({ config: { ...state.config, [key]: value } })),
     clearMessages: () => set({ messages: [] }),
+    dismissSkillSuggestion: (messageKey) => {
+      const target = get().messages.find(
+        (message) => message.key === messageKey && message.skillSuggestion
+      )
+      // 已经不在（重复点击 / 消息被截断）时不动 store，避免无意义的消息重写与持久化
+      if (!target) return
+      set((state) => ({
+        messages: state.messages.map((message) =>
+          message.key === messageKey
+            ? { ...message, skillSuggestion: undefined }
+            : message
+        ),
+      }))
+    },
     setAgentSession: (sessionId) =>
       set({ agentSessionId: sessionId, agentRunId: sessionId ? get().agentRunId : null }),
     setAgentRunId: (runId) => set({ agentRunId: runId }),

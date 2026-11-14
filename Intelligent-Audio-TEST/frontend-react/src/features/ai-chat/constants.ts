@@ -336,6 +336,7 @@ export const SKILL_SUGGESTION_COPY = {
   note: '草案建议：确认后才创建草稿，不自动落库、不自动触发。',
   createAction: '去创建草稿',
   createdBadge: '已创建',
+  dismissAction: '忽略',
 } as const
 
 /** 供应商管理弹窗文案（§3.11/§6；INT-2493：本机供应商降级为「直连 Demo」） */

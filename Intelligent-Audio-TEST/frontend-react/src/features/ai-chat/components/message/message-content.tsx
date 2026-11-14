@@ -25,6 +25,7 @@ import {
   isErrorMessage,
 } from '@/features/ai-chat/lib/message'
 import type { ChatMessage } from '@/domain/models/aiChat'
+import { useAiChatSession } from '@/infrastructure/stores/aiChatSessionStore'
 
 import { DataSources } from './data-sources'
 import { DocumentChangeCard } from './document-change-card'
@@ -58,6 +59,10 @@ export function AiChatMessageContent({
   onDeleteMessage,
 }: AiChatMessageContentProps) {
   const isUser = message.from === 'user'
+  /** 「沉淀为 Skill」建议卡「忽略」（INT-2584）：只清本条消息的建议字段，不发请求 */
+  const dismissSkillSuggestion = useAiChatSession(
+    (state) => state.dismissSkillSuggestion
+  )
   const isError = isErrorMessage(message)
   const isMessageFinal =
     message.status !== MESSAGE_STATUS.LOADING &&
@@ -133,7 +138,10 @@ export function AiChatMessageContent({
         ))}
 
       {message.skillSuggestion && (
-        <SkillSuggestionCard suggestion={message.skillSuggestion} />
+        <SkillSuggestionCard
+          onDismiss={() => dismissSkillSuggestion(message.key)}
+          suggestion={message.skillSuggestion}
+        />
       )}
 
       {showLoader && (

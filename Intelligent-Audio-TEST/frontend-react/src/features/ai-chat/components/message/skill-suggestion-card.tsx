@@ -5,6 +5,7 @@
  * （不落库、created=false、requires_confirmation=true）。气泡里渲染为建议卡：
  * 主按钮带 `?name=&description=` 直达 /agent-skills 新建草稿并预填，
  * 创建动作仍由用户在页面确认；事件未到达时不渲染，不伪造建议。
+ * 「忽略」只关闭本卡（INT-2584）：不发请求、不落服务端，卡片随既有消息持久化一起消失。
  */
 import { Link } from '@tanstack/react-router'
 import { Sparkles } from 'lucide-react'
@@ -17,9 +18,14 @@ import { SKILL_SUGGESTION_COPY } from '@/features/ai-chat/constants'
 
 type SkillSuggestionCardProps = {
   suggestion: ChatSkillSuggestion
+  /** 「忽略」：只关闭本卡（INT-2584），不发请求、不落库；由消息层清理建议字段 */
+  onDismiss?: () => void
 }
 
-export function SkillSuggestionCard({ suggestion }: SkillSuggestionCardProps) {
+export function SkillSuggestionCard({
+  suggestion,
+  onDismiss,
+}: SkillSuggestionCardProps) {
   const toolCount = suggestion.toolsUsed.length
 
   return (
@@ -33,30 +39,44 @@ export function SkillSuggestionCard({ suggestion }: SkillSuggestionCardProps) {
         <span className='text-sm font-medium'>
           {SKILL_SUGGESTION_COPY.title}
         </span>
-        {suggestion.created ? (
-          <Badge variant='secondary'>
-            {SKILL_SUGGESTION_COPY.createdBadge}
-          </Badge>
-        ) : (
-          <Button
-            className='ml-auto h-6 px-2 text-xs'
-            data-testid='skill-suggestion-create'
-            render={
-              <Link
-                search={{
-                  name: suggestion.suggestedName,
-                  description: suggestion.description || undefined,
-                }}
-                to={AGENT_SKILLS_ROUTE}
-              />
-            }
-            size='sm'
-            type='button'
-            variant='outline'
-          >
-            {SKILL_SUGGESTION_COPY.createAction}
-          </Button>
-        )}
+        <div className='ml-auto flex items-center gap-1.5'>
+          {suggestion.created ? (
+            <Badge variant='secondary'>
+              {SKILL_SUGGESTION_COPY.createdBadge}
+            </Badge>
+          ) : (
+            <Button
+              className='h-6 px-2 text-xs'
+              data-testid='skill-suggestion-create'
+              render={
+                <Link
+                  search={{
+                    name: suggestion.suggestedName,
+                    description: suggestion.description || undefined,
+                  }}
+                  to={AGENT_SKILLS_ROUTE}
+                />
+              }
+              size='sm'
+              type='button'
+              variant='outline'
+            >
+              {SKILL_SUGGESTION_COPY.createAction}
+            </Button>
+          )}
+          {onDismiss && (
+            <Button
+              className='h-6 px-2 text-xs'
+              data-testid='skill-suggestion-dismiss'
+              onClick={onDismiss}
+              size='sm'
+              type='button'
+              variant='ghost'
+            >
+              {SKILL_SUGGESTION_COPY.dismissAction}
+            </Button>
+          )}
+        </div>
       </div>
 
       <p className='text-muted-foreground mt-2 text-xs leading-5'>
