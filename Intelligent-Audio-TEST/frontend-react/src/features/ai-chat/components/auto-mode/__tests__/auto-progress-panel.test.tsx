@@ -211,6 +211,38 @@ describe('AutoProgressPanel', () => {
       'data-auto-terminal'
     )).toBe('circuit_break')
     expect(screen.getAllByText(AGENT_AUTO_COPY.circuitTitle).length).toBeGreaterThan(0)
+    // 内部错误码收进「查看详情」，不直接铺在用户文案里（P3-4）
+    const code = container.querySelector('[data-auto-error-code]')
+    expect(code?.textContent).toBe('CONSECUTIVE_TOOL_FAILURES')
+    expect(code?.closest('details')).not.toBeNull()
+  })
+
+  it('刷新恢复后继续：面板给「等待服务端结果」，不是无限「正在收集步骤进度」', () => {
+    render(
+      <AutoProgressPanel
+        pause={null}
+        progress={null}
+        run={run({ status: AGENT_RUN_STATUS.RUNNING })}
+        tracking
+      />
+    )
+    expect(screen.getByRole('status').textContent).toContain(AGENT_AUTO_COPY.tracking)
+    expect(screen.queryByText('正在收集步骤进度…')).toBeNull()
+  })
+
+  it('终态下不再重复底部红色 alert（P3-4）', () => {
+    render(
+      <AutoProgressPanel
+        error='Agent 运行失败，请重试'
+        pause={null}
+        progress={progress()}
+        run={run({
+          status: AGENT_RUN_STATUS.FAILED,
+          error: 'CONSECUTIVE_TOOL_FAILURES',
+        })}
+      />
+    )
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('运行错误单独提示（不伪装成终态徽标）', () => {

@@ -310,7 +310,8 @@ export const AGENT_BUDGET_DIMENSION_LABELS: Record<AgentBudgetDimension, string>
   maxToolCalls: '工具调用',
   maxTokens: 'token',
   maxDurationSeconds: '时长',
-  maxOutputBytes: '输出字节',
+  // 展示单位统一为 MB（auto-progress.ts 换算），标签不再写「字节」，避免「输出字节 0 / 20 MB」
+  maxOutputBytes: '最大输出',
 }
 
 /**
@@ -651,6 +652,8 @@ export const AGENT_AUTO_COPY = {
   budgetHint: '只能收紧、不能放宽：留空即用服务端默认，超限会导致运行停止',
   budgetDefaultHint:
     '服务端默认（§9.4）：轮次 60 · 工具调用 120 · token 4×上下文窗口 · 时长 30 分钟 · 输出 20MB',
+  /** 输入超过服务端默认时的口径提示（请求只能收紧；超限由服务端按上限执行） */
+  budgetOverLimitHint: '超过服务端上限时按服务端上限执行',
   budgetRounds: '最大轮次',
   budgetToolCalls: '最大工具调用',
   budgetTokens: '最大 token（输入+输出）',
@@ -705,6 +708,7 @@ export const AGENT_AUTO_COPY = {
   circuitTitle: 'Auto 已熔断停止',
   circuitDesc: '连续工具失败达上限，不再自动重试；已完成产物保留',
   failedTitle: 'Auto 运行失败',
+  failedDesc: '运行未能完成，请检查目标或稍后重试',
   cancelledTitle: 'Auto 已结束',
   /** 审批联动（Auto 下写操作仍逐条确认，不提供「全部自动批准」） */
   approvalsTitle: '待审批写操作',
@@ -714,6 +718,11 @@ export const AGENT_AUTO_COPY = {
   /** 刷新恢复 */
   restoredPaused: 'Auto 运行处于暂停态（刷新前的进度不可回放），可继续或结束',
   restoreHint: '刷新后仅恢复暂停状态，进度时间线在本轮不可回放',
+  /** 刷新恢复后点「继续」：本页不重接事件流，改按服务端快照跟随终态（P2） */
+  restoredResuming: '已继续运行，正在等待服务端结果（刷新后的执行过程不在本页回放）',
+  tracking: '已继续运行，正在等待服务端结果…（刷新后续跑不在本页回放步骤进度）',
+  trackingFailed: '暂时无法获取运行结果，请刷新页面查看',
+  trackingTimeout: '等待运行结果超时，请刷新页面查看',
   /** 请求失败 */
   sendFailed: 'Auto 任务发起失败，请稍后重试',
   loadFailed: 'Auto 状态加载失败',

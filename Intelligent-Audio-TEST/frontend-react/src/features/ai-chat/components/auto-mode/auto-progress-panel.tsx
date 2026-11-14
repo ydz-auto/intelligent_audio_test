@@ -72,6 +72,8 @@ type AutoProgressPanelProps = {
   stopping?: boolean
   /** 运行错误（事件流失败 / 发起失败） */
   error?: string | null
+  /** 刷新恢复后继续：本页无事件流，正在轮询服务端终态（P2） */
+  tracking?: boolean
   onResume?: () => void
   onStop?: () => void
 }
@@ -115,6 +117,7 @@ export function AutoProgressPanel({
   resuming = false,
   stopping = false,
   error = null,
+  tracking = false,
   onResume,
   onStop,
 }: AutoProgressPanelProps) {
@@ -191,7 +194,7 @@ export function AutoProgressPanel({
       {!progress && !terminal && !paused && (
         <p className='text-muted-foreground mt-2 flex items-center gap-2 text-xs' role='status'>
           <Loader2 className='size-3.5 animate-spin' />
-          正在收集步骤进度…
+          {tracking ? AGENT_AUTO_COPY.tracking : '正在收集步骤进度…'}
         </p>
       )}
 
@@ -363,17 +366,27 @@ export function AutoProgressPanel({
                   {terminal.description}
                 </p>
               )}
+              {/* 内部错误码收进「详情」，不直接铺在用户文案里（P3-4） */}
               {run?.error && autoTerminalKind(run) !== 'succeeded' && (
-                <p className='text-muted-foreground mt-0.5 font-mono text-[10px] break-all'>
-                  {run.error}
-                </p>
+                <details className='mt-1'>
+                  <summary className='text-muted-foreground w-fit cursor-pointer text-[10px]'>
+                    查看详情
+                  </summary>
+                  <p
+                    className='text-muted-foreground mt-0.5 font-mono text-[10px] break-all'
+                    data-auto-error-code
+                  >
+                    {run.error}
+                  </p>
+                </details>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {error && (
+      {/* run 级错误：终态由终态块统一表达，不再重复同一条提示（P3-4） */}
+      {error && !terminal && (
         <p className='text-destructive mt-2 text-xs' role='alert'>
           {error}
         </p>

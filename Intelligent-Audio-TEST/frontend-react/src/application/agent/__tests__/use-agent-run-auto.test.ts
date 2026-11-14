@@ -11,7 +11,7 @@
  *
  * API 层全部替身；真实栈证据见交付评论。
  */
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -266,6 +266,13 @@ describe('Auto 进度与暂停', () => {
     expect(result.current.autoProgress?.pauseReason).toBe(
       AGENT_RUN_PAUSE_REASON.BUDGET_THRESHOLD
     )
+    // 暂停时在途气泡收口（P3-2）：不再滞留「正在回复...」，也不挂等待审批徽标（P3-1）
+    const [message] = useAiChatSession.getState().messages.filter(
+      (item) => item.from === 'assistant'
+    )
+    expect(message.status).toBe('complete')
+    expect(message.runStatus).toBeUndefined()
+    expect(message.versions[0].content).toBe(AGENT_AUTO_COPY.phasePendingResume)
   })
 })
 
@@ -465,7 +472,15 @@ describe('Auto 终态', () => {
 
     expect(result.current.run?.status).toBe(AGENT_RUN_STATUS.FAILED)
     expect(result.current.run?.error).toBe('CONSECUTIVE_TOOL_FAILURES')
-    expect(result.current.phase).toBe(AGENT_RUN_PHASE.ERROR)
+    // 熔断是 Auto 的明确终态（面板给「Auto 已熔断停止」），不再落通用 ERROR 阶段
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
+    // 气泡按 Auto 熔断口径收口，不复用通用「Agent 运行失败，请重试」（P3-5）
+    const [message] = useAiChatSession.getState().messages.filter(
+      (item) => item.from === 'assistant'
+    )
+    expect(message.status).toBe('complete')
+    expect(message.runStatus).toBe(AGENT_RUN_STATUS.FAILED)
+    expect(message.versions[0].content).toContain(AGENT_AUTO_COPY.circuitTitle)
   })
 
   it('熔断（run_finished FAILED）保留错误原因', async () => {
@@ -487,5 +502,176 @@ describe('Auto 终态', () => {
 
     expect(result.current.run?.status).toBe(AGENT_RUN_STATUS.FAILED)
     expect(result.current.run?.error).toBe('CONSECUTIVE_TOOL_FAILURES')
+  })
+})
+
+/**
+ * 刷新恢复后的「继续」（INT-2477 UX 审计 P2）：本页没有事件流，继续成功后必须
+ * 跟随到服务端真实终态，不能把界面永久停在「正在收集步骤进度…」与旧的暂停占位文案。
+ */
+describe('刷新恢复后的 Auto 继续（P2）', () => {
+  const PAUSED_AUTO_RUN: AgentRun = {
+    id: 'r-9',
+    sessionId: 's-9',
+    status: AGENT_RUN_STATUS.WAITING_APPROVAL,
+    mode: 'auto',
+  }
+
+  function seedRestoredPause() {
+    getSessionMock.mockResolvedValue({
+      session: { id: 's-9', title: '历史会话' },
+      messages: [],
+      runs: [PAUSED_AUTO_RUN],
+    })
+    listApprovalsMock.mockResolvedValue([])
+    useAiChatSession.setState({
+      agentSessionId: 's-9',
+      messages: [
+        {
+          key: 'assistant-stale',
+          from: 'assistant',
+          versions: [{ id: 'assistant-stale-v1', content: '' }],
+          status: 'loading',
+        },
+      ],
+    })
+  }
+
+  it('恢复暂停态：暂停不是「等待审批」，气泡不挂等待审批徽标（P3-1）', async () => {
+    seedRestoredPause()
+    const { result } = renderHook(() => useAgentRun())
+
+    await waitFor(() => {
+      expect(result.current.autoPause).not.toBeNull()
+    })
+    const [message] = useAiChatSession.getState().messages
+    expect(message.status).toBe('complete')
+    expect(message.runStatus).toBeUndefined()
+    expect(message.versions[0].content).toBe(AGENT_AUTO_COPY.restoredPaused)
+  })
+
+  it('继续 → 轮询到 SUCCEEDED：气泡换成 Auto 终态，autoTracking 收口', async () => {
+    seedRestoredPause()
+    resumeMock.mockResolvedValue({
+      ...PAUSED_AUTO_RUN,
+      status: AGENT_RUN_STATUS.RUNNING,
+    })
+    getRunMock.mockResolvedValue({
+      ...PAUSED_AUTO_RUN,
+      status: AGENT_RUN_STATUS.SUCCEEDED,
+    })
+    const { result } = renderHook(() => useAgentRun())
+    await waitFor(() => {
+      expect(result.current.autoPause).not.toBeNull()
+    })
+
+    await act(async () => {
+      expect(await result.current.resumeAuto()).toBeNull()
+    })
+    // 继续后立刻撤掉暂停占位文案，面板进入「等待服务端结果」
+    expect(result.current.autoTracking).toBe(true)
+    expect(useAiChatSession.getState().messages[0].versions[0].content).toBe(
+      AGENT_AUTO_COPY.restoredResuming
+    )
+
+    await waitFor(
+      () => {
+        expect(result.current.autoTracking).toBe(false)
+        expect(result.current.run?.status).toBe(AGENT_RUN_STATUS.SUCCEEDED)
+        expect(result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
+        expect(useAiChatSession.getState().messages[0].versions[0].content).toBe(
+          AGENT_AUTO_COPY.finishedTitle
+        )
+      },
+      { timeout: 8_000 }
+    )
+    expect(result.current.autoPause).toBeNull()
+  })
+
+  it('暂停气泡已在前端收口（complete）时，继续后仍撤掉暂停文案并跟到终态（P2 兜底）', async () => {
+    getSessionMock.mockResolvedValue({
+      session: { id: 's-9', title: '历史会话' },
+      messages: [],
+      runs: [PAUSED_AUTO_RUN],
+    })
+    listApprovalsMock.mockResolvedValue([])
+    // 刷新前 RUN_PAUSED 已把气泡落成 complete + 暂停文案（P3-2）：
+    // reconcile 找不到「进行中」气泡，仍要能记下这一条并在继续后更新
+    useAiChatSession.setState({
+      agentSessionId: 's-9',
+      messages: [
+        {
+          key: 'assistant-settled',
+          from: 'assistant',
+          versions: [
+            { id: 'assistant-settled-v1', content: AGENT_AUTO_COPY.phasePendingResume },
+          ],
+          status: 'complete',
+        },
+      ],
+    })
+    resumeMock.mockResolvedValue({
+      ...PAUSED_AUTO_RUN,
+      status: AGENT_RUN_STATUS.RUNNING,
+    })
+    getRunMock.mockResolvedValue({
+      ...PAUSED_AUTO_RUN,
+      status: AGENT_RUN_STATUS.SUCCEEDED,
+    })
+    const { result } = renderHook(() => useAgentRun())
+    await waitFor(() => {
+      expect(result.current.autoPause).not.toBeNull()
+    })
+
+    await act(async () => {
+      expect(await result.current.resumeAuto()).toBeNull()
+    })
+    expect(useAiChatSession.getState().messages[0].versions[0].content).toBe(
+      AGENT_AUTO_COPY.restoredResuming
+    )
+
+    await waitFor(
+      () => {
+        expect(useAiChatSession.getState().messages[0].versions[0].content).toBe(
+          AGENT_AUTO_COPY.finishedTitle
+        )
+      },
+      { timeout: 8_000 }
+    )
+  })
+
+  it('继续 → 轮询到 BUDGET_EXCEEDED：气泡与 run 状态都是超预算口径，不误导为成功', async () => {
+    seedRestoredPause()
+    resumeMock.mockResolvedValue({
+      ...PAUSED_AUTO_RUN,
+      status: AGENT_RUN_STATUS.RUNNING,
+    })
+    getRunMock.mockResolvedValue({
+      ...PAUSED_AUTO_RUN,
+      status: AGENT_RUN_STATUS.BUDGET_EXCEEDED,
+      error: 'BUDGET_EXCEEDED',
+    })
+    const { result } = renderHook(() => useAgentRun())
+    await waitFor(() => {
+      expect(result.current.autoPause).not.toBeNull()
+    })
+
+    await act(async () => {
+      expect(await result.current.resumeAuto()).toBeNull()
+    })
+
+    await waitFor(
+      () => {
+        expect(result.current.run?.status).toBe(
+          AGENT_RUN_STATUS.BUDGET_EXCEEDED
+        )
+        const [message] = useAiChatSession.getState().messages
+        expect(message.runStatus).toBe(AGENT_RUN_STATUS.BUDGET_EXCEEDED)
+        expect(message.versions[0].content).toContain(
+          AGENT_AUTO_COPY.budgetExceededTitle
+        )
+      },
+      { timeout: 8_000 }
+    )
   })
 })

@@ -257,3 +257,15 @@ export function autoPhaseText(progress: AgentAutoProgress | null): string {
       return AGENT_AUTO_COPY.phaseStep
   }
 }
+
+/**
+ * 气泡级 Auto 终态文案：Auto run 的收口不复用通用「Agent 运行失败，请重试」
+ * （P3-5），与进度面板同一套终态口径；正文已有内容时由调用方保留。
+ */
+export function autoTerminalMessageText(
+  kind: AutoTerminalKind | null
+): string | null {
+  const copy = autoTerminalCopy(kind)
+  if (!copy) return null
+  return copy.description ? `${copy.title}。${copy.description}` : copy.title
+}

@@ -138,6 +138,9 @@ export function AutoBudgetSettings({
           <p className='text-muted-foreground mt-1.5 text-[11px] leading-4'>
             {AGENT_AUTO_COPY.budgetDefaultHint}
           </p>
+          <p className='text-muted-foreground mt-0.5 text-[11px] leading-4'>
+            {AGENT_AUTO_COPY.budgetOverLimitHint}
+          </p>
           {invalid.size > 0 && (
             <p className='text-destructive mt-1 text-[11px]' role='alert'>
               {AGENT_AUTO_COPY.budgetInvalid}

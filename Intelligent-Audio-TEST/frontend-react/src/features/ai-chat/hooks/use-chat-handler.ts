@@ -368,6 +368,8 @@ export function useChatHandler({
     autoPause: isPlatformChannel ? agentRun.autoPause : null,
     autoPausePolicy: isPlatformChannel ? agentRun.autoPausePolicy : null,
     resumingAuto: isPlatformChannel && agentRun.resumingAuto,
+    /** 刷新恢复后继续：无事件流，正在轮询服务端终态（INT-2477 P2） */
+    autoTracking: isPlatformChannel && agentRun.autoTracking,
     error: isPlatformChannel ? agentRun.error : null,
     resumeAuto: agentRun.resumeAuto,
     decideApproval: agentRun.decideApproval,

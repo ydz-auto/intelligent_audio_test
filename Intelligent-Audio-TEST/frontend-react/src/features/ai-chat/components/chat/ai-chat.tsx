@@ -92,6 +92,8 @@ type AiChatProps = {
   autoPausePolicy?: AgentRunPausePolicy | null
   /** 「继续」在途 / 取消在途 */
   resumingAuto?: boolean
+  /** 刷新恢复后继续：无事件流，正在轮询服务端终态（P2） */
+  autoTracking?: boolean
   isCancelling?: boolean
   /** Auto 暂停后继续；结束运行（取消当前 run） */
   onResumeAuto?: () => void
@@ -129,6 +131,7 @@ export function AiChat({
   autoPause = null,
   autoPausePolicy = null,
   resumingAuto = false,
+  autoTracking = false,
   isCancelling = false,
   onResumeAuto,
   onStopAuto,
@@ -313,6 +316,7 @@ export function AiChat({
             resuming={resumingAuto}
             run={run}
             stopping={isCancelling}
+            tracking={autoTracking}
           />
           {/* 写操作审批卡（§12.2）：按步骤分组展示提案 / diff / 风险 / 过期；逐条决策 */}
           {onDecideApproval && (

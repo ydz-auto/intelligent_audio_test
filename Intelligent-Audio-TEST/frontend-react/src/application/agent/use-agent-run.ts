@@ -64,6 +64,8 @@ export interface UseAgentRunResult {
   autoPausePolicy: AgentRunPausePolicy | null
   /** 「继续」请求在途（按钮防连点） */
   resumingAuto: boolean
+  /** 刷新恢复后继续：本页无事件流，正在轮询服务端终态（面板给「等待结果」口径） */
+  autoTracking: boolean
   /** 发起一轮对话（内部保证会话 + run + 订阅；失败落 error 态，不抛出） */
   send: (
     text: string,
@@ -109,6 +111,7 @@ export function useAgentRun(): UseAgentRunResult {
   const autoPause = useAgentRunStore((state) => state.autoPause)
   const autoPausePolicy = useAgentRunStore((state) => state.autoPausePolicy)
   const resumingAuto = useAgentRunStore((state) => state.resumingAuto)
+  const autoTracking = useAgentRunStore((state) => state.autoTracking)
   const send = useAgentRunStore((state) => state.send)
   const cancel = useAgentRunStore((state) => state.cancel)
   const resumeAuto = useAgentRunStore((state) => state.resumeAuto)
@@ -135,6 +138,7 @@ export function useAgentRun(): UseAgentRunResult {
     autoPause,
     autoPausePolicy,
     resumingAuto,
+    autoTracking,
     send,
     cancel,
     resumeAuto,

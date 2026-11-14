@@ -14,6 +14,9 @@ SSE，按目标里的场景标记决定回 tool_call / 完成标记），页面�
   E 普通对话：请求体不带 mode / budget，Auto 面板不出现
   F 加载态（首轮模型慢响应的「正在收集步骤进度…」）/ 空态（暂无产物）/
     错误态（CDP 阻断发起请求）
+  G 刷新恢复后的「继续」跟随服务端终态（UX 审计 P2 回归）：暂停 → 刷新 →
+    继续 → 面板/气泡跟到真实终态，不再永久停留「正在收集步骤进度…」，
+    暂停态气泡不挂「等待审批」徽标（P3-1）；另跑一次深色截恢复态。
 
 跑法：
   <conda python> tests/ui/probe_int2477_auto_mode.py \
@@ -535,6 +538,77 @@ async def main(base, api_base):
         step('E_chat_body_plain', bool(body_e) and set(body_e[0].keys()) == {'message'},
              body_e[:1])
         step('E_no_auto_panel', no_auto_panel)
+        await ctx.close()
+
+        # ================= G：刷新恢复后的「继续」跟随服务端终态（UX 审计 P2）
+        ctx, page = await new_session_page(browser, base)
+        await login(page, base)
+        await attach(page, 'G')
+        await open_chat(page, base)
+        await select_auto(page)
+        await set_rounds(page, 5)
+        await send_goal(page, '把回归测试全用例跑一遍并给我结论 %s' % SCN_PROGRESS)
+        await page.wait_for_selector('[data-auto-paused="true"]', timeout=120000)
+        results['shots'].append(
+            await shot(page, '13_G_paused_before_reload_light.png', '[data-auto-progress]'))
+
+        # 刷新 = 本页不重接事件流，只恢复暂停面板（restore + 占位事实）
+        await page.reload(wait_until='domcontentloaded')
+        await page.wait_for_selector('[data-auto-paused="true"]', timeout=60000)
+        restored_placeholder = await page.get_by_text(
+            'Auto 运行处于暂停态', exact=False).count()
+        paused_panels = await page.locator('[data-auto-paused="true"]').count()
+        still_streaming = await page.get_by_text('正在回复', exact=False).count()
+        # 暂停不是「等待审批」：气泡不挂等待审批徽标（P3-1）
+        badges_restored = await page.locator('[data-agent-run-status]').count()
+        results['shots'].append(
+            await shot(page, '14_G_restored_paused_light.png', '[data-auto-progress]'))
+        step('G_restored_paused', paused_panels > 0 and still_streaming == 0,
+             {'panels': paused_panels, 'streaming': still_streaming,
+              'placeholder': restored_placeholder})
+        step('G_paused_no_waiting_badge', badges_restored == 0,
+             {'badges': badges_restored})
+
+        await page.locator('[data-auto-resume]').click()
+        # P2：本页无事件流，继续后按 GET /agent/runs/{id} 轮询，必须跟到真实终态
+        await page.wait_for_selector('[data-auto-terminal="succeeded"]',
+                                     timeout=120000)
+        terminal_text = await page.locator('[data-auto-terminal-message]').inner_text()
+        bubble_text = await page.locator('.is-assistant').last.inner_text()
+        badges_after = await page.locator('[data-agent-run-status]').count()
+        polls = [item for item in net
+                 if item['tag'] == 'G' and item['method'] == 'GET'
+                 and '/agent/runs/' in item['url']]
+        results['shots'].append(
+            await shot(page, '15_G_resumed_terminal_light.png', '[data-auto-progress]'))
+        step('G_resume_calls_api',
+             any('/resume' in item['url'] and item['tag'] == 'G' for item in net))
+        step('G_follows_terminal', 'Auto 已完成' in terminal_text,
+             {'text': terminal_text})
+        step('G_polls_run_snapshot', len(polls) >= 1, {'polls': len(polls)})
+        step('G_bubble_terminal', 'Auto 已完成' in bubble_text
+             and '已暂停' not in bubble_text and '等待审批' not in bubble_text,
+             {'bubble': bubble_text[:120]})
+        step('G_no_stale_waiting_badge', badges_after == 0,
+             {'badges': badges_after})
+        await ctx.close()
+
+        # ================= G-dark：同一刷新恢复路径深色（仅截暂停恢复态）
+        ctx, page = await new_session_page(browser, base, dark=True)
+        await login(page, base)
+        await attach(page, 'G-dark')
+        await open_chat(page, base)
+        await select_auto(page)
+        await set_rounds(page, 5)
+        await send_goal(page, '把回归测试全用例跑一遍并给我结论 %s' % SCN_PROGRESS)
+        await page.wait_for_selector('[data-auto-paused="true"]', timeout=120000)
+        await page.reload(wait_until='domcontentloaded')
+        await page.wait_for_selector('[data-auto-paused="true"]', timeout=60000)
+        results['shots'].append(
+            await shot(page, '16_G_restored_paused_dark.png', '[data-auto-progress]'))
+        dark_ok = await page.evaluate(
+            "() => document.documentElement.classList.contains('dark')")
+        step('G_dark_theme', dark_ok)
         await ctx.close()
 
         # ================= F：发起失败（CDP 网络阻断）
