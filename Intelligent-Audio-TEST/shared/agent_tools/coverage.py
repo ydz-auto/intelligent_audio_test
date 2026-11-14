@@ -137,6 +137,24 @@ def _is_read_permission(permissions) -> bool:
         str(p).endswith(_READ_PERMISSION_SUFFIXES) for p in permissions)
 
 
+def is_read_only(tool: dict) -> bool:
+    """工具是否只读：仅 ``GET``（与 ``mcp_registry.risk_of`` 同一口径）。
+
+    刻意**不**按权限码推断：``task_favorite`` / ``report_favorite`` 等写动作
+    声明的是 ``:read`` 权限（收藏列表需要读权限），按权限码判会把它们误标为
+    只读。能力清单的「只读」只认 HTTP 方法，宁可保守。
+    """
+    return tool.get('method') == 'GET'
+
+
+def domain_of(name: str) -> str:
+    """工具名 → 域前缀（能力清单按域分组；与 ``_PREFIX_OWNERS`` 同源）。"""
+    rule = _prefix_of(name)
+    if rule is not None:
+        return rule[0]
+    return str(name).split('_')[0] or 'other'
+
+
 def _read_owner(name: str, prefix_rule) -> Optional[str]:
     if name.startswith('audio_'):
         return 'audio_query'
@@ -340,6 +358,6 @@ if __name__ == '__main__':  # pragma: no cover - 生成入口
 
 __all__ = [
     'EXTERNAL', 'EXTERNAL_ONLY', 'OVERRIDES', 'OWNED', 'CoverageRow',
-    'attribute', 'coverage_path', 'coverage_rows', 'intent_of',
-    'render_markdown', 'summary', 'write_markdown',
+    'attribute', 'coverage_path', 'coverage_rows', 'domain_of', 'intent_of',
+    'is_read_only', 'render_markdown', 'summary', 'write_markdown',
 ]

@@ -206,11 +206,16 @@ services:
       - AGENT_ENABLED=${AGENT_ENABLED:-false}
       - AGENT_SERVICE_TIMEOUT_SECONDS=${AGENT_SERVICE_TIMEOUT_SECONDS:-30}
       - AGENT_DEFAULT_TENANT_ID=${AGENT_DEFAULT_TENANT_ID:-default}
+      # INT-2476：GET /api/v1/agent/skill 的平台包按 skills/ 生成（与
+      # agent_service 同一批 Skill 资产）。只读挂载，任何容器内写入都是缺陷。
+      - AGENT_SKILLS_ROOT=/app/skills
     volumes:
       # 与 task_service 共享：数据导入/导出 ZIP 中转（INT-25），两容器必须挂同一卷
       - data_transfer_tmp:/app/storage/data_transfer
       # INT-81：服务运行日志/业务日志统一卷（api_gateway 读取侧与写入侧必须同卷）
       - service_logs:/app/logs
+      # INT-2476：平台 Skill 顶层只读（外部 Skill 包下载按它生成，单一事实源）
+      - ../skills:/app/skills:ro
     depends_on:
       postgres:
         condition: service_healthy
