@@ -81,9 +81,10 @@ ENDPOINT_PREFIXES: List[Dict[str, str]] = [
     {'prefix': '/api/v1/mcp', 'domain': '外部 MCP JSON-RPC'},
 ]
 
-# 算法域接口取值（INT-2464）。事实源：网关 GET /api/v1/algorithm/* 的 schema 与
-# algorithm_service 的 PO 口径——
-# - 状态：`handlers/algorithm_handlers.py` 的 `_STATUS_STR_TO_ENUM` 三个键；
+# 算法域接口取值（INT-2464 / INT-2525）。事实源：网关 GET /api/v1/algorithm/* 的
+# schema 与 algorithm_service 的 PO 口径——
+# - 状态：`handlers/algorithm_handlers.py` 的 `_STATUS_STR_TO_ENUM` 三个键
+#   （接口值 → 领域枚举：online→ACTIVE、offline→DEPRECATED、draft→DRAFT）；
 # - 参数作用域：`AlgorithmParamListQuery.param_type`（device / api）；
 # - 映射源类型：`AlgorithmMappingListQuery.source_type`（device / api）。
 ALGORITHM_STATUS_VALUES: Tuple[str, ...] = ('online', 'offline', 'draft')
@@ -134,7 +135,8 @@ ENUMS: List[Dict[str, Any]] = [
      'source': 'agent_service.domain.enums.RunStatus'},
     {'name': 'algorithm_status', 'label': '算法定义状态',
      'values': list(ALGORITHM_STATUS_VALUES),
-     'source': 'algorithm_service AlgorithmStatus（接口值 online/offline/draft）'},
+     'source': ('algorithm_service AlgorithmStatus（接口值 online/offline/draft '
+                '→ ACTIVE/DEPRECATED/DRAFT，见 _STATUS_STR_TO_ENUM）')},
     {'name': 'algorithm_param_type', 'label': '算法参数作用域',
      'values': list(ALGORITHM_PARAM_TYPE_VALUES),
      'source': 'api_gateway AlgorithmParamListQuery.param_type'},

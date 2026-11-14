@@ -195,13 +195,20 @@ budgets:
 > `driver-proposal` 在 M1 只做材料准备，`driver_propose` 未启用。
 > 本表「主要意图工具」列写全生命周期工具，M1 只装配其中已启用的只读项。
 >
-> **跨域通用工具没有归属 Skill（INT-2554 收口审计，2026-11-13）**：`dashboard_query`
-> （INT-2461）与 `memory_search` / `memory_write`（INT-2490）已启用，但上表 13 个 M1
-> Skill 均未在 `allowed-tools` 声明它们。按 §4.2 第 6 条与 §6.3，激活 Skill 的 run 只装配
-> 该 Skill 声明过的工具，因此这三项目前只在**未激活 Skill 的通用会话**可调用；Skill 正文
-> 不得指示未声明的工具（`SKILL_TOOL_DENIED`）。`memory_write` 是 WRITE，M1 的 Skill 只
-> 声明只读工具，故写入不能靠加 `allowed-tools` 解决；后续二选一（并入基础工具集 / 只给
-> `memory_search` 补声明）由 M2 拍板，现状 fail-closed。残留与缺陷卡见 §16。
+> **跨域通用工具的实际装配口径（INT-2556 订正 §4.3，2026-11-13；取代 INT-2554 的
+> 「三项目前只在通用会话可调用」说法）**：`memory_search` / `memory_write` 属于
+> `ALWAYS_AVAILABLE_TOOLS`（`shared/agent_tools/intent_tools.py:1438`），
+> `ContextAssembler.allowed_tools()` 返回的是
+> `frozenset(skill.meta.allowed_tools) | ALWAYS_AVAILABLE_TOOLS`
+> （`agent_service/application/context_assembler.py:241`），`run_orchestrator._scope_denial()`
+> 命中即放行（`run_orchestrator.py:857` 先判 `ALWAYS_AVAILABLE_TOOLS` 再判 Skill 声明）。
+> 因此**激活任意 Skill 后这两个记忆工具仍可调用，不存在 `memory_write` 被
+> `SKILL_TOOL_DENIED` 拦下的问题**，Skill 正文也不是必须把它们写进 `allowed-tools`。
+> 唯一「仅通用会话可用」的是 `dashboard_query`（INT-2461）：它不在
+> `ALWAYS_AVAILABLE_TOOLS` 里，13 个 M1 Skill 也都没声明它。
+> 保留的后续拍板只有两条：记忆两工具是否并入基础工具集并在文档中显式声明、
+> `dashboard_query` 是否给 Skill 补声明；两者都不影响当前行为。
+> §16 的 INT-2556 条目按本条收口，相关缺陷卡不再按「未授权工具」处理。
 
 ### 4.4 用户自定义 Skill
 
@@ -273,6 +280,23 @@ budgets:
 - 停用/删除立即生效；已运行的 run 按版本快照继续，不中途换内容。
 - 发布门槛：至少 3 条 golden tasks 且触发判定通过；未达标只能留在 `DRAFT`，不参与自动触发。
 
+> **TENANT 级安全与隔离验收口径（INT-2551，M3 门追加项，2026-11-14）**：
+>
+> 1. **跨租户按 ID 直接访问一律 404**：`GET` / `PUT` / `publish` / `disable` /
+>    `fork` / `versions` 等按 id 的入口，服务层先按登录身份的租户过滤，非本租户
+>    一律 404（不返回「无权访问」，不泄漏对象是否存在）；跨租户只能从可见性列表
+>    得到本租户可见的条目。网关恒覆盖 `X-Tenant-Id`（客户端伪造无效），因此跨租户
+>    只能靠服务层判定，不能只依赖网关。
+> 2. **创建人不得自审**：创建人与提交人都不能审批同一版本（含 TENANT 管理员本人）；
+>    自审请求按无权处理，不落 `APPROVE`。
+> 3. **审批链可还原**：每次状态迁移（`SUBMIT` / `APPROVE` / `REJECT` / `WITHDRAW` /
+>    `EDIT` / `DISABLE`）落审核审计（操作人、时间、from → to、版本号），可从审计与
+>    版本历史还原完整链路；`ACTIVE` 再保存必须显式 `EDIT` 回 `DRAFT`，不能静默覆盖。
+> 4. **校验与门槛不可绕过**：发布路径必须经逐项校验 + 评测门槛；绕过网关直接调内部
+>    接口同样被服务层复核拦下（网关不是唯一防线）。
+> 5. 平台层（`PLATFORM`）Skill 只读：由 fs 扫描 `skills/` 得到，没有「自定义包 →
+>    平台层」的写入口（N/A 依据见 09 §1）。
+
 #### 接口
 
 | 方法 | 路径 | 说明 |
@@ -324,13 +348,25 @@ budgets:
 | `CompactionLevel` | `L1_TRIM` / `L2_DEDUPE` / `L3_MEMO` / `L4_REBUILD` |
 | `ContextWindowSource` | `MODEL_DEFAULT` / `USER_OVERRIDE` / `FALLBACK` |
 | `UiActionType` | `TAP` / `LONG_PRESS` / `SWIPE` / `INPUT_TEXT` / `BACK` / `HOME` / `WAIT` |
-| `ArtifactKind` | `DEVICE_DRIVER` / `API_ADAPTER` / `TESTCASE_SET` / `REPORT_DRAFT` / `ALGORITHM_CONFIG` / `EVALUATION_CONFIG` / `SPL_PLAN` / `DIAGNOSIS_PLAN` |
+| `ArtifactKind` | `DEVICE_DRIVER` / `API_ADAPTER` / `TESTCASE_SET` / `REPORT_DRAFT` / `ALGORITHM_CONFIG` / `EVALUATION_CONFIG` / `SPL_PLAN` / `DIAGNOSIS_PLAN` / `CONTEXT_TOOL_RESULT` |
 | `ExplorationStopReason` | `DONE` / `BUDGET` / `LOGIN_REQUIRED` / `CAPTCHA` / `DESTRUCTIVE_BLOCKED` / `USER_CANCEL` |
 | `EventType` | `run_started` / `message_delta` / `tool_call` / `tool_result` / `approval_required` / `context_compacted` / `run_finished` / `error` |
 
 run 级预算、阈值、超时、并发数写入配置（环境变量 + `config/`），不在代码中硬编码。
 工具层的聚合护栏上限（`REPORT_COMPARE_MAX_REPORTS`、`MAX_GENERATE_AUDIOS`、
 `MAX_LOG_ROWS` 等）当前是命名常量，配置化登记为残留（§16 R5）。
+
+> **压缩枚举与快照口径（INT-2536 审计回写，2026-11-14）**：
+>
+> 1. `ArtifactKind` 增补 `CONTEXT_TOOL_RESULT`：L1 把超限工具结果落到对象存储时
+>    用该类目（实现侧复用 `TOOL_RESULT` 产物语义，不新增第二套工具结果格式）；
+> 2. `agent_context_snapshot.dropped_ids` 的语义是**被压缩移出模型上下文的消息
+>    ID**，L1 截断 / L2 去重时被改写（摘要化、只留计数 + TopN）的消息也计入，
+>    不等同于「被删掉的消息」；L3 / L4 快照写累计值，可单条回放（代码注释同步，
+>    `agent_service/application/context_assembler.py` 的 `CompactionOutcome`）；
+> 3. `keep_recent_turns` 按**轮次**（同一 `turn` 的消息整组）计数，不是按消息条数；
+> 4. `ContextSection.SCRATCHPAD` / `RESERVE` 是 M1 计划块与安全余量预留，
+>    当前不写入内容，只参与占比校验（`agent_service/domain/model/context_budget.py` 已注明）。
 
 ## 6. 工具层
 
@@ -347,7 +383,7 @@ run 级预算、阈值、超时、并发数写入配置（环境变量 + `config
 | `api_spec` | 解析 OpenAPI/proto/WS 契约：端点、鉴权、请求响应样例 | READ |
 | `memory_search` | `rg` 封装：按关键词检索用户/项目记忆与 Skill references | READ |
 | `memory_write` | 写入用户偏好或项目规则；需审批 | WRITE |
-| `audio_query` | 音频列表、详情、MD5、标签、目录树、特征/质量 | READ |
+| `audio_query` | 音频列表、详情、按 MD5 查重（`by_md5` + `md5_list`）、标签、目录树、特征/质量、已配算法（`algorithms`）、播放历史（`playback_history`） | READ |
 | `audio_import` | URL 导入、上传初始化/合并、OSS 直传确认 | WRITE |
 | `audio_annotate` | 批量标注、元数据、算法配置 | WRITE |
 | `testcase_query` | 用例列表、详情、导入导出状态 | READ |
@@ -371,6 +407,24 @@ run 级预算、阈值、超时、并发数写入配置（环境变量 + `config
 | `log_diagnose` | 日志搜索、统计、诊断 | READ |
 | `driver_propose` | 生成设备驱动（`AppDriver`）+ 厂商 API 适配器（`ApiVendorAdapter`）代码提案（不执行、不注册、不发布）；`target_kind` = `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；落地卡 INT-2467。对外意图工具名唯一为 `driver_propose`，`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具 | WRITE |
 | `dashboard_query` | 首页统计（只读；缓存刷新留 M2，与 INT-2461 一致） | READ |
+
+> **音频 / 算法域实现口径（INT-2523 / INT-2525 审计回写，2026-11-14）**：
+>
+> 1. `audio_query` 的 `by_md5` 请求体字段是 **`md5_list`**（不是 `md5`），目标
+>    `POST /api/v1/audios/by-md5`；`algorithms` / `playback_history` 需 `audio_id`
+>    （播放历史另支持 `page` / `per_page`）。**`by_ids` 不对外暴露**：`audio_get_by_ids`
+>    是无归属校验的宿主语境批量读通道，Agent 侧不可调用（INT-2530），覆盖能力里不写它。
+>    `playback_history` 在无历史时返回 `{items: [], total: 0, ...}` 的**空成功**而非
+>    404，这是既有接口行为（缺口说明已登记，不在 Agent 侧改写成错误）。
+> 2. 算法域 `algorithm_query` 覆盖 **16 个只读动作**：`definitions` / `definition` /
+>    `definition_draft` / `groups` / `group` / `params` / `param` / `reference_params` /
+>    `reference_param` / `mappings` / `case_params` / `case_param` / `form_schema` /
+>    `options` / `dimensions` / `dimension_params`。参数作用域按设备 / API 两类落库
+>    （`param_type=device|api`，API 参数另带 `api_id` / `field_path`），读取路径按作用域
+>    过滤、写路径用 `param_type_source` 判别，不能拿读侧过滤键收窄写侧；参数层级按
+>    全局 / 分组 / 算法 / 用例四层引用（`case_params` 是第四层）。表单 Schema 契约是
+>    **camelCase、`groups[].fields` 数组形态**（`GET /algorithm/form-schema/{type}`），
+>    默认值口径要拿 `GET /algorithm/case-params` 对照，不能凭字段名推断。
 
 > **实现演进裁定（INT-2453，2026-11-13）**：31 个工具已在 `shared/agent_tools/intent_tools.py`
 > 全量登记，名称与风险等级与本表逐项一致。M0 时只启用 `platform_contract` / `tool_search` /
@@ -474,6 +528,10 @@ run 级预算、阈值、超时、并发数写入配置（环境变量 + `config
   `shared/agent_tools/COVERAGE.md`。
 - 注册表抽到 `shared/agent_tools/`，Gateway MCP 与 `agent_service` 共用，禁止复制两份 Schema。
 - 外部 Agent 的上下文管理由客户端负责，不做意图收敛。
+- **参数口径（INT-2523 回写）**：按 MD5 查重的外部工具 `audio_get_by_md5` 请求体
+  字段是 **`md5_list`**（数组），不是 `md5`；`playback_history` 目标
+  `GET /api/v1/audios/{id}/playback-history` 在无历史时返回 `items=[]` 的空成功，
+  按正常空结果消费，不当错误（既有接口行为，缺口已登记）。
 
 ### 6.3 权限
 
@@ -719,6 +777,26 @@ onboarding/<app_type|vendor>/
 5. 沙箱失败不得让 run 静默成功；按 `FAILED` 或 `BUDGET_EXCEEDED` 明确记录。
 6. T2 默认禁网；确需联网只能走出口代理白名单，并记录代码来源与 hash。
 
+> **沙箱失败原因码 → run 终态映射（INT-2532 D2 回写，2026-11-14）**：
+> 失败原因码统一用 `SandboxFailureReason`（`agent_service/application/sandbox_runner.py`），
+> 不另造魔法值；`RunOrchestrator._finish_sandbox_failure` 按 `SandboxOutcome` 收口：
+>
+> | 原因码 | SandboxOutcome | run 终态 |
+> |---|---|---|
+> | `TIMEOUT` / `OUTPUT_LIMIT_EXCEEDED` / `MEMORY_LIMIT_EXCEEDED` / `RESOURCE_LIMIT_EXCEEDED` | `BUDGET_EXCEEDED` | `BUDGET_EXCEEDED` |
+> | `UNSUPPORTED_TIER` / `SCRIPT_NOT_FOUND` / `SCRIPT_OUTSIDE_SKILL` / `INVALID_INVOCATION` / `EXIT_CODE_NONZERO` / `CONTAINER_START_FAILED` / `RUNNER_ERROR` / `ARTIFACT_INVALID` / `ARTIFACT_TOO_LARGE` / `ARTIFACT_TOO_MANY` / `T2_RUNTIME_UNAVAILABLE` / `CODE_PROVENANCE_MISSING` / `CODE_PROVENANCE_MISMATCH` / `EGRESS_DENIED` / `INPUT_INVALID` | `FAILED` | `FAILED` |
+>
+> 落 `error` 与 `run_finished` 事件时同时带 `reason` 与 `reason_code`（同值），前端
+> 按 `reason_code` 分支文案，不解析中文。**T1 / T2 产物超限差异**：T1 原始输出按
+> 执行器 `output_limit_bytes`（默认 1 MB）截断，超过 1 MB 判
+> `OUTPUT_LIMIT_EXCEEDED`；`/work` 产物按 `AGENT_SANDBOX_MAX_ARTIFACTS`（32）/ 单文件
+> `AGENT_SANDBOX_MAX_ARTIFACT_BYTES`（8 MB）/ 总量 `AGENT_SANDBOX_MAX_TOTAL_ARTIFACT_BYTES`
+> （32 MB）校验。T2 前三阶段（导入 / 编译、单测、mock 契约）除同样受 1 MB 输出上限
+> 外，产物随阶段回收且**不跨阶段累积**；任一阶段超限按 `RESOURCE_LIMIT_EXCEEDED` /
+> `ARTIFACT_TOO_LARGE` 失败，不降级到 T1、不判成功。
+> **「T2 接 Loop」边界**：T2 目前只被驱动提案 / 接入验证等白名单动作调用，普通
+> 对话与只读工具仍在 T0/T1；把 T2 接进通用 Loop 需要新卡（沙箱成本与延迟另评）。
+
 ## 8. 上下文无感压缩
 
 ### 8.1 无感定义
@@ -835,6 +913,11 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 - 超限 → `BUDGET_EXCEEDED`，保留已完成产物与事件。
 - 连续工具失败 ≥ 阈值 → 停止自动重试，转 `WAITING_APPROVAL` 或 `FAILED`，交用户决策。
 
+> **终态事件口径（INT-2532 D3 回写，2026-11-14）**：`run_finished` 与 `error` 事件
+> 都带 `reason` + `reason_code`（预算超限、沙箱失败、Auto 完成 / 熔断、连续失败等
+> 机器码），前端与审计按 `reason_code` 分支，`reason` 只作人读摘要。run 进入
+> `FAILED` / `BUDGET_EXCEEDED` 后不得再被恢复投递续跑；已产生的产物与事件保留。
+
 ### 9.4 Auto 模式：审批粒度与预算（已定）
 
 审批粒度：
@@ -949,7 +1032,9 @@ M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参�
 >   `resume` 两种 phase 另带 `instruction`（该轮回灌模型的续跑提示，随本轮
 >   请求立即送达，不是下一轮才补）；
 > - `run_paused`：`reason ∈ {budget_threshold, consecutive_tool_failures}` +
->   当时的 usage/ratio；run 转 `WAITING_APPROVAL`（等用户决策，不计入执行时长）；
+>   当时的 `usage` / `ratio`，并按暂停类型附 `pause_budget_ratio`（预算阈值，如 0.8）
+>   或 `pause_consecutive_failures`（连续失败阈值，如 2）；实现同时下发这两个字段，
+>   前端不用从 `usage` 反推；run 转 `WAITING_APPROVAL`（等用户决策，不计入执行时长）；
 > - `run_resumed`：用户点「继续」，记录 `pause_reason` / `consecutive_failures` /
 >   `acked_budget_pause`（只有从 `budget_threshold` 暂停点继续才置 true，
 >   因连续失败暂停的继续不确认预算暂停点）；用户继续后**同一预算暂停点不再
@@ -972,12 +1057,27 @@ M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参�
 > 实现卡），DESTRUCTIVE 恒单条且不参与任何预授权；若产品要求 Auto 免逐次审批
 > WRITE，需新开卡改审批语义与审计。
 
+#### 9.4.2 前端实现口径（INT-2621 审计回写，2026-11-14）
+
+1. **Auto 下 `WAITING_APPROVAL` 有两种语义**：①预算阈值 / 连续失败**暂停**（可点
+   「继续」，有 `run_paused` 事件与 `pause_reason`）；②**待审批提案**（有
+   `approval_required` 事件与待决策审批单，继续入口 409，必须先处理审批）。
+   前端区分依据是事件类型与 `run.resume` 可用性：有 `run_paused` 且无待审批提案
+   → 展示「继续」；有待审批提案 → 展示审批卡，不给「继续」按钮。
+2. **刷新恢复**：刷新后**不重接事件流**（事件游标未持久化），按
+   `GET /agent/runs/{id}` 取快照收口该轮；点「继续」后同样只用快照轮询跟随终态
+   （首查 1.5s，之后 5s 间隔，30 分钟上限，连续 4 次失败即停止轮询并提示中断）。
+3. **终态口径**：`BUDGET_EXCEEDED` / 熔断（`FAILED` + `CONSECUTIVE_TOOL_FAILURES`）
+   **不显示成功**；已生成的正文保留在气泡里，只落一个终态徽标，不把文本清空。
+4. **预算录入单位**：UI 以「分钟 / MB」录入时长与输出字节，请求层换算成秒 / 字节
+   再发给服务端（`budget` 仍只能收紧，见本节实现口径）。
+
 ## 10. 数据模型
 
 | 表 | 关键字段 |
 |---|---|
 | `agent_session` | id, owner_id, tenant_id, title, active_skill, model, created_at, updated_at |
-| `agent_llm_provider` | id, owner_id, tenant_id, name, protocol, base_url, model, api_key_ciphertext, key_version, context_window, context_window_source, is_default, status, last_verified_at, created_at, updated_at |
+| `agent_llm_provider` | id, owner_id, tenant_id, name, protocol, base_url, model, api_key_ciphertext, **api_key_mask**（列表直接读掩码，不解密）, key_version, context_window, context_window_source, is_default, status, last_verified_at, created_at, updated_at |
 | `agent_run` | id, session_id, owner_id, status, model, budget, token_in, token_out, started_at, finished_at, error |
 | `agent_run_event` | id, run_id, sequence, type, payload, created_at |
 | `agent_step` | id, run_id, index, plan_snapshot, status, created_at |
@@ -1027,6 +1127,29 @@ M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参�
 
 SSE 事件载荷统一包含 `run_id`、`sequence`、`type`、`timestamp`；`message_delta` 带 `message_id`，避免重连重复拼接。
 
+> **SSE 与信封口径（INT-2517 D1–D7 回写，2026-11-14）**：
+>
+> 1. **三种 JSON 信封**由网关透明转发、前端按路径区分：
+>    - run 发起：`{run, created}`（`created=false` 表示幂等命中已有 run）；
+>    - 会话详情：`{session, messages, runs}`；
+>    - 列表类：`{"items": [...]}`。
+> 2. **游标语义**：严格 `sequence > cursor`；`Last-Event-ID` 与 `?cursor=` 同时出现时
+>    取**较大值**；SSE 的 `id:` 字段就是游标值（同一条事件重放幂等）。
+> 3. **网关合成的 error 帧**：上游转发失败时网关生成 `type=error` 的帧，`code` 为
+>    `UPSTREAM_ERROR`（上游返回错误）/ `UPSTREAM_UNAVAILABLE`（连不上 agent_service），
+>    与 run 级终态错误（`reason_code`）分开：可恢复中断只在本次连接内重连，不改变
+>    run 状态；run 级错误是终态。
+> 4. **敏感数据例外（§10 口径）**：续跑必需的回合消息与工具结果可入库；system prompt、
+>    完整模型请求与密钥不入库、不落日志。
+> 5. **仅 Web 单通道**：不保留 Electron / 桌面壳双通道口径，前端只按浏览器 SSE 实现。
+> 6. **Agent 通道错误码**：503（`AGENT_DISABLED` 未启用；网关转发失败时目前是
+>    `detail='agent service unavailable'` **无机器码**，`AGENT_SERVICE_UNAVAILABLE`
+>    为约定目标码，落地状态见 §16 C3）、401（未登录 / 凭据无效）、凭据库不可用
+>    （目标码 `CREDENTIAL_STORE_UNAVAILABLE`）、404（对象不存在或非本人）、400
+>    （参数 / 预算非法）、409（状态冲突，如待审批提案未处理时续跑）。前端按 `code`
+>    映射文案，不解析中文；暂无机器码的 503 按文案兜底展示。
+> 7. **`GET /agent/skills` 前端落点** = INT-2550（已交付），本轮不新增第二个技能列表入口。
+
 审批单响应字段（§9.4.1 拆单）：`id` / `run_id` / `tool_call_id` / `status` / `proposal`（含 `object_count`）/ `diff` / `expires_at` / `decided_by` / `decided_at` / `batch_id` / `batch_index` / `batch_total` / `object_ref`；不新增端点。
 
 ## 12. 代码落位
@@ -1044,7 +1167,8 @@ agent_service/
 │  ├─ tool_gateway.py
 │  ├─ memory_service.py          # 检索 / 提案 / 落盘 / 审计（INT-2490）
 │  ├─ approval_service.py
-│  └─ sandbox_runner.py
+│  ├─ sandbox_runner.py
+│  └─ sandbox_dispatch.py        # T1 工具调用 → 沙箱执行器接线 + 失败信号（INT-2495/INT-2532）
 ├─ domain/model/ + enums.py
 ├─ domain/services/context_window_resolver.py
 ├─ config/model_catalog.json        # 模型默认窗口/最大输出（配置化）
@@ -1071,6 +1195,9 @@ tests/agent_eval/coverage/       # M1 汇总评测：清单一致性 / 长尾 / 
 - 端口注册到 `shared/config/service_ports.py`。
 - `agent_service` 不直接 import 业务服务内部模块，只走 REST/gRPC 契约。
 - 分层遵循 `interfaces → application → domain → infrastructure`，`domain` 零依赖。
+- **部署与编排**：见 `docker/README.md` §8.1。agent_service 不发布宿主端口，只经网关
+  入站（compose 网络 `agent_internal` / `agent_egress`）；总开关与灰度配置口径见 §13.1，
+  运维步骤见 08 手册。
 
 ### 12.2 前端（frontend-react）
 
@@ -1107,6 +1234,32 @@ tests/agent_eval/coverage/       # M1 汇总评测：清单一致性 / 长尾 / 
     `require_permission`（INT-2547 P3-8 登记，非 M1 四卡引入）；Agent / MCP 侧仍有工具级
     权限门禁，但网关补 `report:read` 之前不得把该端点当作权限边界。
 
+### 13.1 总开关与灰度（INT-2456 总闸 / INT-2478 灰度扩展）
+
+1. **唯一总闸**：`AGENT_ENABLED`（默认 `false`）。启动期与运行期都取该名，不新增第二个
+   开关名。关闭时 `/api/v1/agent/**` 的运行底座（sessions / runs / events / approvals /
+   skills）、用户模型供应商接口与 Skill 管理接口一律 503 + `code=AGENT_DISABLED`，
+   **不转发** agent_service，不产生后台 run；任务 / 用例 / 报告 / 设备等人工流程不走这些
+   路由，完全不受影响。
+2. **灰度扩展（不是第二套开关）**：总闸开启后可配两级白名单——
+   `AGENT_GRAY_TENANTS`（租户 ID 列表）与 `AGENT_GRAY_USERS`（用户 ID 列表），逗号 /
+   分号 / 空白分隔。判定在 `shared/agent_access.py`（枚举 `AgentAccessDecision`：
+   `ENABLED` / `DISABLED` / `NOT_IN_GRAY`）：
+   - 总闸关闭 → 拒绝（`DISABLED`）；
+   - 总闸开启、两个白名单都为空 → **放行所有人**（默认值向后兼容，现役
+     `AGENT_ENABLED=true` 的部署不会因缺灰度配置整体关闭）；
+   - 配置了任白名单 → 租户命中 **或** 用户命中才放行，否则 `NOT_IN_GRAY`。
+3. **未命中与关闭同一表现**：两者都返回 503 + `AGENT_DISABLED`（不新增第二个机器码，
+   不在响应里区分灰度与总闸，避免探测灰度名单），不转发上游、不产生后台 run、不落
+   用户身份的敏感日志（只记不带身份的 debug 级路径）。
+4. **执行点只在网关**：agent_service 不发布宿主端口，网关是唯一外部入口；不在
+   agent_service 再判一次（避免两处配置漂移）。agent_service 的启动恢复投递仍只看
+   `AGENT_ENABLED`：把某用户移出灰名单不会追溯取消已存在的 run，需要停止就让用户或
+   管理员显式取消。
+5. **配置生效方式**：网关按调用时读环境变量（改配置不冻结在进程初始化），但容器 env
+   是启动时快照，真实切换需按 `.env` 重启**目标容器**（`api_gateway`），不做全栈重复部署。
+   `AGENT_ENABLED` / 灰名单的运维步骤见 08_Agent运维手册 §1。
+
 ## 14. 评测
 
 | 层级 | 内容 | 门槛 |
@@ -1115,9 +1268,25 @@ tests/agent_eval/coverage/       # M1 汇总评测：清单一致性 / 长尾 / 
 | 单 Skill | 每 Skill ≥10 条 golden tasks | 触发准确率 ≥90%，工具选择正确，成本达标 |
 | 压缩 | 50+ 轮长任务 | 压缩前后成功率差 ≤5%，事实召回率 ≥95% |
 | 沙箱 | 逃逸/联网/资源超限用例 | 100% 拦截，无宿主访问 |
-| 恢复 | kill Worker 后继续 | 不重复写，状态一致 |
+| 恢复 | 进程内重启模拟后继续 | 不重复写，状态一致 |
 
 评测集入库，Skill 变更必须跑对应集合；失败阻断合并。
+
+> **评测判定口径（INT-2609 P2-4 / P3-1 / P3-2 / P3-5 回写，2026-11-14）**：
+>
+> 1. **工具选择判定归 e2e 层**：门禁里「工具选择正确」按 **100% 派发口径**在端到端层
+>    判定（实际调用工具 == 任务声明工具），单 Skill 层不单独设工具选择门槛；成本
+>    只做**相对观测**（同数据集前后对比），**不设绝对成本门槛**。
+> 2. **压缩轮次口径差**：实现侧压缩下限是 **50 轮**（长任务数据集），本页与 §15 的
+>    「60 轮」是 M0 初版目标值（历史文案）。以 50 轮为实现门槛；若产品要求 60 轮，
+>    属待补数据集项，**本卡不改代码**，在 §16 登记为待补。
+> 3. **恢复层「kill Worker」是进程内重启模拟**：实现是同一进程内 `container.shutdown()`
+>    后新建 container 重建状态，**不杀宿主进程**；对外表述统一写「进程内重启模拟」，
+>    不写「kill Worker 进程」。
+> 4. **事实召回率口径**：压缩后模型经工具**重查后答对也算召回**（事实没丢，只是需要
+>    重查）；重查率单独统计（`requery_rate`），不与召回率合并成一个数。
+> 5. 确定性复现要求：评测报告含 `started_at` / 耗时等非确定字段，**不可字节比对**；
+>    CI / 回归按 `metrics` 逐项比对（见 §14.1 P3-9）。
 
 > **实现口径（INT-2465 / INT-2554，2026-11-13）**：M1 汇总评测在
 > `tests/agent_eval/coverage/`（离线、不连外部服务）：
@@ -1168,14 +1337,30 @@ tests/agent_eval/coverage/       # M1 汇总评测：清单一致性 / 长尾 / 
   `unavailable`（exit 2）上报，不静默降级。`--sandbox-tier none` 仅在无 Docker 的
   本地排障时使用，不作为合并门禁证据。
 
+> **门禁落地补充（INT-2609 P3-8 / P3-9 回写，2026-11-14）**：
+>
+> - **一次性容器产物路径是 `/out`**（不是 `/app/eval-out`）：`docker-compose.eval.yml`
+>   的容器入口把报告落到 `/out/report.json` / `/out/report.md`，宿主持久化时挂载该目录；
+>   文档与排障命令按 `/out` 写。层子集入口显式放行（`AGENT_EVAL_ALLOW_SKIP=1`）时
+>   缺层写 `layers_missing`、选中不跑写 `layers_skipped`，两者都不是通过。
+> - **`--changed-skills auto` 仅宿主 worktree 可用**：它按 `git diff` 判定变更 Skill，
+>   容器内没有 git 工作区/基线，容器内跑必须显式给 Skill 名子集，否则按基础设施错误退出。
+> - **报告不可字节比对**：`report.json` 含 `started_at`、各层耗时等非确定字段；CI 与
+>   跨版本回归按 `metrics`（成功率、召回率、成本相对值、失败集合）比对，不比整文件字节。
+
 ## 15. 里程碑与验收
 
 | 阶段 | 交付 | 验收 |
 |---|---|---|
-| M0 底座 | 单 loop、SkillRegistry、意图工具 3 个 + `tool_search`（关键词检索，INT-2453）、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1 + T2（首期启用）；压缩 L1–L3；`platform-reference` | T1/T2 逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
-| M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；`tool_search` 关键词 + 轻量语义检索（bigram / 词表扩展，无向量，INT-2465）；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%（当前为确定性词面代理，模型实测归 INT-2475）；无编造数值；记忆写入需审批 |
+| M0 底座 | 单 loop、SkillRegistry、意图工具 **4 个（3 业务 + `tool_search`）**、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1 + T2（首期启用）；压缩 L1–L3；`platform-reference` | T1/T2 逃逸测试全拦截；50 轮压缩任务不丢事实（原写「60 轮」，实现下限 50 轮，见 §14 口径）；进程内重启模拟可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
+| M1 只读全平台 | 11 域只读意图工具；**§4.3 除 `app-api-onboarding` 外的 12 个** Skill 的 L1/L2；`tool_search` 轻量语义扩展（中文 bigram / 词表扩展，无向量，INT-2465；关键词检索 M0 已交付）；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%（当前为确定性词面代理，模型实测归 INT-2475）；无编造数值；记忆写入需审批 |
 | M2 写操作与报告 | 探索-生成层（`ui_tree`/`ui_action`/`api_spec`）；写工具、审批、幂等；App/API 接入全流程（受理→发现→计划→生成→验证→迭代→交付）；驱动提案（设备驱动 + API 适配器，提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；**用户自定义 Skill（USER 级 CRUD + zip 导入导出 + 逐项校验 + 版本快照 + 触发门槛）+ Skill 管理页**；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；两类提案均可复现且未审批不写注册表；接入包在 staging 冒烟通过；三类报告指标与 Report Service 逐字段一致；自定义 Skill 不得提权、不得越权引用工具、同名不得覆盖内置、历史 run 按版本回放 |
-| M3 自动化与评测 | Auto 模式、预算/熔断、全量评测；**TENANT 级共享 Skill 与发布审核流**；外部 Skill zip/MCP 对齐、文档更新 | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致 |
+| M3 自动化与评测 | Auto 模式、预算/熔断、全量评测；**TENANT 级共享 Skill 与发布审核流**；外部 Skill zip/MCP 对齐、文档更新；**总开关灰度（租户 / 用户白名单，INT-2478）** | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致；**总闸关闭 / 灰度未命中与总闸关闭同一表现（`AGENT_DISABLED`，无后台 run）**；灰名单用户可用、非灰名单不可用；M0–M3 文档与实现对齐（07 / 08 / 09 回写完成） |
+
+> **M3 门判定（2026-11-15）**：M3 五卡（INT-2474 / 2475 / 2476 / 2477 / INT-2551 经
+> INT-2587）全部合入 `V10.11.2`，一致性审计无未处置 P0/P1，部署面就绪；本卡（INT-2478）
+> 完成文档回写 + 灰度开关后，M3 里程碑收口。M0–M2 的验收结论见各阶段审计卡与 §16
+> 「已登记残留」。
 
 ## 16. 风险与开放问题
 
@@ -1223,6 +1408,89 @@ tests/agent_eval/coverage/       # M1 汇总评测：清单一致性 / 长尾 / 
 | S4 | `CommandResultDTO.code` 由 `int` 放宽为 `int \| str`，同一 DTO 承载 HTTP 数字码与设备 UI 字符串业务码 | `api_gateway/domain/dto/api_gateway_acl_dto.py:293-295` | 类型折中，注释已写明；新码只有设备 UI 三条路径产生 |
 | S5 | `doc/接口文档/04_测试设备管理.md` / `doc/接口实现文档/04_测试设备管理-接口实现文档.md` 未收录 `ui/*` 三端点 | `doc/接口文档/04_测试设备管理.md`、`doc/接口实现文档/04_测试设备管理-接口实现文档.md` | 契约以 §6.6 / §11 为准；接口参考文档随文档批次补齐 |
 
+### 已登记残留（INT-2477 审计，2026-11-14）
+
+审计对象：Auto 模式前端（预算 / 进度 / 中断 / 审批，`8bd4a32fd`）。以下 P3 均不阻塞
+M3 门，登记在此、由后续前端卡收口：
+
+| # | 残留 | 位置 | 处置 |
+|---|---|---|---|
+| A1 | 快照轮询到 `WAITING_APPROVAL` 时未触发 `refreshApprovals`，暂停恢复后审批卡可能不刷新 | `frontend-react/src/application/agent/agent-run-store.ts:648-649` | 轮询进入 `WAITING_APPROVAL` 时补一次审批刷新（后续前端卡） |
+| A2 | `runInput.mode` 用字面量 `'auto'` / `'chat'`，未走枚举常量 | `agent-run-store.ts:1178` | 收敛到域枚举（类型层面修正） |
+| A3 | `AGENT_AUTO_COPY.pausePolicy` / `restoreHint` 无引用，开跑前不展示暂停规则 | `frontend-react/src/**/agent-auto-copy.ts` | 开跑前展示暂停规则，或删掉未用文案 |
+| A4 | `auto-progress.ts` 暂停文案写「阈值」，未用实际 `pause.consecutive_failures` | `frontend-react/src/**/auto-progress.ts` | 文案改用事件下发的实际阈值 |
+
+### 已登记残留（INT-2609 / INT-2610 / INT-2621 文档批，2026-11-15）
+
+| # | 残留 | 位置 | 处置 |
+|---|---|---|---|
+| B1 | 压缩数据集 50 轮与初版 60 轮目标差 | `tests/agent_eval/datasets/long_task.json`（68 轮数据集，实现门槛 50） | 若要 60 轮验收需补轮次阶段的数据集与用例，**本卡不改代码**，待测试/评测卡评估 |
+| B2 | `mcp.json（同目录）` 旧文案 | `api_gateway/skill_templates/SKILL.md` | **已修**（本卡）：改为 `assets/mcp.json` |
+| B3 | 使用说明按旧包结构写 | `doc/功能设计文档/00_新功能总览/联接你的Agent（Access Token 与 skill·MCP）使用说明.md` §3.1 / §4.1 | **已修**（本卡）：`assets/mcp.json`、正文按 `skills/platform-reference/` 生成、base_url 默认值口径 |
+| B4 | `agent_bp.py` 下载 docstring 仍写 `SKILL.md + mcp.json` | `api_gateway/routes/agent_bp.py:44` | **已修**（本卡）：`assets/mcp.json` |
+| B5 | 09 权限码表述 | `doc/agent化/09_外部Agent能力清单.md` §2 | **已修**（本卡）：`资源:操作`，可多级 |
+| B6 | 09 缺 USER Skill 文档型说明 | 09 §1 | **已修**（本卡）：USER Skill 是文档型 Skill，`allowed-tools` / `permissions` 为空，不参与内部工具收敛 |
+| B7 | 「自定义包 → 平台层」方向 N/A 依据 | 09 §1 / §4.4 | **已写进文档**：PLATFORM 层只读 fs 扫描 `skills/`，无写入口 |
+| B8 | 算法域文本 | `docs/RBAC权限划分.md` §3.10、`shared/agent_tools/contract.py` | **已修**（本卡）：`algorithm:read` 补全只读端点；状态 source 标注 `online/offline/draft → ACTIVE/DEPRECATED/DRAFT` |
+| B9 | 评估子维度描述与实现相反 | `skills/evaluation-config/SKILL.md` §硬规则 6 | **已修**（本卡）：子维度不单独发请求，但与主维度同批计算、各有输出字段与评分记录 |
+| B10 | 上下文快照 / 预算枚举口径 | 07 §5.3 + `context_assembler.py` / `context_budget.py` 注释 | **已修**（本卡）：见 §5.3 回写 |
+| B11 | `resolve_rest_call` docstring 缺音频 / 算法 | `shared/agent_tools/intent_tools.py:2181` | **已落地**（核实已含 `audio_query` / `algorithm_query`，无需改） |
+| B12 | 设备 UI 三端点未收录接口文档 | `doc/接口文档/04_测试设备管理.md`、`doc/接口实现文档/04_测试设备管理-接口实现文档.md` | **已修**（本卡）：补 `ui/tree` / `ui/screenshot` / `ui/action` |
+
+### M0–M2 历史审计回写核对（INT-2478，2026-11-15）
+
+逐条核对各审计卡原文（结论均为「有条件通过」），落地位置如下：
+
+| 来源 | 条目 | 落地 / 处置 |
+|---|---|---|
+| INT-2505 | P2-a 01/02 旧驱动工具名（`receive_picked_elements` / `generate_driver_from_elements` / `publish_driver_proposal`） | 01 / 02 已加「实现演进裁定」注记：对外唯一名 `driver_propose`，两个名字只是内部步骤；04 已标作废 |
+| INT-2505 | P2-b 04 的 Electron 双通道 | 04 已标作废；07 §11-5 定仅 Web 单通道 |
+| INT-2505 | P2-c §15 Skill 数措辞 | **已修**：§15 M1 改为「§4.3 除 `app-api-onboarding` 外的 12 个」 |
+| INT-2505 | P2-d `dashboard_query` 权限码 `dashboard:read`（网关实为 `home:read`） | 登记 §16 D1（工具当前 `enabled=false`，启用时改码，属工具实现不在本卡范围） |
+| INT-2505 | P2-e §11 审批决策端点 | **已落地**：M2 INT-2466 已实现 `POST /agent/approvals/{id}/decision`（`agent_service/interfaces/api/routes.py`） |
+| INT-2505 | P2-f §15 M0 工具数 3 → 4 | **已修**：M0 行改为「4 个（3 业务 + `tool_search`）」 |
+| INT-2504 | P2-1 生产 fail-fast 依赖 `LOG_ENVIRONMENT=prod`，compose 默认仍是 `dev` | 登记 §16 D2：`docker/.env.compose.example` 已注明生产必须设 `prod`；现网部署清单随下次部署卡显式设置 |
+| INT-2504 | P2-3 §10 缺 `api_key_mask` 字段 | **已修**：§10 `agent_llm_provider` 补 `api_key_mask` |
+| INT-2502 | P2-4 `/api/v1/trash` 前缀不存在 | **已修（INT-2501）**：`shared/agent_tools/contract.py` 已无该前缀；`mcp_registry` 的 `favorites / trash` 只是域描述 |
+| INT-2476 | 09 工具 31 / 207 / 14 口径 | **已核对一致**，本次未改数字（09 §9.1 复述） |
+| INT-2517 | D1–D7 | 已回写 §11 的「SSE 与信封口径」段（三种信封 / 游标 / error 帧 / 单通道 / 错误码 / skills 落点） |
+| INT-2522 | D1–D6 / P2-1~P2-3 | 已回写 §13.1、§12.1、§16 C1–C5、08 手册 §2/§4 |
+| INT-2523 / 2525 | 音频 / 算法域口径 | 已回写 §6.1 注、§6.2 参数口径、`docs/RBAC权限划分.md` §3.10、`contract.py` 状态标注 |
+| INT-2524 | 评估子维度「不独立算分」表述 | **已修**：`skills/evaluation-config/SKILL.md` 硬规则 6 |
+| INT-2532 | 沙箱接线 / 原因码映射 / 终态事件 | 已回写 §7 映射表、§9.3、§12.1 |
+| INT-2536 | ArtifactKind / dropped_ids / keep_recent_turns / SCRATCHPAD / 召回率 | 已回写 §5.3 注、§14-4、`context_assembler.py` / `context_budget.py` 注释 |
+| INT-2544 | 配置路径 `agent_service/config/config.py` | 已核对一致（见本节 C 段末） |
+| INT-2556 | D-ALWAYS（记忆工具实际可调用） | 已订正 §4.3 |
+| INT-2551 | TENANT 隔离 / 不得自审 / 审批链 / 门槛不可绕过 | 已回写 §4.4 注 |
+| INT-2597 | S5 设备 UI 三端点接口文档 | **已修**：两份设备接口文档补 `ui/tree` / `ui/screenshot` / `ui/action` |
+
+### 已登记残留（INT-2522 部署 / 可观测批，2026-11-15 核对）
+
+| # | 残留 | 位置 | 处置 |
+|---|---|---|---|
+| C1 | T2 可见性两套口径（`AGENT_T2_RUNTIME` vs `AGENT_SANDBOX_T2_RUNTIME_NAME`） | `agent_service/config/config.py`、`docker/README.md` §8.1 | 08 手册 §2.4 写明两者必须一致；不一致按 `T2_RUNTIME_UNAVAILABLE` 失败，不降级 |
+| C2 | healthcheck 只看 HTTP 200（agent_service `/health` 已校验 DB/Redis，但 compose 只判 200） | `docker/docker-compose.yml` agent_service 段 | 非门禁阻断项；判活以 `/health` 语义 + Agent 接口实际可用性为准 |
+| C3 | 网关转发失败 503 无机器码 | `api_gateway/routes/agent_runtime_bp.py:110` | 目标码 `AGENT_SERVICE_UNAVAILABLE`；补码属 api_gateway 行为变更，登记待后续卡，不阻塞 M3 |
+| C4 | Redis 降级时健康检查 200 | 部署面 | 明确为非门禁项：Redis 降级不影响已建会话读取与业务接口，只影响事件推送时序；不以 200 反推 Agent 可用 |
+| C5 | 生产部署清单需显式列 `AGENT_CREDENTIAL_MASTER_KEY` 为必填 | `docker/README.md` §8.1、08 手册 §2.1 | 08 手册 §2.1 已写明「生产必填，缺失拒绝启动」；compose 部署清单随下次部署卡同步 |
+| D1 | `dashboard_query` 权限码 `dashboard:read` 不存在（网关实际 `home:read`） | `shared/agent_tools/intent_tools.py` | 工具当前 `enabled=false` 不触发；启用前改为 `home:read`（属工具实现，登记不本卡改） |
+| D2 | 生产 fail-fast 依赖 `LOG_ENVIRONMENT=prod`，compose 默认 `dev` | `docker/docker-compose.yml` agent_service 段 | 现网缺该值时主密钥缺失不会在启动期暴露（运行期仍 fail-closed）；下次部署卡显式设置并补启动校验用例 |
+
+**关于 INT-2522 D4 / D5**：`AGENT_TOOL_GATEWAY_BASE_URL` 已在
+`docker/.env.compose.example` 列入（注释示例）；部署 / 配置口径见本方案 §12.1 的
+「部署与编排」条与 `docker/README.md` §8.1。**INT-2544**：配置真身是
+`agent_service/config/config.py`（不是 `agent_service/config.py`），本方案与代码一致。
+
+### 开放问题落地位置（5 条，均已于 2026-11-12 拍板）
+
+| # | 结论 | 正文落点 |
+|---|---|---|
+| 1 | 默认模型与供应商：用户自带 Key，AES-256-GCM 加密存库，平台默认无 Key（`AGENT_ALLOW_PLATFORM_KEY=false`），协议支持 OpenAI 兼容 + Anthropic | §6.4、§13-7/8；08 手册 §2 |
+| 2 | T2 沙箱首期启用（gVisor / Firecracker，禁网、无宿主挂载、无凭证） | §7、§14；08 手册 §2 / §4 |
+| 3 | Auto 审批粒度与预算：WRITE 计划级批量、DESTRUCTIVE 单条，预算按有效窗口 W | §9.4、§9.4.1；08 手册 §3 |
+| 4 | 长期记忆：文件式 + `rg/grep` + Skill references，不引入向量 RAG | §8.6 / §8.6.1；08 手册 §2 |
+| 5 | 上下文窗口：模型目录默认 + 用户可覆盖（8k–2M，1024 对齐），有效窗口 = 覆盖 → 默认 → 128k | §8.3、§9.4 预算表；08 手册 §2 / §3 |
+
 开放问题（需负责人后续拍板）：
 
 1. ~~默认模型与供应商~~ **已定（2026-11-12）**：用户自带 Key，AES-256-GCM 加密存 `agent_llm_provider`，按用户隔离；平台默认不提供 Key（`AGENT_ALLOW_PLATFORM_KEY=false`）；协议支持 OpenAI 兼容与 Anthropic。
@@ -1240,3 +1508,29 @@ tests/agent_eval/coverage/       # M1 汇总评测：清单一致性 / 长尾 / 
 - https://openai.github.io/openai-agents-python/
 - https://github.com/openai/skills
 - https://code.claude.com/docs/en/agent-sdk/overview
+
+## 18. 方案与实现差异台账（M3 收口，2026-11-15）
+
+本方案从 M0 到 M3 与早期文档（00 / 04 的 DeepSeek Harness 路线、05 的 DSH 报告路线）
+存在实现演进差异。下表是**最终口径**，后续按「以本表 + 各节「实现口径」注为准」执行，
+不再回到早期文档的实现方式：
+
+| # | 早期方案口径 | 最终实现口径 | 依据 / 落点 |
+|---|---|---|---|
+| 1 | 集成 DeepSeek Harness（DSH Plugins + Bridge） | **自研单 Agent Loop + Skills**（无 DSH 依赖） | 01 / 02 / 03 / 04 的 DSH 章节作废，见各文档头部标记；本方案 §5 |
+| 2 | 浏览器 + Electron 双通道 | **仅 Web 单通道**（浏览器 SSE） | §11-5、§12.2 |
+| 3 | 跨域工具没有归属 Skill、激活 Skill 后被拒 | `memory_search` / `memory_write` 属 `ALWAYS_AVAILABLE_TOOLS`，激活任意 Skill 均可调用；只有 `dashboard_query` 仅通用会话可用 | §4.3 INT-2556 订正 |
+| 4 | 工具索引 205 与对外 207 混用 | 对外 `tools/list` **207**；`tool_search` 索引视图 **205 条 MCP + 30 条意图 = 235** | §6.1 裁定 4、§6.2 |
+| 5 | 压缩验收「60 轮」 | 实现下限 **50 轮**（数据集 68 轮，门禁按 50 判定）；60 轮为待补目标 | §14、§15、§16 B1 |
+| 6 | 恢复层「kill Worker」 | **进程内重启模拟**：同进程 `container.shutdown()` + 新建 container | §14-3 |
+| 7 | T2 首期不执行 / 或可回落 T1 | T2 首期启用，运行时缺失 → `T2_RUNTIME_UNAVAILABLE`，**绝不回落 T1**；通用 Loop 仍未接 T2 | §7、§14.1 |
+| 8 | Auto 计划级批量审批 WRITE | Auto 下 WRITE 仍逐次提案 + 审批；DESTRUCTIVE 恒单条不预授权 | §9.4 边界 |
+| 9 | 一次 tool call 一张审批单 | **>20 对象拆单**（`batch_id` / `batch_index` / `batch_total`），全批准才执行 | §9.4.1 |
+| 10 | 评测一次性容器产物落 `/app/eval-out` | 落 **`/out`**（compose 挂载该目录） | §14.1 |
+| 11 | 触发准确率用真实模型评测 | M1–M3 门禁为**确定性词面代理**；模型级评测需用户供应商 Key，未覆盖 | §14、§14.1 |
+| 12 | 评测报告可字节回归 | `report.json` 含 `started_at` / 耗时，**按 metrics 比对** | §14.1 P3-9 |
+| 13 | 总开关只有 `AGENT_ENABLED` | 唯一总闸仍是 `AGENT_ENABLED`，**在其上加租户 / 用户灰度白名单**（`AGENT_GRAY_TENANTS` / `AGENT_GRAY_USERS`）；未配白名单 = 全员放行 | §13-1、§13 灰度段、08 手册 §1 |
+| 14 | 外部 Skill 包含根目录 `mcp.json` | **`assets/mcp.json`**；正文按 `skills/platform-reference/` 生成 | 09 §1、使用说明 §3.1 / §4.1 |
+
+> 「最终口径」= 上述 14 条 + 各节标注「实现口径 / 审计回写」的注。任何与早期文档冲突的
+> 表述，以本方案正文与本表为准；早期文档只作演进记录，不得据此实施。

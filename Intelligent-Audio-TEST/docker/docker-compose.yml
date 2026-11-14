@@ -204,6 +204,10 @@ services:
       # 只能经网关访问，网关是该开关的唯一执行点）。
       - AGENT_SERVICE_URL=http://agent_service:5011
       - AGENT_ENABLED=${AGENT_ENABLED:-false}
+      # INT-2478：总闸之上的灰度白名单（不是第二个开关）。两者都空 = 全员放行；
+      # 配置后只有命中租户 / 用户的请求可用，未命中返回同一 503 AGENT_DISABLED。
+      - AGENT_GRAY_TENANTS=${AGENT_GRAY_TENANTS:-}
+      - AGENT_GRAY_USERS=${AGENT_GRAY_USERS:-}
       - AGENT_SERVICE_TIMEOUT_SECONDS=${AGENT_SERVICE_TIMEOUT_SECONDS:-30}
       - AGENT_DEFAULT_TENANT_ID=${AGENT_DEFAULT_TENANT_ID:-default}
       # INT-2476：GET /api/v1/agent/skill 的平台包按 skills/ 生成（与

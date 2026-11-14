@@ -87,6 +87,8 @@ class CompactionSettings:
     """压缩行为参数（全部来自配置，不在代码里写死）。"""
 
     enabled: bool = True
+    # 保留最近 N **轮**原文（1 轮 = 一次 Loop 轮次，turn 相同的消息整组处理），
+    # 不是「N 条消息」。压缩与 `_drop_oldest_groups` 都按同一口径计数。
     keep_recent_turns: int = 3
     tool_summary_chars: int = 600
     max_summary_chars: int = 2400
@@ -134,7 +136,13 @@ class ContextMessage:
 
 @dataclass
 class CompactionOutcome:
-    """一次压缩的结果（事件 / 快照 / 测试共用）。"""
+    """一次压缩的结果（事件 / 快照 / 测试共用）。
+
+    ``dropped_ids`` 是**因本次压缩从模型上下文中移除的消息 ID**，口径是同
+    快照的 ``agent_context_snapshot.dropped_ids``：L1 截断 / L2 去重时被改写
+    （摘要化、只留计数与 TopN）的消息也计入，**不等同于「被删掉的消息」**；
+    L3/L4 快照里该字段是累计值，可单条回放（INT-2536 P3-1/P3-2）。
+    """
 
     level: CompactionLevel
     tokens_before: int

@@ -41,7 +41,7 @@ def _require_login(request: Request):
 
 @router.get('/skill')
 def download_skill(request: Request, base_url: str = ''):
-    """下载 skill 包 zip：SKILL.md + mcp.json（base_url 注入）。"""
+    """下载 skill 包 zip：`SKILL.md` + `assets/mcp.json`（base_url 注入）。"""
     from api_gateway.application.services.mcp.skill_package import (
         build_skill_zip, resolve_base_url, ZIP_FILENAME,
     )
