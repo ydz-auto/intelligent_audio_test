@@ -11,7 +11,8 @@ from typing import Dict, Iterable, Optional, Tuple
 
 from agent_service.application.approval_service import ApprovalService
 from agent_service.application.auto_mode import (
-    AutoControlState, AutoSettings, consecutive_failures,
+    PAUSE_REASON_BUDGET, AutoControlState, AutoSettings, consecutive_failures,
+    load_control_state,
 )
 from agent_service.application.cancel_registry import CancelRegistry
 from agent_service.application.skill_registry import SkillRegistry
@@ -47,8 +48,7 @@ class RunService:
                  approvals: Optional[ApprovalService] = None,
                  run_skills: Optional[AgentRunSkillRepository] = None,
                  auto_settings: Optional[AutoSettings] = None,
-                 tool_calls: Optional[ToolCallRepository] = None,
-                 event_scan_limit: int = 10000):
+                 tool_calls: Optional[ToolCallRepository] = None):
         self._sessions = sessions
         self._runs = runs
         self._events = events
@@ -61,7 +61,6 @@ class RunService:
         self._auto_settings = auto_settings or AutoSettings()
         # INT-2474：「继续」时要按同一口径记录连续失败数（暂停不重复触发）
         self._tool_calls = tool_calls
-        self._event_scan_limit = max(1, int(event_scan_limit))
         self._default_model = default_model
         self._skills = skills
         self._approvals = approvals
@@ -227,10 +226,15 @@ class RunService:
                 self._tool_calls, run_id,
                 max(1, int(self._auto_settings.max_consecutive_failures)))
             if self._tool_calls is not None else 0)
+        # 只有「从预算暂停点继续」才确认该预算暂停点；因连续失败暂停的这次
+        # 继续不能顺带把 80% 预算暂停标成已确认（INT-2474 返工 P2）。
+        acked_budget = (
+            control.budget_pause_acked
+            or control.pause_reason == PAUSE_REASON_BUDGET)
         self._events.append(run_id, EventType.RUN_RESUMED, {
             'resumed_by': owner_id,
             'pause_reason': control.pause_reason,
-            'acked_budget_pause': True,
+            'acked_budget_pause': acked_budget,
             'consecutive_failures': failures,
             'budget': dict(run.budget or {}),
             'token_in': run.token_in,
@@ -246,13 +250,8 @@ class RunService:
                    for item in self._approvals.list_for_run(run_id))
 
     def _control_state(self, run_id: str) -> AutoControlState:
-        try:
-            events = self._events.list_after(run_id, 0, self._event_scan_limit)
-        except Exception:  # noqa: BLE001 - 读取失败按未暂停
-            logger.warning('读取 Auto 控制事件失败 run=%s', run_id,
-                           exc_info=True)
-            return AutoControlState()
-        return AutoControlState.from_events(events)
+        """控制状态按事件末尾重建（长 run 不受 EVENT_SCAN_LIMIT 截断）。"""
+        return load_control_state(self._events, run_id)
 
     def cancel_run(self, run_id: str, *, owner_id: int,
                    tenant_id: str) -> AgentRun:

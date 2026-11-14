@@ -894,12 +894,17 @@ M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参�
 > 进度/控制事件（SSE，均带 `run_id` / `sequence` / `timestamp`）：
 > - `auto_step`：每轮一条，含 `step` / `phase(step|continue|resume)` / `goal` /
 >   `plan` / `usage`（rounds、tool_calls、tokens、elapsed_seconds、output_bytes）/
->   `limits` / `ratios` / `ratio` / `artifact_count` / `artifacts`；`continue` /
->   `resume` 两种 phase 另带 `instruction`（该轮回灌模型的续跑提示）；
+>   `limits` / `ratios` / `ratio` / `artifact_count` / `artifacts` /
+>   `idle_nudges`（累计空转提示次数，重启恢复用）；`continue` /
+>   `resume` 两种 phase 另带 `instruction`（该轮回灌模型的续跑提示，随本轮
+>   请求立即送达，不是下一轮才补）；
 > - `run_paused`：`reason ∈ {budget_threshold, consecutive_tool_failures}` +
 >   当时的 usage/ratio；run 转 `WAITING_APPROVAL`（等用户决策，不计入执行时长）；
 > - `run_resumed`：用户点「继续」，记录 `pause_reason` / `consecutive_failures` /
->   `acked_budget_pause`；用户继续后**同一预算暂停点不再触发**，硬预算仍生效。
+>   `acked_budget_pause`（只有从 `budget_threshold` 暂停点继续才置 true，
+>   因连续失败暂停的继续不确认预算暂停点）；用户继续后**同一预算暂停点不再
+>   触发**，硬预算仍生效。控制状态在重启后按事件尾部重建，不受 `auto_step` /
+>   `message_delta` 事件总数影响。
 >
 > 继续入口 `POST /agent/runs/{id}/resume`：仅暂停态 Auto run 可用；仍有待审批
 > 提案时 409（先处理审批单，审批决策本身会唤醒 run）；已终态 / 非 Auto /

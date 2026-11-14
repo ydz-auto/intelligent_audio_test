@@ -3,7 +3,9 @@
 
 Auto 不新增 agent / subagent，仍是同一条 Loop：区别只在「何时继续、何时
 停、什么算完成」。本模块只放**纯决策**（不碰仓储、不调模型），便于单测把
-预算边界与熔断阈值逐条钉死；Loop 的落地在 ``run_orchestrator``。
+预算边界与熔断阈值逐条钉死；Loop 的落地在 ``run_orchestrator``。唯一的仓储
+读取入口是 ``load_control_state``（从事件尾部重建控制状态），决策函数本身
+保持纯函数。
 
 停止条件：
 
@@ -19,6 +21,7 @@ Auto 不新增 agent / subagent，仍是同一条 Loop：区别只在「何时�
 暂停 / 继续的事实全部落在事件流（``run_paused`` / ``run_resumed``）里：
 重启后按同一份事件重建控制状态，不依赖进程内标志。
 """
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Sequence
@@ -50,6 +53,19 @@ _SUBSTANTIVE_EVENTS = frozenset({
     EventType.MESSAGE_DELTA, EventType.TOOL_CALL, EventType.TOOL_RESULT,
     EventType.ERROR, EventType.RUN_FINISHED,
 })
+
+# 控制事件（暂停 / 继续）：暂停事实只看最后一条，预算确认与连续失败数
+# 取最近一次 run_resumed 的累计载荷。长 run 里这些事件很少，尾部查询即可。
+CONTROL_EVENT_TYPES = (EventType.RUN_PAUSED, EventType.RUN_RESUMED)
+# 控制事件的尾部窗口：最后一条决定是否暂停，最后一条 run_resumed 决定
+# 预算确认 / 连续失败数；多取几条只是为了容忍重复暂停等异常历史。
+CONTROL_EVENT_TAIL = 4
+# 实质推进事件：最后一条 run_resumed 之后出现任意一条，就不再补 resume 提示。
+# 不把 auto_step 算进来 —— 它只表示「这一轮开始请求模型」，该轮如果在
+# 产出任何内容前中断，恢复时仍应把「用户已确认继续」送达模型。
+ACTIVITY_EVENT_TYPES = tuple(_SUBSTANTIVE_EVENTS)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -166,9 +182,11 @@ class AutoControlState:
                 pause_reason = str(payload.get('reason') or '')
             elif event_type is EventType.RUN_RESUMED:
                 paused = False
-                # 用户点了「继续」：预算暂停点视为已确认（默认 True，
-                # 恢复事件本身就是确认动作）。
-                budget_acked = bool(payload.get('acked_budget_pause', True))
+                # 预算确认是累积事实：某个预算暂停点一经用户确认即不再触发。
+                # 因连续失败暂停的「继续」不确认预算暂停点（acked=False），
+                # 不能把此前已确认的状态覆盖回 False（INT-2474 返工 P2）。
+                budget_acked = budget_acked or bool(
+                    payload.get('acked_budget_pause', True))
                 failures_acked = max(
                     failures_acked, int(payload.get('consecutive_failures') or 0))
                 pending_resume = True
@@ -183,6 +201,28 @@ class AutoControlState:
                    budget_pause_acked=budget_acked,
                    failures_acked=failures_acked, idle_nudges=nudges,
                    pending_resume=pending_resume)
+
+    @classmethod
+    def rebuild(cls, *, control_events: Sequence[Any],
+                idle_nudges: int = 0,
+                activity_after_resume: bool = False) -> 'AutoControlState':
+        """用「控制事件尾部 + 聚合事实」重建（不整条 run 顺序扫描）。
+
+        ``control_events`` 只需最后若干条 ``run_paused`` / ``run_resumed``：
+        暂停事实由最后一条决定，预算确认 / 连续失败数由最近一次继续事件的
+        累计载荷决定（见 ``from_events``）。``idle_nudges`` 取最后一条
+        ``auto_step`` 里的累计值；``activity_after_resume`` 表示最近一次
+        继续之后是否已有实质产出（消息 / 工具 / 错误 / 收口）。
+        """
+        state = cls.from_events(control_events)
+        return cls(
+            paused=state.paused,
+            pause_reason=state.pause_reason,
+            budget_pause_acked=state.budget_pause_acked,
+            failures_acked=state.failures_acked,
+            idle_nudges=max(0, int(idle_nudges or 0)),
+            pending_resume=bool(state.pending_resume
+                                and not activity_after_resume))
 
 
 class AutoModeController:
@@ -290,8 +330,13 @@ class AutoModeController:
                          goal: str, plan: str, usage: BudgetUsage,
                          artifacts: Sequence[Dict[str, Any]] = (),
                          instruction: Optional[str] = None,
-                         pause_reason: str = '') -> Dict[str, Any]:
-        """一条 ``auto_step`` 事件载荷（进度时间线 + 续跑提示合一）。"""
+                         pause_reason: str = '',
+                         idle_nudges: int = 0) -> Dict[str, Any]:
+        """一条 ``auto_step`` 事件载荷（进度时间线 + 续跑提示合一）。
+
+        ``idle_nudges`` 是本事件发生后的累计空转提示次数：长任务重启时
+        取最后一条 ``auto_step`` 的该字段即可恢复，不用扫描整条 run。
+        """
         ratios = usage.ratios()
         payload: Dict[str, Any] = {
             'mode': 'auto',
@@ -305,6 +350,7 @@ class AutoModeController:
             'ratios': {key: round(value, 4) for key, value in ratios.items()},
             'ratio': round(usage.max_ratio, 4),
             'consecutive_failures': int(usage.consecutive_failures or 0),
+            'idle_nudges': max(0, int(idle_nudges)),
             'artifact_count': len(artifacts),
             'artifacts': list(artifacts),
         }
@@ -355,6 +401,47 @@ def consecutive_failures(tool_calls: Any, run_id: str, limit: int) -> int:
     return count
 
 
+def load_control_state(events: Any, run_id: str) -> AutoControlState:
+    """从事件流**末尾**重建控制状态（与 run 的事件总数无关）。
+
+    旧口径「取前 ``EVENT_SCAN_LIMIT`` 条事件顺序回放」在长 run（Auto 默认
+    60 轮 × 每轮数百 message_delta）会漏掉尾部 ``run_paused``，重启后判定
+    未暂停 → 「继续」409、重复投递再暂停一次（INT-2474 返工 P1）。这里改成
+    三次定向查询：
+
+    - ``run_paused`` / ``run_resumed`` 的尾窗：暂停事实、预算确认、连续
+      失败数（继续事件的载荷是累计值）；
+    - 最后一条实质推进事件是否晚于最近一次继续：决定是否补 resume 提示；
+    - 最后一条 ``auto_step`` 的累计空转次数。
+
+    读取失败按「未暂停」降级，不改变控制流的 fail-open 行为。
+    """
+    try:
+        control_events = events.list_by_types_tail(
+            run_id, CONTROL_EVENT_TYPES, CONTROL_EVENT_TAIL)
+        last_resume = next(
+            (item for item in reversed(control_events)
+             if getattr(item, 'type', None) is EventType.RUN_RESUMED), None)
+        activity_after_resume = False
+        if last_resume is not None:
+            activity = events.list_by_types_tail(
+                run_id, ACTIVITY_EVENT_TYPES, 1)
+            activity_after_resume = bool(
+                activity and activity[0].sequence > last_resume.sequence)
+        idle_nudges = 0
+        steps = events.list_by_types_tail(run_id, (EventType.AUTO_STEP,), 1)
+        if steps:
+            raw = (steps[0].payload or {}).get('idle_nudges')
+            if isinstance(raw, int):
+                idle_nudges = max(0, raw)
+    except Exception:  # noqa: BLE001 - 读取失败按未暂停处理
+        logger.warning('读取 Auto 控制事件失败 run=%s', run_id, exc_info=True)
+        return AutoControlState()
+    return AutoControlState.rebuild(
+        control_events=control_events, idle_nudges=idle_nudges,
+        activity_after_resume=activity_after_resume)
+
+
 def artifact_brief(artifacts: Sequence[Any], limit: int = 10) -> List[Dict[str, str]]:
     """产物的对外摘要（进度事件用；不含正文）。"""
     items: List[Dict[str, str]] = []
@@ -368,8 +455,10 @@ def artifact_brief(artifacts: Sequence[Any], limit: int = 10) -> List[Dict[str, 
 
 
 __all__ = [
-    'AutoAction', 'AutoControlState', 'AutoModeController', 'AutoSettings',
-    'BudgetUsage', 'COMPLETE_REASON', 'IDLE_REASON', 'PAUSE_REASON_BUDGET',
-    'PAUSE_REASON_FAILURES', 'PHASE_CONTINUE', 'PHASE_RESUME', 'PHASE_STEP',
-    'artifact_brief', 'consecutive_failures',
+    'ACTIVITY_EVENT_TYPES', 'AutoAction', 'AutoControlState',
+    'AutoModeController', 'AutoSettings', 'BudgetUsage', 'COMPLETE_REASON',
+    'CONTROL_EVENT_TAIL', 'CONTROL_EVENT_TYPES', 'IDLE_REASON',
+    'PAUSE_REASON_BUDGET', 'PAUSE_REASON_FAILURES', 'PHASE_CONTINUE',
+    'PHASE_RESUME', 'PHASE_STEP', 'artifact_brief', 'consecutive_failures',
+    'load_control_state',
 ]

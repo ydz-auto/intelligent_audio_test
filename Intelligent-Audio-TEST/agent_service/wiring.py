@@ -555,7 +555,6 @@ def build_container(session_factory,
         run_skills=run_skill_repository,
         auto_settings=auto_config,
         tool_calls=tool_calls,
-        event_scan_limit=Config.EVENT_SCAN_LIMIT,
     )
     event_stream = EventStreamService(
         events, runs, wakeup, page_size=Config.EVENT_PAGE_SIZE,

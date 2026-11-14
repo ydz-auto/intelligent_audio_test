@@ -483,6 +483,27 @@ class SqlEventRepository(_BaseRepo, EventRepository):
         finally:
             db.close()
 
+    def list_by_types_tail(self, run_id: str, event_types: Sequence,
+                           limit: int) -> List[AgentRunEvent]:
+        """按事件类型定向查询末尾 N 条（sequence 升序返回）。
+
+        长 run 的控制状态（run_paused / run_resumed / auto_step）必须看尾部：
+        按「前 N 条」取会被高频 message_delta 挤出窗口（INT-2474 返工 P1）。
+        """
+        wanted = [_enum_value(item) for item in event_types]
+        if not wanted:
+            return []
+        db = self._session()
+        try:
+            rows = db.query(AgentRunEventPO).filter(
+                AgentRunEventPO.run_id == run_id,
+                AgentRunEventPO.type.in_(wanted),
+            ).order_by(AgentRunEventPO.sequence.desc()).limit(
+                max(1, int(limit))).all()
+            return [_to_event(r) for r in reversed(rows)]
+        finally:
+            db.close()
+
     def max_sequence(self, run_id: str) -> int:
         db = self._session()
         try:

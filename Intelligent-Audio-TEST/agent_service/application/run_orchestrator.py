@@ -33,7 +33,7 @@ from agent_service.application.auto_mode import (
     COMPLETE_REASON, IDLE_REASON, PAUSE_REASON_BUDGET, PAUSE_REASON_FAILURES,
     PHASE_CONTINUE, PHASE_RESUME, PHASE_STEP, AutoAction, AutoControlState,
     AutoModeController, AutoSettings, BudgetUsage, artifact_brief,
-    consecutive_failures,
+    consecutive_failures, load_control_state,
 )
 from agent_service.application.cancel_registry import CancelRegistry
 from agent_service.application.context_assembler import ContextAssembler
@@ -95,6 +95,13 @@ APPROVAL_REQUIRED = 'APPROVAL_REQUIRED'
 APPROVAL_REJECTED = 'APPROVAL_REJECTED'
 APPROVAL_EXPIRED = 'APPROVAL_EXPIRED'
 APPROVAL_EXECUTION_DENIED = 'APPROVAL_EXECUTION_DENIED'
+
+# 带 ``turn`` 载荷的事件类型（轮次号在 run 内单调递增）：下一轮轮次号只看
+# 尾部最后一条，长 run 重启时不会被高频 message_delta 挤出扫描窗口。
+_TURN_EVENT_TYPES = (
+    EventType.AUTO_STEP, EventType.MESSAGE_DELTA,
+    EventType.TOOL_CALL, EventType.TOOL_RESULT,
+)
 
 # L3 备忘的固定 schema 提示（§8.2）：只允许 JSON；事实必须带来源消息 ID。
 _MEMO_SYSTEM_PROMPT = (
@@ -446,6 +453,9 @@ class RunOrchestrator:
             step = self._steps.create(
                 run_id, self._steps.next_index(run_id),
                 plan_snapshot=plan_snapshot)
+            # INT-2474：本轮的目标驱动续跑提示（该轮请求即回灌，见 _build_request），
+            # 同时作为 auto_step 事件落库供时间线 / 重启回放。
+            instruction: Optional[str] = None
             if mode.is_auto:
                 # 每步汇报进度事件（进度时间线）；需要时带目标驱动续跑提示
                 phase, instruction = self._auto_step_plan(
@@ -459,7 +469,8 @@ class RunOrchestrator:
                                         phase=phase, goal=goal,
                                         plan=plan_text, usage=usage,
                                         artifacts=artifacts,
-                                        instruction=instruction))
+                                        instruction=instruction,
+                                        idle_nudges=idle_nudges))
                 pending_nudge = False
             text_parts: List[str] = []
             calls: Sequence[ToolCallRequest] = ()
@@ -476,6 +487,7 @@ class RunOrchestrator:
                     context_budget=context_budget,
                     auto_prompt=auto_prompt,
                     resume_context=resume_context,
+                    turn_instruction=instruction,
                     memo_summarizer=self._memo_summarizer(
                         llm, provider, run_id, cancel_check,
                         output_limit=output_limit))
@@ -655,12 +667,14 @@ class RunOrchestrator:
                        context_budget: Optional[ContextBudget] = None,
                        memo_summarizer=None,
                        auto_prompt: Optional[str] = None,
-                       resume_context: Optional[str] = None) -> LlmRequest:
+                       resume_context: Optional[str] = None,
+                       turn_instruction: Optional[str] = None) -> LlmRequest:
         messages = self._assembler.assemble(
             run.session_id, run, permissions=permissions,
             active_skill=active_skill, active_skill_obj=active_skill_obj,
             budget=context_budget, memo_summarizer=memo_summarizer,
-            auto_prompt=auto_prompt, resume_context=resume_context)
+            auto_prompt=auto_prompt, resume_context=resume_context,
+            turn_instruction=turn_instruction)
         tools = tuple(self._tool_specs(permissions, allowed_tools))
         return LlmRequest(
             messages=tuple(messages), tools=tools,
@@ -761,15 +775,12 @@ class RunOrchestrator:
                 str(payload.get('user_message') or ''))
 
     def _auto_control(self, run_id: str) -> AutoControlState:
-        """从事件流重建 Auto 控制状态（暂停 / 继续 / 空转次数）。"""
-        try:
-            events = self._events.list_after(
-                run_id, 0, self._settings.event_scan_limit)
-        except Exception:  # noqa: BLE001 - 读取失败按未暂停处理
-            logger.warning('读取 Auto 控制事件失败 run=%s', run_id,
-                           exc_info=True)
-            return AutoControlState()
-        return AutoControlState.from_events(events)
+        """从事件流末尾重建 Auto 控制状态（暂停 / 继续 / 空转次数）。
+
+        长 run 的 message_delta 可达上万条，控制事件必须从尾部定向查询，
+        不能用「前 EVENT_SCAN_LIMIT 条」回放（否则暂停事实会被截断）。
+        """
+        return load_control_state(self._events, run_id)
 
     def _effective_budget(self, run: AgentRun, window: int,
                           mode: RunMode = RunMode.CHAT) -> RunBudget:
@@ -857,13 +868,19 @@ class RunOrchestrator:
         return None
 
     def _next_turn(self, run_id: str) -> int:
-        max_turn = -1
-        for event in self._events.list_after(
-                run_id, 0, self._settings.event_scan_limit):
-            turn = (event.payload or {}).get('turn')
-            if isinstance(turn, int) and turn > max_turn:
-                max_turn = turn
-        return max_turn + 1
+        """下一轮的轮次号（长 run 取事件尾部，不看前 N 条）。
+
+        同 P1 同因修复：按「前 ``event_scan_limit`` 条」取 max turn，长 run
+        重启后只能看到最早的几轮，会把轮次号算回去造成 turn 冲突（历史与
+        续跑提示按 turn 归组）。轮次号在 run 内单调，取最后一条带 turn 的
+        事件即可。
+        """
+        tail = self._events.list_by_types_tail(
+            run_id, _TURN_EVENT_TYPES, 1)
+        if not tail:
+            return 0
+        turn = (tail[0].payload or {}).get('turn')
+        return int(turn) + 1 if isinstance(turn, int) else 0
 
     def _consecutive_failures(self, run_id: str) -> int:
         """连续工具失败数（与 Auto 暂停 / 熔断共用同一口径）。"""
@@ -890,19 +907,32 @@ class RunOrchestrator:
             consecutive_failures=int(self._consecutive_failures(run_id)))
 
     def _output_bytes_so_far(self, run_id: str) -> int:
-        """本 run 已产生的文本输出字节（跨重启累计，防止重启绕过输出预算）。"""
-        try:
-            events = self._events.list_by_types(
-                run_id, (EventType.MESSAGE_DELTA,),
-                self._settings.event_scan_limit)
-        except Exception:  # noqa: BLE001 - 读取失败按 0 起算
-            logger.warning('读取输出事件失败 run=%s', run_id, exc_info=True)
-            return 0
+        """本 run 已产生的文本输出字节（跨重启累计，防止重启绕过输出预算）。
+
+        分页扫描整条事件流：只取前 ``event_scan_limit`` 条会在长 run 少算
+        输出字节，重启后就能突破 ``max_output_bytes``（INT-2474 返工 P1）。
+        """
         total = 0
-        for event in events:
-            total += len(str((event.payload or {}).get('delta') or '')
-                         .encode('utf-8'))
-        return total
+        cursor = 0
+        page_size = max(1, int(self._settings.event_scan_limit))
+        while True:
+            try:
+                events = self._events.list_after(run_id, cursor, page_size)
+            except Exception:  # noqa: BLE001 - 读取失败按已统计值起算
+                logger.warning('读取输出事件失败 run=%s cursor=%s',
+                               run_id, cursor, exc_info=True)
+                return total
+            if not events:
+                return total
+            for event in events:
+                if event.type is not EventType.MESSAGE_DELTA:
+                    continue
+                total += len(str((event.payload or {}).get('delta') or '')
+                             .encode('utf-8'))
+            advance = int(getattr(events[-1], 'sequence', cursor) or 0)
+            if advance <= cursor:  # 防御：sequence 不前进则不空转
+                return total
+            cursor = advance
 
     def _artifact_brief(self, run_id: str) -> List[Dict[str, str]]:
         """已产生工件的摘要（进度事件展示用；读取失败不阻断 Loop）。"""

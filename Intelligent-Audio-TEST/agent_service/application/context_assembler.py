@@ -246,7 +246,8 @@ class ContextAssembler:
                  budget: Optional[ContextBudget] = None,
                  memo_summarizer: Optional[MemoSummarizer] = None,
                  auto_prompt: Optional[str] = None,
-                 resume_context: Optional[str] = None
+                 resume_context: Optional[str] = None,
+                 turn_instruction: Optional[str] = None
                  ) -> List[LlmMessage]:
         """组装本次模型调用的完整消息列表（system + 历史 + 当前轮）。
 
@@ -257,6 +258,10 @@ class ContextAssembler:
         ``auto_prompt`` 是 Auto 模式的运行约定（§9.3 / §9.4），
         ``resume_context`` 是 L4_REBUILD 从 Run 表 + 产物索引重建的状态块：
         两者都进系统提示（永不压缩），重启后模型不需要用户复述。
+
+        ``turn_instruction`` 是本轮的续跑 / 用户继续提示：作为当前轮末尾的
+        user 消息随**本次**请求送达（不是等该轮有了 assistant 内容、下一轮
+        才从事件回放出来），保证「继续」确认与目标驱动提示不迟到一轮。
         """
         history_runs = self._runs.list_session_runs(session_id, self._max_runs)
         if run.id not in {r.id for r in history_runs}:
@@ -282,6 +287,15 @@ class ContextAssembler:
                 message_id='system', run_id=run.id, turn=-1,
                 role=LlmMessageRole.SYSTEM.value,
                 content=system_content, pinned=True))
+        if turn_instruction:
+            # 当前轮的续跑提示：追加在本轮末尾，本次请求即回灌模型。
+            # user 消息在 _mark_pinned 里恒为 pinned，压缩不会把它裁掉。
+            current_turn = max((m.turn for m in messages), default=-1) + 1
+            messages.append(ContextMessage(
+                message_id=f'auto:turn:{run.id}:{current_turn}',
+                run_id=run.id, turn=current_turn,
+                role=LlmMessageRole.USER.value,
+                content=str(turn_instruction)))
         self._mark_pinned(messages)
 
         outcome = self._compact(
