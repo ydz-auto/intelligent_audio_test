@@ -14,7 +14,11 @@ const refetchMock = vi.hoisted(() => vi.fn())
 const updateMock = vi.hoisted(() => vi.fn())
 const docState = vi.hoisted(() => ({
   current: {} as {
-    data?: { frontmatterText: string; body: string }
+    data?: {
+      frontmatterText: string
+      frontmatter?: Record<string, unknown>
+      body: string
+    }
     isPending: boolean
     isError: boolean
     refetch: () => void
@@ -117,5 +121,55 @@ describe('SkillEditorDialog（INT-2550 打回修复）', () => {
     expect(screen.getByTestId('skill-editor-issues')).not.toHaveTextContent(
       '未保存'
     )
+  })
+
+  it('保存只改表单字段：导出包 frontmatter 的 version / owner / 未知键原样回传', async () => {
+    updateMock.mockReset()
+    updateMock.mockResolvedValue({ ...SKILL, version: '2' })
+    docState.current = {
+      isError: false,
+      isPending: false,
+      data: {
+        frontmatterText: '',
+        frontmatter: {
+          name: 'probe-skill',
+          description: '探针 Skill',
+          version: '9.9.9',
+          owner: 'agent-platform',
+          'allowed-tools': [],
+          permissions: [],
+          budgets: { maxToolCalls: 20 },
+          custom: { nested: true },
+        },
+        body: '## Gotchas\n\n## 验收\n',
+      },
+      refetch: vi.fn(),
+    }
+
+    renderEditor()
+
+    fireEvent.change(screen.getByLabelText('allowed-tools'), {
+      target: { value: 'task_query' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(updateMock).toHaveBeenCalledTimes(1)
+    })
+    const [payload] = updateMock.mock.calls[0] as [
+      { id: string; input: { name: string; description: string; frontmatter: Record<string, unknown> } },
+    ]
+    expect(payload.id).toBe('sk-1')
+    expect(payload.input.frontmatter).toEqual({
+      version: '9.9.9',
+      owner: 'agent-platform',
+      'allowed-tools': ['task_query'],
+      permissions: [],
+      budgets: { maxToolCalls: 20 },
+      custom: { nested: true },
+    })
+    // name / description 走请求体顶层字段（服务端写回 frontmatter），不夹带旧值
+    expect(payload.input.name).toBe('probe-skill')
+    expect(payload.input.description).toBe('探针 Skill')
   })
 })

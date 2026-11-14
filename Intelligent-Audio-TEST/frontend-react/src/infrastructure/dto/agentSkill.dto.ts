@@ -178,7 +178,7 @@ export function toSkillTools(tools?: SkillToolDto[]): SkillTool[] {
   }))
 }
 
-/** 草稿输入 → 请求体（frontmatter 只带契约字段；name / description 另列） */
+/** 草稿输入 → 请求体（frontmatter 原样携带完整键集；name / description 另列） */
 export function toSkillDraftRequest(
   input: AgentSkillDraftInput
 ): SkillDraftRequestDto {

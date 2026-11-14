@@ -13,6 +13,7 @@ import {
   fetchAgentSkillDocument,
   importAgentSkill,
   listAgentSkills,
+  parseSkillFrontmatter,
   skillIssuesFromError,
   splitSkillMarkdown,
   updateAgentSkill,
@@ -180,6 +181,51 @@ describe('agentSkillApi', () => {
     expect(document.body).toContain('## 验收')
   })
 
+  it('fetchAgentSkillDocument：frontmatter 解析成对象，表单未暴露的键（version 等）可透传回保存', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () =>
+        zipResponse(
+          [
+            '---',
+            'name: platform-reference',
+            'description: >-',
+            '  平台契约速查',
+            '  第二行',
+            'version: 9.9.9',
+            'owner: agent-platform',
+            'allowed-tools:',
+            '  - platform_contract',
+            'permissions: []',
+            'budgets:',
+            '  maxToolCalls: 20',
+            'custom:',
+            '  nested: true',
+            '---',
+            '',
+            '## Gotchas',
+            '',
+            '- 无',
+            '',
+          ].join('\n')
+        )
+      )
+    )
+
+    const document = await fetchAgentSkillDocument('s-1')
+    expect(document.frontmatter).toMatchObject({
+      name: 'platform-reference',
+      // 折叠标量与后端 yaml.safe_load 同口径：换行折成空格
+      description: '平台契约速查 第二行',
+      version: '9.9.9',
+      owner: 'agent-platform',
+      'allowed-tools': ['platform_contract'],
+      permissions: [],
+      budgets: { maxToolCalls: 20 },
+      custom: { nested: true },
+    })
+  })
+
   it('fetchAgentSkillDocument：缺根级 SKILL.md 时显式失败，不静默给空正文', async () => {
     vi.stubGlobal(
       'fetch',
@@ -200,6 +246,21 @@ describe('agentSkillApi', () => {
       vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
     )
     await expect(deleteAgentSkill('s-1')).resolves.toBeUndefined()
+  })
+})
+
+describe('parseSkillFrontmatter', () => {
+  it('空文本 / 解析失败 / 非映射都退化为空对象，不炸编辑器', () => {
+    expect(parseSkillFrontmatter('')).toEqual({})
+    expect(parseSkillFrontmatter('  \n')).toEqual({})
+    expect(parseSkillFrontmatter('name: [未闭合')).toEqual({})
+    expect(parseSkillFrontmatter('- a\n- b')).toEqual({})
+  })
+
+  it('标量按 YAML 1.2 核心 schema 解析（日期仍是字符串，不产生 Date）', () => {
+    expect(
+      parseSkillFrontmatter('version: 1.1.0\nreleased: 2026-11-14\ncount: 3')
+    ).toEqual({ version: '1.1.0', released: '2026-11-14', count: 3 })
   })
 })
 

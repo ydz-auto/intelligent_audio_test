@@ -6,6 +6,9 @@
  * - 保存 = POST（新建）/ PUT（保存），版本 +1；保存后服务端 `issues` 逐项回显，
  *   按 `field` 定位到具体输入项；前端只做必填与名称格式即时提示，不重复实现
  *   服务端校验规则（§4.4 落库前校验）。
+ * - frontmatter 透传（INT-2606）：服务端 update 对 frontmatter 整体替换，未出现的
+ *   键不回填。因此保存时以导出包解析出的 frontmatter 为 base（`version` 等表单
+ *   未暴露的键原样保留），只覆盖四个表单字段。
  * - 发布门槛面板：发布动作即门槛检查；未达标保留 DRAFT 并禁用发布。
  */
 import { useEffect, useRef, useState } from 'react'
@@ -101,20 +104,32 @@ function toLines(text: string): string[] {
     .filter(Boolean)
 }
 
-/** 由领域对象取 frontmatter 契约字段（name / description 另列，不重复） */
+/**
+ * 保存用的 frontmatter：以导出包解析出的 frontmatter 为 base，把表单字段合并进去。
+ *
+ * 服务端 `update()` 对请求体的 `frontmatter` 是整体替换（未出现的键不回填），
+ * 所以 base 里表单没暴露的键（`version` / 任意自定义键）必须原样带回去，否则
+ * fork / 导入后保存一次就丢。
+ *
+ * name / description 由请求体顶层字段决定（服务端写回 frontmatter），不从 base
+ * 带，避免改名的同时夹带旧值。
+ */
 function buildFrontmatter(
-  base: AgentSkill | null,
+  base: Record<string, unknown>,
+  skill: AgentSkill | null,
   allowedTools: string[],
   permissions: string[]
 ): Record<string, unknown> {
-  const frontmatter: Record<string, unknown> = {
-    'allowed-tools': allowedTools,
-    permissions,
+  const frontmatter: Record<string, unknown> = { ...base }
+  delete frontmatter.name
+  delete frontmatter.description
+  frontmatter['allowed-tools'] = allowedTools
+  frontmatter.permissions = permissions
+  // 导出包缺这两个键时退回领域对象（历史数据），有键就保持 base 原值
+  if (!('budgets' in frontmatter) && skill && Object.keys(skill.budgets).length > 0) {
+    frontmatter.budgets = { ...skill.budgets }
   }
-  if (base && Object.keys(base.budgets).length > 0) {
-    frontmatter.budgets = { ...base.budgets }
-  }
-  if (base?.owner) frontmatter.owner = base.owner
+  if (!('owner' in frontmatter) && skill?.owner) frontmatter.owner = skill.owner
   return frontmatter
 }
 
@@ -138,6 +153,8 @@ export function SkillEditorDialog({
   const [gate, setGate] = useState<SkillGate | null>(null)
   const [docRequested, setDocRequested] = useState(false)
   const [docLoaded, setDocLoaded] = useState(false)
+  /** 导出包解析出的 frontmatter（保存时的 base；表单未暴露的键靠它透传） */
+  const [frontmatterBase, setFrontmatterBase] = useState<Record<string, unknown>>({})
   /** 最近一次保存结果：成功且只剩 WARNING 时汇总文案不能再说「未保存」 */
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'failed'>('idle')
   // 只在「打开 / 切换到另一个 Skill」时重置；列表刷新回传新对象不重置表单
@@ -169,6 +186,7 @@ export function SkillEditorDialog({
     setLocalErrors({})
     setGate(null)
     setSaveState('idle')
+    setFrontmatterBase({})
     setDocLoaded(!skill)
     setDocRequested(Boolean(skill?.id))
     loadedSkillId.current = requestedId
@@ -182,6 +200,7 @@ export function SkillEditorDialog({
     const data = documentQuery.data
     if (!data) return
     setForm((previous) => ({ ...previous, body: data.body }))
+    setFrontmatterBase(data.frontmatter ?? {})
     setDocLoaded(true)
     setDocRequested(false)
   }, [documentQuery.data, docLoaded, open])
@@ -231,7 +250,12 @@ export function SkillEditorDialog({
     const input: AgentSkillDraftInput = {
       name: form.name.trim(),
       description: form.description.trim(),
-      frontmatter: buildFrontmatter(current, allowedTools, permissions),
+      frontmatter: buildFrontmatter(
+        frontmatterBase,
+        current,
+        allowedTools,
+        permissions
+      ),
       body: form.body,
     }
     try {

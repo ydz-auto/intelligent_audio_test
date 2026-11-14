@@ -168,7 +168,12 @@ export interface AgentSkillList {
 export interface AgentSkillDraftInput {
   name: string
   description: string
-  /** 除 name / description 外的 frontmatter 契约字段（allowed-tools / permissions / budgets / owner） */
+  /**
+   * 完整 frontmatter（name / description 另列，不重复）。
+   * 保存时以导出包解析出的 frontmatter 为基、覆盖表单字段（allowed-tools /
+   * permissions），其余键（version / owner / budgets 及未知键）原样回传——
+   * 服务端 update 对 frontmatter 是整体替换，缺键即丢。
+   */
   frontmatter?: Record<string, unknown>
   body: string
 }
@@ -210,8 +215,13 @@ export interface SkillPackageDownload {
 
 /** 编辑器载入的 SKILL.md 文档（正文来自导出包的根级 SKILL.md） */
 export interface SkillDocument {
-  /** frontmatter 原文（仅供预览，不参与编辑） */
+  /** frontmatter 原文（保存时以 `frontmatter` 对象为基，不直接回写原文） */
   frontmatterText: string
+  /**
+   * 解析后的 frontmatter（导出包根级 SKILL.md 的 YAML → 对象）。
+   * 保存时作为 base 合并表单字段：表单未暴露的键（version 等）原样保留。
+   */
+  frontmatter: Record<string, unknown>
   body: string
 }
 

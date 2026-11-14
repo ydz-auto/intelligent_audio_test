@@ -21,6 +21,7 @@
  * 包，正文经导出包的根级 `SKILL.md` 读取（§11 无单条详情接口）。
  */
 import JSZip from 'jszip'
+import { parse as parseYaml } from 'yaml'
 
 import type {
   AgentSkill,
@@ -203,11 +204,17 @@ export async function fetchAgentSkillDocument(
     })
   }
   const raw = await entry.async('string')
-  return splitSkillMarkdown(raw)
+  const document = splitSkillMarkdown(raw)
+  return {
+    ...document,
+    frontmatter: parseSkillFrontmatter(document.frontmatterText),
+  }
 }
 
-/** `---` frontmatter + 正文拆分（只拆分，不改写） */
-export function splitSkillMarkdown(raw: string): SkillDocument {
+/** `---` frontmatter + 正文拆分（只拆分，不改写；frontmatter 原文另由 parseSkillFrontmatter 解析） */
+export function splitSkillMarkdown(
+  raw: string
+): Omit<SkillDocument, 'frontmatter'> {
   const normalized = raw.replace(/^﻿/, '').replace(/\r\n/g, '\n')
   const match = /^---\n([\s\S]*?)\n---\n?/.exec(normalized)
   if (!match) {
@@ -218,6 +225,46 @@ export function splitSkillMarkdown(raw: string): SkillDocument {
     // 保留正文原样：只去掉 frontmatter 与紧随的一个空行
     body: normalized.slice(match[0].length).replace(/^\n/, ''),
   }
+}
+
+/**
+ * frontmatter 原文（YAML）→ JSON 安全对象。
+ *
+ * 编辑器保存时以它为 base 合并表单字段：服务端 `update` 对 frontmatter 是整体
+ * 替换，未出现的键（`version` / `owner` 及未知键）不会回填，前端不带上就丢。
+ *
+ * 解析失败 / 非映射按空对象处理（编辑器仍可打开，只是保留不了未知键），不把
+ * 一个坏 frontmatter 变成整页打不开；服务端在导出前已按同一份 YAML 解析过，
+ * 走到这里通常只会成功。
+ */
+export function parseSkillFrontmatter(text: string): Record<string, unknown> {
+  if (!text.trim()) return {}
+  let parsed: unknown
+  try {
+    parsed = parseYaml(text)
+  } catch {
+    return {}
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+  return toJsonSafeValue(parsed) as Record<string, unknown>
+}
+
+/**
+ * YAML 值 → JSON 可序列化值（与服务端 `_normalize_frontmatter` 同口径：
+ * 日期转 ISO 字符串、非有限数字转字符串），避免 PUT 里的非 JSON 值被静默改写。
+ */
+function toJsonSafeValue(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value === 'number' && !Number.isFinite(value)) return String(value)
+  if (Array.isArray(value)) return value.map(toJsonSafeValue)
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      result[key] = toJsonSafeValue(item)
+    }
+    return result
+  }
+  return value
 }
 
 /** 从错误对象提取逐项校验明细（服务端 unprocessable / 校验失败共用顶层 issues） */
