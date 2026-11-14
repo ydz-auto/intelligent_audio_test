@@ -5,7 +5,7 @@
 > [09_外部Agent能力清单.md](09_外部Agent能力清单.md)（对外能力）。
 > 部署操作细节以 `docker/README.md` 为准（§8.1 Agent 运行底座、§8.2 评测门禁）。
 
-本手册面向运维 / 值班同学，覆盖：开关与灰度、配置全集、限额与预算、故障处置、部署与回滚。
+本手册面向运维 / 值班同学，覆盖：开关与灰度、常用配置项（非全集）、限额与预算、故障处置、部署与回滚。
 
 ---
 
@@ -24,6 +24,12 @@
 判定逻辑：`shared/agent_access.py` 的 `evaluate_agent_access()`，结果枚举
 `AgentAccessDecision`（`ENABLED` / `DISABLED` / `NOT_IN_GRAY`）。网关与
 agent_service 都按需引用同一模块，不各写一套字符串比较。
+
+> **不受本闸门控的端点（INT-2626）**：`GET /api/v1/agent/skill`（外部 Skill 包
+> 下载）与 `POST /api/v1/mcp`（MCP 适配端点）由 `api_gateway/routes/agent_bp.py`
+> 直挂（`api_gateway/app.py:215-216`），不经 `require_agent_enabled`；**总闸关闭态
+> 仍返回 200**（仅要求登录）。验证总闸时不要把这两个端点的 200 当成总闸失效；
+> 关闭态的判据只看 sessions / runs / events / approvals / skills / providers。
 
 ### 1.2 灰度白名单（INT-2478）
 
@@ -91,10 +97,15 @@ curl -s -o - -w "`nHTTP %{http_code}`n" -H "Authorization: Bearer <token>" `
 
 ---
 
-## 2. 配置项全集（agent_service）
+## 2. 常用配置项（agent_service，非全集）
 
 来源优先级：显式环境变量 → `agent_service/config/agent_defaults.json` → 代码兜底。
 模型目录另有 `agent_service/config/model_catalog.json`。
+
+> **范围声明（INT-2626）**：本节只收运维排障 / 部署常用的约 40 项，**不是全集**。
+> `agent_service/config/config.py` 读取的 `AGENT_*` 约 120 个（事件流、审批拆单、
+> Skill 包上限、驱动发布开关等都在代码里各有独立变量），以该文件与
+> `agent_defaults.json` 为准；本手册未列出的变量不要当成「不存在」。
 
 ### 2.1 凭据与供应商
 
@@ -120,6 +131,7 @@ curl -s -o - -w "`nHTTP %{http_code}`n" -H "Authorization: Bearer <token>" `
 | `AGENT_SERVICE_TIMEOUT_SECONDS` | `30` | 普通代理超时 |
 | `AGENT_SERVICE_SSE_READ_TIMEOUT_SECONDS` | `0` | SSE 读超时，0 = 长连接不设读超时 |
 | `AGENT_DEFAULT_TENANT_ID` | `default` | 网关下发的 `X-Tenant-Id`（恒覆盖客户端伪造值） |
+| `AGENT_TOOL_GATEWAY_BASE_URL` | compose 内置 `http://api_gateway:5000`；同机直跑缺省 `http://127.0.0.1:<网关端口>` | 意图工具回源网关 REST 的基址（`config.py:238`）。**容器内写 `127.0.0.1` 会打到 agent_service 自身**（它监听 5011），表现为工具调用 ConnectError 但启动 / `/health` 全程正常 |
 | `AGENT_SKILLS_ROOT` | 仓内 `skills/` | 网关与 agent_service 同一物理目录（只读挂载） |
 
 ### 2.3 技能与记忆
@@ -206,7 +218,8 @@ run 下发 `budget` 但**只收紧**（`min(服务端, 请求值)`，`0` / 负�
 |---|---|---|
 | 所有 Agent 接口 503，人工流程正常 | `AGENT_DISABLED` | 看 `AGENT_ENABLED` 是否为 true；灰度部署再核对 `AGENT_GRAY_*` 是否命中（见 §1） |
 | Agent 接口 503，上一条返回 `agent service unavailable` | `UPSTREAM_UNAVAILABLE` | `docker compose ps agent_service`；看 agent_service 日志与 `/health` |
-| 服务返回 503 | `AGENT_SERVICE_UNAVAILABLE` | agent_service 未起或内部依赖（DB/Redis）不可用；按 compose 日志排查，不要只判 HTTP 200 |
+| 服务返回 503（响应体 `detail='agent service unavailable'`，**当前无 `code`**） | 目标码 `AGENT_SERVICE_UNAVAILABLE`（未落地，见 07 §16 C3） | agent_service 未起或 **DB** 不可用；按 compose 日志与 `/health` 排查，不要只判 HTTP 200。Redis 不可用不会让网关返回 503（见下一行） |
+| `/health` 返回 200 但 `status=degraded`、`checks.redis.status=error` | — | **非门禁项**：Redis 只承担 SSE 唤醒，不可用时退化为轮询；已建会话读取与业务接口不受影响。不以 200（含 degraded）反推 Agent 可用，也不据此判总闸失效 |
 | 401 | — | token 无效 / 过期；网关 Bearer 单分支（JWT 优先，其次 access token） |
 | 凭据库不可用 | `CREDENTIAL_STORE_UNAVAILABLE` | 检查 `AGENT_CREDENTIAL_MASTER_KEY` 是否缺失 / 版本不匹配（生产缺失应拒绝启动） |
 | 用户未配置模型 Key | 明确失败，不回退平台 Key | 让用户到「个人配置 → 模型供应商」配置；`AGENT_ALLOW_PLATFORM_KEY` 恒 false |
