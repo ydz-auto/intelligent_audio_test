@@ -166,6 +166,12 @@ ARRAY_PARAMS: Tuple[ArrayParam, ...] = (
         'evaluation_manage', 'reevaluate', 'body.dimension_ids',
         NOT_APPLICABLE,
         reason='重评估的维度范围（跑哪些维度），不是独立业务对象'),
+    # INT-2491 onboarding：driver_propose 的迭代历史（≤3 轮，每轮
+    # {round, outcome, evidence}）是提案过程的审计记录，不是被写对象；
+    # 写影响面只有本次提案的 driver 一个（INT-2571 拆单口径并集登记）。
+    ArrayParam(
+        'driver_propose', None, 'iterations', NOT_APPLICABLE,
+        reason='迭代历史是提案过程审计记录（≤3 轮），不构成对象枚举'),
     # 维度 body 的数组字段（api_endpoints / required_inputs / output_fields /
     # associated_algorithms）是字段属性，不是对象枚举：按动作登记通配分类，
     # 注册期探针逐个枚举后按通配匹配，漏登记的新动作会被判红。
