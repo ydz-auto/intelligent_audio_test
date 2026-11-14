@@ -27,11 +27,15 @@ import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from agent_service.application.onboarding_service import (
+    OnboardingPackageBuilder,
+)
 from agent_service.application.sandbox_runner import (
     T2SandboxRequest,
     default_validation_phases,
 )
-from shared.agent_tools import driver_tools
+from agent_service.domain.ports.onboarding_staging import OnboardingStagingPort
+from shared.agent_tools import driver_tools, onboarding
 from shared.agent_tools.driver_tools import (
     ADAPTER_SUPPORTED_TRANSPORTS,
     METRIC_OWNERS,
@@ -579,11 +583,17 @@ class DriverProposalService:
     """驱动 / 适配器提案（确定性生成 + 静态检查 + T2 验证 + 发布守卫）。"""
 
     def __init__(self, *, sandbox_runner=None,
-                 settings: Optional[DriverProposalSettings] = None):
+                 settings: Optional[DriverProposalSettings] = None,
+                 staging: Optional[OnboardingStagingPort] = None,
+                 package_builder: Optional[OnboardingPackageBuilder] = None):
         # sandbox_runner: ``SandboxRunner``（装配 T2 执行器时才有）。None =
         # T2 不可用，按 T2_RUNTIME_UNAVAILABLE 显式失败，不降级。
         self._sandbox = sandbox_runner
         self._settings = settings or DriverProposalSettings()
+        # staging: onboarding 交付包落盘（不写生产注册表）；None = 不落盘，
+        # 仍返回包内容，但 task_run(mode=SMOKE) 会明确「staging 不可用」。
+        self._staging = staging
+        self._package_builder = package_builder or OnboardingPackageBuilder()
 
     # ------------------------------------------------------------ 校验
 
@@ -601,6 +611,16 @@ class DriverProposalService:
         error = driver_tools.validate_capabilities(arguments.get('capabilities'))
         if error:
             return error
+        # 接入测量路径（§6.5.1）：算不出来的指标在提案阶段就拒绝，不产出假指标。
+        error, _plan = onboarding.resolve_measurement_plan(
+            arguments.get('measurement_profile'),
+            arguments.get('capabilities'), target_kind)
+        if error:
+            return error
+        # 迭代边界：≤3 轮，失败必须带新证据，不收敛交回诊断。
+        iterations = onboarding.evaluate_iterations(arguments.get('iterations'))
+        if not iterations['ok']:
+            return iterations['error']
         if target_kind in (TARGET_DEVICE_DRIVER, TARGET_PAIR):
             error = driver_tools.check_platform(arguments.get('platform'))
             if error:
@@ -638,8 +658,121 @@ class DriverProposalService:
                           has_adapter='adapter' in generated['expects'])
         publishable = (static['outcome'] == STATIC_OK
                        and t2.get('outcome') == 'SUCCEEDED')
-        return self._payload(arguments, target_kind, generated, static, t2,
-                             publishable)
+        _plan_error, plan = onboarding.resolve_measurement_plan(
+            arguments.get('measurement_profile'),
+            arguments.get('capabilities'), target_kind)
+        package = self._package_builder.build(
+            arguments, generated, target_kind, arguments['capabilities'],
+            plan or {}, static, t2)
+        package_errors = onboarding.validate_package_files(
+            package['files'], target_kind)
+        if package_errors:
+            raise DriverProposalError(
+                '接入包校验失败：' + '；'.join(package_errors))
+        staging_error = self._stage(package)
+        return self._payload(
+            arguments, target_kind, generated, static, t2, publishable,
+            package=package, plan=plan or {}, staging_error=staging_error)
+
+    def _stage(self, package: Mapping[str, Any]) -> Optional[str]:
+        """把交付包写入 staging 目录（失败不阻断提案，但显式回报原因）。"""
+        if self._staging is None:
+            return 'staging 未装配：接入包只回内容，不落盘'
+        try:
+            self._staging.save(str(package['driver_ref']), package['files'])
+        except (OSError, ValueError) as exc:
+            return f'staging 写入失败：{exc}'
+        return None
+
+    # ------------------------------------------------------------ staging 冒烟
+
+    @property
+    def staging_available(self) -> bool:
+        return self._staging is not None
+
+    def staging_smoke(self, arguments: Mapping[str, Any], *,
+                      run_id: str = '') -> Dict[str, Any]:
+        """``task_run(mode=SMOKE)``：从 staging 读取接入包并跑冒烟。
+
+        口径（卡面验收 6 + 派发约定）：
+
+        - 只读 staging 目录，**不写生产注册表**、不自动注册 / 发布；
+        - 包 / 用例 / 结果字段先校验；失败返回明确错误，不产生「假通过」；
+        - 没有真机执行器时按 ``MOCK_ONLY`` 返回 mock 证据，并显式列出
+          ``uncovered``（真机 UI / 音频链路 / 平台指标计算），不冒充真机通过；
+        - 传了 ``device_id`` 但执行器未接入 → ``NOT_EXECUTED``，绝不假通过。
+        """
+        args = dict(arguments or {})
+        driver_ref = str(args.get('driver_ref') or '').strip()
+        case_ref = str(args.get('case_ref') or '').strip()
+        if not driver_ref:
+            raise DriverProposalError('mode=SMOKE 缺少必填参数：driver_ref')
+        if not case_ref:
+            raise DriverProposalError('mode=SMOKE 缺少必填参数：case_ref')
+        if self._staging is None:
+            raise DriverProposalError(
+                'staging 存储未装配：无法执行接入包冒烟（不生成假结果）。')
+        files = self._staging.load(driver_ref)
+        manifest = json.loads(files.get('manifest.json') or '{}')
+        target_kind = str(manifest.get('target_kind') or '')
+        issues = onboarding.validate_package_files(files, target_kind)
+        if issues:
+            raise DriverProposalError(
+                'staging 接入包校验失败：' + '；'.join(issues))
+        capabilities = json.loads(files.get('capabilities.json') or '{}')
+        smoke = json.loads(files.get('smoke_case.json') or '{}')
+        if case_ref != smoke.get('case_ref'):
+            raise DriverProposalError(
+                f'case_ref 与 staging 包不一致（包内 {smoke.get("case_ref")!r}）')
+        device_id = args.get('device_id')
+        package_sha = onboarding.package_sha256(files)
+        evidence = {
+            'driver_ref': driver_ref,
+            'package_sha256': package_sha,
+            'case_ref': case_ref,
+            'device_id': device_id,
+            'manifest': {
+                'target_kind': target_kind,
+                'root': manifest.get('root'),
+                'artifacts': manifest.get('artifacts'),
+            },
+        }
+        if device_id is not None:
+            return {
+                'mode': 'SMOKE',
+                'outcome': 'NOT_EXECUTED',
+                'reason': 'DEVICE_EXECUTOR_UNAVAILABLE',
+                'message': ('设备执行器未接入：无法在真机上运行生成驱动。'
+                            '按约定不以 mock 冒充真机通过，未覆盖项如下。'),
+                'result_fields': {},
+                'computable_metrics': onboarding.computable_metrics(
+                    capabilities),
+                'uncovered': list(onboarding.STAGING_UNCOVERED),
+                'evidence': evidence,
+                'run_id': run_id,
+            }
+        mock_results = smoke.get('mock_results') or {}
+        expected = list(smoke.get('expected_fields') or ())
+        collected = {field: mock_results.get(field) for field in expected}
+        available = onboarding.metric_fields_available(
+            capabilities, collected)
+        passed = bool(collected.get('success') is True) and bool(available)
+        return {
+            'mode': 'SMOKE',
+            'outcome': 'MOCK_PASSED' if passed else 'MOCK_FAILED',
+            'reason': (None if passed else
+                       ('MOCK_RESULTS_INCOMPLETE' if not available
+                        else 'MOCK_SUCCESS_NOT_TRUE')),
+            'message': ('staging mock 已跑通：采集字段与可计算指标齐备；'
+                        '真机未覆盖，见 uncovered。' if passed else
+                        'staging mock 未产出一个可计算指标（不假通过）。'),
+            'result_fields': collected,
+            'computable_metrics': available,
+            'declared_metrics': list(smoke.get('metrics') or ()),
+            'uncovered': list(onboarding.STAGING_UNCOVERED),
+            'evidence': evidence,
+            'run_id': run_id,
+        }
 
     # ------------------------------------------------------------ 内部步骤
 
@@ -1116,7 +1249,10 @@ class DriverProposalService:
 
     def _payload(self, arguments: Mapping[str, Any], target_kind: str,
                  generated: Mapping[str, Any], static: Mapping[str, Any],
-                 t2: Mapping[str, Any], publishable: bool) -> Dict[str, Any]:
+                 t2: Mapping[str, Any], publishable: bool, *,
+                 package: Optional[Mapping[str, Any]] = None,
+                 plan: Optional[Mapping[str, Any]] = None,
+                 staging_error: Optional[str] = None) -> Dict[str, Any]:
         files: Mapping[str, str] = generated['files']
         artifacts = generated['artifacts']
         artifact_by_module = {item['module']: item for item in artifacts}
@@ -1154,7 +1290,42 @@ class DriverProposalService:
                             'AGENT_DRIVER_PUBLISH_ENABLED=true',
             },
         }
+        if plan is not None:
+            payload['measurement_plan'] = dict(plan)
+        if package is not None:
+            payload['onboarding'] = self._package_payload(package,
+                                                          staging_error)
         return payload
+
+    def _package_payload(self, package: Mapping[str, Any],
+                         staging_error: Optional[str]) -> Dict[str, Any]:
+        entries = [dict(item) for item in (package.get('entries') or ())]
+        files = dict(package.get('files') or {})
+        include = sum(len(content.encode('utf-8'))
+                      for content in files.values()) <= \
+            self._settings.max_result_chars
+        for entry in entries:
+            if include:
+                prefix = str(package['root']).rstrip('/') + '/'
+                relative = entry['path'][len(prefix):]
+                entry['content'] = files.get(relative)
+        return {
+            'root': package['root'],
+            'driver_ref': package['driver_ref'],
+            'case_ref': (package.get('smoke_case') or {}).get('case_ref'),
+            'sha256': package['sha256'],
+            'entry': package.get('entry'),
+            'items': sorted(entries, key=lambda item: item['path']),
+            'contents_omitted': not include,
+            'validation': {'outcome': 'SUCCEEDED', 'issues': []},
+            'staging': {
+                'available': staging_error is None,
+                'error': staging_error,
+                'smoke': 'task_run(mode=SMOKE, driver_ref=%s, case_ref=%s)'
+                         % (package['driver_ref'],
+                            (package.get('smoke_case') or {}).get('case_ref')),
+            },
+        }
 
     def _files_with_content(self, files: Mapping[str, str],
                             artifacts: Mapping[str, Mapping[str, Any]]

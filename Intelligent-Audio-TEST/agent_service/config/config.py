@@ -37,6 +37,7 @@ _STREAM_DEFAULTS = _DEFAULTS.get('event_stream', {})
 _SKILL_DEFAULTS = _DEFAULTS.get('skills', {})
 _APPROVAL_DEFAULTS = _DEFAULTS.get('approval', {})
 _DRIVER_PROPOSAL_DEFAULTS = _DEFAULTS.get('driver_proposal', {})
+_ONBOARDING_DEFAULTS = _DEFAULTS.get('onboarding', {})
 _EXPLORATION_DEFAULTS = _DEFAULTS.get('exploration', {})
 
 
@@ -225,6 +226,10 @@ class Config(BaseConfig):
     DRIVER_PROPOSAL_MAX_DIFF_CHARS = _get_int(
         'AGENT_DRIVER_PROPOSAL_MAX_DIFF_CHARS',
         int(_DRIVER_PROPOSAL_DEFAULTS.get('max_diff_chars', 4000)))
+    # 接入包 staging 目录（INT-2491）：只写这里，不写生产注册表；默认系统临时目录。
+    ONBOARDING_STAGING_DIR = (
+        os.environ.get('AGENT_ONBOARDING_STAGING_DIR', '').strip()
+        or str(_ONBOARDING_DEFAULTS.get('staging_dir', '')).strip())
 
     # ===== 探索预算（INT-2492，§6.6「UI 探索会话」）=====
     # 单次探索：最多 30 个动作 / 5 分钟，超限以 BUDGET 停止并交回（卡面硬口径）。

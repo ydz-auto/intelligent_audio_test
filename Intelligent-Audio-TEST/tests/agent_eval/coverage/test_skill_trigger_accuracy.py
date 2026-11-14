@@ -108,7 +108,9 @@ def test_no_cross_domain_false_positive():
 
 def test_skill_registry_loads_without_errors():
     registry = trigger.load_skills()
-    assert len(registry.skills) == 13
+    # 13 = platform-reference + 12 个 M1；INT-2491 追加 app-api-onboarding
+    # （M2，触发评测不在本汇总口径内，单独在 onboarding 域测试校验结构）。
+    assert len(registry.skills) == 14
     assert registry.issues == ()
 
 

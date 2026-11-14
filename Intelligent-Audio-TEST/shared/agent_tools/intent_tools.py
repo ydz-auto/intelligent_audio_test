@@ -1209,10 +1209,23 @@ INTENT_TOOLS: List[IntentTool] = [
                      'reextract 重新提取设备输出。start / stop 是幂等的（已运行 / '
                      '已在队列时接口返回成功并说明），不会重复建任务或重复执行；'
                      'merge 至少两个任务；retry 指定 case_ids 时必须同时给 '
-                     'mode=selected。'),
+                     'mode=selected。mode=SMOKE 是对 staging 接入包跑冒烟'
+                     '（驱动通过 driver_propose 生成；不写生产注册表），需'
+                     ' driver_ref / case_ref；传 device_id 时真机执行器未接入会'
+                     '明确 NOT_EXECUTED，不以 mock 冒充真机通过。'),
         parameters=_schema({
-            'action': _prop('string', '写动作', required=True,
+            'action': _prop('string', '写动作（普通任务操作用；mode=SMOKE 时'
+                                      '不需要）',
+                            required=True,
                             enum=list(task_write_tools.ACTION_NAMES)),
+            'mode': _prop('string', '执行模式：SMOKE=staging 接入包冒烟'
+                                    '（不写生产注册表）', enum=['SMOKE']),
+            'driver_ref': _prop('string', '接入包引用（driver_propose 返回的 '
+                                          'onboarding.driver_ref；mode=SMOKE 必填）'),
+            'case_ref': _prop('string', '冒烟用例引用（smoke_case.json 的 '
+                                        'case_ref；mode=SMOKE 必填）'),
+            'device_id': _prop('integer', '租用设备 ID（真机冒烟；执行器未接入'
+                                          '时明确未覆盖）'),
             'task_id': _prop('integer', '任务 ID（start / stop / retry / reextract 必填）'),
             'body': _prop('object', '任务字段：create 至少含 name（同 REST 创建载荷）；'
                                     'retry 可放 {case_ids, mode}；merge 放 {task_ids}'),
@@ -1222,7 +1235,7 @@ INTENT_TOOLS: List[IntentTool] = [
             'evaluation_status': _prop(
                 'string', '重新提取时评估线状态（reextract，可选）',
                 enum=list(task_write_tools.EVALUATION_STATUS_VALUES)),
-        }, required=('action',)),
+        }),
         risk='WRITE',
         permissions=('task:create', 'task:execute', 'task:merge',
                      'task:reextract'),
@@ -1365,6 +1378,10 @@ INTENT_TOOLS: List[IntentTool] = [
                      '回滚方案 + capabilities.json，并在 T2 沙箱跑导入/编译、单测、'
                      'mock 厂商契约、注册表 resolve。只提案，不执行、不注册、不发布；'
                      '发布必须另有单独的 DESTRUCTIVE 审批且默认关闭。'
+                     '同时产出固定接入包 onboarding/<app_type|vendor>/（10 项：'
+                     'driver.py/adapter.py、config.yaml、capabilities.json、'
+                     'test_plan.md、ui_trace.json、tests/、smoke_case.json、'
+                     'manifest.json、onboarding_report.md），落 staging 目录。'
                      'target_kind = DEVICE_DRIVER / API_ADAPTER / PAIR。'),
         parameters=_schema({
             'target_kind': _prop('string', '提案目标', required=True,
@@ -1389,6 +1406,17 @@ INTENT_TOOLS: List[IntentTool] = [
                               enum=list(driver_tools.API_ADAPTER_PROTOCOLS)),
             'contract': _prop('object', 'API 契约：端点 / 鉴权 / 请求响应样例'
                                         '（API 适配器必填）'),
+            'measurement_profile': _prop(
+                'object', '测量路径（§6.5.1，受理阶段确定）：test_goals（ASR / '
+                          'TTS / DIALOG / TRANSLATION / NOISE_REDUCTION / '
+                          'BARGE_IN）+ 可选的 stimulus_modes / capture_modes / '
+                          'timing_points / capture_details / completion / '
+                          'assets / extra_recognition；算不出来的指标在提案阶段'
+                          '拒绝并给出降级说明'),
+            'iterations': _prop(
+                'array', '迭代历史（≤3 轮）：[{round, outcome: PASSED|FAILED, '
+                         'evidence}]；失败轮必须带新证据，第 3 轮仍不收敛交回诊断',
+                items={'type': 'object'}),
         }, required=('target_kind', 'capabilities')),
         risk='WRITE',
         # RBAC 里没有独立的驱动码（INT-2501「待规格」）。INT-2467 用 device:update
@@ -1730,6 +1758,30 @@ def rest_action_targets() -> List[Tuple[str, str, Optional[dict]]]:
     return rows
 
 
+def is_staging_smoke(name: str, arguments: Optional[Dict[str, Any]]) -> bool:
+    """``task_run(mode=SMOKE)``：本地 staging 冒烟（不映射 REST）。"""
+    return (name == 'task_run' and isinstance(arguments, dict)
+            and str(arguments.get('mode') or '').upper() == 'SMOKE')
+
+
+def validate_staging_smoke_arguments(arguments: Any) -> Optional[str]:
+    """``task_run(mode=SMOKE)`` 的参数校验：driver_ref / case_ref 必填且互斥 action。"""
+    if not isinstance(arguments, dict):
+        return '工具参数必须是对象'
+    if arguments.get('action') is not None:
+        return 'mode=SMOKE 不能与 action 同时出现（普通任务写操作请去掉 mode）'
+    missing = [name for name in ('driver_ref', 'case_ref')
+               if not str(arguments.get(name) or '').strip()]
+    if missing:
+        return f'mode=SMOKE 缺少必填参数：{"、".join(missing)}'
+    device_id = arguments.get('device_id')
+    if device_id is not None:
+        if isinstance(device_id, bool) or not isinstance(device_id, int) \
+                or device_id <= 0:
+            return 'mode=SMOKE 的 device_id 必须是正整数（租用设备 ID）'
+    return None
+
+
 def permissions_for(name: str,
                     arguments: Optional[Dict[str, Any]] = None
                     ) -> Optional[Tuple[str, ...]]:
@@ -1760,6 +1812,10 @@ def permissions_for(name: str,
     if isinstance(arguments, dict):
         action = arguments.get('action')
         by_action: Optional[Tuple[str, ...]] = None
+        if is_staging_smoke(name, arguments):
+            # staging 冒烟会操作租用设备（真机执行器接入后），与 ui_action 同
+            # 权限域；mock 模式也要求设备控制权限，避免绕过设备租用门禁。
+            return ('device:control',)
         if name == 'device_query':
             by_action = device_tools.action_permissions(action)
         elif name in ('device_control', 'spl_calibrate'):
@@ -1849,6 +1905,8 @@ def validate_write_arguments(name: str, arguments: Any) -> Optional[str]:
         return None
     if arguments is not None and not isinstance(arguments, dict):
         return '工具参数必须是对象'
+    if is_staging_smoke(name, arguments):
+        return validate_staging_smoke_arguments(arguments)
     _tool, _merged, error = resolve_write_call(name, arguments or {})
     return error
 
@@ -2152,6 +2210,11 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
         return evaluation_tools.resolve_call(arguments or {})
     if name in WRITE_ACTION_TOOL_NAMES:
         return resolve_write_call(name, arguments or {})
+    if is_staging_smoke(name, arguments):
+        error = validate_staging_smoke_arguments(arguments or {})
+        if error:
+            return None, None, error
+        return None, None, None
     write_resolver = WRITE_RESOLVERS.get(name)
     if write_resolver is not None:
         return write_resolver(arguments or {})

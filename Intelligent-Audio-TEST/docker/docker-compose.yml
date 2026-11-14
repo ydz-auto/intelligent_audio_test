@@ -635,12 +635,18 @@ services:
       # http://127.0.0.1:5000 会把每次工具调用打到容器自身（ConnectError），
       # 而容器启动与 /health 全程正常——必须在编排层显式指向网关服务名。
       - AGENT_TOOL_GATEWAY_BASE_URL=http://api_gateway:5000
+      # ===== onboarding 交付包 staging（INT-2491）=====
+      # 只写这个卷；不写生产驱动 / 适配器注册表。staging 冒烟按 driver_ref
+      # 从这里读取，跨重启保留。
+      - AGENT_ONBOARDING_STAGING_DIR=/app/storage/onboarding_staging
     volumes:
       # skills/ 顶层只读（§12.1「skills/ 顶层只读挂载」）：Skill 单一事实源，
       # 任何容器内写入都是缺陷，故 ro。
       - ../skills:/app/skills:ro
       # 长期记忆写卷（§8.6）：按 tenant/owner 隔离的文件树，跨重启保留。
       - agent_memory:/app/memory
+      # onboarding 交付包 staging（INT-2491）：只落 staging，不写生产目录。
+      - agent_onboarding_staging:/app/storage/onboarding_staging
       # 配置目录只读：model_catalog.json（窗口/输出上限）+ agent_defaults.json
       # （预算/压缩/Skill 阈值）。改配置需重启容器，避免运行期口径漂移。
       - ../agent_service/config:/app/agent_service/config:ro
@@ -754,6 +760,8 @@ volumes:
   # INT-2456：agent_service 长期记忆卷（§8.6 按 tenant/owner 隔离的文件树；
   # 不建表、不走 OSS，重启与镜像重建后保留）。
   agent_memory:
+  # INT-2491：onboarding 交付包 staging 卷（只读生产注册表之外的 staging 包）
+  agent_onboarding_staging:
   postgres_data:
   rustfs_data:
   # 网关 ↔ task_service 数据导入/导出 ZIP 中转卷（INT-25 链路依赖）
