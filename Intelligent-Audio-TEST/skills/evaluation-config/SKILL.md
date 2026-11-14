@@ -300,7 +300,7 @@ budgets:
    被删了」，回答时说「不存在或无权访问」，不要继续枚举。
 5. **分类没有 `status`**：分类只有 `id/name/description/icon/时间`；分类下维度用
    `dimensions?category_id=` 查。
-6. **子维度不独立算分**：`dimension_type=sub` 的维度挂在主维度下，主维度承载
+6. **子维度不单独发请求，但与主维度同批计算、各有输出字段与评分记录**：`dimension_type=sub` 的维度挂在主维度下，主维度承载
    公共输入 / API 配置；解释层级时读 `parent_dimension_id`，不要当成平级维度。
 7. **`statistic_method` 与 `score_unit` 是两回事**：统计方式决定聚合算法，单位只是
    展示；策略聚合（`pass_rate` / `ratio` / `weighted_sum_ratio` / `weighted_wer`）

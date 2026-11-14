@@ -121,7 +121,7 @@ Access Token 是平台为外部 agent / skill / MCP 调用能力接口签发的�
 
 1. 浏览器登录平台，按所属前端点击「**连接你的 agent**」**炫彩入口按钮**，打开入口页面。两端入口位置（2026-10-22 最终裁定）：入口只在 **React / 新 Vue = 灵犀Agent 页 /ai-chat 右上角 + Agent 工作台浮窗头行右上角**（导航栏 / 顶栏均无入口）；**旧 Vue 无入口（不加）**；文案统一「连接你的 agent」。
 2. 入口页面内展示使用说明与 skill 服务地址配置（见 §3.3）。
-3. 点击**炫彩「下载 skill」按钮**，下载 skill 包（zip：SKILL.md + MCP 配置模板）。
+3. 点击**炫彩「下载 skill」按钮**，下载 skill 包（zip：根目录 `SKILL.md` + `references/` + `assets/mcp.json`）。包内正文由平台内置 `skills/platform-reference/` 生成，与内置 Skill 同源，不另维护一份模板正文；`assets/mcp.json` 是 MCP 配置模板。
 
 ### 3.2 安装到外部 agent
 
@@ -129,7 +129,7 @@ Access Token 是平台为外部 agent / skill / MCP 调用能力接口签发的�
 - **Codex**：将 skill 包放入 Codex 的 skills 目录（如 `~/.codex/skills/`），后续按 SKILL.md 调用。
 - **其他 CLI agent**：按各 agent 自身的 skill 目录约定放置 SKILL.md。
 
-skill 包内 **SKILL.md** 包含：能力清单、服务地址配置说明、Access Token 使用方式，以及至少一个能力接口的 curl 调用示例（见 §3.4）；**MCP 配置模板**（`mcp.json`）见 §4.1。
+skill 包内 **SKILL.md** 包含：能力清单、服务地址配置说明、Access Token 使用方式，以及至少一个能力接口的 curl 调用示例（见 §3.4）；**MCP 配置模板**（`assets/mcp.json`）见 §4.1。
 
 ### 3.3 服务地址 URL 配置
 
@@ -157,7 +157,7 @@ curl -s \
 ### 4.1 端点与配置模板
 
 - 平台在**网关内**提供 MCP 协议端点：`{服务地址}/api/v1/mcp`（JSON-RPC 2.0；`initialize` / `tools/list` / `tools/call`）。
-- skill 包内附 `mcp.json` 配置模板：模板中服务地址预填入口页面配置的 `base_url`（可改），指向网关 MCP 端点；Authorization 头填同一 access token。
+- skill 包内附 `assets/mcp.json` 配置模板（不是根目录 `mcp.json`）：模板中服务地址预填入口页面配置的 `base_url`（可改；不传 `base_url` 时后端按请求 Host / Origin 兜底，再缺省回落网关自身地址），指向网关 MCP 端点；Authorization 头填同一 access token。
 
 示例（Claude Desktop MCP 配置）：
 

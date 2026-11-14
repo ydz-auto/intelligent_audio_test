@@ -1,6 +1,9 @@
 """API Gateway 领域配置"""
 import os
 
+from shared.agent_access import (
+    ENV_AGENT_GRAY_TENANTS, ENV_AGENT_GRAY_USERS, parse_gray_values,
+)
 from shared.config.service_ports import AGENT_SERVICE_HTTP_PORT
 from shared.infrastructure.config import BaseConfig, _get_int
 
@@ -144,6 +147,20 @@ class Config(BaseConfig):
     def agent_enabled(cls) -> bool:
         return os.environ.get('AGENT_ENABLED', 'false').strip().lower() in (
             '1', 'true', 'yes', 'on')
+
+    # INT-2478：总闸之上的灰度白名单（方案 07 §13-1 / 08 运维手册 §1）。
+    # 只做「总闸开启后谁可以用」，不新增开关名；两个都为空 = 全员放行
+    # （向后兼容现役 AGENT_ENABLED=true 的部署）。判定逻辑统一在
+    # shared/agent_access.py，网关按调用时环境求值，改配置后无需重启
+    # （容器内 env 仍是启动时快照，真实切换按 env 重启目标服务）。
+    @classmethod
+    def agent_gray_tenants(cls) -> frozenset:
+        return parse_gray_values(
+            os.environ.get(ENV_AGENT_GRAY_TENANTS))
+
+    @classmethod
+    def agent_gray_users(cls) -> frozenset:
+        return parse_gray_values(os.environ.get(ENV_AGENT_GRAY_USERS))
 
     # ===== 报告对比（INT-1406）=====
     # 跨任务大结果集同步聚合的 GenerateCompareReport gRPC 调用显式超时（秒）。

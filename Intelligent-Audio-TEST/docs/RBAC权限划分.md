@@ -158,7 +158,7 @@
 
 | 权限点 | 说明 | 对应端点 |
 |---|---|---|
-| `algorithm:read` | 查看算法定义/分组/参数/用例参数 | `GET /algorithm/definitions`、`GET /algorithm/definitions/{type}`、`GET /algorithm/groups`、`GET /algorithm/groups/{id}`、`GET /algorithm/params`、`GET /algorithm/params/{id}`、`GET /algorithm/case-params`、`GET /algorithm/case-params/{id}` |
+| `algorithm:read` | 查看算法定义/分组/参数/用例参数/参考参数/映射/选项/表单 Schema/维度参数 | `GET /algorithm/definitions`、`GET /algorithm/definitions/{type}`、`GET /algorithm/definitions/draft/{type}`、`GET /algorithm/groups`、`GET /algorithm/groups/{id}`、`GET /algorithm/params`、`GET /algorithm/params/{id}`、`GET /algorithm/param-profiles`、`GET /algorithm/param-profiles/{id}`、`GET /algorithm/param-history`、`GET /algorithm/case-params`、`GET /algorithm/case-params/{id}`、`GET /algorithm/reference-params`、`GET /algorithm/reference-params/{id}`、`GET /algorithm/mappings`、`GET /algorithm/options`、`GET /algorithm/form-schema/{type}`、`GET /algorithm/dimensions/{type}`、`GET /algorithm/dimension-params/{id}` |
 | `algorithm:definition_manage` | 算法定义 CRUD | `POST /algorithm/definitions`、`PUT /algorithm/definitions/{type}`、`DELETE /algorithm/definitions/{type}` |
 | `algorithm:group_manage` | 算法分组 CRUD | `POST /algorithm/groups`、`PUT /algorithm/groups/{id}`、`DELETE /algorithm/groups/{id}` |
 | `algorithm:param_manage` | 算法参数 CRUD | `POST /algorithm/params`、`PUT /algorithm/params/{id}`、`DELETE /algorithm/params/{id}` |

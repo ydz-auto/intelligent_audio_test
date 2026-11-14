@@ -4,6 +4,11 @@
 ``doc/agent化/09_外部Agent能力清单.md`` 是外部能力清单的唯一归属文件。
 本测试保证它不漂移：注册表 / 意图工具 / 内置 Skill 新增或改名而文档未同步，
 这里直接失败（INT-2478 只在文末「发布说明」追加，不影响本口径）。
+
+Skill 来源只有 PLATFORM / TENANT / USER 三层：PLATFORM 层由 fs 扫描 ``skills/``
+只读得到、**没有写入 / 导入 / 发布入口**，所以「自定义包 → 平台层」这个方向
+不成立（INT-2610 P3-7 的 N/A 依据）；要复用平台 Skill 只能 fork 成 USER 副本。
+本文件与 ``test_platform_skill_package.py`` 都不得为 PLATFORM 层补写入口。
 """
 import io
 import os

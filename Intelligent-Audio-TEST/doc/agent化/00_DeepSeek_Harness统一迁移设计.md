@@ -1,5 +1,12 @@
 # DeepSeek Harness 统一迁移设计（V9.7.31）
 
+> **⚠️ 已作废（2026-11-15，M3 收口）**：本文件的 DSH（DeepSeek Harness）迁移路线
+> **不再作为实施依据**。项目最终采用**自研单 Agent Loop + Skills**（见
+> [07_单Agent_Skills落地方案.md](07_单Agent_Skills落地方案.md)）；本文件与 03 的
+> Harness / Bridge / Plugin 章节、04 的前后端改造方案均为历史演进记录。仅保留可复用
+> 的业务规则（服务端审批、幂等、设备授权、安全隔离、报告优先的产品顺序）——这些
+> 规则已在 07 中被重新收编。不得据本文件实现 DSH 或第二套 Agent 底座。
+
 > 状态：目标设计，非已实现功能。基线：`V9.7.31`；DeepSeek Harness 来源： https://github.com/deepseek-ai/deepseek-harness （2026-10-08 查询，开发者预览版）。本文件是 agent化 目录的 Agent Runtime 技术选型依据；业务功能以 01、02 为准，03 中与本文冲突的“自研 Harness”设计不再适用。
 
 ## 1. 决策与范围

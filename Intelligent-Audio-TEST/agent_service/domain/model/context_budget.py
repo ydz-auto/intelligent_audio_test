@@ -20,13 +20,19 @@ from typing import Dict, Mapping, Optional
 
 
 class ContextSection(str, Enum):
-    """上下文预算区段（§8.3）。"""
+    """上下文预算区段（§8.3）。
+
+    五个区段都参与占比校验，但**当前只有 SYSTEM / DIALOGUE / TOOL_RESULTS
+    被实际计入预算**：``SCRATCHPAD``（计划 / scratchpad 块）与 ``RESERVE``
+    （安全余量）是给 M1 计划注入与余量预留保留的口径，M2 之前不写入内容，
+    只用于校验占比之和为 1.0。不要因为「这里有枚举」就认为计划块已被预算。
+    """
 
     SYSTEM = 'system'
-    SCRATCHPAD = 'scratchpad'
+    SCRATCHPAD = 'scratchpad'  # 计划 / scratchpad 注入（M1 口径，当前只占位）
     DIALOGUE = 'dialogue'
     TOOL_RESULTS = 'tool_results'
-    RESERVE = 'reserve'
+    RESERVE = 'reserve'  # 安全余量（不写入内容）
 
 
 @dataclass(frozen=True)

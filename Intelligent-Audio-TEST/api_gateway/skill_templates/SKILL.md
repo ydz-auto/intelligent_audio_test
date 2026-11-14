@@ -5,7 +5,7 @@
 ## 1. 前置条件
 
 1. **创建 Access Token**：登录平台，在「个人配置页 → Access Token」创建访问令牌。明文格式 `at_` 开头（如 `at_9f2c…`），**仅创建时明文显示一次**，库中只存哈希；创建时可配置权限 scopes 与有效时间。
-2. **确认服务地址可达**：本包 mcp.json 已按下载时的配置预填服务地址 `{{BASE_URL}}`。多网络环境下可改为你实际可访问的地址（IP 或 http(s) 链接）。
+2. **确认服务地址可达**：本包 `assets/mcp.json` 已按下载时的配置预填服务地址 `{{BASE_URL}}`。多网络环境下可改为你实际可访问的地址（IP 或 http(s) 链接）。
 3. **权限范围**：token 生效权限 = 用户当前权限 ∩ token scopes；不勾选 scopes = 继承用户全部权限。token 不含某接口所需权限时调用返回 403。
 
 ## 2. 配置与认证
@@ -387,7 +387,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 
 ### 6.1 配置模板
 
-`mcp.json`（同目录）为 MCP 配置模板，URL 指向本平台 MCP 端点。在支持 MCP 的客户端（如 Claude Code / Claude Desktop）中添加远程 MCP：
+`assets/mcp.json`（包内 `assets/` 目录）为 MCP 配置模板，URL 指向本平台 MCP 端点。在支持 MCP 的客户端（如 Claude Code / Claude Desktop）中添加远程 MCP：
 
 ```json
 {
