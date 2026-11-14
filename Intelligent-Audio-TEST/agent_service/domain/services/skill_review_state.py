@@ -7,12 +7,17 @@
 
 迁移表（动作 → 目标状态），``None`` 表示该动作在当前状态下非法：
 
-| 当前状态       | SUBMIT         | APPROVE | REJECT | WITHDRAW | DISABLE |
-|----------------|----------------|---------|--------|----------|---------|
-| DRAFT          | PENDING_REVIEW | -       | -      | -        | DISABLED|
-| PENDING_REVIEW | -              | ACTIVE  | DRAFT  | DRAFT    | DISABLED|
-| ACTIVE         | -              | -       | -      | -        | DISABLED|
-| DISABLED       | -              | -       | -      | -        | -       |
+| 当前状态       | SUBMIT         | APPROVE | REJECT | WITHDRAW | DISABLE | EDIT  |
+|----------------|----------------|---------|--------|----------|---------|-------|
+| DRAFT          | PENDING_REVIEW | -       | -      | -        | DISABLED| -     |
+| PENDING_REVIEW | -              | ACTIVE  | DRAFT  | DRAFT    | DISABLED| -     |
+| ACTIVE         | -              | -       | -      | -        | DISABLED| DRAFT |
+| DISABLED       | -              | -       | -      | -        | -       | -     |
+
+``EDIT``（INT-2594 P2）是「保存已发布版本」的显式迁移：``ACTIVE`` 保存后
+回到 ``DRAFT`` 并落一条审核审计，必须重新提交 + 审批才能再 ``ACTIVE``——
+不允许 PUT 绕过状态机静默改回草稿。``DISABLED`` 没有出边（停用是终态，
+不复活）；``DRAFT`` 保存本来就是原地改，不走状态机。
 
 ``USER`` 级不进审核流：它只允许 DISABLE 这一个动作（发布走 ``publish``），
 由 :func:`ensure_review_scope` 在进入状态机之前拒绝。
@@ -37,6 +42,7 @@ _TRANSITIONS: Dict[SkillStatus, Dict[SkillReviewAction, SkillStatus]] = {
         SkillReviewAction.DISABLE: SkillStatus.DISABLED,
     },
     SkillStatus.ACTIVE: {
+        SkillReviewAction.EDIT: SkillStatus.DRAFT,
         SkillReviewAction.DISABLE: SkillStatus.DISABLED,
     },
     SkillStatus.DISABLED: {},

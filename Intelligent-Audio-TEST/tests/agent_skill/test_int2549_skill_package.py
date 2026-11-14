@@ -9,6 +9,7 @@
 """
 import io
 import os
+import re
 import stat
 import zipfile
 
@@ -72,8 +73,11 @@ def test_export_root_level_skill_md_and_roundtrip(tmp_path):
     assert imported.content_hash == view.content_hash
     versions = container.repositories['skills'].list_versions(imported.id)
     assert versions[0].body == BODY.rstrip('\n')
-    assert versions[0].resources['references/guide.md'] \
-        == f'agent-skill/{imported.id}/1/references/guide.md'
+    # 资源键带本次写请求的一次性段（INT-2594：并发落败方不得覆盖胜出版本）
+    key = versions[0].resources['references/guide.md']
+    assert re.fullmatch(
+        r'agent-skill/{0}/1/[0-9a-f]{{32}}/references/guide\.md'.format(
+            re.escape(imported.id)), key), key
 
 
 def test_platform_skill_export_is_importable_shape(tmp_path):

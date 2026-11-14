@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Mapping, Optional, Tuple
 
 from agent_service.domain.enums import SkillScope, SkillStatus
+from shared.constants.permissions import WILDCARD_PERMISSION
 
 # Skill 目录内的正文文件名（唯一事实源；扫描与部署校验共用，INT-2529）
 SKILL_FILE_NAME = 'SKILL.md'
@@ -45,8 +46,8 @@ SECTION_GOTCHAS = 'Gotchas'
 SECTION_ACCEPTANCE = '验收'
 REQUIRED_SECTIONS: Tuple[str, ...] = (SECTION_GOTCHAS, SECTION_ACCEPTANCE)
 
-# 权限通配符：与 api_gateway / auth_service 的 RBAC 口径一致（'*' = 全部权限）
-WILDCARD_PERMISSION = '*'
+# 权限通配符来自 ``shared.constants.permissions``（与 api_gateway /
+# auth_service 的 RBAC 口径同一字面值；本模块只做再导出，不再自写一份）
 
 # 三级渐进披露层级（§4.1）
 SKILL_DISCLOSURE_L1 = 'L1'

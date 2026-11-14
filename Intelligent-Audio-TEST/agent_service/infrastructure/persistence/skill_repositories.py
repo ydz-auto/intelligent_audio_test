@@ -10,7 +10,7 @@ INT-2551 追加 ``SqlSkillReviewRepository``（``agent_skill_review`` 审核链�
 只追加不更新 / 删除）与 ``transition_if`` 条件状态迁移（并发审批互斥）。
 """
 import uuid
-from typing import Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
@@ -82,6 +82,35 @@ def _to_skill_review(row: AgentSkillReviewPO) -> AgentSkillReview:
         status_to=SkillStatus(row.status_to),
         reviewer_id=row.reviewer_id, reason=row.reason or '',
         tenant_id=row.tenant_id, created_at=row.created_at,
+    )
+
+
+def _version_po(version: AgentSkillVersion) -> AgentSkillVersionPO:
+    """领域版本实体 → ORM 行（``add_version`` / ``apply_edit`` 共用）。"""
+    return AgentSkillVersionPO(
+        id=str(uuid.uuid4()), skill_id=version.skill_id,
+        version=version.version,
+        content_hash=version.content_hash or '',
+        frontmatter_json=dict(version.frontmatter or {}),
+        body=version.body or '',
+        resources=dict(version.resources or {}),
+        created_by=version.created_by,
+        created_at=version.created_at or utcnow(),
+    )
+
+
+def _review_po(review: AgentSkillReview) -> AgentSkillReviewPO:
+    """领域审计实体 → ORM 行（审核仓储 / ``apply_edit`` 共用）。"""
+    return AgentSkillReviewPO(
+        id=review.id or str(uuid.uuid4()),
+        skill_id=review.skill_id, version=review.version or '0',
+        action=review.action.value,
+        status_from=review.status_from.value,
+        status_to=review.status_to.value,
+        reviewer_id=review.reviewer_id,
+        reason=review.reason or '',
+        tenant_id=review.tenant_id,
+        created_at=review.created_at or utcnow(),
     )
 
 
@@ -245,19 +274,51 @@ class SqlAgentSkillRepository(_BaseRepo, AgentSkillRepository):
         finally:
             db.close()
 
+    def apply_edit(self, skill_id: str, *, from_status: SkillStatus,
+                   row_fields: Dict[str, Any],
+                   version: AgentSkillVersion,
+                   review: AgentSkillReview) -> bool:
+        """编辑提交的原子写：条件迁移 + 版本行 + 当前行 + EDIT 审计（INT-2594）。
+
+        条件更新未命中（状态已被并发请求改走）直接回滚返回 ``False``；
+        命中后三步一起提交，任一步失败整体回滚 —— 不存在「状态已回 DRAFT
+        但版本 / 审计没落库」的中间态，也不会留下孤儿版本号挡住后续保存。
+        """
+        payload = {key: value for key, value in row_fields.items()
+                   if key in self._UPDATABLE}
+        if hasattr(payload.get('status'), 'value'):
+            payload['status'] = payload['status'].value
+        payload.setdefault('updated_at', utcnow())
+        db = self._session()
+        try:
+            try:
+                hit = db.query(AgentSkillPO).filter(
+                    AgentSkillPO.id == skill_id,
+                    AgentSkillPO.status == from_status.value,
+                ).update(payload, synchronize_session=False)
+            except IntegrityError as exc:
+                # 同名唯一索引冲突（与 ``update`` 同一口径）；版本 / 审计
+                # 插入的完整性错误走下面的裸异常，不冒充「同名」
+                raise SkillNameConflict(
+                    '同名 Skill 已存在：{0}'.format(
+                        payload.get('name'))) from exc
+            if not hit:
+                db.rollback()
+                return False
+            db.add(_version_po(version))
+            db.add(_review_po(review))
+            db.commit()
+            return True
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
     def add_version(self, version: AgentSkillVersion) -> AgentSkillVersion:
         db = self._session()
         try:
-            row = AgentSkillVersionPO(
-                id=str(uuid.uuid4()), skill_id=version.skill_id,
-                version=version.version,
-                content_hash=version.content_hash or '',
-                frontmatter_json=dict(version.frontmatter or {}),
-                body=version.body or '',
-                resources=dict(version.resources or {}),
-                created_by=version.created_by,
-                created_at=version.created_at or utcnow(),
-            )
+            row = _version_po(version)
             db.add(row)
             db.commit()
             return _to_skill_version(row)
@@ -322,17 +383,7 @@ class SqlSkillReviewRepository(_BaseRepo, SkillReviewRepository):
     def add(self, review: AgentSkillReview) -> AgentSkillReview:
         db = self._session()
         try:
-            row = AgentSkillReviewPO(
-                id=review.id or str(uuid.uuid4()),
-                skill_id=review.skill_id, version=review.version or '0',
-                action=review.action.value,
-                status_from=review.status_from.value,
-                status_to=review.status_to.value,
-                reviewer_id=review.reviewer_id,
-                reason=review.reason or '',
-                tenant_id=review.tenant_id,
-                created_at=review.created_at or utcnow(),
-            )
+            row = _review_po(review)
             db.add(row)
             db.commit()
             return _to_skill_review(row)

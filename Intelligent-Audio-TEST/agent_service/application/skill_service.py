@@ -267,6 +267,14 @@ class SkillService:
 
         INT-2551：``PENDING_REVIEW`` 期间内容冻结（``SKILL_STATUS_INVALID``），
         必须先撤回；TENANT 行仅租户管理员可改（租户内任意一条，不限创建人）。
+
+        INT-2594 P2：``TENANT`` 的 ``ACTIVE`` 保存走状态机显式 ``EDIT`` 边
+        （``ACTIVE → DRAFT`` 并落一条审核审计），``DISABLED`` 无出边直接 409
+        —— 不允许 PUT 静默越过审核状态机、也不允许把已批准版本打回草稿后
+        不留痕迹。迁移 / 版本行 / 当前行 / 审计是同一事务（``apply_edit``）
+        的四件事，任一步失败整体回滚；资源写排在事务之前，失败时状态不动。
+        资源键带本次请求的一次性段（见 ``_store_resources``），并发编辑的
+        落败方不会覆盖胜出版本已提交的资源字节。
         """
         row = self._owned_row(skill_id, owner_id=owner_id,
                               tenant_id=tenant_id, writable=True,
@@ -277,6 +285,8 @@ class SkillService:
             raise SkillStatusInvalid(
                 f'状态 {row.status.value} 期间内容冻结，不能保存；'
                 '请先撤回审核（POST /skills/{id}/withdraw）')
+        # 状态机前置校验（不写库）：TENANT 已发布版本只能经显式 EDIT 迁移
+        edit_target = self._tenant_edit_target(row)
         if payload.name and payload.name != row.name:
             self._assert_name_available(
                 payload.name, scope=row.scope, owner_id=owner_id,
@@ -304,18 +314,57 @@ class SkillService:
             permissions=permissions, resources=resources)
         version = str(int(row.version) + 1)
         hash_value = content_hash(skill.meta, frontmatter, body)
+        # INT-2594 返工：资源写是可能失败且不可回滚的外部写，必须排在状态
+        # 迁移之前 —— 失败时状态 / 版本 / 审计一步都没动，不会把已发布版本
+        # 留在「DRAFT 且没有 EDIT 审计」的中间态（孤儿对象不对外可见，无害）。
         stored = self._store_resources(row.id, version, resources)
-        self._repository.add_version(AgentSkillVersion(
+        edited = AgentSkillVersion(
             skill_id=row.id, version=version, content_hash=hash_value,
             body=body, frontmatter=frontmatter, resources=stored,
-            created_by=owner_id))
-        self._repository.update(
-            row.id, name=name, description=description, version=version,
-            status=SkillStatus.DRAFT.value, content_hash=hash_value,
-            frontmatter_json=dict(frontmatter), resources=stored,
-            updated_at=_now())
+            created_by=owner_id)
+        if edit_target is not None:
+            # 条件迁移 + 版本行 + 当前行 + 审计收在一个仓储事务里：任一步
+            # 失败整体回滚（状态保持原值、版本指针不动、无 EDIT 审计），
+            # 也不会留下孤儿版本号挡住重试；并发两次编辑只有一次命中。
+            applied = self._repository.apply_edit(
+                row.id, from_status=row.status,
+                row_fields=dict(
+                    name=name, description=description, version=version,
+                    status=SkillStatus.DRAFT.value, content_hash=hash_value,
+                    frontmatter_json=dict(frontmatter), resources=stored,
+                    updated_at=_now()),
+                version=edited,
+                # 审计记录的是被编辑的那一版（迁移的起点），产出的是 version +1
+                review=self._build_review(
+                    row, action=SkillReviewAction.EDIT,
+                    status_from=row.status, status_to=edit_target,
+                    reviewer_id=owner_id))
+            if not applied:
+                raise SkillStatusInvalid(
+                    'Skill 状态已被其他请求变更，请刷新后重试')
+        else:
+            self._repository.add_version(edited)
+            self._repository.update(
+                row.id, name=name, description=description, version=version,
+                status=SkillStatus.DRAFT.value, content_hash=hash_value,
+                frontmatter_json=dict(frontmatter), resources=stored,
+                updated_at=_now())
         self._refresh_registry()
         return self._view_from_row(self._require_row(row.id))
+
+    def _tenant_edit_target(self, row: AgentSkill) -> Optional[SkillStatus]:
+        """TENANT 已发布版本的编辑目标状态（INT-2594 P2）。
+
+        ``DRAFT`` 保存是原地修改，不进状态机；``ACTIVE`` 必须经显式
+        ``EDIT`` 边回 ``DRAFT``（随后重新提交 + 审批）；``DISABLED`` 没有
+        出边，``target_status`` 抛 ``SKILL_STATUS_INVALID``（409）。
+
+        ``EDIT`` 审计与状态迁移由 ``repository.apply_edit`` 在同一事务内
+        落库，因此这里不再单独要求审核链仓储已装配（不会再静默丢审计）。
+        """
+        if row.scope is not SkillScope.TENANT or row.status is SkillStatus.DRAFT:
+            return None
+        return target_status(row.status, SkillReviewAction.EDIT)
 
     def disable(self, skill_id: str, *, owner_id: int, tenant_id: str,
                 permissions: Iterable[str] = (),
@@ -760,10 +809,23 @@ class SkillService:
 
     def _store_resources(self, skill_id: str, version: str,
                          resources: Mapping[str, bytes]) -> Dict[str, str]:
+        """写入资源字节，返回 ``path → 完整 key``。
+
+        key 带**本次写请求的一次性段**（INT-2594 打回项）：资源写排在事务
+        之前，同一 ``(skill_id, version)`` 的并发编辑（两人同时保存 / 同一人
+        双击重试）会算出同一个 ``version``，若 key 只由 ``(skill, version,
+        path)`` 决定，CAS / 版本行落败方会把自己那份字节写进胜出版本正在
+        引用的键 —— 请求被 409 拒绝，却改写了已提交版本的内容。带一次性段
+        后每次写各自成键，落败方写的是无人引用的孤儿对象（不可达、无害）。
+
+        版本行存的是完整 key，历史版本照常可读，无需迁移。
+        """
         prefix = self._settings.resource_prefix
+        # 同一次写请求的所有资源共用一个段，便于按写入溯源
+        write_token = uuid.uuid4().hex
         stored: Dict[str, str] = {}
         for path, payload in (resources or {}).items():
-            key = f'{prefix}/{skill_id}/{version}/{path}'
+            key = f'{prefix}/{skill_id}/{version}/{write_token}/{path}'
             stored[path] = self._resources.put(key, payload)
         return stored
 
@@ -913,6 +975,18 @@ class SkillService:
             row, action=action, status_from=status_from, status_to=status_to,
             reviewer_id=reviewer_id, reason=reason)
 
+    def _build_review(self, row: AgentSkill, *,
+                      action: SkillReviewAction,
+                      status_from: SkillStatus, status_to: SkillStatus,
+                      reviewer_id: Optional[int], reason: str = ''
+                      ) -> AgentSkillReview:
+        """构造一条 ``agent_skill_review`` 审计实体（由调用方决定落库方式）。"""
+        return AgentSkillReview(
+            id=str(uuid.uuid4()), skill_id=row.id, version=row.version,
+            action=action, status_from=status_from, status_to=status_to,
+            reviewer_id=reviewer_id, reason=reason or '',
+            tenant_id=row.tenant_id, created_at=self._review_clock())
+
     def _append_review(self, row: AgentSkill, *,
                        action: SkillReviewAction,
                        status_from: SkillStatus, status_to: SkillStatus,
@@ -921,12 +995,9 @@ class SkillService:
         if self._reviews is None:
             raise SkillStatusInvalid(
                 '审核链仓储未装配，拒绝执行（不静默丢审计）')
-        review = AgentSkillReview(
-            id=str(uuid.uuid4()), skill_id=row.id, version=row.version,
-            action=action, status_from=status_from, status_to=status_to,
-            reviewer_id=reviewer_id, reason=reason or '',
-            tenant_id=row.tenant_id, created_at=self._review_clock())
-        return self._reviews.add(review)
+        return self._reviews.add(self._build_review(
+            row, action=action, status_from=status_from,
+            status_to=status_to, reviewer_id=reviewer_id, reason=reason))
 
     def _resolve_visible_skill(self, skill_id: str, *, owner_id: int,
                                tenant_id: str,

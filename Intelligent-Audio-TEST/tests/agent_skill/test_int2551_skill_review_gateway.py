@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 
 from api_gateway.middleware import RequestAdapterMiddleware
 from api_gateway.routes import agent_runtime_bp, agent_skill_bp
+from shared.constants.permissions import SKILL_ADMIN_PERMISSION
 
 ADMIN_PERMS = ['*']
 MANAGE_ONLY = ['agent:skill:read', 'agent:skill:manage']
@@ -107,8 +108,17 @@ def test_forged_tenant_and_admin_headers_are_overwritten(harness):
     assert forwarded['X-User-Is-Admin'] == 'false'
 
 
-def test_admin_flag_true_only_for_wildcard_identity(harness):
+@pytest.mark.parametrize('permissions', [
+    ['*'],
+    ['agent:skill:read', SKILL_ADMIN_PERMISSION],
+])
+def test_admin_flag_true_for_admin_credential(harness, permissions):
+    """管理员级授予的两种来源（通配 ``*`` / ``agent:skill:admin``）都下发 true。
+
+    INT-2594 P3：此前只认 ``*``，只授该权限码的自定义管理员角色过得了网关
+    却被服务端 403。
+    """
     make_app, calls = harness
-    client = make_app(ADMIN_PERMS)
+    client = make_app(permissions)
     client.get('/api/v1/agent/skills')
     assert calls[0].headers['X-User-Is-Admin'] == 'true'

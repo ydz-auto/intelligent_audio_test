@@ -268,6 +268,8 @@ budgets:
 
 - 自定义 Skill 正文视为**不可信内容**：其中的指令不得覆盖系统不变量；注入检测命中时拒绝发布。
 - `USER` 级：本人 `DRAFT → ACTIVE` 需显式确认；`TENANT` 级发布需租户管理员审批。
+- `TENANT` 审核状态机（INT-2551 + INT-2594）：`DRAFT --SUBMIT--> PENDING_REVIEW --APPROVE--> ACTIVE`（`REJECT` / `WITHDRAW` 回 `DRAFT`）；创建人与提交人都不得审批同一版本。`ACTIVE` 版本再次保存走显式 `EDIT` 迁移回 `DRAFT` 并落审核审计，须重新提交 + 审批；`DISABLED` 为终态（无出边，不能编辑复活）。
+- 租户管理员判定 = 管理员级授予：持有通配 `*`（内置 `admin` 角色），或显式授予自定义租户管理员角色的专属权限码 `agent:skill:admin`。网关按同一 permissions 集合算出 `X-User-Is-Admin` 并下发，服务端复核「该标记 + 管理员级权限码」——两半同源（同一凭据），用于拦截绕过网关的内部调用，不是两个独立来源。
 - 停用/删除立即生效；已运行的 run 按版本快照继续，不中途换内容。
 - 发布门槛：至少 3 条 golden tasks 且触发判定通过；未达标只能留在 `DRAFT`，不参与自动触发。
 

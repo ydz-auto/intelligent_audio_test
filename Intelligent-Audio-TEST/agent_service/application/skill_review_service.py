@@ -12,8 +12,9 @@
 
 - **权限**：每个动作都要求租户管理员双条件（RBAC 权限码
   ``agent:skill:admin`` + 服务端复核的管理员角色）；跨租户一律 404。
-- **禁止自审**：创建人（``owner_id`` / ``created_by``）不得审批自己提交的
-  版本 —— 提交人自己当审批人等于没有第二人复核。
+- **禁止自审**：创建人（``owner_id`` / ``created_by``）与提交人（最近一条
+  ``SUBMIT`` 的 ``reviewer_id``）都不得审批同一个版本 —— 提交人自己当审批人
+  等于没有第二人复核（INT-2594 P1：换人提交再自己批准同样拦住）。
 - **校验不绕过**：提交和批准都调用 ``SkillService.evaluate_publish``，
   与 INT-2549 的保存校验、注入检测、≥3 条 golden tasks 门槛**完全相同**，
   不复制任何一条规则；批准时复跑，防审批期间规则 / 权限变化。
@@ -23,7 +24,7 @@
   版本粒度可还原完整审批链。
 """
 import logging
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 from agent_service.application.skill_service import (
     GateResult, SkillService, SkillView,
@@ -206,14 +207,42 @@ class SkillReviewService:
 
     # ------------------------------------------------------------ internals
 
-    @staticmethod
-    def _ensure_not_self_review(row: AgentSkill, *, actor_id: int) -> None:
-        """创建人不得审批自己提交的版本（自审自批 = 无第二人复核）。"""
+    def _ensure_not_self_review(self, row: AgentSkill, *,
+                                actor_id: int) -> None:
+        """创建人 / 提交人不得审批同一个版本（自审自批 = 无第二人复核）。
+
+        INT-2594 P1：只拦创建人不够 —— 管理员 B 可以提交管理员 A 的草稿，
+        再以 B 身份批准，A 全程不参与，第二人复核同样失效。因此还要拒绝
+        「最近一次提交该版本的人」（``SUBMIT`` 审计行的 ``reviewer_id``）。
+
+        ``submit`` 是「先条件迁移、后追加审计」，同一人并发提交 + 审批时
+        仍有「状态已 PENDING_REVIEW、提交行尚未落库」的窗口：查不到当前
+        版本的提交人时按 fail-closed 拒绝（可刷新重试），不放行无法核对
+        第二人复核的决策。
+        """
         creators = {value for value in (row.created_by, row.owner_id)
                     if value is not None}
         if actor_id in creators:
             raise SkillSelfReviewForbidden(
                 '创建人不得审批自己提交的 Skill 版本：请由其他租户管理员审批')
+        submitter = self._submitted_by(row)
+        if submitter is None:
+            raise SkillStatusInvalid(
+                '审核链缺少本次提交记录，请刷新后重试')
+        if actor_id == submitter:
+            raise SkillSelfReviewForbidden(
+                '提交人不得审批自己提交的 Skill 版本：请由其他租户管理员审批')
+
+    def _submitted_by(self, row: AgentSkill) -> Optional[int]:
+        """该版本最近一次提交人（无当前版本的 ``SUBMIT`` 记录返回 ``None``）。"""
+        if self._reviews is None:
+            return None
+        submitter: Optional[int] = None
+        for review in self._reviews.list_for_skill(row.id):  # created_at 升序
+            if (review.action is SkillReviewAction.SUBMIT
+                    and review.version == row.version):
+                submitter = review.reviewer_id
+        return submitter
 
 
 __all__ = ['ReviewResult', 'SkillReviewService']

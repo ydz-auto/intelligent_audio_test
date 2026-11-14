@@ -34,6 +34,7 @@ from agent_service.domain.exceptions import (
 from agent_service.domain.model.memory import MemoryAuditEvent
 from agent_service.domain.ports.memory import MemoryStorePort
 from agent_service.domain.services.token_estimator import estimate_tokens
+from shared.constants.permissions import WILDCARD_PERMISSION
 from shared.utils.time_utils import utcnow
 
 logger = logging.getLogger(__name__)
@@ -61,7 +62,6 @@ _MEMORY_ERROR_CODES: Dict[str, str] = {
 
 # break-glass 读取权限码（RBAC 尚无 memory 域：当前无人持有 = fail-closed）
 BREAK_GLASS_PERMISSION = 'memory:break_glass'
-WILDCARD_PERMISSION = '*'
 
 MEMORY_SEARCH_TOOL = 'memory_search'
 MEMORY_WRITE_TOOL = 'memory_write'

@@ -10,7 +10,7 @@ from typing import NamedTuple, Optional, Tuple
 from fastapi import HTTPException, Request
 
 from agent_service.config.config import Config
-from agent_service.domain.services.skill_tenancy import WILDCARD_PERMISSION
+from shared.constants.permissions import has_admin_credential
 
 
 class Identity(NamedTuple):
@@ -52,11 +52,12 @@ def get_identity(request: Request) -> Identity:
         for item in (request.headers.get('X-User-Permissions') or '').split(',')
         if item.strip()
     )
-    # 缺头时按「通配权限 = 管理员」回落（网关未升级 / 直连本服务的开发态），
-    # 头部存在则以它为准 —— 显式 ``false`` 不会被通配权限翻案。
+    # 缺头时按「管理员级授予 = 管理员」回落（网关未升级 / 直连本服务的开发
+    # 态）：通配 ``*`` 或显式 ``agent:skill:admin`` 都算（与网关同一判定，
+    # INT-2594 P3）。头部存在则以它为准 —— 显式 ``false`` 不会被翻案。
     is_admin = _parse_flag(request.headers.get('X-User-Is-Admin'))
     if is_admin is None:
-        is_admin = WILDCARD_PERMISSION in permissions
+        is_admin = has_admin_credential(permissions)
     return Identity(user_id=user_id, tenant_id=tenant_id,
                     permissions=permissions, is_admin=is_admin)
 

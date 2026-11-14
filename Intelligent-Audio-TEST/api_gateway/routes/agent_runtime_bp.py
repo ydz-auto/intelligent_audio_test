@@ -26,6 +26,7 @@ from starlette.concurrency import run_in_threadpool
 from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.config.config import Config
 from api_gateway.routes.agent_guard import require_agent_enabled
+from shared.constants.permissions import has_admin_credential
 from shared.skill_package import SKILL_IMPORT_INVALID_CODE
 from shared.utils.time_utils import utcnow
 
@@ -66,11 +67,13 @@ def _forward_headers(request: Request) -> dict:
     permissions = getattr(request.state, 'permissions', None) or []
     if permissions:
         headers['X-User-Permissions'] = ','.join(permissions)
-    # INT-2551：管理员角色标记（与 AuthMiddleware 的 is_admin 判定同一口径）。
-    # 无条件覆盖：客户端伪造的 X-User-Is-Admin 一律作废，agent_service 用它
-    # 复核「租户管理员」双条件里的角色那一半。
+    # INT-2551 / INT-2594 P3：管理员角色标记。管理员级授予有两种来源——
+    # 内置 admin 角色的通配 ``*``，或显式授予自定义租户管理员角色的
+    # ``agent:skill:admin``；两者都按管理员下发，服务端再用同一凭据复核，
+    # 不能只认 ``*``（否则该权限码永远无效）。无条件覆盖：客户端伪造的
+    # X-User-Is-Admin 一律作废。
     headers['X-User-Is-Admin'] = (
-        'true' if '*' in permissions else 'false')
+        'true' if has_admin_credential(permissions) else 'false')
     for name in ('Content-Type', 'Idempotency-Key', 'Last-Event-ID', 'Accept'):
         value = request.headers.get(name)
         if value:

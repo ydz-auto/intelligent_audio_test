@@ -415,7 +415,10 @@ def seed_role_permissions(conn, dry_run=False):
     role_map = _get_role_id_map(conn)
 
     role_perm_groups = [
-        ('admin', ['*']),  # admin 持有超级通配权限
+        # INT-2594 P3：admin 显式持有专属管理员码，不再只靠 ``*`` 兜底——
+        # 网关 / 服务端的租户管理员判定把两者都当管理员级授予，自定义租户
+        # 管理员角色照此模式显式授该码即可生效。
+        ('admin', ['*', 'agent:skill:admin']),  # admin 持有超级通配权限
         ('tester', TESTER_PERMS),
         ('algo_engineer', ALGO_ENGINEER_PERMS),
         ('device_admin', DEVICE_ADMIN_PERMS),
