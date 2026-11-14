@@ -16,9 +16,16 @@
 | 平台内置 Agent | 直接装载 `skills/`（L1 列表 + L2 正文 + L3 references） | 31 个意图工具（延迟加载 + `tool_search`） |
 | 外部 Claude Code / Codex 等 | `GET /api/v1/agent/skill` 下载平台包（根级 `SKILL.md` + `references/` + `assets/mcp.json`），解压即用 | `POST /api/v1/mcp`（JSON-RPC 2.0，207 个工具，1:1 映射既有 REST） |
 
-平台下载包与用户自定义 Skill 的导入 / 导出包**同一结构**（根级 `SKILL.md`、
-不套外层目录、资源只放 `references/ scripts/ assets/`），两边产出的包可互相导入；
-`assets/mcp.json` 已预填下载时的服务地址，鉴权头是占位符。
+平台下载包与用户自定义 Skill 的导入 / 导出包**同一结构**（成员集合一致、根级
+`SKILL.md`、不套外层目录、资源只放 `references/ scripts/ assets/`），但**不承诺
+回导**（INT-2612）：平台包预填下载时的服务地址，导入侧按自定义包规则校验，
+**内网 / 回环地址会被 `INTERNAL_ADDRESS` 拒绝**（正文与 `assets/mcp.json` 各一条）。
+平台包 frontmatter 面向外部宿主（`allowed-tools` / `permissions` 为空），导入后只是
+文档型 Skill、不参与内部工具收敛；内部复用平台 Skill 请走「从内置 fork」
+（`POST /api/v1/agent/skills/{skill_id}/fork`）。
+`assets/mcp.json` 已预填下载时的服务地址，鉴权头是占位符。`skills/` 目录不可读时
+下载回退静态模板包，**兜底包不保证可导入**（模板 Bearer 占位命中 `EMBEDDED_SECRET`、
+正文超过 500 行上限）；兜底只保证下载可用、结构合法。
 
 ## 2. 鉴权与权限
 

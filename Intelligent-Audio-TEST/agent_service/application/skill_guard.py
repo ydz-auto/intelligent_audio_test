@@ -5,8 +5,10 @@
 - 结构 / 体积 / 路径：``SKILL.md`` ≤ 64 KB、单资源 ≤ 512 KB、整包 ≤ 5 MB、
   条目数与压缩比上限（zip bomb）、绝对路径 / ``..`` / 软链 / 外链拒绝；
 - 内容：凭证（复用 ``shared/utils/secret_mask.has_secret`` 同一判据）、
-  内网地址、可执行二进制。``SKILL.md`` 正文、``description``（会经 L1 进
-  系统提示）与 frontmatter 自由文本、文本资源都按不可信内容判定；
+  内网 / 回环地址、可执行二进制。内网 / 回环一律拒绝（INT-2612：字面量
+  ``localhost`` 与 ``127.0.0.1``、``[::1]`` 同判）。``SKILL.md`` 正文、
+  ``description``（会经 L1 进系统提示）与 frontmatter 自由文本、文本资源
+  都按不可信内容判定；
 - 注入：**规则化**启发式（规则表配置化，不做模型判定）。保存只做结构与内容
   校验；发布额外对正文 / 描述 / 文本资源做注入检测，命中即拒绝发布（草稿仍
   可保存）。
@@ -275,6 +277,10 @@ _BUILTIN_INTERNAL_PATTERNS: Sequence[re.Pattern] = (
     re.compile(r'\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b'),
     re.compile(r'\b[a-z0-9-]+\.(?:internal|local|localdomain)\b', re.IGNORECASE),
     re.compile(r'\bhost\.docker\.internal\b', re.IGNORECASE),
+    # 回环：localhost 与 127.0.0.1 / [::1] 同判（INT-2612）。
+    # \b 前后都是非单词字符，可命中 http://localhost:15000 与裸 localhost。
+    re.compile(r'\blocalhost\b', re.IGNORECASE),
+    re.compile(r'\[::1\]'),
 )
 
 

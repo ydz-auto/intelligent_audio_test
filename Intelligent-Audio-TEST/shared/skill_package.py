@@ -9,8 +9,15 @@
 
 INT-2476 起 ``GET /api/v1/agent/skill`` 的平台下载包也按本口径生成：根级
 ``SKILL.md``（带 frontmatter）+ 资源子目录，MCP 配置模板落在
-``assets/mcp.json``，因此平台包与 ``GET /api/v1/agent/skills/{id}/export``
-的产物同结构、可互相导入。平台包的正文由 ``skills/platform-reference/``
+``assets/mcp.json``，与 ``GET /api/v1/agent/skills/{id}/export`` 的产物
+**同结构**（成员集合一致、根级 ``SKILL.md``、资源只放
+``references/ scripts/ assets/``），但**不承诺回导**（INT-2612 收窄）：
+下载包预填的是下载时的服务地址（入口页默认取浏览器地址栏，常见内网 /
+回环地址），导入侧按自定义包规则校验时会判 ``INTERNAL_ADDRESS`` 拒绝。
+平台包 frontmatter 面向外部宿主（``allowed-tools`` / ``permissions``
+为空），导入后是文档型 Skill、不参与内部工具收敛；内部复用平台 Skill 请走
+「从内置 fork」（``POST /api/v1/agent/skills/{skill_id}/fork``）。
+平台包的正文由 ``skills/platform-reference/``
 生成（``build_skill_md`` + ``read_skill_directory`` 均在本模块，跨服务唯一
 实现），不是第二套 zip 逻辑。
 
@@ -207,6 +214,22 @@ def build_skill_package(skill_md: str,
     return build_zip(entries, limits=limits)
 
 
+def _real_within(root_real: str, path: str) -> bool:
+    """``path`` 解析（realpath）后是否仍在 ``root_real`` 之内。"""
+    root_key = os.path.normcase(root_real).rstrip(os.sep)
+    target_key = os.path.normcase(os.path.realpath(path))
+    return target_key == root_key or target_key.startswith(root_key + os.sep)
+
+
+def _ensure_real_within(root_real: str, path: str) -> None:
+    """目录解析后越出 Skill 根目录即拒绝（软链 / Windows junction 同判）。"""
+    if not _real_within(root_real, path):
+        raise SkillPackageError(
+            PackageIssueCode.SYMLINK_REJECTED,
+            f'禁止链接目录（解析后越出 Skill 目录）：{path} -> '
+            f'{os.path.realpath(path)}')
+
+
 def read_skill_directory(directory: str,
                          *, limits: Optional[SkillPackageLimits] = None
                          ) -> SkillPackage:
@@ -218,7 +241,9 @@ def read_skill_directory(directory: str,
 
     目录约定与导入同一口径：``SKILL.md`` 必需且位于根级；资源只允许在
     ``references/`` / ``scripts/`` / ``assets/`` 下。软链、越界路径、超限
-    体积一律 ``SkillPackageError``（不静默跳过）。
+    体积一律 ``SkillPackageError``（不静默跳过）。目录自身是软链 /
+    Windows junction 的情形同样拒绝：按 realpath 包含性判定（顶层资源目录
+    与递归子目录都查），不依赖 ``os.walk(followlinks=False)``。
     """
     limits = limits or SkillPackageLimits()
     root = os.path.abspath(str(directory or ''))
@@ -250,12 +275,20 @@ def read_skill_directory(directory: str,
 
     resources: Dict[str, bytes] = {}
     total = len(raw_bytes)
+    real_root = os.path.realpath(root)
     for name in RESOURCE_DIRS:
         base = os.path.join(root, name)
         if not os.path.isdir(base):
             continue
+        # 顶层资源目录自身是链接（软链 / Windows junction）时会被一路跟随：
+        # ``os.walk(followlinks=False)`` 只约束递归子目录，不约束遍历起点，
+        # 因此这里按 realpath 包含性显式拒绝（INT-2612 P2）。
+        _ensure_real_within(real_root, base)
         for current, dirs, filenames in os.walk(base):
             dirs.sort()
+            _ensure_real_within(real_root, current)
+            for sub in dirs:
+                _ensure_real_within(real_root, os.path.join(current, sub))
             for filename in sorted(filenames):
                 full = os.path.join(current, filename)
                 if os.path.islink(full):

@@ -1,25 +1,30 @@
 # -*- coding: utf-8 -*-
-"""平台 Skill 下载包：按 skills/ 生成 + 与导出包同结构可互导（INT-2476 验收 1）。
+"""平台 Skill 下载包：按 skills/ 生成 + 与导出包同结构（INT-2476 验收 1）。
 
 锚点：
 - ``GET /api/v1/agent/skill`` 的 zip 根级是带 frontmatter 的 ``SKILL.md``，
   资源只放 ``references/ scripts/ assets/``，不套外层目录；
 - 正文来自 ``skills/platform-reference/``（不是静态模板），base_url 已注入；
 - ``assets/mcp.json`` 指向 ``<base>/api/v1/mcp``，鉴权头是占位符；
-- 与 ``GET /api/v1/agent/skills/{id}/export`` 同一结构，且下载包可被导入；
-- skills 目录缺失时回退内置模板，下载不 500。
+- 与 ``GET /api/v1/agent/skills/{id}/export`` **同结构**（成员集合一致），
+  但**不承诺回导**（INT-2612）：预填内网 / 回环地址的包导入会被
+  ``INTERNAL_ADDRESS`` 拒绝 —— 这是预期行为，见本文件负向用例；
+- 公网域名 base_url 的包仍可导入并原样导出；
+- skills 目录缺失时回退内置模板，下载不 500（兜底包不保证可导入）。
 """
 import io
 import json
 import os
+import subprocess
 import zipfile
 
 import pytest
 
 from api_gateway.application.services.mcp import skill_package
+from agent_service.domain.exceptions import SkillServiceError
 from shared.skill_package import (
-    RESOURCE_PREFIXES, SKILL_FILE_NAME, read_skill_package,
-    split_frontmatter,
+    RESOURCE_PREFIXES, SKILL_FILE_NAME, PackageIssueCode, SkillPackageError,
+    read_skill_directory, read_skill_package, split_frontmatter,
 )
 from tests.agent_skill.helpers import (
     OWNER_ID, TENANT_ID, build_skill_stack, draft_payload,
@@ -110,7 +115,7 @@ def test_package_parses_with_the_import_reader():
 
 
 def test_package_is_importable_and_export_roundtrips(tmp_path):
-    """下载包可导入；导入后导出的包同结构（两边所产包可互相导入）。"""
+    """公网域名 base_url 的下载包仍可导入，导出包与下载包成员集合一致。"""
     container, _store = build_skill_stack(tmp_path)
     service = container.skill_service
     view = service.import_package(
@@ -167,3 +172,107 @@ def test_missing_platform_reference_falls_back(tmp_path):
     package = read_skill_package(data)
     assert package.frontmatter_text
     assert 'references/endpoints.md' not in package.resources
+
+
+# ========================================================================
+# INT-2612：预填内网 / 回环地址的平台包回导被拒（预期行为，不是缺陷）
+# ========================================================================
+
+INTERNAL_BASE_URLS = [
+    'http://192.168.1.20:15000',   # 私网 192.168/16
+    'http://10.0.0.8:8080',        # 私网 10/8
+    'http://127.0.0.1:15000',      # 回环 IPv4
+    'http://localhost:15000',      # 回环字面量（与 127.0.0.1 同判）
+    'http://[::1]:15000',          # 回环 IPv6
+    'http://myhost.local:15000',   # mDNS / 内部域名
+]
+
+
+@pytest.mark.parametrize('base_url', INTERNAL_BASE_URLS)
+def test_internal_or_loopback_base_url_package_is_rejected(tmp_path,
+                                                           base_url):
+    """下载包里预填的内网 / 回环地址会让导入直接失败（两处命中）。
+
+    口径（INT-2612 裁定 (c)）：平台包供外部宿主接入，回导不是有效用户流程；
+    导入侧不放宽内网地址规则，因此这里钉死「正文 + ``assets/mcp.json`` 各
+    一条 ``INTERNAL_ADDRESS``」的预期行为。
+    """
+    container, _store = build_skill_stack(tmp_path)
+    with pytest.raises(SkillServiceError) as info:
+        container.skill_service.import_package(
+            skill_package.build_skill_zip(base_url, skills_root=SKILLS_ROOT),
+            owner_id=OWNER_ID, tenant_id=TENANT_ID, permissions=['*'])
+    located = [(issue.code.value, issue.field) for issue in info.value.issues]
+    assert located == [
+        ('INTERNAL_ADDRESS', 'body'),
+        ('INTERNAL_ADDRESS', 'resources.assets/mcp.json'),
+    ], f'{base_url} 的拒绝项不符合预期：{located}'
+
+
+def test_loopback_localhost_and_127_are_judged_alike(tmp_path):
+    """``localhost`` 与 ``127.0.0.1`` 判据一致：两者都必须被拒（INT-2612）。"""
+    container, _store = build_skill_stack(tmp_path)
+    for base_url in ('http://localhost:15000', 'http://127.0.0.1:15000'):
+        with pytest.raises(SkillServiceError) as info:
+            container.skill_service.import_package(
+                skill_package.build_skill_zip(base_url,
+                                              skills_root=SKILLS_ROOT),
+                owner_id=OWNER_ID, tenant_id=TENANT_ID, permissions=['*'])
+        codes = [issue.code.value for issue in info.value.issues]
+        assert codes.count('INTERNAL_ADDRESS') == 2, (base_url, codes)
+
+
+# ========================================================================
+# INT-2612 P2：read_skill_directory 对链接目录显式拒绝
+# ========================================================================
+
+def _make_dir_link(link, target):
+    """建目录链接：Windows 用 junction（无需管理员权限），其余平台用 symlink。"""
+    if os.name == 'nt':
+        # shell=True：mklink 是 cmd 内建命令，整串交给 cmd /c 才能正确解析引号
+        result = subprocess.run(
+            f'mklink /J "{link}" "{target}"', shell=True,
+            capture_output=True, text=True, encoding='gbk', errors='replace')
+        if result.returncode != 0:
+            pytest.skip(f'无法创建 junction：{result.stderr or result.stdout}')
+        return
+    try:
+        os.symlink(str(target), str(link), target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f'无法创建目录软链：{exc}')
+
+
+def _skill_dir_with_marker(tmp_path):
+    skill_dir = tmp_path / 'skills' / 'demo'
+    skill_dir.mkdir(parents=True)
+    (skill_dir / SKILL_FILE_NAME).write_text(
+        '---\nname: demo\ndescription: 演示\n---\n\n## Gotchas\n\n- 无。\n',
+        encoding='utf-8')
+    return skill_dir
+
+
+def test_top_level_resource_link_directory_rejected(tmp_path):
+    """顶层资源目录是链接（软链 / junction）时不得被跟随读取。"""
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'leak.md').write_text('外部内容', encoding='utf-8')
+    skill_dir = _skill_dir_with_marker(tmp_path)
+    _make_dir_link(skill_dir / 'references', outside)
+    with pytest.raises(SkillPackageError) as info:
+        read_skill_directory(str(skill_dir))
+    assert info.value.code is PackageIssueCode.SYMLINK_REJECTED
+
+
+def test_nested_resource_link_directory_rejected(tmp_path):
+    """``references/`` 内的子目录是链接时同样拒绝（不只看顶层）。"""
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'leak.md').write_text('外部内容', encoding='utf-8')
+    skill_dir = _skill_dir_with_marker(tmp_path)
+    references = skill_dir / 'references'
+    references.mkdir()
+    (references / 'guide.md').write_text('指引', encoding='utf-8')
+    _make_dir_link(references / 'nested', outside)
+    with pytest.raises(SkillPackageError) as info:
+        read_skill_directory(str(skill_dir))
+    assert info.value.code is PackageIssueCode.SYMLINK_REJECTED

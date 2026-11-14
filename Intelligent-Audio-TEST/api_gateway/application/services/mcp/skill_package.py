@@ -9,13 +9,22 @@
 - 追加「外部 Agent 接入」与「只读能力」两节（后者按 ``shared/agent_tools``
   的工具注册表渲染，单一事实源，不手写、不出现暗能力）；
 - ``assets/mcp.json`` 是 MCP 配置模板（base_url 注入）；
-- 结构与 ``GET /api/v1/agent/skills/{id}/export`` 同一口径（根级
-  ``SKILL.md`` + ``references/ scripts/ assets/``，不套外层目录），两边的
-  包可互相导入。打包走 ``shared.skill_package.build_zip``，不在这里另写
-  zipfile 逻辑。
+- 与 ``GET /api/v1/agent/skills/{id}/export`` **同结构**（成员集合一致、
+  根级 ``SKILL.md`` + ``references/ scripts/ assets/``，不套外层目录），但
+  **不承诺回导**（INT-2612 收窄）：包里预填的是下载时的服务地址（入口页
+  默认取浏览器地址栏，常见内网 / 回环地址），回导时导入侧按自定义包规则
+  校验，正文与 ``assets/mcp.json`` 会被 ``INTERNAL_ADDRESS`` 拒绝 —— 这是
+  预期行为，不是缺陷。平台包 frontmatter 面向外部宿主（``allowed-tools`` /
+  ``permissions`` 为空），导入后只是文档型 Skill、不参与内部工具收敛。
+  内部复用平台 Skill 请走「从内置 fork」（``POST /api/v1/agent/skills/
+  {skill_id}/fork``）。打包走 ``shared.skill_package.build_zip``，不在这里
+  另写 zipfile 逻辑。
 
 ``api_gateway/skill_templates/`` 降级为**兜底模板**：skills 目录缺失 / 不可
-读时仍能下载一个结构合法的包（不 500）。
+读时仍能下载一个结构合法的包（不 500）。兜底包**不保证可导入**：静态模板
+自带 ``Bearer 在此填入你的 Access Token`` 占位（命中 ``EMBEDDED_SECRET``），
+且补齐两节后正文超过 500 行上限（``BODY_TOO_LONG``）；回退只保证下载可用、
+结构合法。
 
 ``?base_url=`` 注入服务地址；无 base_url 时后端从 Origin / Host 头兜底。
 下载需登录。
@@ -242,9 +251,10 @@ def _ensure_required_sections(body: str) -> str:
     """保证包正文含 `## Gotchas` / `## 验收`（导入校验的结构两节）。
 
     ``skills/`` 生成的正文已带两节；兜底模板（静态 SKILL.md）按手册组织章节，
-    这里补齐两节，避免回退模式下产出一个「缺必需章节」的包。兜底正文仍会走
-    导入侧的内容安全检查（凭证 / 内网地址），不保证一定能落库 —— 回退只保证
-    下载可用、结构合法。
+    这里补齐两节，避免回退模式下产出一个「缺必需章节」的包。**兜底包不保证
+    可导入**（INT-2612）：模板自带 ``Bearer 在此填入你的 Access Token``
+    占位命中 ``EMBEDDED_SECRET``，补齐两节后正文也超过 500 行上限
+    （``BODY_TOO_LONG``）；兜底只保证下载可用、结构合法。
     """
     text = body.rstrip()
     extras = []

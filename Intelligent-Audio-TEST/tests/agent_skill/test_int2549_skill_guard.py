@@ -51,6 +51,10 @@ def test_has_secret_reuses_mask_criteria(text, hit):
     '访问 http://192.168.1.20/api',
     '访问 http://10.0.0.5:8080',
     'host 是 db.internal',
+    # INT-2612：回环与私网同判（字面量 localhost 曾漏网）
+    '访问 http://localhost:15000/api',
+    '访问 http://127.0.0.1:15000/api',
+    '访问 http://[::1]:15000/api',
 ])
 def test_internal_addresses(text):
     issues = SkillGuard().check_content(text, field='body')
