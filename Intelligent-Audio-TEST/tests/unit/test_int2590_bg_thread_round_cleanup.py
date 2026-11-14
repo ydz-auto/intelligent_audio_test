@@ -254,8 +254,16 @@ def test_monitor_loop_ends_round_session_when_branches_raise(
 
 @pytest.fixture(scope='module')
 def lab_tables():
-    """进程内 sqlite 临时库建 laboratories 表（用 conftest 兜底的 DATABASE_URL）。"""
-    from shared.models.database import get_engine, init_db
+    """进程内 sqlite 临时库建 laboratories 表（用 conftest 兜底的 DATABASE_URL）。
+
+    conftest 兜底的是**进程级共享 sqlite 文件**：本 fixture 的 3 列裸建表若残留，
+    后续用例的 ``Base.metadata.create_all()`` 见同名表即跳过，ORM 需要的
+    ``code / building / status`` 等列不存在 → 建、查全挂（实测打挂
+    test_int537/538/539/540 共 31 例）。故 teardown 必须把本文件建的临时表
+    删干净，并把临时模型从进程级 Base.metadata 摘掉，避免后续 create_all
+    再建出游离表。
+    """
+    from shared.models.database import Base, get_engine, init_db
 
     remove_db_session()
     init_db()
@@ -269,6 +277,13 @@ def lab_tables():
             "(1, '一号实验室', 0), (2, '二号实验室', 0), (3, '已删除实验室', 1)"))
     remove_db_session()
     yield
+    remove_db_session()
+    with engine.begin() as conn:
+        conn.execute(text('DROP TABLE IF EXISTS laboratories'))
+        conn.execute(text('DROP TABLE IF EXISTS int2590_pending_guard'))
+    pending = Base.metadata.tables.get('int2590_pending_guard')
+    if pending is not None:
+        Base.metadata.remove(pending)
     remove_db_session()
 
 
