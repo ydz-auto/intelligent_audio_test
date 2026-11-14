@@ -14,6 +14,11 @@
  *   （后端 `ApprovalDecisionRequest.confirm`，缺失返回 400 且不落决策）；
  * - 单次影响 >20 对象的提案（§9.4）强制逐项核对：每个对象单独勾选，
  *   全部核对完才能批准，不允许一次批量放行。
+ *
+ * §9.4.1 拆单（INT-2571 后端已落地）：一次调用被拆成 N 张单时，本卡展示
+ * 「本批第 i/N 条」与本单 object_ref 对象摘要，决策仍逐张、执行 all-or-nothing。
+ * 拆单卡的参数已收窄到本单对象，**不再触发 >20 逐项核对**（那条兜底只留给
+ * DESTRUCTIVE 批量、原子集合操作与拆单前的历史提案）。
  */
 import { useEffect, useMemo, useState } from 'react'
 import { ShieldAlert, ShieldX } from 'lucide-react'
@@ -39,9 +44,13 @@ import { cn } from '@/lib/utils'
 
 import { formatClock } from '@/application/agent/agent-timeline'
 import {
+  approvalBatchStateCopy,
   formatApprovalApprover,
+  formatApprovalBatchIndex,
   formatApprovalStepId,
   formatApprovalTurn,
+  isBatchedApproval,
+  summarizeApprovalObjectRef,
   summarizeApprovalTargets,
 } from '@/features/ai-chat/lib/approval'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
@@ -53,6 +62,11 @@ type ApprovalCardProps = {
   deciding: boolean
   /** run 已收口：已批准卡不再用「将在服务端执行」的将来时（P3-5） */
   runFinished?: boolean
+  /**
+   * §9.4.1 批次状态（同批全部卡的聚合口径；未拆单时不传）。
+   * 决定本卡提示「本批全部批准后才执行 / 本批不执行」。
+   */
+  batchState?: AgentApprovalStatus
   onDecide: (
     approvalId: string,
     decision: AgentApprovalDecision,
@@ -99,6 +113,7 @@ export function ApprovalCard({
   approval,
   deciding,
   runFinished = false,
+  batchState,
   onDecide,
 }: ApprovalCardProps) {
   const [error, setError] = useState<string | null>(null)
@@ -140,12 +155,25 @@ export function ApprovalCard({
     () => summarizeApprovalTargets(approval),
     [approval]
   )
+  /** §9.4.1 拆单卡：同批 N 张单里的一张（badge / 对象摘要 / 批次提示） */
+  const isBatched = isBatchedApproval(approval)
+  const batchText = formatApprovalBatchIndex(
+    approval.batchIndex,
+    approval.batchTotal
+  )
+  const objectRefText = summarizeApprovalObjectRef(approval.objectRef)
   /** 风险未知时按高危处理（不把未知风险降级成 WRITE 直接放行） */
   const needsConfirm = isDestructive || risk === undefined
+  /**
+   * >20 逐项核对只对「未拆单」的提案生效（§9.4.1 第 12 条）：拆单卡参数已收窄到
+   * 本单对象，后端按批 all-or-nothing 执行，批次卡不再重复逐项核对；
+   * DESTRUCTIVE 恒单张（batchTotal=1），仍是逐项核对 + confirm。
+   */
+  const needsTargetCheck = targets.overLimit && !isBatched
   const requiresManualConfirm =
-    needsConfirm || targets.overLimit || serverConfirmRequired
+    needsConfirm || needsTargetCheck || serverConfirmRequired
   const allTargetsChecked =
-    !targets.overLimit || checkedTargets.size === targets.targets.length
+    !needsTargetCheck || checkedTargets.size === targets.targets.length
 
   const remainingText = useMemo(() => {
     if (!isPending || expiresAtMs === null || isExpired) return null
@@ -213,7 +241,7 @@ export function ApprovalCard({
 
   const confirmTitle = isDestructive
     ? AGENT_APPROVAL_COPY.destructiveConfirmTitle
-    : targets.overLimit
+    : needsTargetCheck
       ? AGENT_APPROVAL_COPY.batchConfirmTitle
       : AGENT_APPROVAL_COPY.confirmTitle
 
@@ -222,7 +250,7 @@ export function ApprovalCard({
       <span className='block'>
         {isDestructive
           ? AGENT_APPROVAL_COPY.destructiveConfirmDesc
-          : targets.overLimit
+          : needsTargetCheck
             ? `${AGENT_APPROVAL_COPY.batchConfirmPrefix} ${targets.count} ${AGENT_APPROVAL_COPY.batchConfirmSuffix}`
             : serverConfirmRequired
               ? AGENT_APPROVAL_COPY.confirmRequired
@@ -233,7 +261,7 @@ export function ApprovalCard({
         {stepText && ` · 步骤 ${stepText}`}
         {turnText && ` · ${turnText}`}
       </span>
-      {targets.overLimit && (
+      {needsTargetCheck && (
         <span
           className='text-muted-foreground block text-xs'
           data-approval-target-count={targets.count}
@@ -279,6 +307,14 @@ export function ApprovalCard({
         <Badge variant={meta.variant} data-approval-status-badge={effectiveStatus}>
           {meta.label}
         </Badge>
+        {batchText && (
+          <Badge
+            data-approval-batch-index={`${approval.batchIndex}/${approval.batchTotal}`}
+            variant='outline'
+          >
+            {batchText}
+          </Badge>
+        )}
         {targets.count > 0 && (
           <Badge
             data-approval-object-count={targets.count}
@@ -294,9 +330,19 @@ export function ApprovalCard({
         {tool && <code className='font-mono'>{tool}</code>}
         {stepText && <span>步骤 {stepText}</span>}
         {turnText && <span>{turnText}</span>}
-        {targets.overLimit && (
+        {targets.overLimit && !isBatched && (
           <span className='text-destructive' data-approval-batch-hint>
             {AGENT_APPROVAL_COPY.batchLimitHint}
+          </span>
+        )}
+        {objectRefText && (
+          <span className='font-mono' data-approval-object-ref>
+            {AGENT_APPROVAL_COPY.batchObjectRef} {objectRefText}
+          </span>
+        )}
+        {isPending && batchText && (
+          <span data-approval-batch-pending>
+            {AGENT_APPROVAL_COPY.batchPendingHint}
           </span>
         )}
         {isPending && expiresAtMs !== null && (
@@ -372,7 +418,7 @@ export function ApprovalCard({
       {isPending && requiresManualConfirm && (
         <ConfirmDialog
           confirmText={
-            targets.overLimit && !needsConfirm
+            needsTargetCheck && !needsConfirm
               ? AGENT_APPROVAL_COPY.batchConfirmApprove
               : AGENT_APPROVAL_COPY.confirmApprove
           }
@@ -385,7 +431,7 @@ export function ApprovalCard({
           open={confirmOpen}
           title={confirmTitle}
         >
-          {targets.overLimit && (
+          {needsTargetCheck && (
             <div
               className='max-h-56 space-y-1 overflow-y-auto rounded-md border p-2'
               data-approval-target-list
@@ -411,13 +457,24 @@ export function ApprovalCard({
       {!isPending &&
         !runFinished &&
         effectiveStatus === AGENT_APPROVAL_STATUS.APPROVED && (
-          <p className='text-muted-foreground mt-2 text-xs'>
-            {AGENT_APPROVAL_COPY.approvedHint}
+          <p
+            className='text-muted-foreground mt-2 text-xs'
+            data-approval-approved-hint
+          >
+            {/* 拆单卡：单张已批准不等于执行，按批次口径提示（§9.4.1 第 12 条） */}
+            {isBatched && batchState
+              ? approvalBatchStateCopy(batchState)
+              : AGENT_APPROVAL_COPY.approvedHint}
           </p>
         )}
       {!isPending && effectiveStatus === AGENT_APPROVAL_STATUS.REJECTED && (
         <p className='text-muted-foreground mt-2 text-xs'>
-          {AGENT_APPROVAL_COPY.rejectedHint}
+          {isBatched ? approvalBatchStateCopy(AGENT_APPROVAL_STATUS.REJECTED) : AGENT_APPROVAL_COPY.rejectedHint}
+        </p>
+      )}
+      {!isPending && effectiveStatus === AGENT_APPROVAL_STATUS.EXPIRED && isBatched && (
+        <p className='text-muted-foreground mt-2 text-xs'>
+          {approvalBatchStateCopy(AGENT_APPROVAL_STATUS.EXPIRED)}
         </p>
       )}
     </div>

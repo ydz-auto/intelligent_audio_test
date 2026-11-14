@@ -1,12 +1,17 @@
 /**
- * 审批面板（interfaces 层 ai-chat/approval；§9.4 审批粒度 / §12.2 审批卡）。
+ * 审批面板（interfaces 层 ai-chat/approval；§9.4 审批粒度 / §12.2 审批卡 /
+ * §9.4.1 拆单批次展示）。
  *
  * - 「计划级批量展示」：同一步骤（proposal.step_id）的写操作提案归到一组，
  *   一次看全该步骤的写操作与 diff/预览（§9.4）；
- * - 但**决策仍逐条**：后端一张审批单对应一次 tool call，>20 对象 / 跨租户 /
- *   导出敏感数据 / 删除类必须单条，DESTRUCTIVE 永远单条，因此这里不提供
+ * - **但决策仍逐条**：后端一张审批单对应一次 tool call 的单张单，>20 对象 /
+ *   跨租户 / 导出敏感数据 / 删除类必须单条，DESTRUCTIVE 永远单条，因此这里不提供
  *   「一次批准多项」，每张卡各自防重复；
- * - 已决 / 已过期的审批单收进「已处理」折叠区（重连后不重复弹出可操作卡）。
+ * - §9.4.1 拆单：一次 tool call 被后端拆成 N 张单时，同 `batchId` 的卡按
+ *   `batchIndex` 升序聚成一组，组头给「本批 N 张单 · 对象 P 个 · 全部批准后才执行」
+ *   口径；任一单被拒 / 过期时组头显示「本批不执行」，不误导为部分执行；
+ * - 已决 / 已过期的审批单收进「已处理」折叠区（重连后不重复弹出可操作卡），
+ *   批次在折叠区里同样按批聚组，便于看清整批结果。
  */
 import { useEffect, useMemo, useState } from 'react'
 
@@ -18,18 +23,22 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { ChevronDown, ShieldAlert } from 'lucide-react'
+import { ChevronDown, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react'
 
 import {
   AGENT_APPROVAL_COPY,
+  AGENT_APPROVAL_STATUS,
   isApprovalExpired,
   isPendingApprovalStatus,
   type AgentApproval,
   type AgentApprovalDecision,
 } from '@/domain/models/agent'
 import {
+  formatApprovalBatchHeader,
   formatApprovalStepId,
   formatApprovalTurn,
+  groupApprovalBatches,
+  type ApprovalPanelBlock,
 } from '@/features/ai-chat/lib/approval'
 
 import { ApprovalCard } from './approval-card'
@@ -143,6 +152,71 @@ export function ApprovalPanel({
     [decidingApprovalIds]
   )
 
+  /**
+   * 渲染一个审批块：单张卡与 INT-2472 完全一致；拆单批次先给组头再逐卡。
+   * `now` 参与批次状态判定（本地倒计时到点 = 整批不执行）。
+   */
+  const renderBlock = (block: ApprovalPanelBlock, interactive: boolean) => {
+    if (block.kind === 'single') {
+      const approval = block.approval
+      return (
+        <ApprovalCard
+          approval={approval}
+          deciding={interactive && deciding.has(approval.id)}
+          key={approval.id}
+          onDecide={onDecide}
+          runFinished={runFinished}
+        />
+      )
+    }
+    const isCancelled =
+      block.state === AGENT_APPROVAL_STATUS.REJECTED ||
+      block.state === AGENT_APPROVAL_STATUS.EXPIRED
+    return (
+      <div
+        className='border-border/60 bg-muted/20 rounded-lg border p-2'
+        data-approval-batch={block.batchId}
+        data-approval-batch-state={block.state}
+        key={`batch-${block.batchId}`}
+      >
+        <div
+          className='text-muted-foreground mb-1.5 flex flex-wrap items-center gap-1.5 text-[11px]'
+          data-approval-batch-header
+        >
+          {block.state === AGENT_APPROVAL_STATUS.APPROVED ? (
+            <ShieldCheck className='text-muted-foreground size-3.5' />
+          ) : isCancelled ? (
+            <ShieldX className='text-destructive size-3.5' />
+          ) : (
+            <ShieldAlert className='text-warning size-3.5' />
+          )}
+          <span
+            className={isCancelled ? 'text-destructive font-medium' : 'font-medium'}
+            data-approval-batch-object-count={block.objectCount}
+          >
+            {formatApprovalBatchHeader(
+              block.total,
+              block.objectCount,
+              block.state
+            )}
+          </span>
+        </div>
+        <div className='space-y-2'>
+          {block.approvals.map((approval) => (
+            <ApprovalCard
+              approval={approval}
+              batchState={block.state}
+              deciding={interactive && deciding.has(approval.id)}
+              key={approval.id}
+              onDecide={onDecide}
+              runFinished={runFinished}
+            />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   const hasContent =
     pendingGroups.length > 0 || decided.length > 0 || loading || Boolean(error)
   if (!hasContent) return null
@@ -200,6 +274,7 @@ export function ApprovalPanel({
         {pendingGroups.map((group) => {
           const groupStep = formatApprovalStepId(group.stepId)
           const groupTurn = formatApprovalTurn(group.turn)
+          const blocks = groupApprovalBatches(group.items, now, approvals)
           return (
             <div data-approval-step={group.stepId ?? 'unknown'} key={group.key}>
               {(pendingGroups.length > 1 || group.items.length > 1) && (
@@ -212,15 +287,7 @@ export function ApprovalPanel({
                 </div>
               )}
               <div className='space-y-2'>
-                {group.items.map((approval) => (
-                  <ApprovalCard
-                    approval={approval}
-                    deciding={deciding.has(approval.id)}
-                    key={approval.id}
-                    onDecide={onDecide}
-                    runFinished={runFinished}
-                  />
-                ))}
+                {blocks.map((block) => renderBlock(block, true))}
               </div>
             </div>
           )
@@ -237,15 +304,10 @@ export function ApprovalPanel({
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className='mt-2 space-y-2'>
-              {decided.map((approval) => (
-                <ApprovalCard
-                  approval={approval}
-                  deciding={false}
-                  key={approval.id}
-                  onDecide={onDecide}
-                  runFinished={runFinished}
-                />
-              ))}
+              {/* 批次在折叠区同样按批聚组：整批结果（全批准 / 不执行）一眼可见 */}
+              {groupApprovalBatches(decided, now, approvals).map((block) =>
+                renderBlock(block, false)
+              )}
             </div>
           </CollapsibleContent>
         </Collapsible>

@@ -1,6 +1,6 @@
 /**
  * 审批卡片展示辅助（interfaces 层 ai-chat/lib；INT-2472 审计返修 P3-2/3/4 /
- * P2 §9.4 批量粒度）。
+ * P2 §9.4 批量粒度 / INT-2573 §9.4.1 拆单批次）。
  *
  * 后端 proposal 里的 `step_id` / `turn` / `decided_by` 是内部字段：
  * - `turn` 从 0 起（run_orchestrator._next_turn），展示为 1 起；
@@ -9,11 +9,20 @@
  *
  * §9.4：单次影响 >20 对象必须单条审批。后端当前一张审批单对应一次 tool call，
  * 因此由这里从提案参数里数出受影响对象，卡片据此强制逐项核对（不允许一次放行）。
+ *
+ * §9.4.1（INT-2571 后端已拆单）：一次 tool call 影响 >20 对象时后端拆成 N 张单，
+ * 同批共享 `batch_id`、按 `batch_index` 1..N 排序，执行是 all-or-nothing。
+ * 这里负责把同批卡片聚成一组、给出「第 i/N 条」与批次状态口径。
  */
 
 import {
+  AGENT_APPROVAL_COPY,
   AGENT_APPROVAL_OBJECT_LIMIT,
+  AGENT_APPROVAL_STATUS,
+  isApprovalExpired,
   type AgentApproval,
+  type AgentApprovalObjectRef,
+  type AgentApprovalStatus,
 } from '@/domain/models/agent'
 
 /** 步骤 id 截断后保留的字符数（UUID 只展示前 8 位） */
@@ -158,4 +167,199 @@ export function formatApprovalApprover(
     return '我'
   }
   return '其他用户'
+}
+
+/** 单卡最多展示的对象 id 数（object_ref.ids 可能整批收窄后也很长） */
+const MAX_OBJECT_REF_IDS_SHOWN = 5
+
+/**
+ * 是否属于拆单批次（§9.4.1：`batch_total > 1`）。
+ * 旧单 / 缺字段按单张处理，渲染与改造前完全一致。
+ */
+export function isBatchedApproval(
+  approval: Pick<AgentApproval, 'batchTotal'>
+): boolean {
+  return (approval.batchTotal ?? 1) > 1
+}
+
+/**
+ * 批次状态口径（§9.4.1 第 5 条 all-or-nothing）：
+ * - 任一单 REJECTED → 整批拒绝（后端把其余 PENDING 自动转 REJECTED）；
+ * - 任一单 EXPIRED（含本地倒计时到点）→ 整批不执行；
+ * - 仍有 PENDING → 本批等审批；
+ * - 全部 APPROVED → 待执行。
+ * 拒绝优先于过期，避免把「已拒绝」展示成「过期」。
+ */
+export function resolveApprovalBatchState(
+  approvals: AgentApproval[],
+  now: number = Date.now()
+): AgentApprovalStatus {
+  if (approvals.length === 0) return AGENT_APPROVAL_STATUS.PENDING
+  const effective = approvals.map((approval) =>
+    isApprovalExpired(approval, now)
+      ? AGENT_APPROVAL_STATUS.EXPIRED
+      : approval.status
+  )
+  const has = (status: AgentApprovalStatus) => effective.includes(status)
+  if (has(AGENT_APPROVAL_STATUS.REJECTED)) {
+    return AGENT_APPROVAL_STATUS.REJECTED
+  }
+  if (has(AGENT_APPROVAL_STATUS.EXPIRED)) {
+    return AGENT_APPROVAL_STATUS.EXPIRED
+  }
+  if (has(AGENT_APPROVAL_STATUS.PENDING)) {
+    return AGENT_APPROVAL_STATUS.PENDING
+  }
+  return AGENT_APPROVAL_STATUS.APPROVED
+}
+
+/** 批次状态 → 组头提示（§9.4.1：只有全批准才执行，任一拒绝 / 过期整批不执行） */
+export function approvalBatchStateCopy(
+  state: AgentApprovalStatus
+): string {
+  switch (state) {
+    case AGENT_APPROVAL_STATUS.APPROVED:
+      return AGENT_APPROVAL_COPY.batchAllApproved
+    case AGENT_APPROVAL_STATUS.REJECTED:
+      return AGENT_APPROVAL_COPY.batchRejected
+    case AGENT_APPROVAL_STATUS.EXPIRED:
+      return AGENT_APPROVAL_COPY.batchExpired
+    default:
+      return AGENT_APPROVAL_COPY.batchAllPending
+  }
+}
+
+/** 单卡序号文案「本批第 i/N 条」；未拆单（N<=1）返回 null，不打扰旧单张 */
+export function formatApprovalBatchIndex(
+  batchIndex: number | undefined,
+  batchTotal: number | undefined
+): string | null {
+  const total = batchTotal ?? 1
+  if (total <= 1) return null
+  if (batchIndex === undefined || !Number.isFinite(batchIndex)) return null
+  return `${AGENT_APPROVAL_COPY.batchIndexPrefix} ${batchIndex}/${total} ${AGENT_APPROVAL_COPY.batchIndexSuffix}`
+}
+
+/**
+ * object_ref → 单卡对象摘要（如 `testcase · c1, c2…（共 21 个）`）。
+ * 非枚举范围 ids 为空：展示 kind + 「按范围执行」，不伪造数量。
+ */
+export function summarizeApprovalObjectRef(
+  objectRef: AgentApprovalObjectRef | undefined
+): string | null {
+  if (!objectRef) return null
+  if (objectRef.ids.length === 0) {
+    return objectRef.kind
+      ? `${objectRef.kind} · ${AGENT_APPROVAL_COPY.batchObjectRange}`
+      : AGENT_APPROVAL_COPY.batchObjectRange
+  }
+  const shown = objectRef.ids.slice(0, MAX_OBJECT_REF_IDS_SHOWN).join(', ')
+  const suffix =
+    objectRef.ids.length > MAX_OBJECT_REF_IDS_SHOWN
+      ? `…（共 ${objectRef.ids.length} 个）`
+      : ''
+  return objectRef.kind
+    ? `${objectRef.kind} · ${shown}${suffix}`
+    : `${shown}${suffix}`
+}
+
+/**
+ * 本批对象数：优先 `proposal.object_count`（§9.4.1：每张单都带批次总数，
+ * 非枚举范围计 1）；缺失时回退为各单 object_ref.ids 之和（全部单都有摘要才可信）。
+ */
+export function resolveApprovalBatchObjectCount(
+  approvals: AgentApproval[]
+): number | undefined {
+  const counts = approvals
+    .map((approval) => approval.proposal?.objectCount)
+    .filter(
+      (count): count is number =>
+        typeof count === 'number' && Number.isFinite(count)
+    )
+  if (counts.length > 0) return Math.max(...counts)
+  if (approvals.length > 0 && approvals.every((approval) => approval.objectRef)) {
+    return approvals.reduce(
+      (total, approval) => total + (approval.objectRef?.ids.length ?? 0),
+      0
+    )
+  }
+  return undefined
+}
+
+/** 审批面板的渲染块：单张原样渲染，拆单批次聚成一组（组头 + 逐张卡） */
+export type ApprovalPanelBlock =
+  | { kind: 'single'; approval: AgentApproval }
+  | {
+      kind: 'batch'
+      batchId: string
+      /** 本批总单数（batch_total，不是本块里的卡片数：已决卡可能在折叠区） */
+      total: number
+      /** 同批卡片，按 batchIndex 升序（§9.4.1） */
+      approvals: AgentApproval[]
+      /** 批次状态（组头 all-or-nothing 口径） */
+      state: AgentApprovalStatus
+      /** 本批对象数（缺省不展示，不伪造） */
+      objectCount?: number
+    }
+
+/**
+ * 把一组审批单切成「单张 / 批次」渲染块（保持输入顺序）：
+ * 同 `batchId` 且 `batchTotal > 1` 的卡片聚成一个批次块，块内按 `batchIndex`
+ * 升序排列；批次块落在该批第一张卡出现的位置。旧单张（无批次字段）原样透传，
+ * 渲染与 INT-2472 完全一致。
+ *
+ * `context` 是本面板的全量审批单（含已决 / 过期）：批次状态与对象数必须按整批
+ * 算 —— 待审批组里只剩 2 张、同批另一张已拒绝时，组头要显示「本批不执行」，
+ * 不能因为已决卡被折叠就误报「本批全部批准后才执行」。
+ */
+export function groupApprovalBatches(
+  approvals: AgentApproval[],
+  now: number = Date.now(),
+  context: AgentApproval[] = approvals
+): ApprovalPanelBlock[] {
+  const blocks: ApprovalPanelBlock[] = []
+  const seenBatchIds = new Set<string>()
+  for (const approval of approvals) {
+    const batchId = approval.batchId
+    if (!batchId || !isBatchedApproval(approval)) {
+      blocks.push({ kind: 'single', approval })
+      continue
+    }
+    if (seenBatchIds.has(batchId)) continue
+    seenBatchIds.add(batchId)
+    const members = approvals
+      .filter((item) => item.batchId === batchId)
+      .sort(
+        (left, right) => (left.batchIndex ?? 1) - (right.batchIndex ?? 1)
+      )
+    const allMembers = context.filter((item) => item.batchId === batchId)
+    const stateSource = allMembers.length > 0 ? allMembers : members
+    blocks.push({
+      kind: 'batch',
+      batchId,
+      total: stateSource[0]?.batchTotal ?? members.length,
+      approvals: members,
+      state: resolveApprovalBatchState(stateSource, now),
+      objectCount: resolveApprovalBatchObjectCount(stateSource),
+    })
+  }
+  return blocks
+}
+
+/** 批次组头文案：「本批 N 张单 · 对象 P 个 · <状态提示>」 */
+export function formatApprovalBatchHeader(
+  total: number,
+  objectCount: number | undefined,
+  state: AgentApprovalStatus
+): string {
+  const parts = [
+    `${AGENT_APPROVAL_COPY.batchGroupPrefix} ${total} ${AGENT_APPROVAL_COPY.batchGroupUnit}`,
+  ]
+  if (objectCount !== undefined) {
+    parts.push(
+      `${AGENT_APPROVAL_COPY.batchObjectPrefix} ${objectCount} ${AGENT_APPROVAL_COPY.batchObjectUnit}`
+    )
+  }
+  parts.push(approvalBatchStateCopy(state))
+  return parts.join(' · ')
 }

@@ -115,3 +115,102 @@ describe('ApprovalPanel', () => {
     ).toBeNull()
   })
 })
+
+describe('ApprovalPanel 拆单批次（§9.4.1）', () => {
+  /** 同批第 index 张单（batch_total=3，proposal.object_count=21） */
+  function batchApproval(
+    index: number,
+    overrides: Partial<AgentApproval> = {}
+  ): AgentApproval {
+    return approval(`batch-${index}`, {
+      toolCallId: 'tc-batch',
+      batchId: 'batch-1',
+      batchIndex: index,
+      batchTotal: 3,
+      proposal: {
+        tool: 'tag_group_manage',
+        risk: AGENT_TOOL_RISK.WRITE,
+        stepId: 'step-1',
+        turn: 1,
+        arguments: { ids: [`c-${index}`] },
+        objectCount: 21,
+      },
+      objectRef: { kind: 'testcase', ids: [`c-${index}`] },
+      ...overrides,
+    })
+  }
+
+  it('同批 N 张卡按 batchIndex 升序聚组：组头给对象数与 all-or-nothing 提示，每卡标「第 i/N 条」', () => {
+    render(
+      <ApprovalPanel
+        approvals={[batchApproval(3), batchApproval(1), batchApproval(2)]}
+        onDecide={vi.fn()}
+      />
+    )
+
+    expect(
+      document.querySelector('[data-approval-batch-header]')?.textContent
+    ).toContain('本批 3 张单 · 对象 21 个 · 本批全部批准后才执行')
+
+    const indexes = Array.from(
+      document.querySelectorAll('[data-approval-batch-index]')
+    ).map((node) => node.getAttribute('data-approval-batch-index'))
+    expect(indexes).toEqual(['1/3', '2/3', '3/3'])
+
+    // 决策仍逐张：三张卡各自一个批准按钮，没有批量批准
+    expect(screen.getAllByRole('button', { name: '批准执行' })).toHaveLength(3)
+    expect(screen.queryByRole('button', { name: /全部批准/ })).not.toBeInTheDocument()
+  })
+
+  it('任一单被拒绝：组头显示「本批不执行」，不误导为部分执行', () => {
+    render(
+      <ApprovalPanel
+        approvals={[
+          batchApproval(1),
+          batchApproval(2, { status: AGENT_APPROVAL_STATUS.REJECTED }),
+          batchApproval(3),
+        ]}
+        onDecide={vi.fn()}
+      />
+    )
+
+    // 待审批组只剩 2 张，但批次状态按整批算（已决卡被折叠进「已处理」）
+    expect(
+      document.querySelector('[data-approval-batch-header]')?.textContent
+    ).toContain('本批不执行（任一单被拒绝）')
+    expect(
+      document.querySelector('[data-approval-batch]')?.getAttribute(
+        'data-approval-batch-state'
+      )
+    ).toBe(AGENT_APPROVAL_STATUS.REJECTED)
+  })
+
+  it('全部批准：折叠区里组头提示「本批已全部批准，待执行」', async () => {
+    render(
+      <ApprovalPanel
+        approvals={[
+          batchApproval(1, { status: AGENT_APPROVAL_STATUS.APPROVED }),
+          batchApproval(2, { status: AGENT_APPROVAL_STATUS.APPROVED }),
+          batchApproval(3, { status: AGENT_APPROVAL_STATUS.APPROVED }),
+        ]}
+        onDecide={vi.fn()}
+      />
+    )
+
+    await userEvent.click(screen.getByText('已处理（3 项）'))
+    expect(
+      document.querySelector('[data-approval-batch-header]')?.textContent
+    ).toContain('本批已全部批准，待执行')
+  })
+
+  it('旧单张（无批次字段）不出现批次组头与「第 i/N 条」，渲染与 INT-2472 一致', () => {
+    render(<ApprovalPanel approvals={[approval('a'), approval('b')]} onDecide={vi.fn()} />)
+
+    expect(document.querySelector('[data-approval-batch]')).toBeNull()
+    expect(document.querySelector('[data-approval-batch-header]')).toBeNull()
+    expect(document.querySelector('[data-approval-batch-index]')).toBeNull()
+    expect(
+      screen.getByText(`${AGENT_APPROVAL_COPY.planTitle}（2 项）`)
+    ).toBeInTheDocument()
+  })
+})

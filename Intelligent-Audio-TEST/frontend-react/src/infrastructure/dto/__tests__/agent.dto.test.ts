@@ -11,6 +11,7 @@ import {
   toAgentApproval,
   toAgentApprovalDecisionDto,
   toAgentApprovalDecisionResult,
+  toAgentApprovalObjectRef,
   toAgentApprovals,
   toAgentRun,
   toAgentRunCreateDto,
@@ -567,6 +568,143 @@ describe('agent.dto 时间戳口径（INT-2472）', () => {
     expect(event).toMatchObject({
       expiresAt: '2026-11-13T18:49:24.031859Z',
       timestamp: '2026-11-13T18:34:24.031859Z',
+    })
+  })
+})
+
+describe('agent.dto 审批拆单批次（INT-2573 §9.4.1）', () => {
+  it('批次字段 snake_case → camelCase：batch_id / batch_index / batch_total / object_ref / proposal.object_count', () => {
+    const approval = toAgentApproval({
+      id: 'ap-2',
+      run_id: 'r-1',
+      tool_call_id: 'tc-1',
+      status: 'PENDING',
+      proposal: {
+        tool: 'tag_group_manage',
+        risk: 'WRITE',
+        arguments: { ids: ['c-2'] },
+        object_count: 21,
+      },
+      batch_id: 'batch-1',
+      batch_index: 2,
+      batch_total: 21,
+      object_ref: { kind: 'testcase', ids: ['c-2'] },
+    })
+    expect(approval).toMatchObject({
+      batchId: 'batch-1',
+      batchIndex: 2,
+      batchTotal: 21,
+      objectRef: { kind: 'testcase', ids: ['c-2'] },
+    })
+    expect(approval.proposal?.objectCount).toBe(21)
+    // 领域层不出现 snake_case（架构红线）
+    expect(JSON.stringify(approval)).not.toContain('batch_id')
+    expect(JSON.stringify(approval)).not.toContain('object_ref')
+  })
+
+  it('旧单 / 缺批次字段：按单张兼容（batchId 空、序号与总数都是 1）', () => {
+    const approval = toAgentApproval({ id: 'ap-old', run_id: 'r-1', status: 'PENDING' })
+    expect(approval.batchId).toBeUndefined()
+    expect(approval.batchIndex).toBe(1)
+    expect(approval.batchTotal).toBe(1)
+    expect(approval.objectRef).toBeUndefined()
+    // 后端显式下发 batch_id=null 也按单张处理
+    expect(
+      toAgentApproval({ id: 'ap-old', batch_id: null, batch_total: 1 })
+    ).toMatchObject({ batchId: undefined, batchIndex: 1, batchTotal: 1 })
+  })
+
+  it('批次序号 / 总数的非法值归一为 1（0 / 负数 / 小数 / 字符串）', () => {
+    expect(
+      toAgentApproval({ id: 'ap-1', batch_index: 0, batch_total: 0 })
+    ).toMatchObject({ batchIndex: 1, batchTotal: 1 })
+    expect(
+      toAgentApproval({
+        id: 'ap-1',
+        batch_index: 1.5,
+        batch_total: '21' as unknown as number,
+      })
+    ).toMatchObject({ batchIndex: 1, batchTotal: 1 })
+    expect(
+      toAgentApproval({ id: 'ap-1', batch_index: -3, batch_total: 21 })
+    ).toMatchObject({ batchIndex: 1, batchTotal: 21 })
+  })
+
+  it('object_ref：数字 id 字符串化；非枚举范围 ids 空保留 kind；空对象不伪造摘要', () => {
+    expect(
+      toAgentApprovalObjectRef({ kind: 'audio', ids: [1, 2, 'a-3'] })
+    ).toEqual({ kind: 'audio', ids: ['1', '2', 'a-3'] })
+    // mode=all 这类非枚举范围：ids 为空但 kind 仍在（展示「按范围执行」）
+    expect(toAgentApprovalObjectRef({ kind: 'testcase', ids: [] })).toEqual({
+      kind: 'testcase',
+      ids: [],
+    })
+    expect(toAgentApprovalObjectRef({ kind: '', ids: [] })).toBeUndefined()
+    expect(toAgentApprovalObjectRef({})).toBeUndefined()
+    expect(toAgentApprovalObjectRef(null)).toBeUndefined()
+    expect(toAgentApprovalObjectRef('testcase')).toBeUndefined()
+  })
+
+  it('审批列表：每张单各自带批次字段（同批 batch_id 相同、batch_index 1..N）', () => {
+    const items = toAgentApprovals({
+      items: [
+        {
+          id: 'ap-1',
+          status: 'PENDING',
+          batch_id: 'batch-1',
+          batch_index: 1,
+          batch_total: 2,
+          object_ref: { kind: 'testcase', ids: ['c-1'] },
+        },
+        {
+          id: 'ap-2',
+          status: 'PENDING',
+          batch_id: 'batch-1',
+          batch_index: 2,
+          batch_total: 2,
+          object_ref: { kind: 'testcase', ids: ['c-2'] },
+        },
+      ],
+    })
+    expect(items.map((item) => item.batchId)).toEqual(['batch-1', 'batch-1'])
+    expect(items.map((item) => item.batchIndex)).toEqual([1, 2])
+    expect(items.map((item) => item.batchTotal)).toEqual([2, 2])
+  })
+
+  it('approval_required 事件：拆单载荷带 batch_id / batch_index / batch_total', () => {
+    const event = toAgentRunEvent({
+      run_id: 'r-1',
+      sequence: 2,
+      type: 'approval_required',
+      approval_id: 'ap-2',
+      tool_call_id: 'tc-1',
+      tool: 'tag_group_manage',
+      risk: 'WRITE',
+      proposal: { tool: 'tag_group_manage', object_count: 21 },
+      batch_id: 'batch-1',
+      batch_index: 2,
+      batch_total: 21,
+    })
+    expect(event).toMatchObject({
+      type: 'approval_required',
+      approvalId: 'ap-2',
+      batchId: 'batch-1',
+      batchIndex: 2,
+      batchTotal: 21,
+      proposal: { objectCount: 21 },
+    })
+
+    // 未拆单事件：字段缺省，按单张渲染
+    const single = toAgentRunEvent({
+      run_id: 'r-1',
+      sequence: 3,
+      type: 'approval_required',
+      approval_id: 'ap-3',
+    })
+    expect(single).toMatchObject({
+      batchId: undefined,
+      batchIndex: undefined,
+      batchTotal: undefined,
     })
   })
 })
