@@ -53,6 +53,11 @@
   为空即 ``UPSTREAM_ERROR``。热重载不校验业务规则，也不替代「保存 / 发布」。
 - **导入是只增不改**：``import`` 对已存在的 ``type`` 不更新定义；同一次导入里
   的 ``params`` 按设备参数追加。模型侧不要用它做「覆盖导入」。
+- **导入按算法定义拆单**（§9.4.1 / INT-2593）：``body.algorithms`` 是 N 份
+  彼此独立的算法定义，只导入其中一份仍然合法，因此一次导入超过 20 份时拆成
+  N 张审批单（对象 kind = ``algorithm_definition``，对象标识 = 条目 ``type``）；
+  定义类动作（create / update / save）的数组字段是同一份定义的内嵌子实体，
+  登记为不计数、不拆单。
 - **幂等**：同一 tool_call 的重复执行由 M2 基座（INT-2466）的审批幂等键
   领取一次；本模块不另生成幂等键，避免两套口径。
 """
@@ -239,6 +244,26 @@ MAPPING_UPDATE_FIELDS: Tuple[str, ...] = (
 )
 
 IMPORT_BODY_FIELDS: Tuple[str, ...] = ('algorithms',)
+
+# 各动作 body 里的数组字段（§9.4.1 注册期拆单探针的枚举来源，INT-2593）。
+# 定义类动作的数组是**同一份定义**的内嵌子实体（一次调用写一个定义）→
+# ``approval_split`` 里逐字段登记 ``not_applicable``；导入的 ``algorithms``
+# 是 N 份彼此独立的算法定义 → 登记 ``split``（>20 份拆单，对象标识取条目
+# ``type``）。新增定义数组字段必须在这里登记，否则注册期探针判红。
+# 条目内的 ``params`` 是该算法定义的设备参数（随定义一起导入），不是独立
+# 对象 —— 探针按本表的两级路径 ``body.<field>`` 枚举，元素内的数组属于
+# 该对象自身的属性。
+ALGORITHM_BODY_ARRAY_FIELDS: Dict[str, Tuple[str, ...]] = {
+    'definition_create': ('device_params', 'api_params', 'case_params',
+                          'reference_params', 'mappings',
+                          'associated_dimensions'),
+    'definition_update': ('device_params', 'api_params', 'case_params',
+                          'mappings', 'associated_dimensions'),
+    'definition_save': ('device_params', 'api_params', 'case_params',
+                        'reference_params', 'mappings',
+                        'associated_dimensions'),
+    'import': IMPORT_BODY_FIELDS,
+}
 
 # ------------------------------------------------------------------ 校验辅助
 
@@ -673,7 +698,8 @@ def proposal_diff(arguments: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 __all__ = [
-    'ACTIONS', 'ACTION_NAMES', 'DEFINITION_CREATE_FIELDS', 'DEFINITION_MANAGE',
+    'ACTIONS', 'ACTION_NAMES', 'ALGORITHM_BODY_ARRAY_FIELDS',
+    'DEFINITION_CREATE_FIELDS', 'DEFINITION_MANAGE',
     'DEFINITION_SAVE_FIELDS', 'DEFINITION_UPDATE_FIELDS', 'DELETE_ACTIONS',
     'DIRECTION_VALUES', 'IMPORT_BODY_FIELDS', 'MANAGE_PERMISSIONS',
     'MAPPING_CREATE_FIELDS', 'MAPPING_SOURCE_VALUES', 'MAPPING_UPDATE_FIELDS',

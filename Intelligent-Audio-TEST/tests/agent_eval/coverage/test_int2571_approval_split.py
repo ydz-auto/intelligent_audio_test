@@ -6,7 +6,8 @@
 1. **注册期枚举**：写工具的全部数组参数（工具 Schema 顶层数组 + 各域模块
    声明的 body / items 数组字段）必须能在
    ``shared.agent_tools.approval_split.ARRAY_PARAMS`` 里查到分类；漏分类判红
-   （对齐 INT-2562 风险探针的 fail-closed）。
+   （对齐 INT-2562 风险探针的 fail-closed）。算法域（``algorithm_tools`` 的
+   定义子实体 / 导入列表）由 INT-2593 补齐，此前不在枚举来源里、漏登记恒绿。
 2. **分类合法性**：``split`` / ``atomic`` / ``not_applicable`` 之外取值、
    ``DESTRUCTIVE`` 工具被标 ``split``、同一动作多个 ``split`` 都判红。
 3. **可拆前提**：每个 ``split`` 参数收窄到单个对象后，调用仍然合法
@@ -26,8 +27,8 @@ from agent_service.infrastructure.tools.registry_bridge import (
     SharedToolRegistryBridge,
 )
 from shared.agent_tools import (
-    approval_split, audio_tools, evaluation_tools, intent_tools,
-    task_write_tools,
+    algorithm_tools, approval_split, audio_tools, evaluation_tools,
+    intent_tools, task_write_tools,
 )
 
 
@@ -59,6 +60,11 @@ def _nested_array_paths():
     for field in audio_tools.AUDIO_ANNOTATE_ITEM_ARRAY_FIELDS:
         rows.append(('audio_annotate', 'batch_annotate',
                      f'items[].{field}'))
+    # INT-2593：算法域此前完全不在枚举来源里，algorithm_manage 的数组参数
+    # （定义的内嵌子实体 + 导入的算法列表）漏登记也恒绿。
+    for action, fields in algorithm_tools.ALGORITHM_BODY_ARRAY_FIELDS.items():
+        for field in fields:
+            rows.append(('algorithm_manage', action, f'body.{field}'))
     # items 的对象标识字段本身不是数组，但可拆参数路径就是它
     # （``items[].audio_id``）：域模块声明了容器键，探针据此认为可枚举。
     rows.append(('audio_annotate', 'batch_annotate',
@@ -158,6 +164,12 @@ _SAMPLES = {
         'action': 'reevaluate',
         'body': {'task_id': 1, 'mode': 'selected',
                  'case_ids': ['c1', 'c2']}},
+    ('algorithm_manage', 'import'): {
+        'action': 'import',
+        'body': {'algorithms': [
+            {'type': 'asr_v2', 'name': 'ASR v2',
+             'params': [{'param_code': 'sample_rate'}]},
+            {'type': 'tts_v2', 'name': 'TTS v2'}]}},
 }
 
 
@@ -291,6 +303,83 @@ def test_unknown_write_tool_is_a_single_approval():
     assert plan.total == 1
     assert plan.object_count == 1
     assert plan.chunks[0].object_ref is None
+
+
+# ---------------------------------------------------------------- 算法域（INT-2593）
+
+def _import_algorithms(count):
+    return [{'type': f'algo_{index}', 'name': f'算法 {index}',
+             'params': [{'param_code': f'p{index}'}]}
+            for index in range(1, count + 1)]
+
+
+def test_algorithm_import_splits_per_definition():
+    """25 份算法导入 → 25 张单，每张只带 1 份定义（INT-2593）。"""
+    algorithms = _import_algorithms(25)
+    plan = approval_split.plan_approvals('algorithm_manage', {
+        'action': 'import', 'body': {'algorithms': algorithms}}, threshold=20)
+
+    assert plan.total == 25
+    assert plan.object_count == 25
+    assert plan.kind == 'algorithm_definition'
+    assert plan.chunks[0].object_ref == {
+        'kind': 'algorithm_definition', 'ids': ['algo_1']}
+    assert plan.chunks[-1].object_ref['ids'] == ['algo_25']
+    # 收窄保留该定义的全部字段（名称 / 设备参数），不是只留下 type
+    assert plan.chunks[0].arguments['body']['algorithms'] == [algorithms[0]]
+    assert plan.chunks[0].arguments['action'] == 'import'
+
+
+def test_algorithm_import_at_threshold_is_one_approval():
+    plan = approval_split.plan_approvals('algorithm_manage', {
+        'action': 'import',
+        'body': {'algorithms': _import_algorithms(20)}}, threshold=20)
+    assert plan.total == 1
+    assert plan.object_count == 20
+    assert plan.kind == 'algorithm_definition'
+
+
+def test_definition_sub_entities_are_not_counted_as_objects():
+    """定义的内嵌子实体数组属于同一份定义：25 条设备参数也不拆单。"""
+    plan = approval_split.plan_approvals('algorithm_manage', {
+        'action': 'definition_save',
+        'body': {'name': 'ASR v2', 'type': 'asr_v2',
+                 'device_params': [{'param_code': f'p{index}'}
+                                   for index in range(25)],
+                 'mappings': [{'source_param': f'm{index}'}
+                              for index in range(25)]}},
+        threshold=20)
+    assert plan.total == 1
+    assert plan.object_count == 1
+    assert plan.kind is None
+
+
+def test_algorithm_arrays_are_enumerated_and_guard_turns_red(monkeypatch):
+    """algorithm_tools 的数组字段进入枚举来源；临时移出注册表必须判红。
+
+    INT-2593 的根因是枚举来源里没有 algorithm_tools —— 算法域的数组参数
+    漏登记也恒绿。本用例正向断言枚举覆盖，再模拟「临时移出注册表」确认
+    漏登记真的判红。
+    """
+    discovered = {(tool, action, path)
+                  for tool, action, path in _nested_array_paths()}
+    for action, fields in algorithm_tools.ALGORITHM_BODY_ARRAY_FIELDS.items():
+        for field in fields:
+            assert ('algorithm_manage', action, f'body.{field}') in discovered
+
+    def _missing():
+        return [f'{tool}.{action or "*"}.{path}'
+                for tool, action, path in _discovered_paths()
+                if not _covers(tool, action, path)]
+
+    assert _missing() == []
+
+    kept = tuple(rule for rule in approval_split.ARRAY_PARAMS
+                 if rule.tool != 'algorithm_manage')
+    monkeypatch.setattr(approval_split, 'ARRAY_PARAMS', kept)
+    missing = _missing()
+    assert 'algorithm_manage.import.body.algorithms' in missing
+    assert 'algorithm_manage.definition_create.body.device_params' in missing
 
 
 def test_registry_guard_catches_unclassified_array_param():
