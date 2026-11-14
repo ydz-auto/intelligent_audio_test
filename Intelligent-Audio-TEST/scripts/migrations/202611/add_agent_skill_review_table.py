@@ -6,7 +6,7 @@
 
 - ``skill_id`` / ``version``：版本粒度可追溯「谁批的哪一版」；
 - ``action``：``SkillReviewAction``（SUBMIT / APPROVE / REJECT / WITHDRAW /
-  DISABLE），枚举取值，无魔法字符串；
+  DISABLE / EDIT），枚举取值，无魔法字符串；
 - ``status_from`` / ``status_to``：``SkillStatus``（状态机迁移两端）；
 - ``reviewer_id`` / ``reason``：谁、什么理由；
 - ``tenant_id``：待审队列按 ``(tenant_id, status_to)`` 取本租户记录，Skill

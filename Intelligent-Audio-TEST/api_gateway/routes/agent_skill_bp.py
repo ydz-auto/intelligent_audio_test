@@ -28,14 +28,17 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.routes.agent_guard import require_agent_enabled
 from api_gateway.routes.agent_runtime_bp import _forward
+from shared.constants.permissions import (
+    SKILL_ADMIN_PERMISSION, WILDCARD_PERMISSION,
+)
 from shared.skill_package import DEFAULT_MAX_UPLOAD_BYTES
 
 logger = logging.getLogger(__name__)
 
 SKILL_READ_PERMISSION = 'agent:skill:read'
 SKILL_MANAGE_PERMISSION = 'agent:skill:manage'
-# INT-2551：TENANT 级共享 / 审核流专属权限码（与 agent_service 同一字面值）
-SKILL_ADMIN_PERMISSION = 'agent:skill:admin'
+# 审核流专属权限码 ``SKILL_ADMIN_PERMISSION`` 与 agent_service 共用
+# ``shared.constants.permissions`` 的字面值（INT-2594 P3：不再各写一份）
 
 # 上传（压缩前）体积上限：与 agent_service 的 AGENT_SKILL_MAX_UPLOAD_BYTES
 # 同一口径，在网关读入内存前拒绝超大 zip（INT-2549 返工 P3）。
@@ -62,7 +65,7 @@ def _manage_skill(request: Request) -> None:
     ``_MANAGE``，因为「能不能建 TENANT 级」取决于查询参数而不是路径。
     """
     permissions = set(getattr(request.state, 'permissions', None) or [])
-    if '*' in permissions:
+    if WILDCARD_PERMISSION in permissions:
         return
     if SKILL_MANAGE_PERMISSION not in permissions:
         raise HTTPException(

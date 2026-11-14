@@ -6,9 +6,11 @@
 
 1. RBAC 权限码 ``agent:skill:admin``（网关已按它鉴权，服务端再验一次，
    防止绕过网关直接调用本服务 / 内部调用只带一半凭据）；
-2. 租户管理员角色：网关按认证身份解析出的 ``is_admin`` 标记（JWT 角色，
-   与 ``shared.infrastructure.user_context`` 的 admin 判定同一口径），经
-   ``X-User-Is-Admin`` 下发，本服务不自行解析令牌。
+2. 租户管理员角色：网关按认证身份解析出的 ``is_admin`` 标记，经
+   ``X-User-Is-Admin`` 下发，本服务不自行解析令牌。管理员级授予有两种
+   来源（INT-2594 P3）：内置 admin 角色的通配 ``*``，或显式授予自定义
+   租户管理员角色的 ``agent:skill:admin`` —— 后者此前过得了网关却被本服务
+   403，权限码形同虚设。
 
 租户归属单独由 ``tenant_id`` 保证（``X-Tenant-Id`` 由网关按部署租户下发，
 客户端伪造无效）：管理员只能写**本租户**的 TENANT Skill。
@@ -16,10 +18,13 @@
 from typing import Iterable
 
 from agent_service.domain.exceptions import SkillReviewForbidden
+from shared.constants.permissions import (
+    SKILL_ADMIN_PERMISSION, WILDCARD_PERMISSION,
+)
 
-# 网关 RBAC 权限码（与 api_gateway/routes/agent_skill_bp.py、seed_rbac.py 同一值）
-TENANT_ADMIN_PERMISSION = 'agent:skill:admin'
-WILDCARD_PERMISSION = '*'
+# 网关 RBAC 权限码（与 api_gateway/routes/agent_skill_bp.py、seed_rbac.py
+# 同一值，字面值只存在于 shared.constants.permissions）
+TENANT_ADMIN_PERMISSION = SKILL_ADMIN_PERMISSION
 
 
 def is_tenant_admin(*, permissions: Iterable[str] = (),

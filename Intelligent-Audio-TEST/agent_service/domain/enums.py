@@ -238,6 +238,10 @@ class SkillReviewAction(str, Enum):
 
     每个动作对应状态机里唯一一条迁移；``REJECT`` 与 ``WITHDRAW`` 都回
     ``DRAFT``，但语义不同（审批人驳回 / 提交人撤回），审计链必须能区分。
+
+    INT-2594 P2：``EDIT`` 是「编辑已发布版本」的显式动作 —— ``ACTIVE`` 的
+    TENANT Skill 保存（PUT）必须先落这条迁移回 ``DRAFT`` 并写审计，
+    不允许静默把已批准版本打回草稿。
     """
 
     SUBMIT = 'SUBMIT'
@@ -245,6 +249,7 @@ class SkillReviewAction(str, Enum):
     REJECT = 'REJECT'
     WITHDRAW = 'WITHDRAW'
     DISABLE = 'DISABLE'
+    EDIT = 'EDIT'
 
     @property
     def requires_reason(self) -> bool:

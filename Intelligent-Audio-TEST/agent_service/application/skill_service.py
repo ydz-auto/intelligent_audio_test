@@ -267,6 +267,11 @@ class SkillService:
 
         INT-2551：``PENDING_REVIEW`` 期间内容冻结（``SKILL_STATUS_INVALID``），
         必须先撤回；TENANT 行仅租户管理员可改（租户内任意一条，不限创建人）。
+
+        INT-2594 P2：``TENANT`` 的 ``ACTIVE`` 保存走状态机显式 ``EDIT`` 边
+        （``ACTIVE → DRAFT`` 并落一条审核审计），``DISABLED`` 无出边直接 409
+        —— 不允许 PUT 静默越过审核状态机、也不允许把已批准版本打回草稿后
+        不留痕迹。
         """
         row = self._owned_row(skill_id, owner_id=owner_id,
                               tenant_id=tenant_id, writable=True,
@@ -277,6 +282,8 @@ class SkillService:
             raise SkillStatusInvalid(
                 f'状态 {row.status.value} 期间内容冻结，不能保存；'
                 '请先撤回审核（POST /skills/{id}/withdraw）')
+        # 状态机前置校验（不写库）：TENANT 已发布版本只能经显式 EDIT 迁移
+        edit_target = self._tenant_edit_target(row)
         if payload.name and payload.name != row.name:
             self._assert_name_available(
                 payload.name, scope=row.scope, owner_id=owner_id,
@@ -304,6 +311,13 @@ class SkillService:
             permissions=permissions, resources=resources)
         version = str(int(row.version) + 1)
         hash_value = content_hash(skill.meta, frontmatter, body)
+        if edit_target is not None:
+            # 条件迁移：并发两次编辑只有一次拿到 ACTIVE → DRAFT，
+            # 另一次回「状态已变化」，不会写出无审计的状态变更
+            if not self._repository.transition_if(
+                    row.id, [row.status], edit_target):
+                raise SkillStatusInvalid(
+                    'Skill 状态已被其他请求变更，请刷新后重试')
         stored = self._store_resources(row.id, version, resources)
         self._repository.add_version(AgentSkillVersion(
             skill_id=row.id, version=version, content_hash=hash_value,
@@ -314,8 +328,29 @@ class SkillService:
             status=SkillStatus.DRAFT.value, content_hash=hash_value,
             frontmatter_json=dict(frontmatter), resources=stored,
             updated_at=_now())
+        if edit_target is not None:
+            # 审计记录的是被编辑的那一版（迁移的起点），产出的是 version +1
+            self._append_review(
+                row, action=SkillReviewAction.EDIT,
+                status_from=row.status, status_to=edit_target,
+                reviewer_id=owner_id)
         self._refresh_registry()
         return self._view_from_row(self._require_row(row.id))
+
+    def _tenant_edit_target(self, row: AgentSkill) -> Optional[SkillStatus]:
+        """TENANT 已发布版本的编辑目标状态（INT-2594 P2）。
+
+        ``DRAFT`` 保存是原地修改，不进状态机；``ACTIVE`` 必须经显式
+        ``EDIT`` 边回 ``DRAFT``（随后重新提交 + 审批）；``DISABLED`` 没有
+        出边，``target_status`` 抛 ``SKILL_STATUS_INVALID``（409）。
+        """
+        if row.scope is not SkillScope.TENANT or row.status is SkillStatus.DRAFT:
+            return None
+        target = target_status(row.status, SkillReviewAction.EDIT)
+        if self._reviews is None:
+            raise SkillStatusInvalid(
+                'TENANT 级编辑缺少审计仓储，拒绝执行（不静默丢审计）')
+        return target
 
     def disable(self, skill_id: str, *, owner_id: int, tenant_id: str,
                 permissions: Iterable[str] = (),
