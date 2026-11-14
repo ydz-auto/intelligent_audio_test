@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "source": "INT-2465 M1 汇总评测（确定性词面代理）",
   "tiers": {
     "m1": [
@@ -15,6 +15,9 @@
       "tag-group",
       "task-operations",
       "testcase-authoring"
+    ],
+    "m2": [
+      "app-api-onboarding"
     ],
     "extra": [
       "platform-reference"
@@ -764,7 +767,7 @@
       "id": "driver-proposal-04",
       "skill": "driver-proposal",
       "tier": "m1",
-      "query": "AppDriver 提案"
+      "query": "驱动提案要交付哪些代码"
     },
     {
       "id": "driver-proposal-05",
@@ -801,6 +804,66 @@
       "skill": "driver-proposal",
       "tier": "m1",
       "query": "驱动模板和同类驱动样例"
+    },
+    {
+      "id": "app-api-onboarding-01",
+      "skill": "app-api-onboarding",
+      "tier": "m2",
+      "query": "我要测这个 App"
+    },
+    {
+      "id": "app-api-onboarding-02",
+      "skill": "app-api-onboarding",
+      "tier": "m2",
+      "query": "帮我接入这个 API"
+    },
+    {
+      "id": "app-api-onboarding-03",
+      "skill": "app-api-onboarding",
+      "tier": "m2",
+      "query": "做个厂商适配器接入"
+    },
+    {
+      "id": "app-api-onboarding-04",
+      "skill": "app-api-onboarding",
+      "tier": "m2",
+      "query": "新 App 接入流程是什么"
+    },
+    {
+      "id": "app-api-onboarding-05",
+      "skill": "app-api-onboarding",
+      "tier": "m2",
+      "query": "生成接入包和冒烟用例"
+    },
+    {
+      "id": "app-api-onboarding-06",
+      "skill": "app-api-onboarding",
+      "tier": "m2",
+      "query": "解析这个 OpenAPI 契约"
+    },
+    {
+      "id": "app-api-onboarding-07",
+      "skill": "app-api-onboarding",
+      "tier": "m2",
+      "query": "App 的 ui_trace 和元素树探索怎么做"
+    },
+    {
+      "id": "app-api-onboarding-08",
+      "skill": "app-api-onboarding",
+      "tier": "m2",
+      "query": "接入计划里有哪些缺口"
+    },
+    {
+      "id": "app-api-onboarding-09",
+      "skill": "app-api-onboarding",
+      "tier": "m2",
+      "query": "用 staging 跑冒烟"
+    },
+    {
+      "id": "app-api-onboarding-10",
+      "skill": "app-api-onboarding",
+      "tier": "m2",
+      "query": "生成 AppDriver 和 ApiVendorAdapter"
     }
   ]
 }

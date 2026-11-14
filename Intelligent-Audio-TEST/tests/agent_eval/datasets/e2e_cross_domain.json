@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "cross-domain-e2e",
+  "owner": "agent-platform（中央小组维护）",
+  "description": "跨域端到端任务集：平台口径 / 任务 / 报告 / 长期记忆。成员数据集各自带 version，新增域由本清单登记，不改评测代码。",
+  "thresholds": {
+    "success_rate": 0.95,
+    "fabricated_values": 0,
+    "permission_violations": 0
+  },
+  "members": [
+    "datasets/golden_tasks.json",
+    "coverage/datasets/no_fabrication_tasks.json"
+  ]
+}

@@ -297,3 +297,7 @@ Intelligent-Audio-TEST/memory/tenants/
 Intelligent-Audio-TEST/memory/.proposals/
 Intelligent-Audio-TEST/memory/.audit/
 Intelligent-Audio-TEST/memory/.write_probe
+
+# Agent 五层评测报告（INT-2475）：报告是运行产物，评测集本身入库
+Intelligent-Audio-TEST/tests/agent_eval/out/
+Intelligent-Audio-TEST/docker/eval-out/

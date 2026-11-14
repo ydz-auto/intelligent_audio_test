@@ -284,12 +284,26 @@ _FACT_TEXT_RE = re.compile(r'([a-z][a-z0-9_]*:[A-Za-z0-9_-]+:[a-z_]+)'
 
 @dataclass
 class SimulationStats:
-    """一次场景运行的计数（用于重查率 / 压缩次数口径）。"""
+    """一次场景运行的计数（用于重查率 / 压缩次数 / 成本口径）。"""
 
     tool_calls: int = 0
     requery_count: int = 0
     memo_calls: int = 0
     unknown_answers: int = 0
+    # INT-2475 成本可观测：模型调用轮次与输入规模（字符数，token 近似 = chars/4）。
+    # 确定性替身没有真实计费，这里记录同一口径的可复现成本指标。
+    llm_calls: int = 0
+    prompt_chars: int = 0
+
+    def to_cost(self) -> Dict[str, int]:
+        """成本快照（报告口径）：调用轮次 / 工具调用 / 输入字符与近似 token。"""
+        return {
+            'llm_calls': self.llm_calls,
+            'tool_calls': self.tool_calls,
+            'memo_calls': self.memo_calls,
+            'prompt_chars': self.prompt_chars,
+            'approx_prompt_tokens': self.prompt_chars // 4,
+        }
 
 
 class SimulatedModel(LlmClient):
@@ -308,6 +322,9 @@ class SimulatedModel(LlmClient):
     def stream(self, request, cancel_check=None):
         if cancel_check is not None and cancel_check():
             return
+        self._stats.llm_calls += 1
+        self._stats.prompt_chars += sum(
+            len(text) for text in _message_texts(request.messages))
         purpose = (request.metadata or {}).get('purpose')
         if purpose == 'context_memo':
             self._stats.memo_calls += 1
@@ -454,6 +471,8 @@ class ScenarioMetrics:
     # 长期记忆子集（domain='memory'）：召回命中率单独计（INT-2490）
     memory_rounds: int = 0
     memory_correct: int = 0
+    # INT-2475 成本可观测（模型轮次 / 工具调用 / 输入近似 token）
+    cost: Dict[str, int] = field(default_factory=dict)
 
     @property
     def memory_hit_rate(self) -> float:
@@ -482,12 +501,14 @@ class ScenarioMetrics:
             'memory_rounds': self.memory_rounds,
             'memory_correct': self.memory_correct,
             'memory_hit_rate': round(self.memory_hit_rate, 4),
+            'cost': dict(self.cost),
         }
 
 
 def summarize_rounds(name: str, rounds: Sequence[RoundResult],
                      compaction_levels: Dict[str, int],
-                     run_failures: int) -> ScenarioMetrics:
+                     run_failures: int,
+                     cost: Optional[Dict[str, int]] = None) -> ScenarioMetrics:
     total = len(rounds)
     correct = sum(1 for r in rounds if r.correct)
     unknown = sum(1 for r in rounds if r.answer in (None, 'UNKNOWN'))
@@ -504,6 +525,7 @@ def summarize_rounds(name: str, rounds: Sequence[RoundResult],
         run_failures=run_failures,
         memory_rounds=len(memory_rounds),
         memory_correct=sum(1 for r in memory_rounds if r.correct),
+        cost=dict(cost or {}),
     )
 
 
