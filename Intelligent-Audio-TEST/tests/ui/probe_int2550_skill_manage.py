@@ -18,7 +18,7 @@ UI_TEST_USERNAME / UI_TEST_PASSWORD 覆盖）。
   6  从 platform-reference fork → 草稿、内容一致、原 Skill 不被覆盖
   7  导入合法 zip → DRAFT；非法 zip（缺 description / 含 .. 路径）逐项失败且列表不新增
   8  导出 zip → 根级 SKILL.md、内容与编辑器一致；再导入内容等价
-  9  发布门槛：golden tasks 不足 → 发布被门槛拦下、面板显示原因、状态仍 DRAFT
+  9  发布门槛：golden tasks 不足 → 发布被门槛拦下、按钮禁用、面板显示原因、状态仍 DRAFT
  10  停用：二次确认 → DISABLED，列表 / 页签计数同步
  11  只读约束：PLATFORM 行只有 fork / 导出
  12  权限：无 agent:skill:manage 时入口不可见 / 直达 403（需另建受限账号；
@@ -739,12 +739,14 @@ def run(drv, base, skill_api):
     step_ok('8_export', filename=os.path.basename(exported), entries=names)
     shot(drv, 'export_dialog')
 
-    # 9 发布门槛（golden tasks 不足 → 拦截且仍 DRAFT）
+    # 9 发布门槛（golden tasks 不足 → 发布按钮禁用且仍 DRAFT）
     open_editor(drv, name)
     publish_buttons = [b for b in drv.find_elements(By.TAG_NAME, 'button')
-                       if b.text.strip() in ('发布', '重新尝试发布')]
+                       if b.text.strip() == '发布']
     if not publish_buttons:
         step_fail('9_publish_gate', '草稿编辑器没有发布按钮')
+    if not publish_buttons[-1].is_enabled():
+        step_fail('9_publish_gate', '未检查门槛时发布按钮就已禁用')
     click(drv, publish_buttons[-1])
     WebDriverWait(drv, 30).until(EC.presence_of_element_located(
         (By.CSS_SELECTOR, '[data-testid="skill-gate-panel"]')))
@@ -753,7 +755,19 @@ def run(drv, base, skill_api):
         step_fail('9_publish_gate', '门槛面板未展示 golden tasks：%s' % gate_text[:200])
     assert_unmet = drv.find_elements(By.CSS_SELECTOR, '[data-testid="skill-gate-unmet"]')
     if assert_unmet:
-        step_ok('9_publish_gate', gate=gate_text[:200])
+        # 卡面验收 9：未达标时发布按钮禁用，文案仍是「发布」（不是可点的「重新尝试发布」）
+        gate_button = drv.find_element(
+            By.CSS_SELECTOR, '[data-testid="skill-publish-button"]')
+        button_text = gate_button.text.strip()
+        if button_text != '发布':
+            step_fail('9_publish_gate',
+                      '门槛未达标时发布按钮文案应为「发布」，实际=%s' % button_text)
+        if gate_button.is_enabled():
+            step_fail('9_publish_gate', '门槛未达标但发布按钮可点（未禁用）')
+        if gate_button.get_attribute('disabled') is None:
+            step_fail('9_publish_gate', '门槛未达标但发布按钮无 disabled 属性')
+        step_ok('9_publish_gate', gate=gate_text[:200],
+                publish_button={'text': button_text, 'disabled': True})
     else:
         step_ok('9_publish_gate', gate=gate_text[:200],
                 note='门槛通过（评测集含该 Skill）或门槛未拦截')

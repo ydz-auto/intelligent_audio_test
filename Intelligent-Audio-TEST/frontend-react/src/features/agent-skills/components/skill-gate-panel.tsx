@@ -3,8 +3,8 @@
  *
  * 服务端没有独立的门槛只读接口：发布动作本身即门槛检查（门槛未达标返回 200 +
  * gate + 仍 DRAFT）。面板展示最近一次检查结果：golden tasks 条数、触发判定、
- * 未达标原因；未达标时发布按钮禁用并说明「只能留作草稿，不参与自动触发」，
- * 「重新尝试发布」可再次触发检查（期间门槛数据可能已补齐）。
+ * 未达标原因；未达标时发布按钮禁用并说明「只能留作草稿，不参与自动触发」
+ * （再次保存会清空本次门槛结果，按钮随之恢复）。
  */
 import { CheckCircle2, ShieldAlert, ShieldCheck } from 'lucide-react'
 
@@ -24,7 +24,7 @@ type SkillGatePanelProps = {
   onPublish: () => void
   /** 是否允许发起发布（只有 DRAFT 可发布） */
   publishable: boolean
-  /** 页面已知道门槛未达标（按钮禁用，改用「重新尝试发布」） */
+  /** 页面已知道门槛未达标（发布按钮禁用，只能留作草稿） */
   unmet: boolean
 }
 
@@ -52,16 +52,15 @@ export function SkillGatePanel({
         </h3>
         {publishable && (
           <Button
-            disabled={pending || (unmet && !gate)}
+            data-testid='skill-publish-button'
+            disabled={pending || unmet}
             onClick={onPublish}
             size='sm'
             type='button'
-            variant={unmet ? 'outline' : 'default'}
+            variant='default'
           >
             {pending && <Spinner className='size-3.5' />}
-            {unmet
-              ? AGENT_SKILLS_COPY.publishAgainButton
-              : AGENT_SKILLS_COPY.publishButton}
+            {AGENT_SKILLS_COPY.publishButton}
           </Button>
         )}
       </div>

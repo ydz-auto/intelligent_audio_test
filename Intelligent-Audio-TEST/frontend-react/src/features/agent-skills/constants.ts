@@ -132,7 +132,6 @@ export const AGENT_SKILLS_COPY = {
   editButton: '编辑',
   exportButton: '导出',
   publishButton: '发布',
-  publishAgainButton: '重新尝试发布',
   disableButton: '停用',
   deleteButton: '删除',
 
