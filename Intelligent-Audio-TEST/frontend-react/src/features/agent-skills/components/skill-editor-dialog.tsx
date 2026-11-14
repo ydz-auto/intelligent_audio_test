@@ -369,13 +369,15 @@ export function SkillEditorDialog({
                       )}
                     >
                       {issueBlocked
-                        ? (saveState === 'failed'
-                            ? AGENT_SKILLS_COPY.issueSummary
-                            : AGENT_SKILLS_COPY.issueBlockedSummary
-                          ).replace(
-                            '{count}',
-                            String(errorIssues.length || issues.length)
-                          )
+                        ? issues.length === 0 && errorMessage
+                          ? AGENT_SKILLS_COPY.requestFailedTitle
+                          : (saveState === 'failed'
+                              ? AGENT_SKILLS_COPY.issueSummary
+                              : AGENT_SKILLS_COPY.issueBlockedSummary
+                            ).replace(
+                              '{count}',
+                              String(errorIssues.length || issues.length)
+                            )
                         : AGENT_SKILLS_COPY.issueWarningSummary.replace(
                             '{count}',
                             String(issues.length)

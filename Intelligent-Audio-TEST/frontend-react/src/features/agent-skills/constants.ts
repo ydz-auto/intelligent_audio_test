@@ -148,6 +148,7 @@ export const AGENT_SKILLS_COPY = {
 
   issueSummary: '校验未通过（{count} 项），未保存',
   issueBlockedSummary: '校验未通过（{count} 项）',
+  requestFailedTitle: '操作未完成：',
   issueWarningSummary: '保存成功，版本已 +1；以下 {count} 项告警不阻塞保存',
   issueSummaryTop: '以下问题未定位到具体字段，请逐项检查：',
   issueUnlocated: '未定位',
