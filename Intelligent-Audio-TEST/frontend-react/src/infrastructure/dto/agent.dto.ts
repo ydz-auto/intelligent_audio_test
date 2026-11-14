@@ -17,6 +17,7 @@ import {
   normalizeToolRisk,
   type AgentApproval,
   type AgentApprovalDecisionResult,
+  type AgentApprovalObjectRef,
   type AgentApprovalProposal,
   type AgentApprovalStatus,
   type AgentEventSourceRef,
@@ -118,6 +119,22 @@ export interface AgentApprovalDto {
   decided_by?: number
   decided_at?: string
   created_at?: string
+  /**
+   * §9.4.1 拆单批次字段（后端 ApprovalResponse）：一次 tool call 影响 >20 对象
+   * 时拆成 N 张单，同批共享 `batch_id`，`batch_index` 1..N；未拆单时
+   * `batch_id` 为空、`batch_index` / `batch_total` 为 1。
+   */
+  batch_id?: string | null
+  batch_index?: number
+  batch_total?: number
+  /** 本单对象摘要 `{kind, ids}`（拆单时已收窄到本单对象） */
+  object_ref?: AgentApprovalObjectRefDto | null
+}
+
+/** object_ref 原始形态：对象类型 + 对象 id 列表（非枚举范围 ids 为空） */
+export interface AgentApprovalObjectRefDto {
+  kind?: string
+  ids?: unknown[]
 }
 
 /** POST /agent/approvals/{id}/decision 请求体（后端 ApprovalDecisionRequest） */
@@ -309,7 +326,35 @@ export function toAgentApprovalProposal(
     turn: toFiniteNumber(value['turn']),
     requestedBy: toFiniteNumber(value['requested_by']),
     sessionId: toStringValue(value['session_id']),
+    /** §9.4.1：本批总对象数（拆单后每张单都带批次总数） */
+    objectCount: toFiniteNumber(value['object_count']),
   }
+}
+
+/**
+ * object_ref（`{kind, ids}`）→ 领域对象摘要。
+ * ids 元素统一转字符串（后端可能是数字 id）；kind 与 ids 都缺时返回 undefined，
+ * 不伪造空摘要。非枚举范围的 ids 为空数组但保留 kind（展示「按范围执行」）。
+ */
+export function toAgentApprovalObjectRef(
+  value: unknown
+): AgentApprovalObjectRef | undefined {
+  if (!isObject(value)) return undefined
+  const kind = toStringValue(value['kind'])
+  const rawIds = Array.isArray(value['ids']) ? value['ids'] : []
+  const ids = rawIds
+    .map((id) => toStringValue(id))
+    .filter((id): id is string => Boolean(id))
+  if (!kind && ids.length === 0) return undefined
+  return { kind, ids }
+}
+
+/** 批次序号 / 总数归一：缺省或非法值按单张（1）兼容 */
+function toBatchCount(value: unknown, fallback: number): number {
+  const number = toFiniteNumber(value)
+  return number !== undefined && Number.isInteger(number) && number >= 1
+    ? number
+    : fallback
 }
 
 export function toAgentApproval(dto: AgentApprovalDto): AgentApproval {
@@ -319,6 +364,7 @@ export function toAgentApproval(dto: AgentApprovalDto): AgentApproval {
     dto.status === 'EXPIRED'
       ? dto.status
       : 'PENDING'
+  const batchTotal = toBatchCount(dto.batch_total, 1)
   return {
     id: dto.id,
     runId: dto.run_id ?? '',
@@ -330,6 +376,11 @@ export function toAgentApproval(dto: AgentApprovalDto): AgentApproval {
     decidedBy: toFiniteNumber(dto.decided_by),
     decidedAt: toUtcIso(dto.decided_at),
     createdAt: toUtcIso(dto.created_at),
+    // 旧单 / 缺字段按单张口径：batchId 为空、序号与总数都是 1
+    batchId: toStringValue(dto.batch_id) || undefined,
+    batchIndex: toBatchCount(dto.batch_index, 1),
+    batchTotal,
+    objectRef: toAgentApprovalObjectRef(dto.object_ref),
   }
 }
 
@@ -491,6 +542,11 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
             : undefined,
         expiresAt: toUtcIso(dto['expires_at']),
         proposal: toAgentApprovalProposal(dto['proposal']),
+        // §9.4.1 第 10 条：每张单一条 approval_required，同批 tool_call_id 相同；
+        // 未拆单时字段缺省（按单张渲染）。
+        batchId: toStringValue(dto['batch_id']) || undefined,
+        batchIndex: toFiniteNumber(dto['batch_index']),
+        batchTotal: toFiniteNumber(dto['batch_total']),
       }
     }
     case AGENT_EVENT_TYPE.CONTEXT_COMPACTED:

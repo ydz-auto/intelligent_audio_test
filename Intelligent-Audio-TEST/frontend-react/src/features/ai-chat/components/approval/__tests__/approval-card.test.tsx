@@ -324,3 +324,103 @@ describe('ApprovalCard', () => {
     expect(onDecide).toHaveBeenLastCalledWith('ap-1', 'APPROVE', true)
   })
 })
+
+describe('ApprovalCard 拆单批次（§9.4.1）', () => {
+  /** 同批第 index/N 张单：参数已收窄到本单对象 */
+  function batchedApproval(overrides: Partial<AgentApproval> = {}): AgentApproval {
+    return buildApproval({
+      batchId: 'batch-1',
+      batchIndex: 2,
+      batchTotal: 3,
+      proposal: {
+        tool: 'tag_group_manage',
+        risk: AGENT_TOOL_RISK.WRITE,
+        arguments: { ids: ['c-2'] },
+        objectCount: 21,
+      },
+      objectRef: { kind: 'testcase', ids: ['c-2'] },
+      ...overrides,
+    })
+  }
+
+  it('批次卡展示「本批第 i/N 条」、本单对象摘要与 all-or-nothing 提示', () => {
+    render(
+      <ApprovalCard approval={batchedApproval()} deciding={false} onDecide={vi.fn()} />
+    )
+    expect(screen.getByText('本批第 2/3 条')).toBeInTheDocument()
+    expect(
+      document.querySelector('[data-approval-object-ref]')?.textContent
+    ).toContain('testcase · c-2')
+    expect(
+      document.querySelector('[data-approval-batch-pending]')?.textContent
+    ).toBe('本批全部批准后才执行')
+    // 拆单卡不再出现「影响对象超过单次审批上限」的逐项核对提示
+    expect(document.querySelector('[data-approval-batch-hint]')).toBeNull()
+  })
+
+  it('拆单卡即使参数 >20 也不再触发逐项核对：单击批准直接发请求（不弹确认）', async () => {
+    const onDecide = vi.fn().mockResolvedValue(null)
+    render(
+      <ApprovalCard
+        approval={batchedApproval({
+          proposal: {
+            tool: 'tag_group_manage',
+            risk: AGENT_TOOL_RISK.WRITE,
+            arguments: {
+              ids: Array.from({ length: 21 }, (_, index) => `c-${index}`),
+            },
+            objectCount: 21,
+          },
+        })}
+        deciding={false}
+        onDecide={onDecide}
+      />
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '批准执行' }))
+    // 拆单由后端保证 all-or-nothing，卡片本身不再要求逐项勾选
+    expect(onDecide).toHaveBeenCalledTimes(1)
+    expect(onDecide).toHaveBeenCalledWith('ap-1', AGENT_APPROVAL_DECISION.APPROVE)
+  })
+
+  it('已批准但同批仍有待审批：提示「本批全部批准后才执行」，不说已在服务端执行', () => {
+    render(
+      <ApprovalCard
+        approval={batchedApproval({
+          status: AGENT_APPROVAL_STATUS.APPROVED,
+          decidedBy: 7,
+          decidedAt: '2026-11-14T02:03:00Z',
+        })}
+        batchState={AGENT_APPROVAL_STATUS.PENDING}
+        deciding={false}
+        onDecide={vi.fn()}
+      />
+    )
+    expect(screen.getByText('本批全部批准后才执行')).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Agent 将在服务端执行该写操作/)
+    ).not.toBeInTheDocument()
+  })
+
+  it('本批全部批准：提示待执行；本批不执行（拒绝）：不展示逐张已拒绝的局部语义', () => {
+    const { rerender } = render(
+      <ApprovalCard
+        approval={batchedApproval({ status: AGENT_APPROVAL_STATUS.APPROVED })}
+        batchState={AGENT_APPROVAL_STATUS.APPROVED}
+        deciding={false}
+        onDecide={vi.fn()}
+      />
+    )
+    expect(screen.getByText('本批已全部批准，待执行')).toBeInTheDocument()
+
+    rerender(
+      <ApprovalCard
+        approval={batchedApproval({ status: AGENT_APPROVAL_STATUS.REJECTED })}
+        batchState={AGENT_APPROVAL_STATUS.REJECTED}
+        deciding={false}
+        onDecide={vi.fn()}
+      />
+    )
+    expect(screen.getByText('本批不执行（任一单被拒绝）')).toBeInTheDocument()
+  })
+})

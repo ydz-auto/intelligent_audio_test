@@ -1,20 +1,53 @@
 /**
  * features/ai-chat/lib/approval 纯函数测试（INT-2472 审计返修 P3-2/3/4 + P2 §9.4）：
  * 轮次 0 起转 1 起、内部步骤 UUID 截断、决策人只解析当前用户为「我」、
- * 提案影响对象数统计（>20 对象必须单条审批）。
+ * 提案影响对象数统计（>20 对象必须单条审批）；INT-2573 §9.4.1 拆单批次
+ * 分组 / 序号 / all-or-nothing 状态 / 对象摘要。
  */
 import { describe, expect, it } from 'vitest'
 
+import { AGENT_APPROVAL_STATUS, type AgentApproval } from '@/domain/models/agent'
 import {
   formatApprovalApprover,
+  formatApprovalBatchHeader,
+  formatApprovalBatchIndex,
   formatApprovalStepId,
   formatApprovalTurn,
+  groupApprovalBatches,
+  isBatchedApproval,
+  resolveApprovalBatchObjectCount,
+  resolveApprovalBatchState,
+  summarizeApprovalObjectRef,
   summarizeApprovalTargets,
 } from '@/features/ai-chat/lib/approval'
 
 /** 只带 proposal 的最小审批单（统计函数只读 proposal.arguments） */
 function approvalWith(argumentsValue: Record<string, unknown>) {
   return { proposal: { tool: 'x', arguments: argumentsValue } }
+}
+
+/** 拆单批次里的一张单（默认待审批、5 分钟后过期） */
+function batchApproval(
+  index: number,
+  overrides: Partial<AgentApproval> = {}
+): AgentApproval {
+  return {
+    id: `ap-${index}`,
+    runId: 'r-1',
+    toolCallId: 'tc-1',
+    status: AGENT_APPROVAL_STATUS.PENDING,
+    batchId: 'batch-1',
+    batchIndex: index,
+    batchTotal: 3,
+    proposal: {
+      tool: 'tag_group_manage',
+      arguments: { ids: [`c-${index}`] },
+      objectCount: 3,
+    },
+    objectRef: { kind: 'testcase', ids: [`c-${index}`] },
+    expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+    ...overrides,
+  }
 }
 
 describe('formatApprovalTurn', () => {
@@ -100,5 +133,128 @@ describe('summarizeApprovalTargets（§9.4 批量粒度）', () => {
       count: 0,
       overLimit: false,
     })
+  })
+})
+
+describe('拆单批次（§9.4.1）', () => {
+  it('isBatchedApproval：batchTotal > 1 才算批次，旧单张（缺字段 / 1）不算', () => {
+    expect(isBatchedApproval({ batchTotal: 3 })).toBe(true)
+    expect(isBatchedApproval({ batchTotal: 1 })).toBe(false)
+    expect(isBatchedApproval({})).toBe(false)
+  })
+
+  it('formatApprovalBatchIndex：单卡标「本批第 i/N 条」，单张不展示', () => {
+    expect(formatApprovalBatchIndex(2, 3)).toBe('本批第 2/3 条')
+    expect(formatApprovalBatchIndex(1, 1)).toBeNull()
+    expect(formatApprovalBatchIndex(undefined, 3)).toBeNull()
+    expect(formatApprovalBatchIndex(1, undefined)).toBeNull()
+  })
+
+  it('resolveApprovalBatchState：全批准才待执行，任一拒绝 / 过期即整批不执行', () => {
+    expect(
+      resolveApprovalBatchState([
+        batchApproval(1),
+        batchApproval(2, { status: AGENT_APPROVAL_STATUS.APPROVED }),
+      ])
+    ).toBe(AGENT_APPROVAL_STATUS.PENDING)
+
+    expect(
+      resolveApprovalBatchState([
+        batchApproval(1, { status: AGENT_APPROVAL_STATUS.APPROVED }),
+        batchApproval(2, { status: AGENT_APPROVAL_STATUS.APPROVED }),
+      ])
+    ).toBe(AGENT_APPROVAL_STATUS.APPROVED)
+
+    expect(
+      resolveApprovalBatchState([
+        batchApproval(1, { status: AGENT_APPROVAL_STATUS.APPROVED }),
+        batchApproval(2, { status: AGENT_APPROVAL_STATUS.REJECTED }),
+      ])
+    ).toBe(AGENT_APPROVAL_STATUS.REJECTED)
+
+    expect(
+      resolveApprovalBatchState([
+        batchApproval(1),
+        batchApproval(2, { status: AGENT_APPROVAL_STATUS.EXPIRED }),
+      ])
+    ).toBe(AGENT_APPROVAL_STATUS.EXPIRED)
+
+    // 本地倒计时到点也算过期：整批不执行，不停在「等审批」
+    expect(
+      resolveApprovalBatchState([
+        batchApproval(1, { expiresAt: '2020-01-01T00:00:00Z' }),
+        batchApproval(2),
+      ])
+    ).toBe(AGENT_APPROVAL_STATUS.EXPIRED)
+  })
+
+  it('summarizeApprovalObjectRef：kind + ids 摘要；非枚举范围显示「按范围执行」', () => {
+    expect(summarizeApprovalObjectRef({ kind: 'testcase', ids: ['c-1'] })).toBe(
+      'testcase · c-1'
+    )
+    expect(
+      summarizeApprovalObjectRef({
+        kind: 'audio',
+        ids: ['a-1', 'a-2', 'a-3', 'a-4', 'a-5', 'a-6'],
+      })
+    ).toBe('audio · a-1, a-2, a-3, a-4, a-5…（共 6 个）')
+    expect(summarizeApprovalObjectRef({ kind: 'testcase', ids: [] })).toBe(
+      'testcase · 按范围执行'
+    )
+    expect(summarizeApprovalObjectRef(undefined)).toBeNull()
+  })
+
+  it('resolveApprovalBatchObjectCount：优先 proposal.objectCount，缺失时回退 ids 之和', () => {
+    expect(
+      resolveApprovalBatchObjectCount([batchApproval(1), batchApproval(2)])
+    ).toBe(3)
+
+    expect(
+      resolveApprovalBatchObjectCount([
+        batchApproval(1, { proposal: { tool: 'x' } }),
+        batchApproval(2, { proposal: { tool: 'x' } }),
+      ])
+    ).toBe(2)
+
+    // 有单缺 object_ref 时不猜数量
+    expect(
+      resolveApprovalBatchObjectCount([
+        batchApproval(1, { proposal: { tool: 'x' } }),
+        batchApproval(2, { proposal: { tool: 'x' }, objectRef: undefined }),
+      ])
+    ).toBeUndefined()
+  })
+
+  it('groupApprovalBatches：同批按 batchIndex 升序聚组、块落首卡位置、旧单张原样透传', () => {
+    const blocks = groupApprovalBatches([
+      batchApproval(2),
+      { id: 'single', runId: 'r-1', status: AGENT_APPROVAL_STATUS.PENDING },
+      batchApproval(1),
+      batchApproval(3),
+    ])
+
+    expect(blocks.map((block) => block.kind)).toEqual(['batch', 'single'])
+    const batch = blocks[0]
+    expect(batch.kind).toBe('batch')
+    if (batch.kind !== 'batch') return
+    expect(batch.batchId).toBe('batch-1')
+    expect(batch.approvals.map((item) => item.batchIndex)).toEqual([1, 2, 3])
+    expect(batch.objectCount).toBe(3)
+    expect(batch.state).toBe(AGENT_APPROVAL_STATUS.PENDING)
+  })
+
+  it('formatApprovalBatchHeader：单数 / 对象数 / 批次状态口径', () => {
+    expect(
+      formatApprovalBatchHeader(3, 21, AGENT_APPROVAL_STATUS.PENDING)
+    ).toBe('本批 3 张单 · 对象 21 个 · 本批全部批准后才执行')
+    expect(
+      formatApprovalBatchHeader(3, undefined, AGENT_APPROVAL_STATUS.REJECTED)
+    ).toBe('本批 3 张单 · 本批不执行（任一单被拒绝）')
+    expect(
+      formatApprovalBatchHeader(2, 2, AGENT_APPROVAL_STATUS.APPROVED)
+    ).toBe('本批 2 张单 · 对象 2 个 · 本批已全部批准，待执行')
+    expect(
+      formatApprovalBatchHeader(2, 2, AGENT_APPROVAL_STATUS.EXPIRED)
+    ).toBe('本批 2 张单 · 对象 2 个 · 本批不执行（任一单已过期）')
   })
 })

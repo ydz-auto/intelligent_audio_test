@@ -601,6 +601,8 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       case AGENT_EVENT_TYPE.APPROVAL_REQUIRED: {
         // 写操作提案（§9.4）：卡片数据来自事件本身（approval_required 载荷已含
         // tool / risk / proposal / expires_at），重连 / 刷新再用列表接口对齐。
+        // §9.4.1：每张单一条事件，拆单载荷带 batch_id / batch_index / batch_total
+        // （object_ref 不在 SSE 里，靠下面的列表刷新补齐）。
         upsertApproval({
           id: event.approvalId,
           runId: event.runId,
@@ -615,6 +617,9 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
                 }
               : undefined),
           expiresAt: event.expiresAt,
+          batchId: event.batchId,
+          batchIndex: event.batchIndex,
+          batchTotal: event.batchTotal,
         })
         if (get().phase !== AGENT_RUN_PHASE.CANCELLING) {
           setPhase(AGENT_RUN_PHASE.WAITING_APPROVAL)

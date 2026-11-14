@@ -210,6 +210,18 @@ export const AGENT_APPROVAL_ERROR_CODE = {
 export const AGENT_APPROVAL_OBJECT_LIMIT = 20
 
 /**
+ * 审批单负责的对象摘要（§9.4.1 `object_ref = {kind, ids}`）。
+ * 拆单后每张单的 ids 已由后端收窄到本单负责的对象；未拆单时是整次调用的对象。
+ * 非枚举范围（`mode=all` / `failed_only`）按 1 个对象计，此时 ids 为空但 kind 仍在。
+ */
+export interface AgentApprovalObjectRef {
+  /** 对象类型（后端 object_ref.kind：testcase / audio / task / device …） */
+  kind?: string
+  /** 本单负责的对象 id（字符串化展示） */
+  ids: string[]
+}
+
+/**
  * 审批提案（后端 ApprovalService.propose 落库形态）：
  * `tool` / `risk` / `arguments` / `args_hash` / `idempotency_key` / `step_id` /
  * `turn` / `requested_by` / `session_id`。arguments 已由后端脱敏，前端只展示不执行。
@@ -226,9 +238,14 @@ export interface AgentApprovalProposal {
   turn?: number
   requestedBy?: number
   sessionId?: string
+  /**
+   * 本批总对象数（§9.4.1 proposal.object_count）：拆单后每张单都带批次总数，
+   * 非枚举范围计 1。拆单前 / 旧提案无此字段。
+   */
+  objectCount?: number
 }
 
-/** 待审批提案（§10 agent_approval；M2 审批卡实现） */
+/** 待审批提案（§10 agent_approval；M2 审批卡实现 + §9.4.1 拆单批次） */
 export interface AgentApproval {
   id: string
   runId: string
@@ -245,6 +262,17 @@ export interface AgentApproval {
   /** 决策时间（ISO；后端 decided_at） */
   decidedAt?: string
   createdAt?: string
+  /**
+   * 拆单批次 id（§9.4.1）：一次 tool call 影响 >20 对象时拆成 N 张单，同批共享；
+   * 未拆单为空。旧单 / 缺字段按单张处理（batchTotal 缺省 1）。
+   */
+  batchId?: string
+  /** 本单在本批中的序号（1 起；未拆单为 1） */
+  batchIndex?: number
+  /** 本批总单数（未拆单 / 旧单为 1） */
+  batchTotal?: number
+  /** 本单对象摘要（§9.4.1 object_ref；拆单时已收窄到本单） */
+  objectRef?: AgentApprovalObjectRef
 }
 
 /** Run 预算（§9.3/§9.4；后端 agent_run.budget，字段名与配置一致） */
@@ -323,6 +351,14 @@ export interface AgentApprovalRequiredEvent extends AgentRunEventBase {
   expiresAt?: string
   /** 提案正文（approval_required 载荷 proposal，已由 DTO 转 camelCase） */
   proposal?: AgentApprovalProposal
+  /**
+   * §9.4.1 拆单批次：每张单一条 `approval_required`，同批 `toolCallId` 相同、
+   * 共享 `batchId`，`batchIndex` 1..N。未拆单时字段缺省。
+   * （object_ref 不在 SSE 载荷里，由随后刷新的审批列表补齐。）
+   */
+  batchId?: string
+  batchIndex?: number
+  batchTotal?: number
 }
 
 export interface AgentContextCompactedEvent extends AgentRunEventBase {
@@ -489,4 +525,26 @@ export const AGENT_APPROVAL_COPY = {
   unknownRiskConfirmDesc:
     '该操作的风险等级未知，按高危处理，需要二次确认后才能批准。',
   confirmRequired: '该操作需要二次确认，请核对后重新批准',
+  /**
+   * §9.4.1 拆单批次：一次 tool call 影响 >20 对象时拆成 N 张单，
+   * 决策逐张、执行 all-or-nothing（本批全部批准后才用完整参数执行一次）。
+   */
+  batchGroupPrefix: '本批',
+  batchGroupUnit: '张单',
+  batchObjectPrefix: '对象',
+  batchObjectUnit: '个',
+  /** 单卡序号徽标：本批第 i/N 条 */
+  batchIndexPrefix: '本批第',
+  batchIndexSuffix: '条',
+  /** 单卡行内提示：本批全部批准后才执行 */
+  batchPendingHint: '本批全部批准后才执行',
+  /** 组头状态口径 */
+  batchAllPending: '本批全部批准后才执行',
+  batchAllApproved: '本批已全部批准，待执行',
+  batchRejected: '本批不执行（任一单被拒绝）',
+  batchExpired: '本批不执行（任一单已过期）',
+  /** 单卡对象摘要前缀（object_ref.kind + ids） */
+  batchObjectRef: '本单对象',
+  /** 非枚举范围（object_ref.ids 为空，影响面由服务端决定） */
+  batchObjectRange: '按范围执行',
 } as const
