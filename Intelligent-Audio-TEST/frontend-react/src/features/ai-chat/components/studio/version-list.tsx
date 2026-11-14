@@ -25,6 +25,7 @@ import {
   useRestoreStudioDocumentVersion,
   useStudioDocumentVersions,
 } from '@/application/reports/use-report-studio'
+import { resolveApiErrorMessage } from '@/features/ai-chat/lib/api-error-message'
 
 type VersionListProps = {
   docId: string
@@ -74,10 +75,12 @@ export function VersionList({
       })
       onOpenChange(false)
     } catch (error) {
+      // 同 document-panel 保存：message 为空的 ApiError 不得让失败提示整块消失（P2-1）
       setRestoreError(
-        error instanceof Error
-          ? error.message
-          : '恢复失败（版本可能已变化，请重新打开版本列表）'
+        resolveApiErrorMessage(
+          error,
+          '恢复失败（版本可能已变化，请重新打开版本列表）'
+        )
       )
     } finally {
       setRestoringVersion(null)

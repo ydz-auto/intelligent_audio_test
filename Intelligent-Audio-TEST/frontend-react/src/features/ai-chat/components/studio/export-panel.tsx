@@ -29,6 +29,7 @@ import {
   useCreateStudioExportJob,
   useStudioExportJob,
 } from '@/application/reports/use-report-studio'
+import { resolveApiErrorMessage } from '@/features/ai-chat/lib/api-error-message'
 import { downloadStudioExportBlob } from '@/infrastructure/api/reportStudioApi'
 
 type ExportPanelProps = {
@@ -65,6 +66,12 @@ export function ExportPanel({
   const isActive = createExport.isPending || isStudioExportActive(job)
   const isDone = job?.status === StudioExportStatus.DONE
   const isFailed = job?.status === StudioExportStatus.FAILED
+  /**
+   * 进度查询失败时 job 为 null → isActive=false，若不禁用「导出」钮，用户点一下
+   * 就是**第二个导出作业**（P3-1）。保留 exportId、提供「重试查询」，并在重复查询
+   * 成功（或换格式清掉 exportId）之前禁止新建。
+   */
+  const jobQueryError = exportId !== null && jobQuery.isError
 
   const handleStart = async () => {
     setDownloadError(null)
@@ -97,18 +104,18 @@ export function ExportPanel({
       // 延迟释放，避免部分浏览器还没开始下载就失效
       window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
     } catch (error) {
-      setDownloadError(
-        error instanceof Error ? error.message : '下载失败，请重试'
-      )
+      setDownloadError(resolveApiErrorMessage(error, '下载失败，请重试'))
     } finally {
       setIsDownloading(false)
     }
   }
 
   const createError =
-    createExport.error instanceof Error ? createExport.error.message : null
+    createExport.error != null
+      ? resolveApiErrorMessage(createExport.error, '创建导出作业失败，请重试')
+      : null
   const jobError = jobQuery.isError
-    ? '导出进度查询失败，请重试'
+    ? resolveApiErrorMessage(jobQuery.error, '导出进度查询失败，请重试')
     : (job?.error ?? null)
 
   return (
@@ -188,9 +195,34 @@ export function ExportPanel({
           </div>
         ) : null}
 
-        {(createError || (jobQuery.isError && !isFailed)) && (
+        {jobQueryError && !isFailed && (
+          <div
+            className='space-y-1.5 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive'
+            data-testid='studio-export-query-error'
+          >
+            <p className='font-medium'>导出进度查询失败</p>
+            <p className='break-words'>{jobError}</p>
+            <div className='flex items-center justify-between gap-2'>
+              <span className='text-muted-foreground'>
+                作业仍在后端执行，先重试查询，避免重复创建。
+              </span>
+              <Button
+                className='h-7 shrink-0 px-2 text-xs'
+                data-testid='studio-export-requery'
+                onClick={() => void jobQuery.refetch()}
+                size='sm'
+                type='button'
+                variant='outline'
+              >
+                重试查询
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {createError && (
           <p className='rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive'>
-            {createError || jobError}
+            {createError}
           </p>
         )}
 
@@ -236,7 +268,7 @@ export function ExportPanel({
             <Button
               className='gap-1.5'
               data-testid='studio-export-start'
-              disabled={!canExport || isActive}
+              disabled={!canExport || isActive || jobQueryError}
               onClick={() => void handleStart()}
               size='sm'
               type='button'

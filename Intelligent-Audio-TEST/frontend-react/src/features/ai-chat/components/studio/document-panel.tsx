@@ -42,6 +42,7 @@ import {
   StudioSourceType,
 } from '@/domain/models/report-studio'
 import { usePendingApprovals } from '@/features/ai-chat/hooks/use-pending-approvals'
+import { resolveApiErrorMessage } from '@/features/ai-chat/lib/api-error-message'
 import { cn } from '@/lib/utils'
 
 import { ExportPanel } from './export-panel'
@@ -142,9 +143,19 @@ export function DocumentPanel({
     setSaveError(null)
   }, [reportId, activeSummary?.docId])
 
+  /**
+   * 无上下文时不能拼「报告 #null」（P3-2）：直接开工作模式、或任务上下文还没解析出
+   * 报告 id 时，标题用中性的「报告工作模式」，来源 ID 由底部来源卡给出。
+   */
   const sourceTitle =
     sourceLabel?.trim() ||
-    (sourceKind === 'task' ? `任务 #${sourceId}` : `报告 #${reportId}`)
+    (sourceKind === 'task'
+      ? sourceId
+        ? `任务 #${sourceId}`
+        : '报告工作模式'
+      : reportId !== null
+        ? `报告 #${reportId}`
+        : '报告工作模式')
 
   const handleCreateDraft = async () => {
     if (reportId === null) return
@@ -182,10 +193,13 @@ export function DocumentPanel({
       })
       setEditing(false)
     } catch (error) {
+      // ApiError 的网络失败 / 只有 detail 的错误体 message 为空，必须用 userMessage 兜底，
+      // 否则 saveError 为空串、条件渲染吞掉提示（P2-1）
       setSaveError(
-        error instanceof Error
-          ? error.message
-          : '保存失败（版本可能已变化，请刷新后重试）'
+        resolveApiErrorMessage(
+          error,
+          '保存失败（版本可能已变化，请刷新后重试）'
+        )
       )
     }
   }
@@ -194,7 +208,9 @@ export function DocumentPanel({
     usePendingApprovals(runId ?? null)
 
   const createError =
-    createDraft.error instanceof Error ? createDraft.error.message : null
+    createDraft.error != null
+      ? resolveApiErrorMessage(createDraft.error, '起草失败，请重试')
+      : null
   const isBinarySource =
     doc?.sourceFormat != null &&
     (STUDIO_BINARY_SOURCE_FORMATS as readonly string[]).includes(doc.sourceFormat)

@@ -161,7 +161,8 @@ export interface StudioDocumentVersion {
   version: number
   markdownContent: string
   parentVersion: number | null
-  snapshotReason: string
+  /** 已知枚举优先按 `StudioSnapshotReasonValue` 理解；后端新增原因时仍可透传原串 */
+  snapshotReason: StudioSnapshotReasonValue | string
   createdAt: string | null
   createdBy: number | null
 }
