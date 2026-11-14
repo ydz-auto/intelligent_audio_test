@@ -143,6 +143,21 @@ function approvalRequired(
 /** 捕获 API 层订阅 → 由用例手动推事件 */
 let streamOptions: SubscribeAgentRunEventsOptions | null = null
 
+function skillDraftSuggested(sequence: number): AgentRunEvent {
+  return {
+    type: AGENT_EVENT_TYPE.SKILL_DRAFT_SUGGESTED,
+    runId: 'r-1',
+    sequence,
+    timestamp: 't',
+    suggestedName: 'studio-export-report',
+    description: '基于本次 run 的执行流程沉淀的 Skill 草案',
+    toolsUsed: ['report_get_facts', 'studio_request_export'],
+    sourceSkill: 'platform-reference',
+    created: false,
+    requiresConfirmation: true,
+  }
+}
+
 /** 共享状态复位（模块级 store 跨用例存活，必须每个用例清干净） */
 function resetSharedState() {
   window.localStorage.clear()
@@ -239,6 +254,33 @@ describe('useAgentRun（共享单一实例）', () => {
     expect(result.current.run?.status).toBe(AGENT_RUN_STATUS.SUCCEEDED)
     // 终态后清 run id（不再有进行中的 run）
     expect(useAiChatSession.getState().agentRunId).toBeNull()
+  })
+
+  it('skill_draft_suggested：建议留在 assistant 气泡上，run_finished 收口不清掉', async () => {
+    const { result } = renderHook(() => useAgentRun())
+
+    await act(async () => {
+      await result.current.send('把导出流程沉淀成 Skill')
+    })
+
+    act(() => {
+      streamOptions?.onEvent(messageDelta(1, 'm-1', '可以沉淀'))
+      // 后端在 run 正常结束前先下发建议，再发 run_finished
+      streamOptions?.onEvent(skillDraftSuggested(2))
+      streamOptions?.onEvent(runFinished(3))
+    })
+
+    const message = useAiChatSession.getState().messages[1]
+    expect(message.skillSuggestion).toEqual({
+      suggestedName: 'studio-export-report',
+      description: '基于本次 run 的执行流程沉淀的 Skill 草案',
+      toolsUsed: ['report_get_facts', 'studio_request_export'],
+      sourceSkill: 'platform-reference',
+      created: false,
+      requiresConfirmation: true,
+    })
+    expect(message.status).toBe('complete')
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
   })
 
   it('两宿主同源（INT-2507 核心）：一侧发 run，另一侧同 phase 且不能再发一条', async () => {

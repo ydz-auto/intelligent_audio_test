@@ -30,6 +30,7 @@ import { DataSources } from './data-sources'
 import { DocumentChangeCard } from './document-change-card'
 import { MessageError } from './message-error'
 import { MessageMetadata } from './message-metadata'
+import { SkillSuggestionCard } from './skill-suggestion-card'
 import { ToolCallCard } from './tool-call-card'
 
 type AiChatMessageContentProps = {
@@ -130,6 +131,10 @@ export function AiChatMessageContent({
         message.documentChanges?.map((change) => (
           <DocumentChangeCard change={change} key={change.documentId} />
         ))}
+
+      {message.skillSuggestion && (
+        <SkillSuggestionCard suggestion={message.skillSuggestion} />
+      )}
 
       {showLoader && (
         <div className='flex items-center gap-2 py-2'>

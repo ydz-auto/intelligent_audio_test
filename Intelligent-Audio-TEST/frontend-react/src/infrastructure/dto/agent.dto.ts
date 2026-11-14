@@ -214,6 +214,14 @@ export function toAgentBudget(value: unknown): AgentRunBudget | undefined {
     : undefined
 }
 
+/** 字符串数组（缺失 / 非数组返回空列表；剔除非字符串项） */
+function toStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => toStringValue(item))
+    .filter((item): item is string => Boolean(item))
+}
+
 /** snake_case sourceRefs → camelCase 域对象（非数组/字段缺失返回 undefined） */
 export function toAgentSourceRefs(value: unknown): AgentEventSourceRef[] | undefined {
   if (!Array.isArray(value)) return undefined
@@ -562,6 +570,22 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
         droppedCount: toFiniteNumber(dto['dropped_count']),
         debug: dto['debug'] === true,
       }
+    case AGENT_EVENT_TYPE.SKILL_DRAFT_SUGGESTED: {
+      // 载荷 {suggested_name, description, tools_used, source_skill, created,
+      // requires_confirmation}；没有 name 的建议无法落成草稿，按未知事件忽略。
+      const suggestedName = toStringValue(dto['suggested_name'])
+      if (!suggestedName) return null
+      return {
+        ...base,
+        type: AGENT_EVENT_TYPE.SKILL_DRAFT_SUGGESTED,
+        suggestedName,
+        description: toStringValue(dto['description']) ?? '',
+        toolsUsed: toStringList(dto['tools_used']),
+        sourceSkill: toStringValue(dto['source_skill']),
+        created: dto['created'] === true,
+        requiresConfirmation: dto['requires_confirmation'] !== false,
+      }
+    }
     case AGENT_EVENT_TYPE.RUN_FINISHED: {
       // 真实载荷 {status, reason, error}：status 必填；异常缺失时按 error 判定，
       // 无 error 才视为成功（不能把取消 / 预算超限一律显示成功）。

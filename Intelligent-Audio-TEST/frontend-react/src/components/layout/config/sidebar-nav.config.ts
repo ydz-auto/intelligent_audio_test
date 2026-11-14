@@ -1,6 +1,7 @@
 import {
   Activity,
   AudioWaveform,
+  BookOpen,
   Box,
   ClipboardList,
   FileBarChart,
@@ -59,6 +60,14 @@ export const ROOT_SIDEBAR_NAV: NavGroup[] = [
         url: '/agent-providers',
         icon: KeyRound,
         requiredPermission: 'agent:provider:manage',
+      },
+      {
+        // INT-2550 Skill 管理（§4.4 / §11）：与模型供应商同组同规范，
+        // 权限码 agent:skill:manage 与网关 / 路由守卫同一集合
+        title: 'Skill 管理',
+        url: '/agent-skills',
+        icon: BookOpen,
+        requiredPermission: 'agent:skill:manage',
       },
     ],
   },
