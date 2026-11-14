@@ -9,6 +9,9 @@
    **该轮**的模型请求里，而不是等下一轮从事件回放才补上。
 3. **P2 失败暂停的继续连带确认预算暂停点**：因连续失败暂停后点「继续」，
    80% 预算暂停仍必须停下来交用户决策。
+4. **P1 长 run 模型历史被截断**：``_messages_for_run`` 只取前
+   ``event_fetch_limit`` 条事件，长 run 的最近轮次整段丢失（最老的轮次在、
+   最近的没了）。这里同样用小窗口模拟，断言模型请求保留全部轮次。
 """
 import os
 
@@ -246,3 +249,62 @@ def test_resume_from_failures_pause_keeps_budget_pause(tmp_path):
     assert pauses[-1].payload['ratio'] >= 0.8
     assert status_of(container, run.id) is RunStatus.WAITING_APPROVAL
     container.shutdown()
+
+
+# ---------------------------------------------------------------- P1 历史完整性
+
+def _assistant_texts(request) -> list:
+    return [message.content or '' for message in request.messages
+            if message.role == 'assistant']
+
+
+def test_long_run_history_keeps_recent_turns(tmp_path, monkeypatch):
+    """事件超过扫描窗口时，最近的轮次仍必须回灌模型（旧实现只取最前 N 条）。"""
+    monkeypatch.setattr(Config, 'EVENT_SCAN_LIMIT', SMALL_SCAN_WINDOW)
+    llm = FakeLlm(
+        [_text_tool_turn(index, parts=4, delta=f'T{index}-')
+         for index in range(5)] + [text_turn(f'完成 {MARKER}')])
+    gateway = FakeToolGateway(tools=[read_tool('task_query')])
+    container, _engine, _sf = make_auto_stack(
+        tmp_path, llm, gateway=gateway, name='int2474_long_history.db',
+        auto_budget_defaults=auto_budget(max_rounds=20, max_tool_calls=50))
+    run = start_run(container)
+
+    assert status_of(container, run.id) is RunStatus.SUCCEEDED
+    assert events_of(container, run.id)[-1].sequence > SMALL_SCAN_WINDOW
+    # 最后一轮请求必须看到此前每一轮（旧实现窗口之后 turn 全部缺失）
+    history = '\n'.join(_assistant_texts(llm.requests[-1]))
+    for index in range(5):
+        assert f'T{index}-' in history, f'turn{index} 的历史丢失'
+    container.shutdown()
+
+
+def test_resumed_request_rebuilds_history_beyond_scan_window(tmp_path,
+                                                             monkeypatch):
+    """重启 + 继续后的第一轮请求仍能重建暂停前的完整历史（验收 4）。"""
+    monkeypatch.setattr(Config, 'EVENT_SCAN_LIMIT', SMALL_SCAN_WINDOW)
+    llm = FakeLlm([_text_tool_turn(index, parts=4, delta=f'T{index}-')
+                   for index in range(10)])
+    gateway = FakeToolGateway(tools=[read_tool('task_query')])
+    budget = auto_budget(max_rounds=20, max_tool_calls=5)
+    container_a, _engine_a, _sf_a = make_auto_stack(
+        tmp_path, llm, gateway=gateway, name='int2474_long_resume.db',
+        auto_budget_defaults=budget)
+    run = start_run(container_a)
+    assert status_of(container_a, run.id) is RunStatus.WAITING_APPROVAL
+    assert len(events_by_type(container_a, run.id, 'auto_step')) == 4
+    assert events_of(container_a, run.id)[-1].sequence > SMALL_SCAN_WINDOW
+    container_a.shutdown()
+
+    container_b, _engine_b, _sf_b = make_auto_stack(
+        tmp_path, llm, gateway=gateway, name='int2474_long_resume.db',
+        auto_budget_defaults=budget)
+    for run_id in container_b.recovery.recover():
+        container_b.executor.submit(run_id)
+    requests_before = len(llm.requests)
+    resume(container_b, run.id)
+
+    history = '\n'.join(_assistant_texts(llm.requests[requests_before]))
+    for index in range(4):
+        assert f'T{index}-' in history, f'暂停前 turn{index} 的历史丢失'
+    container_b.shutdown()

@@ -32,7 +32,8 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from typing import (
-    Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, TYPE_CHECKING,
+    Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple,
+    TYPE_CHECKING,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - 仅类型标注，避免应用层模块循环导入
@@ -46,7 +47,7 @@ from agent_service.domain.enums import (
 from agent_service.domain.exceptions import RunCancelled
 from agent_service.domain.model.context_budget import ContextBudget, ContextSection
 from agent_service.domain.model.entities import (
-    AgentArtifact, AgentContextSnapshot, AgentRun, LlmMessage,
+    AgentArtifact, AgentContextSnapshot, AgentRun, AgentRunEvent, LlmMessage,
 )
 from agent_service.domain.ports.artifact_store import (
     ArtifactStore, NullArtifactStore,
@@ -682,16 +683,34 @@ class ContextAssembler:
 
     # ------------------------------------------------------------ helpers
 
+    def _run_events(self, run_id: str) -> Iterator[AgentRunEvent]:
+        """分页读取 run 的整条事件流（单页 ``event_fetch_limit`` 只作页大小）。
+
+        长 run 的 message_delta 每个 SSE chunk 一条（Auto 60 轮可达数万条），
+        只取前 N 条会把最近的轮次整段丢掉，模型只看得到最早的几轮
+        （INT-2474 返工 P1）。历史体量由 L1~L3 压缩收口，读取本身不截断。
+        """
+        cursor = 0
+        page_size = max(1, int(self._event_fetch_limit))
+        while True:
+            events = self._events.list_after(run_id, cursor, page_size)
+            if not events:
+                return
+            yield from events
+            advance = int(getattr(events[-1], 'sequence', cursor) or 0)
+            if advance <= cursor:  # 防御：sequence 不前进则不空转
+                return
+            cursor = advance
+
     def _messages_for_run(self, run: AgentRun,
                           start_turn: int) -> Tuple[List[ContextMessage], int]:
-        events = self._events.list_after(run.id, 0, self._event_fetch_limit)
         user_message = ''
         turns: Dict[int, _Turn] = {}
         # Auto 续跑提示（INT-2474）：auto_step 事件里的 instruction 是该轮发
         # 给模型的 user 消息（目标驱动续跑 / 用户继续）。按事件 turn 建索引，
         # 与消息轮次编号分开 —— 同一会话里轮次跨 run 累加。
         auto_instructions: Dict[int, str] = {}
-        for event in events:
+        for event in self._run_events(run.id):
             payload = event.payload or {}
             if event.type is EventType.RUN_STARTED:
                 user_message = payload.get('user_message') or ''
