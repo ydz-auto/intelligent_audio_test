@@ -2,7 +2,8 @@
  * Skill 列表（features/agent-skills）。
  *
  * 行内展示：名称、来源标签、状态、版本、contentHash 前 8 位、更新时间、被遮蔽
- * 标注；PLATFORM 行只读（仅 fork / 导出），USER 行另有编辑 / 发布 / 停用 / 删除。
+ * 标注；PLATFORM 行只读（仅 fork / 导出）；TENANT 共享行非本人可写，只给导出
+ * （停用 / 审核动作由 TENANT 审核流补齐）；USER 行另有编辑 / 停用 / 删除。
  * 加载 / 空 / 错误三态齐全；空态只在「无自定义 Skill」时出现，平台 Skill 仍照常列出。
  */
 import {
@@ -307,18 +308,22 @@ function AgentSkillRow({
                 <Download aria-hidden='true' className='size-3.5' />
                 {AGENT_SKILLS_COPY.exportButton}
               </Button>
-              <Button
-                aria-label={`${AGENT_SKILLS_COPY.deleteButton} ${skill.name}`}
-                className='text-destructive hover:bg-destructive/10'
-                disabled={busy}
-                onClick={onDelete}
-                size='sm'
-                type='button'
-                variant='ghost'
-              >
-                <Trash2 aria-hidden='true' className='size-3.5' />
-                {AGENT_SKILLS_COPY.deleteButton}
-              </Button>
+              {/* 删除只对本人（USER）Skill 有意义：TENANT 共享 Skill 服务端恒 409
+                  （`TENANT 共享 Skill 不支持删除，请使用停用`），不展示必然失败的动作 */}
+              {writable && (
+                <Button
+                  aria-label={`${AGENT_SKILLS_COPY.deleteButton} ${skill.name}`}
+                  className='text-destructive hover:bg-destructive/10'
+                  disabled={busy}
+                  onClick={onDelete}
+                  size='sm'
+                  type='button'
+                  variant='ghost'
+                >
+                  <Trash2 aria-hidden='true' className='size-3.5' />
+                  {AGENT_SKILLS_COPY.deleteButton}
+                </Button>
+              )}
             </>
           )}
         </div>
