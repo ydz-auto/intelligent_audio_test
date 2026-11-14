@@ -11,7 +11,7 @@ audio/playback/spl/device 等只读代理返回的 raw dict/list，转换为 dat
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 
 @dataclass
@@ -290,7 +290,9 @@ class CommandResultDTO:
     success: bool = False
     message: Optional[str] = None
     data: Any = None
-    code: Optional[int] = None
+    #: 业务码：既有服务为 HTTP 数字码；设备 UI 端点（INT-2578）为
+    #: ``UiCaptureErrorCode`` 字符串码，故放宽为 int | str
+    code: Optional[Union[int, str]] = None
 
     def get(self, key, default=None):
         """Dict-like access for backward compatibility with .get() calls."""
