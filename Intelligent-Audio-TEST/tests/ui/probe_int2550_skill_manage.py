@@ -243,9 +243,23 @@ def rows(drv):
 
 def row_by_name(drv, name):
     for row in rows(drv):
-        if row.get_attribute('data-skill-name') == name:
-            return row
+        try:
+            if row.get_attribute('data-skill-name') == name:
+                return row
+        except StaleElementReferenceException:  # 查询回填时行节点会被替换
+            continue
     return None
+
+
+def row_status(drv, name):
+    """重取行再读状态；列表 refetch 期间旧句柄失效返回 None（交给调用方重试）。"""
+    row = row_by_name(drv, name)
+    if row is None:
+        return None
+    try:
+        return row.get_attribute('data-skill-status')
+    except StaleElementReferenceException:
+        return None
 
 
 def tab_count(drv, group, label):
@@ -256,6 +270,43 @@ def tab_count(drv, group, label):
         if parts and parts[0] == label:
             return int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
     return None
+
+
+def click_dialog_confirm(drv, text, timeout=25):
+    """点二次确认对话框里的确认按钮。
+
+    AlertDialog 重渲染会让 find_elements 拿到的句柄失效（StaleElementReference），
+    所以每轮重新取对话框内按钮；点完等对话框移除，避免连点重复发请求。
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        dialogs = drv.find_elements(By.CSS_SELECTOR, '[role="alertdialog"]')
+        if not dialogs:
+            return
+        target = None
+        clicked = False
+        for dialog in dialogs:
+            try:
+                for candidate in dialog.find_elements(By.TAG_NAME, 'button'):
+                    if (candidate.text or '').strip() == text:
+                        target = candidate
+            except StaleElementReferenceException:
+                target = None
+        if target is not None:
+            try:
+                click(drv, target)
+                clicked = True
+            except StaleElementReferenceException:
+                pass
+        if clicked:
+            try:  # 提交成功 → 对话框关闭（旧句柄失效）
+                WebDriverWait(drv, 3).until(
+                    EC.staleness_of(dialogs[-1]))
+                return
+            except TimeoutException:
+                continue  # 对话框还在：重取再点
+        time.sleep(0.4)
+    raise TimeoutError('确认对话框未关闭：%s' % text)
 
 
 def click_button(row, text):
@@ -712,9 +763,8 @@ def run(drv, base, skill_api):
 
     # 10 停用（二次确认 → DISABLED，状态页签计数同步）
     click_row_action(drv, name, '停用', '[role="alertdialog"]', 'disable_dialog')
-    click(drv, [b for b in drv.find_elements(By.TAG_NAME, 'button') if b.text.strip() == '停用'][-1])
-    WebDriverWait(drv, 25).until(lambda d: row_by_name(d, name) is not None and
-                                 row_by_name(d, name).get_attribute('data-skill-status') == 'DISABLED')
+    click_dialog_confirm(drv, '停用')
+    WebDriverWait(drv, 25).until(lambda d: row_status(d, name) == 'DISABLED')
     disabled_count = tab_count(drv, 'status', '已停用')
     if not disabled_count:
         step_fail('10_disable', '停用后「已停用」页签计数未同步：%s' % disabled_count)
