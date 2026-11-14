@@ -1,10 +1,9 @@
 /**
  * /ai-chat AI 对话页（Agent 工作台）（interfaces 层；08_AI对话页.md §3.1 三段式装配）。
- * 顶部条 / 全高滚动会话区 / 底部输入区；报告工作模式双栏为增强态变体，
- * Agent 后端立项前整块隐藏（§3.6，入口钮不渲染）。
- * 2026-10-17 新口径：Demo 态四落点标注（顶部条/浮窗头/空态/报告工作模式页脚）；
- * 模型参数注册表移除，仅模型/供应商切换（§3.5/§3.11）；报告上下文选择器
- * Demo 态整块不渲染（§3.5/§3.10，组件树先落，数据交互待后端立项）。
+ * 顶部条 / 全高滚动会话区 / 底部输入区；报告工作模式双栏为增强态变体（§3.6）。
+ * INT-2473 接线：报告工作模式放开，右栏为真实 Report Studio 文档面板
+ * （取数 → 起草 → 版本 → 导出）；输入区左挂报告上下文选择器，数据走真实
+ * GET /reports + GET /tasks，绑定后写入会话 config.reportContext*。
  */
 import { Badge } from '@/components/ui/badge'
 import { PanelRight } from 'lucide-react'
@@ -23,18 +22,29 @@ import {
   normalizeChatChannel,
   type ChatChannel,
   type ChatConfig,
+  type ReportContextOption,
 } from '@/domain/models/aiChat'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
 import { useAgentRunHost } from '@/application/agent/use-agent-run'
+import { useTaskReportId } from '@/application/reports/use-report-studio'
 import { useChatConversation } from '@/features/ai-chat/hooks/use-chat-conversation'
 import { useChatState } from '@/features/ai-chat/hooks/use-chat-state'
 import { useLlmProviders } from '@/features/ai-chat/hooks/use-llm-providers'
+import { useReportContextQueries } from '@/features/ai-chat/hooks/use-report-context'
 import { AiChat } from '@/features/ai-chat/components/chat/ai-chat'
 import { AiChatInput } from '@/features/ai-chat/components/input/ai-chat-input'
+import {
+  ReportContextSelector,
+  type SelectedContext,
+} from '@/features/ai-chat/components/input/report-context-selector'
 import { ProviderManager } from '@/features/ai-chat/components/input/provider-manager'
 import { DocumentPanel } from '@/features/ai-chat/components/studio/document-panel'
 import { DEFAULT_CHAT_CHANNEL, DEMO_COPY } from '@/features/ai-chat/constants'
-import type { AiChatContextStatus } from '@/infrastructure/stores/aiChatSessionStore'
+import { resolveTaskReportErrorMessage } from '@/features/ai-chat/lib/task-report-error'
+import {
+  useAiChatSession,
+  type AiChatContextStatus,
+} from '@/infrastructure/stores/aiChatSessionStore'
 
 /**
  * URL 上下文条（INT-1936）：显示 /ai-chat?report={id} / ?task={id} 绑定的上下文。
@@ -91,18 +101,8 @@ type AiChatPageProps = {
   }
 }
 
-/** 报告工作模式开关：Agent 后端（DSH + Report Studio）立项后置 true（§3.6） */
-const REPORT_WORK_MODE_ENABLED = false
-
-/** 报告工作模式右栏骨架（§3.6 Agent 后端立项前整块不渲染；组件树先落）。
- * Demo 占位不载杜撰数值（红线：不杜撰数据交互面）——翻转开关后仅显空文档骨架与演示注记。 */
-const DEMO_DOCUMENT = [
-  '# 报告文档预览',
-  '',
-  '> 仅演示占位：Agent 后端（DSH + Report Studio）立项后，此处渲染报告工作台文档。',
-  '',
-  'AI 只起草不算数：文档数值全部来自报告七表。',
-].join('\n')
+/** 报告工作模式开关（INT-2473：Report Studio 前端接线完成，默认可用） */
+const REPORT_WORK_MODE_ENABLED = true
 
 export function AiChatPage({ initialContext }: AiChatPageProps) {
   // 宿主登记（INT-2521 收窄）：离开 /ai-chat 路由是明确的取消语义；浮窗若仍开着，
@@ -119,6 +119,74 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     updateConfig,
     clearMessages,
   } = useChatState(initialContext)
+
+  // 平台 Agent 会话 / run（报告工作模式读待审批写操作数）
+  const agentSessionId = useAiChatSession((state) => state.agentSessionId)
+  const agentRunId = useAiChatSession((state) => state.agentRunId)
+
+  // 报告上下文选择器（真实 GET /reports + GET /tasks）
+  const {
+    groups: contextGroups,
+    options: contextOptions,
+    isLoading: isContextLoading,
+    isError: isContextError,
+    refetch: refetchContext,
+  } = useReportContextQueries()
+
+  /** 任务上下文 → 该任务的报告 id（Studio 文档挂在报告上） */
+  const isTaskContext = config.reportContextType === 'task_context'
+  const contextTaskId = Number(config.reportContextId)
+  const taskReportQuery = useTaskReportId(
+    isTaskContext && Number.isFinite(contextTaskId) ? contextTaskId : 0
+  )
+  const boundReportId = isTaskContext
+    ? (taskReportQuery.data ?? null)
+    : config.reportContextId && Number.isFinite(Number(config.reportContextId))
+      ? Number(config.reportContextId)
+      : null
+  /**
+   * 任务 → 报告解析态：解析中 / 接口失败要与「该任务没有报告」「未绑定上下文」
+   * 分开显示（404 = 该任务确实没有报告，由 fetchReportIdByTask 吞成 null）。
+   * 失败文案走 ApiError.userMessage：网络失败 / 只有 detail 的错误体 message 为空，
+   * 用原始 message 会让面板把「解析失败」误显示成「该任务暂无关联报告」。
+   */
+  const isTaskResolvePending = isTaskContext && taskReportQuery.isLoading
+  const taskResolveError =
+    isTaskContext && taskReportQuery.isError
+      ? resolveTaskReportErrorMessage(taskReportQuery.error)
+      : null
+
+  const selectedContextOption = contextOptions.find(
+    (option) => option.id === config.reportContextId
+  )
+  const selectedContext: SelectedContext | null = config.reportContextId
+    ? {
+        id: config.reportContextId,
+        label:
+          config.reportContextLabel ??
+          `${isTaskContext ? '任务' : '报告'} #${config.reportContextId}`,
+        badge: selectedContextOption?.badge ?? '',
+        type: config.reportContextType ?? 'task',
+      }
+    : null
+
+  /** 绑定 / 切换报告上下文：写会话 config（同一会话内的上下文，不重开会话） */
+  const handleSelectContext = (option: ReportContextOption) => {
+    updateConfig('reportContextId', option.id)
+    updateConfig('reportContextLabel', option.label)
+    updateConfig('reportContextType', option.type)
+  }
+
+  const contextSelector = (
+    <ReportContextSelector
+      groups={contextGroups}
+      isError={isContextError}
+      isLoading={isContextLoading}
+      onRetry={refetchContext}
+      onSelect={handleSelectContext}
+      value={selectedContext}
+    />
+  )
 
   const {
     providers,
@@ -267,7 +335,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
 
       {/* 会话区 + 报告工作模式双栏（§3.6：Agent 后端立项前整块不渲染） */}
       {REPORT_WORK_MODE_ENABLED && workModeOpen ? (
-        <div className='flex min-h-0 flex-1'>
+        <div className='relative flex min-h-0 flex-1'>
           <div className='grid min-h-0 min-w-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(22rem,2fr)_minmax(0,3fr)]'>
             <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
               <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
@@ -301,6 +369,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                   channel={channel}
                   compact
                   config={config}
+                  contextSlot={contextSelector}
                   disabled={isGenerating}
                   isStopping={isCancelling}
                   hasMessages={messages.length > 0}
@@ -319,12 +388,28 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                 />
               </div>
             </div>
-            <div className='hidden min-h-0 min-w-0 lg:block'>
+            {/*
+             * lg 以下：文档面板改为覆盖式抽屉（右对齐，占宽 ≤34rem），宽屏才与会话并排。
+             * 原来 <lg 直接 hidden 右栏 → 「报告工作模式」在 <1024px 是死按钮（UX 审计 P2-1）。
+             */}
+            <div className='bg-background absolute inset-y-0 right-0 z-30 block w-full max-w-[34rem] min-h-0 min-w-0 shadow-xl lg:static lg:z-auto lg:w-auto lg:max-w-none lg:bg-transparent lg:shadow-none'>
               <DocumentPanel
-                content={DEMO_DOCUMENT}
-                documentName='报告文档预览'
+                agentSessionId={agentSessionId}
                 onClose={() => setWorkModeOpen(false)}
-                version={1}
+                onRetryResolve={() => void taskReportQuery.refetch()}
+                reportId={boundReportId}
+                resolveError={taskResolveError}
+                resolvePending={isTaskResolvePending}
+                runId={agentRunId}
+                sourceId={config.reportContextId ?? null}
+                sourceKind={
+                  config.reportContextId
+                    ? isTaskContext
+                      ? 'task'
+                      : 'report'
+                    : null
+                }
+                sourceLabel={config.reportContextLabel}
               />
             </div>
           </div>
@@ -363,6 +448,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
             <AiChatInput
               channel={channel}
               config={config}
+              contextSlot={contextSelector}
               disabled={isGenerating}
               isStopping={isCancelling}
               hasMessages={messages.length > 0}

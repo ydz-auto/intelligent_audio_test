@@ -6,7 +6,7 @@
  * compact：全局 Agent 工作台浮窗紧凑形态（§3.1B，输入区 min-h-14）。
  */
 import { Send, Square } from 'lucide-react'
-import { type KeyboardEvent, type RefObject } from 'react'
+import { type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 
 import {
   PromptInput,
@@ -50,6 +50,8 @@ type AiChatInputProps = {
   isStopping?: boolean
   /** 全局 Agent 工作台浮窗紧凑形态（§3.1B） */
   compact?: boolean
+  /** 工具行左侧扩展槽（INT-2473：报告上下文选择器，只传不拥有数据） */
+  contextSlot?: ReactNode
 }
 
 export function AiChatInput({
@@ -71,6 +73,7 @@ export function AiChatInput({
   textareaRef,
   isStopping = false,
   compact = false,
+  contextSlot,
 }: AiChatInputProps) {
   const { canSubmit, shouldShowStop } = getInputControlState({
     disabled,
@@ -159,6 +162,7 @@ export function AiChatInput({
         <PromptInputFooter className='border-border/60 bg-muted/20 dark:bg-muted/10 border-t px-3 py-2.5 backdrop-blur'>
           <div className='flex w-full flex-col gap-2.5 md:flex-row md:items-center md:justify-between'>
             <div className='flex items-center justify-between gap-2 md:justify-start'>
+              {contextSlot}
               <AiChatInputTools
                 channel={channel}
                 config={config}

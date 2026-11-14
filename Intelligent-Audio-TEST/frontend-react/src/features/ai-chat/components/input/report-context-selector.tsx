@@ -1,11 +1,11 @@
 /**
  * 报告上下文选择器（interfaces 层 ai-chat/input；08_AI对话页.md §3.5 对位 newAPI
  * ModelGroupSelector，换形不换件：左列类型分组 / 右列搜索列表，layout 类值照搬）。
- * 前置审核定稿（INT-598 方案A）：组件树先落；Demo 态——Agent 后端立项前——
- * 整块不渲染（§3.5/§3.10），本组件当前不被页面装配；立项后放开渲染并接线现有端点。
+ * INT-2473 接线：数据源改为真实 GET /reports + GET /tasks（use-report-context），
+ * 选项显示来源 ID（报告 #id / 任务 #id）；列表带加载 / 空 / 错误（可重试）态。
  * 桌面 Popover 双列；移动 Sheet bottom（Drawer 依赖 vaul 未引入，用 Sheet 等价版式）。
  */
-import { Check, ChevronsUpDown, FileBarChart } from 'lucide-react'
+import { Check, ChevronsUpDown, FileBarChart, RefreshCw } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -44,6 +44,11 @@ type ReportContextSelectorProps = {
   onSelect: (option: ReportContextOption) => void
   disabled?: boolean
   className?: string
+  /** 上下文数据加载中（真实接口首拉） */
+  isLoading?: boolean
+  /** 上下文数据加载失败（显示错误文案 + 重试） */
+  isError?: boolean
+  onRetry?: () => void
 }
 
 const LAYOUT = {
@@ -67,6 +72,9 @@ export function ReportContextSelector({
   onSelect,
   disabled,
   className,
+  isLoading = false,
+  isError = false,
+  onRetry,
 }: ReportContextSelectorProps) {
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
@@ -116,6 +124,11 @@ export function ReportContextSelector({
       <span className='min-w-0 truncate text-xs'>
         {value?.label ?? '绑定报告上下文'}
       </span>
+      {value?.id && (
+        <span className='text-muted-foreground shrink-0 text-[10px] tabular-nums'>
+          #{value.id}
+        </span>
+      )}
       {value?.badge && (
         <span className='bg-muted text-muted-foreground hidden max-w-20 shrink-0 rounded px-1.5 py-0.5 text-[10px] sm:inline-flex'>
           {value.badge}
@@ -176,7 +189,27 @@ export function ReportContextSelector({
             value={searchQuery}
           />
           <div className={cn('mt-1 overflow-y-auto', LAYOUT.modelList)}>
-            {filteredOptions.length === 0 ? (
+            {isLoading ? (
+              <div className='text-muted-foreground px-3 py-8 text-center text-[12px] leading-5'>
+                正在加载报告与任务…
+              </div>
+            ) : isError ? (
+              <div className='grid place-items-center gap-2 px-3 py-8 text-center text-[12px] leading-5'>
+                <span className='text-destructive'>上下文加载失败</span>
+                {onRetry && (
+                  <Button
+                    className='h-7 gap-1 px-2 text-[11px]'
+                    onClick={onRetry}
+                    size='sm'
+                    type='button'
+                    variant='outline'
+                  >
+                    <RefreshCw className='size-3' />
+                    重试
+                  </Button>
+                )}
+              </div>
+            ) : filteredOptions.length === 0 ? (
               <div className='text-muted-foreground px-3 py-8 text-center text-[12px] leading-5'>
                 未找到匹配报告
               </div>
@@ -198,13 +231,25 @@ export function ReportContextSelector({
                       onClick={() => handleSelect(option)}
                       type='button'
                     >
-                      <span
-                        className={cn(
-                          'min-w-0 truncate',
-                          value?.id === option.id ? 'font-semibold text-foreground' : 'font-medium'
+                      <span className='min-w-0 flex-1'>
+                        <span
+                          className={cn(
+                            'flex items-center gap-1.5 truncate',
+                            value?.id === option.id
+                              ? 'font-semibold text-foreground'
+                              : 'font-medium'
+                          )}
+                        >
+                          <span className='min-w-0 truncate'>{option.label}</span>
+                          <span className='text-muted-foreground shrink-0 text-[10px] tabular-nums'>
+                            #{option.id}
+                          </span>
+                        </span>
+                        {option.description && (
+                          <span className='text-muted-foreground mt-0.5 block truncate text-[10px] font-normal'>
+                            {option.description}
+                          </span>
                         )}
-                      >
-                        {option.label}
                       </span>
                       <Check
                         className={cn(
