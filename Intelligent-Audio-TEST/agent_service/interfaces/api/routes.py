@@ -29,7 +29,7 @@ from agent_service.application.skill_service import SkillDraftPayload
 from agent_service.config.config import Config
 from agent_service.domain.enums import (
     ApprovalDecision, SkillErrorCode, SkillIssueCode, SkillIssueSeverity,
-    SkillScope, SkillStatus,
+    SkillReviewDecision, SkillScope, SkillStatus,
 )
 from agent_service.domain.exceptions import ApprovalExpired, SkillPackageTooLarge
 from agent_service.domain.model.entities import AgentRun, AgentSession
@@ -40,7 +40,7 @@ from agent_service.interfaces.api.schemas import (
     ApprovalDecisionRequest, ApprovalDecisionResponse, ApprovalResponse,
     CreateRunRequest, CreateRunResponse, CreateSessionRequest, RunResponse,
     SessionDetailResponse, SessionResponse, SkillDraftRequest,
-    SkillForkRequest,
+    SkillForkRequest, SkillReviewRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -360,6 +360,14 @@ def _skill_service(request: Request):
     return service
 
 
+def _review_service(request: Request):
+    container = get_container(request)
+    service = getattr(container, 'skill_review_service', None)
+    if service is None:
+        raise HTTPException(status_code=503, detail='Skill 审核服务未就绪')
+    return service
+
+
 def _skill_scope(raw: Optional[str]):
     if not raw:
         return None
@@ -383,7 +391,8 @@ def _skill_status(raw: Optional[str]):
             status_code=400,
             detail={'code': SkillErrorCode.SKILL_STATUS_INVALID.value,
                     'message': f'不支持的 status：{raw}'
-                               '（只能是 DRAFT / ACTIVE / DISABLED）'})
+                               '（只能是 DRAFT / PENDING_REVIEW / ACTIVE'
+                               ' / DISABLED）'})
 
 
 def _reject_identity_fields(payload) -> None:
@@ -425,6 +434,21 @@ def _skill_view_dict(view, *, include_issues: bool = True) -> dict:
     return payload
 
 
+def _review_dict(review) -> dict:
+    """一条审核链记录（``SkillReviewDTO`` 口径）。"""
+    return {
+        'id': review.id,
+        'skill_id': review.skill_id,
+        'version': review.version,
+        'action': review.action.value,
+        'status_from': review.status_from.value,
+        'status_to': review.status_to.value,
+        'reviewer_id': review.reviewer_id,
+        'reason': review.reason,
+        'created_at': _iso(review.created_at),
+    }
+
+
 def _draft_payload(payload) -> SkillDraftPayload:
     # None 原样透传（PUT 语义：未出现的字段不改）
     return SkillDraftPayload(
@@ -438,49 +462,85 @@ def _draft_payload(payload) -> SkillDraftPayload:
 
 @router.post('/skills', status_code=201)
 def create_skill(payload: SkillDraftRequest, request: Request,
+                 scope: Optional[str] = Query(default=None),
                  identity: Identity = Depends(get_identity)):
     """新建草稿（在线编辑入口）。``scope`` / ``owner_id`` / ``tenant_id``
-    由服务端按登录身份填，请求体携带一律 400。"""
+    由服务端按登录身份填，请求体携带一律 400。
+
+    INT-2551：作用域只经查询参数 ``?scope=TENANT`` 选择（缺省 ``USER``）。
+    请求体里的 ``scope`` 仍然是 400 —— 服务端身份字段不接受调用方指定。
+    ``TENANT`` 要求租户管理员双条件，服务层复核（非管理员 403）。
+    """
     _reject_identity_fields(payload)
     service = _skill_service(request)
     view = service.create(
         _draft_payload(payload), owner_id=identity.user_id,
         tenant_id=identity.tenant_id, permissions=identity.permissions,
-        created_by=identity.user_id)
+        created_by=identity.user_id,
+        scope=_skill_scope(scope) or SkillScope.USER,
+        is_admin=identity.is_admin)
     return _skill_view_dict(view)
+
+
+@router.get('/skills/reviews')
+def list_skill_reviews(request: Request,
+                       status: Optional[str] = Query(default=None),
+                       identity: Identity = Depends(get_identity)):
+    """管理员待审队列（INT-2551）：本租户当前处在该状态的 Skill 最近记录。
+
+    ``?status=`` 缺省 ``PENDING_REVIEW``；只返回**本租户**的 TENANT 级记录，
+    跨租户不可见。队列口径 =「Skill 当前状态」+「把它带到该状态的那条
+    迁移记录」，同一条 Skill 只出现一次。
+    """
+    service = _review_service(request)
+    target = _skill_status(status) or SkillStatus.PENDING_REVIEW
+    items = service.pending_queue(tenant_id=identity.tenant_id, status=target)
+    return {'items': [_review_dict(item) for item in items]}
 
 
 @router.put('/skills/{skill_id}')
 def update_skill(skill_id: str, payload: SkillDraftRequest, request: Request,
                  identity: Identity = Depends(get_identity)):
-    """保存草稿（version +1）。ACTIVE Skill 保存后回到 DRAFT，需重新发布。"""
+    """保存草稿（version +1）。ACTIVE Skill 保存后回到 DRAFT，需重新发布。
+
+    INT-2551：``PENDING_REVIEW`` 期间冻结（409 ``SKILL_STATUS_INVALID``），
+    必须先 ``withdraw`` 再改。
+    """
     _reject_identity_fields(payload)
     service = _skill_service(request)
     view = service.update(
         skill_id, _draft_payload(payload),
         owner_id=identity.user_id, tenant_id=identity.tenant_id,
-        permissions=identity.permissions)
+        permissions=identity.permissions, is_admin=identity.is_admin)
     return _skill_view_dict(view)
 
 
 @router.delete('/skills/{skill_id}', status_code=204)
 def delete_skill(skill_id: str, request: Request,
                  identity: Identity = Depends(get_identity)):
-    """删除自定义 Skill（立即从 L1 / 激活候选消失；版本行保留供回放）。"""
+    """删除自定义 Skill（立即从 L1 / 激活候选消失；版本行保留供回放）。
+
+    TENANT 共享 Skill 不可删除（409），退出机制是停用。
+    """
     service = _skill_service(request)
     service.delete(skill_id, owner_id=identity.user_id,
-                   tenant_id=identity.tenant_id)
+                   tenant_id=identity.tenant_id,
+                   permissions=identity.permissions,
+                   is_admin=identity.is_admin)
     return Response(status_code=204)
 
 
 @router.post('/skills/{skill_id}/publish')
 def publish_skill(skill_id: str, request: Request,
                   identity: Identity = Depends(get_identity)):
-    """发布门槛：≥3 条 golden tasks 且触发判定通过才 ACTIVE。"""
+    """发布门槛：≥3 条 golden tasks 且触发判定通过才 ACTIVE。
+
+    INT-2551：TENANT 级没有这条直通路径（409），必须走审核流。
+    """
     service = _skill_service(request)
     result = service.publish(
         skill_id, owner_id=identity.user_id, tenant_id=identity.tenant_id,
-        permissions=identity.permissions)
+        permissions=identity.permissions, is_admin=identity.is_admin)
     return {
         'skill': _skill_view_dict(
             service.get(skill_id, owner_id=identity.user_id,
@@ -494,11 +554,88 @@ def publish_skill(skill_id: str, request: Request,
 @router.post('/skills/{skill_id}/disable')
 def disable_skill(skill_id: str, request: Request,
                   identity: Identity = Depends(get_identity)):
-    """停用：立即从 L1 / 激活候选消失；在办 run 按快照继续。"""
+    """停用：立即从 L1 / 激活候选消失；在办 run 按快照继续。
+
+    TENANT 级由租户管理员执行，并落一条 ``DISABLE`` 审计（强制停用）。
+    """
     service = _skill_service(request)
-    view = service.disable(skill_id, owner_id=identity.user_id,
-                           tenant_id=identity.tenant_id)
+    view = service.disable(
+        skill_id, owner_id=identity.user_id, tenant_id=identity.tenant_id,
+        permissions=identity.permissions, is_admin=identity.is_admin)
     return _skill_view_dict(view)
+
+
+@router.post('/skills/{skill_id}/submit-review')
+def submit_skill_review(skill_id: str, request: Request,
+                        identity: Identity = Depends(get_identity)):
+    """提交审核：``DRAFT → PENDING_REVIEW``（INT-2551）。
+
+    提交即跑与 INT-2549 完全相同的校验 / 注入检测 / 发布门槛；未达标不能
+    进入审批队列。提交后内容冻结，``PUT`` 保存被拒，须先撤回。
+    """
+    service = _review_service(request)
+    result = service.submit(
+        skill_id, owner_id=identity.user_id, tenant_id=identity.tenant_id,
+        permissions=identity.permissions, is_admin=identity.is_admin)
+    return {
+        'skill': _skill_view_dict(result.skill),
+        'review': _review_dict(result.review),
+        'gate': result.gate.to_dict(),
+    }
+
+
+@router.post('/skills/{skill_id}/review')
+def decide_skill_review(skill_id: str, payload: SkillReviewRequest,
+                        request: Request,
+                        identity: Identity = Depends(get_identity)):
+    """批准 / 驳回（``{decision: APPROVE|REJECT, reason?}``）。
+
+    驳回必须带原因（缺省 400）；批准前复跑一遍校验与门槛；创建人不得审批
+    自己提交的版本（``SKILL_SELF_REVIEW_FORBIDDEN``）；并发审批只有一次生效。
+    """
+    try:
+        decision = SkillReviewDecision(payload.decision.strip().upper())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail={'code': SkillErrorCode.SKILL_VALIDATION_FAILED.value,
+                    'message': f'不支持的审核决议：{payload.decision}'
+                               '（只能是 APPROVE / REJECT）'})
+    service = _review_service(request)
+    result = service.decide(
+        skill_id, decision, owner_id=identity.user_id,
+        tenant_id=identity.tenant_id, permissions=identity.permissions,
+        is_admin=identity.is_admin, reason=payload.reason or '')
+    return {
+        'skill': _skill_view_dict(result.skill),
+        'review': _review_dict(result.review),
+        'gate': result.gate.to_dict(),
+    }
+
+
+@router.post('/skills/{skill_id}/withdraw')
+def withdraw_skill_review(skill_id: str, request: Request,
+                          identity: Identity = Depends(get_identity)):
+    """撤回提交：``PENDING_REVIEW → DRAFT``，之后可继续修改再提交。"""
+    service = _review_service(request)
+    result = service.withdraw(
+        skill_id, owner_id=identity.user_id, tenant_id=identity.tenant_id,
+        permissions=identity.permissions, is_admin=identity.is_admin)
+    return {
+        'skill': _skill_view_dict(result.skill),
+        'review': _review_dict(result.review),
+        'gate': result.gate.to_dict(),
+    }
+
+
+@router.get('/skills/{skill_id}/reviews')
+def list_skill_review_history(skill_id: str, request: Request,
+                              identity: Identity = Depends(get_identity)):
+    """单个 Skill 的完整审批链（谁、哪版、什么理由，升序）。"""
+    service = _review_service(request)
+    items = service.history(
+        skill_id, owner_id=identity.user_id, tenant_id=identity.tenant_id)
+    return {'items': [_review_dict(item) for item in items]}
 
 
 @router.post('/skills/{skill_id}/fork', status_code=201)

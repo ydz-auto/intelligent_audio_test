@@ -5,24 +5,30 @@
 唯一性由数据库局部唯一索引兜底（``(scope=USER, owner_id, name)`` /
 ``(scope=TENANT, tenant_id, name)``）；冲突转 ``SkillNameConflict``，
 不静默覆盖。
+
+INT-2551 追加 ``SqlSkillReviewRepository``（``agent_skill_review`` 审核链，
+只追加不更新 / 删除）与 ``transition_if`` 条件状态迁移（并发审批互斥）。
 """
 import uuid
-from typing import List, Optional, Sequence
+from typing import Iterable, List, Optional, Sequence
 
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 
-from agent_service.domain.enums import SkillScope, SkillStatus
+from agent_service.domain.enums import (
+    SkillReviewAction, SkillScope, SkillStatus,
+)
 from agent_service.domain.exceptions import SkillNameConflict
 from agent_service.domain.model.agent_skill import (
-    AgentRunSkill, AgentSkill, AgentSkillVersion,
+    AgentRunSkill, AgentSkill, AgentSkillReview, AgentSkillVersion,
 )
 from agent_service.domain.repositories import (
-    AgentRunSkillRepository, AgentSkillRepository,
+    AgentRunSkillRepository, AgentSkillRepository, SkillReviewRepository,
 )
 from agent_service.infrastructure.persistence.models.agent_models import (
     AgentRunSkill as AgentRunSkillPO,
     AgentSkill as AgentSkillPO,
+    AgentSkillReview as AgentSkillReviewPO,
     AgentSkillVersion as AgentSkillVersionPO,
 )
 from shared.utils.time_utils import utcnow
@@ -65,6 +71,17 @@ def _to_run_skill(row: AgentRunSkillPO) -> AgentRunSkill:
         run_id=row.run_id, skill_id=row.skill_id,
         version=row.version or '0', content_hash=row.content_hash or '',
         activated_at=row.activated_at,
+    )
+
+
+def _to_skill_review(row: AgentSkillReviewPO) -> AgentSkillReview:
+    return AgentSkillReview(
+        id=row.id, skill_id=row.skill_id, version=row.version or '0',
+        action=SkillReviewAction(row.action),
+        status_from=SkillStatus(row.status_from),
+        status_to=SkillStatus(row.status_to),
+        reviewer_id=row.reviewer_id, reason=row.reason or '',
+        tenant_id=row.tenant_id, created_at=row.created_at,
     )
 
 
@@ -204,6 +221,30 @@ class SqlAgentSkillRepository(_BaseRepo, AgentSkillRepository):
         finally:
             db.close()
 
+    def transition_if(self, skill_id: str,
+                      from_statuses: Iterable[SkillStatus],
+                      target: SkillStatus) -> bool:
+        """条件状态迁移：``UPDATE ... WHERE id=? AND status IN (...)`。
+
+        并发审核的唯一性交给数据库：两个管理员同时批准同一版本时只有一条
+        ``UPDATE`` 命中，另一次返回 ``False``（应用层按状态冲突处理）。
+        """
+        from_values = [status.value for status in from_statuses]
+        if not from_values:
+            return False
+        db = self._session()
+        try:
+            hit = db.query(AgentSkillPO).filter(
+                AgentSkillPO.id == skill_id,
+                AgentSkillPO.status.in_(from_values),
+            ).update(
+                {'status': target.value, 'updated_at': utcnow()},
+                synchronize_session=False)
+            db.commit()
+            return bool(hit)
+        finally:
+            db.close()
+
     def add_version(self, version: AgentSkillVersion) -> AgentSkillVersion:
         db = self._session()
         try:
@@ -275,4 +316,61 @@ class SqlAgentRunSkillRepository(_BaseRepo, AgentRunSkillRepository):
             db.close()
 
 
-__all__ = ['SqlAgentRunSkillRepository', 'SqlAgentSkillRepository']
+class SqlSkillReviewRepository(_BaseRepo, SkillReviewRepository):
+    """``agent_skill_review`` 仓储：只追加，不更新、不删除（审计事实）。"""
+
+    def add(self, review: AgentSkillReview) -> AgentSkillReview:
+        db = self._session()
+        try:
+            row = AgentSkillReviewPO(
+                id=review.id or str(uuid.uuid4()),
+                skill_id=review.skill_id, version=review.version or '0',
+                action=review.action.value,
+                status_from=review.status_from.value,
+                status_to=review.status_to.value,
+                reviewer_id=review.reviewer_id,
+                reason=review.reason or '',
+                tenant_id=review.tenant_id,
+                created_at=review.created_at or utcnow(),
+            )
+            db.add(row)
+            db.commit()
+            return _to_skill_review(row)
+        finally:
+            db.close()
+
+    def list_for_skill(self, skill_id: str) -> List[AgentSkillReview]:
+        db = self._session()
+        try:
+            rows = db.query(AgentSkillReviewPO).filter(
+                AgentSkillReviewPO.skill_id == skill_id,
+            ).order_by(AgentSkillReviewPO.created_at.asc()).all()
+            return [_to_skill_review(row) for row in rows]
+        finally:
+            db.close()
+
+    def list_current(self, status: SkillStatus, *, tenant_id: str,
+                     limit: int = 100) -> List[AgentSkillReview]:
+        """本租户「当前状态 = ``status``」的 Skill 最近迁移记录（降序）。"""
+        db = self._session()
+        try:
+            rows = db.query(AgentSkillReviewPO).join(
+                AgentSkillPO, AgentSkillPO.id == AgentSkillReviewPO.skill_id,
+            ).filter(
+                AgentSkillPO.scope == SkillScope.TENANT.value,
+                AgentSkillPO.tenant_id == tenant_id,
+                AgentSkillPO.status == status.value,
+                AgentSkillReviewPO.status_to == status.value,
+                AgentSkillReviewPO.tenant_id == tenant_id,
+            ).order_by(
+                AgentSkillReviewPO.created_at.desc(),
+            ).limit(limit).all()
+            return [_to_skill_review(row) for row in rows]
+        finally:
+            db.close()
+
+
+__all__ = [
+    'SqlAgentRunSkillRepository', 'SqlAgentSkillRepository',
+    'SqlSkillReviewRepository',
+]

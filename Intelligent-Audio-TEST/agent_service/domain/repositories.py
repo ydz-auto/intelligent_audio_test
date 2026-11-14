@@ -14,7 +14,7 @@ from agent_service.domain.enums import (
     ApprovalStatus, RunStatus, SkillScope, SkillStatus,
 )
 from agent_service.domain.model.agent_skill import (
-    AgentRunSkill, AgentSkill, AgentSkillVersion,
+    AgentRunSkill, AgentSkill, AgentSkillReview, AgentSkillVersion,
 )
 from agent_service.domain.model.entities import (
     AgentApproval, AgentArtifact, AgentContextSnapshot, AgentLlmProvider,
@@ -302,6 +302,17 @@ class AgentSkillRepository(ABC):
         """条件更新（含 ``version`` 指针 +1）；返回是否命中。"""
 
     @abstractmethod
+    def transition_if(self, skill_id: str,
+                      from_statuses: Iterable[SkillStatus],
+                      target: SkillStatus) -> bool:
+        """仅当当前状态 ∈ ``from_statuses`` 时迁移到 ``target``（INT-2551）。
+
+        审核流的状态推进一律走条件更新：两个管理员同时批准同一版本时，
+        数据库层只有一次命中，另一次拿到 ``False`` 按状态冲突处理，不依赖
+        进程内锁。
+        """
+
+    @abstractmethod
     def delete(self, skill_id: str) -> bool:
         """删除当前行；版本行保留（历史 run 依赖其回放）。"""
 
@@ -324,3 +335,29 @@ class AgentRunSkillRepository(ABC):
 
     @abstractmethod
     def list_by_run(self, run_id: str) -> List[AgentRunSkill]: ...
+
+
+class SkillReviewRepository(ABC):
+    """``agent_skill_review`` 审计仓储（INT-2551）。
+
+    只追加、不更新、不删除：审批链是审计事实，任何「改历史」的写入口都
+    不允许存在。``(skill_id, version)`` 索引服务单版本追溯，
+    ``(tenant_id, status_to)`` 索引服务管理员待审队列。
+    """
+
+    @abstractmethod
+    def add(self, review: AgentSkillReview) -> AgentSkillReview: ...
+
+    @abstractmethod
+    def list_for_skill(self, skill_id: str) -> List[AgentSkillReview]:
+        """单个 Skill 的完整审批链（``created_at`` 升序）。"""
+
+    @abstractmethod
+    def list_current(self, status: SkillStatus, *, tenant_id: str,
+                     limit: int = 100) -> List[AgentSkillReview]:
+        """本租户「当前处在 ``status``」的 Skill 最近一条迁移记录。
+
+        队列口径 =「Skill 此刻的状态」+「把它带到该状态的那条记录」：
+        仓储按 ``tenant_id`` + ``skill.status`` join 过滤，再按
+        ``created_at`` 降序返回；同一条 Skill 的多条历史记录由调用方去重。
+        """

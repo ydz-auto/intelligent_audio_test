@@ -5,6 +5,8 @@
     agent_tool_call / agent_artifact / agent_context_snapshot
     + agent_llm_provider（INT-2488 用户自带供应商密钥库）
     + agent_approval（INT-2466 写操作审批单）
+    + agent_skill / agent_skill_version / agent_run_skill（INT-2549 自定义 Skill）
+    + agent_skill_review（INT-2551 TENANT 级审核流审计链）
 
 口径：
 - 主键统一 UUID 字符串（分布式 worker 与断点恢复不依赖自增序列）；
@@ -360,3 +362,37 @@ class AgentRunSkill(Base):
     content_hash = Column(String(64), nullable=False, default='')
     activated_at = Column(DateTime, nullable=False, default=utcnow,
                           server_default=func.now())
+
+
+class AgentSkillReview(Base):
+    """TENANT 级 Skill 审核流的不可变审计行（INT-2551 §4.4）。
+
+    - 只追加：提交 / 批准 / 驳回 / 撤回 / 停用各一行，任何入口都不更新、
+      不删除本表（审批链是审计事实）；
+    - ``version`` 是动作发生时的版本指针 —— 版本粒度可追溯「谁批的哪一版」；
+    - ``status_from`` / ``status_to`` 是状态机迁移两端，枚举取值（枚举化，
+      DB 里没有魔法字符串）；
+    - ``tenant_id`` 冗余存储：待审队列按 ``(tenant_id, status_to)`` 取本租户
+      记录，不依赖 agent_skill 行仍在（Skill 被删后审计链仍可查）。
+    """
+
+    __tablename__ = 'agent_skill_review'
+    __table_args__ = (
+        Index('ix_agent_skill_review_skill_version', 'skill_id', 'version'),
+        Index('ix_agent_skill_review_tenant_status', 'tenant_id', 'status_to'),
+        Index('ix_agent_skill_review_skill_time', 'skill_id', 'created_at'),
+    )
+
+    id = Column(_PK, primary_key=True)
+    skill_id = Column(_PK, nullable=False)
+    version = Column(String(32), nullable=False,
+                     comment='动作发生时的 agent_skill.version')
+    action = Column(String(20), nullable=False, comment='SkillReviewAction')
+    status_from = Column(String(20), nullable=False, comment='SkillStatus')
+    status_to = Column(String(20), nullable=False, comment='SkillStatus')
+    reviewer_id = Column(BigInteger, nullable=True,
+                         comment='动作执行人 user_id（提交人 / 审批人）')
+    reason = Column(Text, nullable=False, default='', server_default='')
+    tenant_id = Column(String(64), nullable=True, comment='TENANT 行必填')
+    created_at = Column(DateTime, nullable=False, default=utcnow,
+                        server_default=func.now())

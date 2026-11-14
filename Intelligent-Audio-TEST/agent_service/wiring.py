@@ -41,6 +41,7 @@ from agent_service.application.sandbox_runner import (
 )
 from agent_service.application.skill_registry import SkillRegistry
 from agent_service.application.skill_guard import SkillGuard
+from agent_service.application.skill_review_service import SkillReviewService
 from agent_service.application.skill_service import SkillService
 from agent_service.application.tool_gateway import SharedToolGateway
 from agent_service.config.config import Config
@@ -92,6 +93,7 @@ from agent_service.infrastructure.skill.platform_resources import (
 )
 from agent_service.infrastructure.persistence.skill_repositories import (
     SqlAgentRunSkillRepository, SqlAgentSkillRepository,
+    SqlSkillReviewRepository,
 )
 from agent_service.infrastructure.sandbox.docker_runner import (
     DockerRunnerConfig, DockerRunnerMode, SandboxPolicy, build_sandbox_executor,
@@ -128,6 +130,7 @@ class AgentContainer:
     memory_service: Optional[MemoryService] = None
     approval_service: Optional[ApprovalService] = None
     skill_service: Optional[SkillService] = None
+    skill_review_service: Optional[SkillReviewService] = None
     repositories: dict = field(default_factory=dict)
 
     def shutdown(self) -> None:
@@ -202,8 +205,9 @@ def build_skill_service(gateway: ToolGateway,
                         resource_store=None,
                         golden_tasks=None,
                         guard=None,
-                        settings=None) -> SkillService:
-    """装配自定义 Skill 应用服务（INT-2549）。"""
+                        settings=None,
+                        reviews=None) -> SkillService:
+    """装配自定义 Skill 应用服务（INT-2549 / INT-2551）。"""
 
     def known_tools():
         from shared.agent_tools.intent_tools import INTENT_TOOL_BY_NAME
@@ -222,6 +226,7 @@ def build_skill_service(gateway: ToolGateway,
         known_tools=known_tools,
         settings=settings or Config.skill_settings(),
         platform_resources=load_platform_resources,
+        reviews=reviews,
     )
 
 
@@ -381,6 +386,8 @@ def build_container(session_factory,
     # INT-2549：自定义 Skill 当前行 / 版本 / run 快照
     skill_repository = SqlAgentSkillRepository(session_factory)
     run_skill_repository = SqlAgentRunSkillRepository(session_factory)
+    # INT-2551：审核链审计（只追加）
+    skill_review_repository = SqlSkillReviewRepository(session_factory)
 
     credentials = credential_store or CredentialStore.from_env()
     windows = window_resolver or _build_window_resolver()
@@ -436,7 +443,12 @@ def build_container(session_factory,
     skill_service = build_skill_service(
         gateway, skills, skill_repository, run_skill_repository,
         resource_store=skill_resource_store, golden_tasks=golden_tasks,
-        guard=skill_guard, settings=skill_settings)
+        guard=skill_guard, settings=skill_settings,
+        reviews=skill_review_repository)
+    # INT-2551：TENANT 级共享 Skill 的发布审核流（提交 / 审批 / 撤回）
+    skill_review_service = SkillReviewService(
+        skills=skill_service, reviews=skill_review_repository,
+        repository=skill_repository)
     # INT-2466：写审批服务（提案 / 决策 / 过期 / 执行前复核）与 Loop 共用
     # 同一份工具网关与仓储；run 归属校验在服务内部完成。
     approval_service = ApprovalService(
@@ -548,6 +560,7 @@ def build_container(session_factory,
         memory_service=memory,
         approval_service=approval_service,
         skill_service=skill_service,
+        skill_review_service=skill_review_service,
         repositories={
             'sessions': sessions, 'runs': runs, 'events': events,
             'steps': steps, 'tool_calls': tool_calls,
@@ -556,5 +569,6 @@ def build_container(session_factory,
             'providers': provider_repository,
             'skills': skill_repository,
             'run_skills': run_skill_repository,
+            'skill_reviews': skill_review_repository,
         },
     )

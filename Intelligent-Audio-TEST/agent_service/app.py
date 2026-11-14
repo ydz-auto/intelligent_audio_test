@@ -35,8 +35,8 @@ from agent_service.domain.exceptions import (
     InvalidRunTransition, ProviderNotFound, RunNotFound, SessionNotFound,
     SkillGateFailed, SkillImportInvalid, SkillInjectionDetected,
     SkillNameConflict, SkillNotAvailable, SkillNotFound,
-    SkillPackageTooLarge, SkillPermissionEscalation, SkillServiceError,
-    SkillStatusInvalid,
+    SkillPackageTooLarge, SkillPermissionEscalation, SkillReviewForbidden,
+    SkillSelfReviewForbidden, SkillServiceError, SkillStatusInvalid,
 )
 from agent_service.interfaces.api.upload_limit import (
     SkillImportUploadLimitMiddleware,
@@ -192,6 +192,10 @@ def _register_error_handlers(app: FastAPI) -> None:
 
     app.add_exception_handler(SkillNameConflict, _skill_error(409))
     app.add_exception_handler(SkillPermissionEscalation, _skill_error(403))
+    # INT-2551：审核流是权限边界 —— 非管理员 403、自审自批 403，
+    # 状态机不允许的迁移 409（与「已处理 / 已撤回」区分不了，都是冲突）。
+    app.add_exception_handler(SkillReviewForbidden, _skill_error(403))
+    app.add_exception_handler(SkillSelfReviewForbidden, _skill_error(403))
     app.add_exception_handler(SkillStatusInvalid, _skill_error(409))
     app.add_exception_handler(SkillImportInvalid, _skill_error(400))
     # 上传体积超限在读入内存 / 解析 multipart 之前就拒绝（413）
