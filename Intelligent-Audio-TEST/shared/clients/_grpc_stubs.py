@@ -108,6 +108,17 @@ def get_laboratory_config_service_stub():
     return device_service_pb2_grpc.LaboratoryConfigServiceStub(_get_device_channel())
 
 
+@lru_cache(maxsize=1)
+def get_device_ui_service_stub():
+    """DeviceUiService stub（INT-2577）：设备 UI 探索三 RPC
+
+    RPC（与 device_service/interfaces/grpc/device_ui_servicers.DeviceUiServiceServicer 对齐）：
+    DumpUiTree / PerformUiAction / CaptureUiScreenshot
+    """
+    from shared.proto import device_service_pb2_grpc
+    return device_service_pb2_grpc.DeviceUiServiceStub(_get_device_channel())
+
+
 # ==================== task_service stubs ====================
 
 @lru_cache(maxsize=1)
