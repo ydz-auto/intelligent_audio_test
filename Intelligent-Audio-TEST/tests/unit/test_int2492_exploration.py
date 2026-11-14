@@ -62,18 +62,24 @@ class FakeDevice(UiDevicePort):
         self._screenshot = screenshot
         self.delay = delay
         self.shots = 0
+        #: 每次设备调用带上的 holder（= run_id），断言端口口径用（INT-2579）
+        self.holders = []
 
-    def platform(self, device_id):
+    def platform(self, device_id, *, holder):
+        self.holders.append(('platform', holder))
         return self._platform
 
-    def dump_nodes(self, device_id, *, max_nodes):
+    def dump_nodes(self, device_id, *, max_nodes, holder):
+        self.holders.append(('dump_nodes', holder))
         if self.delay:
             time.sleep(self.delay)
         return {'nodes': list(self.pages[self.index]),
                 'coverage': ux.coverage_notes(self.pages[self.index],
                                               self._platform)}
 
-    def perform(self, device_id, action_type, *, node=None, params=None):
+    def perform(self, device_id, action_type, *, node=None, params=None,
+                holder):
+        self.holders.append(('perform', holder))
         if self.delay:
             time.sleep(self.delay)
         self.performed.append({'action': action_type, 'node': node,
@@ -81,7 +87,8 @@ class FakeDevice(UiDevicePort):
         self.index = min(self.index + 1, len(self.pages) - 1)
         return {'applied': True}
 
-    def screenshot(self, device_id, *, label=''):
+    def screenshot(self, device_id, *, label='', holder):
+        self.holders.append(('screenshot', holder))
         if not self._screenshot:
             return None
         self.shots += 1
@@ -212,6 +219,20 @@ def test_ui_tree_crops_to_200_and_strips_raw_xml_or_base64():
     assert '<node' not in result.content
     assert 'base64' not in result.content.lower()
     assert len(result.content.encode('utf-8')) < 200 * 1024
+
+
+def test_device_calls_carry_run_id_as_holder():
+    """INT-2579 端口扩展：四个设备方法都带 ``holder``（= run_id），语义不变。"""
+    device = FakeDevice([[_node('n1', '按钮')], [_node('n2', '完成')]])
+    gateway = make_gateway(devices=device)
+    context = _ctx(run_id='run-holder')
+    gateway.execute(call('ui_tree', {'device_id': 3}), context)
+    gateway.execute(call('ui_action', {'device_id': 3, 'action_type': 'BACK'}),
+                    _ctx(run_id='run-holder', approval=_approval()))
+
+    names = {name for name, _ in device.holders}
+    assert {'platform', 'dump_nodes', 'perform', 'screenshot'} <= names
+    assert {holder for _, holder in device.holders} == {'run-holder'}
 
 
 def test_ui_tree_key_fallback_and_diff_from_previous_snapshot():

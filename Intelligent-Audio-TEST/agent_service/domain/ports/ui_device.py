@@ -14,6 +14,12 @@
 - ``UiDevicePort``：从设备读取裁剪 UI 树 / 执行 UI 动作 / 取截图引用。
   平台格式差异（Android uiautomator XML / HarmonyOS hypium 组件）由实现层解析成
   共享节点结构（``shared.agent_tools.ui_exploration``），application 不碰原始格式。
+
+``holder`` 口径（INT-2579）：四个设备方法都要求调用方传入 ``holder``（= 本 run 的
+``run_id``）。实现用它取该 run 的调用方凭据（``RunCredentialRegistry``），以用户
+身份回源网关 —— 端口只做「谁在调」的标识透传，凭据读取与缺失时的
+``UiDeviceError(code='DEVICE_UNAVAILABLE')`` 由实现层负责。**只加参数、不改语义**：
+方法返回结构与既有 INT-2492 口径一致。
 """
 from __future__ import annotations
 
@@ -46,11 +52,11 @@ class UiDevicePort(ABC):
     """设备 UI 读取 / 动作端口（真实设备通道由设备服务提供）。"""
 
     @abstractmethod
-    def platform(self, device_id: int) -> str:
+    def platform(self, device_id: int, *, holder: str) -> str:
         """设备平台（``ANDROID`` / ``HARMONYOS`` / ...）。"""
 
     @abstractmethod
-    def dump_nodes(self, device_id: int, *, max_nodes: int
+    def dump_nodes(self, device_id: int, *, max_nodes: int, holder: str
                    ) -> Dict[str, Any]:
         """读取一页 UI 树 → ``{'nodes': [...], 'coverage': {...}}``。
 
@@ -61,10 +67,11 @@ class UiDevicePort(ABC):
     @abstractmethod
     def perform(self, device_id: int, action_type: str, *,
                 node: Optional[Dict[str, Any]] = None,
-                params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                params: Optional[Dict[str, Any]] = None,
+                holder: str) -> Dict[str, Any]:
         """执行一个 ``UiActionType`` 动作（调用方已做审批 / 预算 / 安全校验）。"""
 
-    def screenshot(self, device_id: int, *, label: str = ''
+    def screenshot(self, device_id: int, *, label: str = '', holder: str
                    ) -> Optional[str]:
         """取截图引用（对象存储 URI）；平台不支持时返回 ``None``。"""
         return None

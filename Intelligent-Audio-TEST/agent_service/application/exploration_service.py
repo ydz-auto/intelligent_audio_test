@@ -8,8 +8,10 @@
   落产物表（``agent_artifact``，kind = ``UI_TRACE``）。所有口径（枚举、裁剪、
   diff、预算、trace 结构）来自 ``shared.agent_tools.ui_exploration``。
 - **设备端口**（``UiDevicePort`` / ``DeviceLeasePort``）：读树 / 执行动作 / 租约；
-  设备通道未接时端口为 ``None``，工具返回明确的 ``EXPLORATION_UNAVAILABLE``，
-  不伪造空树、不静默成功。
+  生产实现是网关 HTTP 适配器（``infrastructure/adapters/ui_device_http.py``，
+  INT-2579）：四个设备方法都带 ``holder``（= run_id），由适配器按 run 取调用方
+  凭据回源网关。设备通道未接时端口为 ``None``，工具返回明确的
+  ``EXPLORATION_UNAVAILABLE``，不伪造空树、不静默成功。
 - **ToolGateway**：权限 / 参数 Schema / 审批门禁 / 审计仍在网关；本模块只在
   网关放行之后执行副作用。
 
@@ -568,7 +570,12 @@ class ExplorationService:
                 f'设备 {device_id} 未租用或正被其他任务 / 用例占用：'
                 '探索前必须先租用并锁定设备。')
         try:
-            platform = str(self._devices.platform(device_id) or 'ANDROID')
+            # INT-2579：``platform`` 是会话建立的第一个设备调用，必须带 run 的
+            # holder 让实现取该 run 的调用方凭据；凭据缺失时实现抛
+            # ``UiDeviceError(code='DEVICE_UNAVAILABLE')``，由下面统一转成
+            # ``DEVICE_UNAVAILABLE`` 工具错误（先释放刚抢到的租约，不泄漏设备）。
+            platform = str(self._devices.platform(
+                device_id, holder=context.run_id) or 'ANDROID')
         except UiDeviceError as exc:
             self._leases.release(lease)
             raise ExplorationError(DEVICE_UNAVAILABLE, str(exc)) from exc
@@ -637,7 +644,8 @@ class ExplorationService:
               ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
         try:
             result = self._devices.dump_nodes(session.device_id,
-                                              max_nodes=max_nodes)
+                                              max_nodes=max_nodes,
+                                              holder=session.run_id)
         except UiDeviceError as exc:
             raise ExplorationError(DEVICE_UNAVAILABLE, str(exc)) from exc
         nodes = [node for node in (result.get('nodes') or ())
@@ -656,14 +664,16 @@ class ExplorationService:
         try:
             return self._devices.perform(
                 session.device_id, action_type.value,
-                node=node, params=params) or {}
+                node=node, params=params,
+                holder=session.run_id) or {}
         except UiDeviceError as exc:
             raise ExplorationError(DEVICE_UNAVAILABLE, str(exc)) from exc
 
     def _screenshot(self, session: _Session) -> Optional[str]:
         try:
             ref = self._devices.screenshot(session.device_id,
-                                           label=f'a{session.actions}')
+                                           label=f'a{session.actions}',
+                                           holder=session.run_id)
         except UiDeviceError as exc:  # 截图失败不阻断动作，但留日志
             logger.warning('探索截图失败 device=%s: %s', session.device_id, exc)
             return None
