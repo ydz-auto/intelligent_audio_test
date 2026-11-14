@@ -57,7 +57,7 @@ from agent_service.domain.services.skill_visibility import (
 )
 from shared.skill_package import (
     DEFAULT_MAX_UPLOAD_BYTES, PackageIssueCode, SkillPackageError,
-    SkillPackageLimits, build_skill_package, read_skill_package,
+    SkillPackageLimits, build_skill_md, build_skill_package, read_skill_package,
 )
 
 logger = logging.getLogger(__name__)
@@ -1095,14 +1095,6 @@ def _frontmatter_from_meta(meta: SkillMeta) -> Dict[str, Any]:
     if meta.budgets:
         frontmatter[FIELD_BUDGETS] = dict(meta.budgets)
     return frontmatter
-
-
-def build_skill_md(frontmatter: Mapping[str, Any], body: str) -> str:
-    """frontmatter 字典 + 正文 → ``SKILL.md`` 原文（导出 / 体积校验同一口径）。"""
-    data = dict(frontmatter or {})
-    dumped = yaml.safe_dump(
-        data, allow_unicode=True, sort_keys=False, default_flow_style=False)
-    return f'---\n{dumped}---\n\n{body or ""}'
 
 
 def _parse_skill_md(raw: str) -> Tuple[Dict[str, Any], str]:

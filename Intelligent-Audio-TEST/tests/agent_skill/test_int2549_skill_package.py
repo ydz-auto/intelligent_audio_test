@@ -104,11 +104,13 @@ def test_shared_package_structure_matches_platform_package(monkeypatch):
     platform_bytes = gateway_pkg.build_skill_zip('http://example')
     assert 'entries' in calls, '平台包必须复用 shared.skill_package.build_zip'
     assert skill_package.SKILL_FILE_NAME in calls['entries']
-    assert all('/' not in name for name in calls['entries'])
 
     platform = zipfile.ZipFile(io.BytesIO(platform_bytes))
     assert 'SKILL.md' in platform.namelist()
-    assert all('/' not in name for name in platform.namelist())
+    # INT-2476：根级只有 SKILL.md，资源只放 references/scripts/assets/
+    for name in platform.namelist():
+        assert name == skill_package.SKILL_FILE_NAME \
+            or name.startswith(skill_package.RESOURCE_PREFIXES), name
     # 两处常量指向同一物理文件名 / 目录约定（不各写一套）
     assert skill_package.SKILL_FILE_NAME == skill_model.SKILL_FILE_NAME
     assert tuple(skill_package.RESOURCE_DIRS) == tuple(skill_model.RESOURCE_DIRS)
@@ -184,22 +186,27 @@ def test_import_missing_skill_md_rejected(tmp_path):
     assert 'SKILL_FILE_MISSING' in issues_codes(exc.value)
 
 
-def test_platform_package_not_importable_until_int2476(tmp_path):
-    """平台下载包（SKILL.md + mcp.json）当前**不支持**导入 —— 归 INT-2476。
+def test_platform_package_is_importable_after_int2476(tmp_path):
+    """INT-2476：平台下载包与用户包同结构，导入不再被 ``mcp.json`` 拒绝。
 
-    卡面「导入接受同一结构」指打包口径：根级直接是 ``SKILL.md``、不套外层
-    目录、资源只放 ``references/ scripts/ assets/``。``GET /api/v1/agent/skill``
-    额外带的 ``mcp.json`` 是网关 MCP 配置模板，且其 ``SKILL.md`` 没有
-    frontmatter（不是可落库的用户 Skill）；平台包生成对齐由 INT-2476 负责，
-    本卡先钉住「明确拒绝 + 给原因码」，避免静默接受半成品。
+    平台包根级是带 frontmatter 的 ``SKILL.md``，MCP 配置模板落在
+    ``assets/mcp.json``（资源目录），因此可以原样经
+    ``POST /api/v1/agent/skills/import`` 落库；导入后再导出仍是同一结构。
     """
     from api_gateway.application.services.mcp.skill_package import build_skill_zip
     _container, service, _store = _stack(tmp_path)
-    with pytest.raises(SkillImportInvalid) as exc:
-        service.import_package(build_skill_zip('http://example'),
-                               owner_id=OWNER_ID, tenant_id=TENANT_ID,
-                               permissions=['*'])
-    assert 'INVALID_PATH' in issues_codes(exc.value)
+    imported = service.import_package(build_skill_zip('http://example.com'),
+                                      owner_id=OWNER_ID, tenant_id=TENANT_ID,
+                                      permissions=['*'])
+    assert imported.name == 'intelligent-audio-test'
+    _filename, exported = service.export_package(
+        imported.id, owner_id=OWNER_ID, tenant_id=TENANT_ID, permissions=['*'])
+    with zipfile.ZipFile(io.BytesIO(exported)) as archive:
+        names = archive.namelist()
+    assert names == ['SKILL.md', 'assets/mcp.json',
+                     'references/endpoints.md', 'references/mcp-tools.md']
+    with zipfile.ZipFile(io.BytesIO(exported)) as archive:
+        assert archive.read('SKILL.md').decode('utf-8').startswith('---\n')
 
 
 def test_import_unexpected_root_file_rejected(tmp_path):

@@ -7,12 +7,12 @@
   ``assets/``），不套外层目录、不改文件名，外部 Agent 可直接识别；
 - 导入接受同一结构（agentskills.io 兼容）。
 
-**平台下载包的例外（当前不支持导入，归 INT-2476）**：``GET /api/v1/agent/skill``
-的产物额外带 ``mcp.json``（网关 MCP 配置模板），且其 ``SKILL.md`` 没有
-frontmatter，不是可落库的用户 Skill。因此平台包虽然复用本模块的同一打包
-实现与根级口径，但**当前不能**经 ``POST /api/v1/agent/skills/import`` 导入
-（``mcp.json`` 会以 ``INVALID_PATH`` 拒绝）。平台包生成对齐导入结构由
-INT-2476 负责；在那之前不要按「同一结构」推论平台包可导入。
+INT-2476 起 ``GET /api/v1/agent/skill`` 的平台下载包也按本口径生成：根级
+``SKILL.md``（带 frontmatter）+ 资源子目录，MCP 配置模板落在
+``assets/mcp.json``，因此平台包与 ``GET /api/v1/agent/skills/{id}/export``
+的产物同结构、可互相导入。平台包的正文由 ``skills/platform-reference/``
+生成（``build_skill_md`` + ``read_skill_directory`` 均在本模块，跨服务唯一
+实现），不是第二套 zip 逻辑。
 
 安全边界（zip 导入是攻击面）：解压前先按目录条目累加体积、限制条目数与
 压缩比（防 zip bomb），解压后再次校验路径与类型；禁止绝对路径、``..``、
@@ -26,11 +26,14 @@ INT-2476 负责；在那之前不要按「同一结构」推论平台包可导�
 from __future__ import annotations
 
 import io
+import os
 import stat
 import zipfile
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Mapping, Optional, Tuple
+from typing import Any, Dict, Mapping, Optional, Tuple
+
+import yaml
 
 # 包结构常量（与 ``agent_service.domain.model.skill`` 的目录契约一致，
 # 一致性由 tests/agent_skill 断言；两处都指向同一个物理文件名）
@@ -127,6 +130,19 @@ def split_frontmatter(raw: str) -> Tuple[Optional[str], str]:
     return None, raw or ''
 
 
+def build_skill_md(frontmatter: Mapping[str, Any], body: str) -> str:
+    """frontmatter 字典 + 正文 → ``SKILL.md`` 原文（导入 / 导出 / 平台包同一口径）。
+
+    INT-2476：从 ``agent_service.application.skill_service`` 抽到共享层 ——
+    网关生成平台下载包与 agent_service 导出用户 Skill 必须用同一份写法，
+    否则 frontmatter 缩进 / 字段顺序漂移会让「同一结构」变成两张皮。
+    """
+    data = dict(frontmatter or {})
+    dumped = yaml.safe_dump(
+        data, allow_unicode=True, sort_keys=False, default_flow_style=False)
+    return f'---\n{dumped}---\n\n{body or ""}'
+
+
 def normalize_entry_path(name: str) -> str:
     """包内条目路径归一 + 安全校验（返回 posix 相对路径）。"""
     raw = (name or '').replace('\\', '/').strip()
@@ -189,6 +205,88 @@ def build_skill_package(skill_md: str,
         SKILL_FILE_NAME: (skill_md or '').encode('utf-8')}
     entries.update(dict(resources or {}))
     return build_zip(entries, limits=limits)
+
+
+def read_skill_directory(directory: str,
+                         *, limits: Optional[SkillPackageLimits] = None
+                         ) -> SkillPackage:
+    """读取 ``skills/<name>/`` 目录为 Skill 包内容（不落盘、不打包）。
+
+    与 ``read_skill_package`` 互补：一个从目录读、一个从 zip 字节读，产出
+    同一个 ``SkillPackage``。平台下载包（api_gateway）据此按 ``skills/``
+    生成，避免在网关里再写一份目录遍历 / 路径校验。
+
+    目录约定与导入同一口径：``SKILL.md`` 必需且位于根级；资源只允许在
+    ``references/`` / ``scripts/`` / ``assets/`` 下。软链、越界路径、超限
+    体积一律 ``SkillPackageError``（不静默跳过）。
+    """
+    limits = limits or SkillPackageLimits()
+    root = os.path.abspath(str(directory or ''))
+    if not directory or not os.path.isdir(root):
+        raise SkillPackageError(
+            PackageIssueCode.INVALID_PATH, f'Skill 目录不存在：{directory}')
+    skill_path = os.path.join(root, SKILL_FILE_NAME)
+    if not os.path.isfile(skill_path) or os.path.islink(skill_path):
+        raise SkillPackageError(
+            PackageIssueCode.SKILL_FILE_MISSING,
+            f'Skill 目录缺少 {SKILL_FILE_NAME}：{root}')
+    try:
+        with open(skill_path, 'rb') as handle:
+            raw_bytes = handle.read()
+    except OSError as exc:
+        raise SkillPackageError(
+            PackageIssueCode.INVALID_PATH, f'读取 {SKILL_FILE_NAME} 失败：{exc}') from exc
+    if len(raw_bytes) > limits.max_skill_bytes:
+        raise SkillPackageError(
+            PackageIssueCode.BODY_TOO_LARGE,
+            f'{SKILL_FILE_NAME} {len(raw_bytes)} 字节，'
+            f'超过上限 {limits.max_skill_bytes}')
+    try:
+        skill_md = raw_bytes.decode('utf-8-sig')
+    except UnicodeDecodeError as exc:
+        raise SkillPackageError(
+            PackageIssueCode.BINARY_CONTENT,
+            f'{SKILL_FILE_NAME} 不是 UTF-8 文本') from exc
+
+    resources: Dict[str, bytes] = {}
+    total = len(raw_bytes)
+    for name in RESOURCE_DIRS:
+        base = os.path.join(root, name)
+        if not os.path.isdir(base):
+            continue
+        for current, dirs, filenames in os.walk(base):
+            dirs.sort()
+            for filename in sorted(filenames):
+                full = os.path.join(current, filename)
+                if os.path.islink(full):
+                    raise SkillPackageError(
+                        PackageIssueCode.SYMLINK_REJECTED,
+                        f'禁止软链资源：{full}')
+                rel = os.path.relpath(full, root).replace(os.sep, '/')
+                path = normalize_entry_path(rel)
+                if not path.startswith(RESOURCE_PREFIXES):
+                    raise SkillPackageError(
+                        PackageIssueCode.INVALID_PATH,
+                        f'资源只允许放在 {" / ".join(RESOURCE_PREFIXES)} 下：{path}')
+                size = os.path.getsize(full)
+                if size > limits.max_resource_bytes:
+                    raise SkillPackageError(
+                        PackageIssueCode.RESOURCE_TOO_LARGE,
+                        f'资源 {path} {size} 字节，'
+                        f'超过单资源上限 {limits.max_resource_bytes}')
+                with open(full, 'rb') as handle:
+                    resources[path] = handle.read()
+                total += size
+    if len(resources) + 1 > limits.max_entries:
+        raise SkillPackageError(
+            PackageIssueCode.TOO_MANY_ENTRIES,
+            f'Skill 目录条目 {len(resources) + 1} 个，'
+            f'超过上限 {limits.max_entries}')
+    if total > limits.max_total_bytes:
+        raise SkillPackageError(
+            PackageIssueCode.PACKAGE_TOO_LARGE,
+            f'Skill 目录合计 {total} 字节，超过上限 {limits.max_total_bytes}')
+    return SkillPackage(skill_md=skill_md, resources=resources)
 
 
 def read_skill_package(data: bytes,
@@ -282,7 +380,7 @@ __all__ = [
     'DEFAULT_MAX_UPLOAD_BYTES', 'FRONTMATTER_DELIMITER', 'PackageIssueCode',
     'RESOURCE_DIRS', 'RESOURCE_PREFIXES', 'SKILL_FILE_NAME',
     'SKILL_IMPORT_INVALID_CODE', 'SkillPackage', 'SkillPackageError',
-    'SkillPackageLimits', 'build_skill_package', 'build_zip',
-    'ensure_upload_size', 'normalize_entry_path', 'read_skill_package',
-    'split_frontmatter',
+    'SkillPackageLimits', 'build_skill_md', 'build_skill_package', 'build_zip',
+    'ensure_upload_size', 'normalize_entry_path', 'read_skill_directory',
+    'read_skill_package', 'split_frontmatter',
 ]

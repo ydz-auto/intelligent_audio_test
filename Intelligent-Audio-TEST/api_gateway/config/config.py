@@ -4,9 +4,18 @@ import os
 from shared.config.service_ports import AGENT_SERVICE_HTTP_PORT
 from shared.infrastructure.config import BaseConfig, _get_int
 
+# 项目根目录（仓内 ``Intelligent-Audio-TEST/``）：本文件位于 api_gateway/config/
+_PROJECT_DIR = os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))
+
 
 class Config(BaseConfig):
     PORT = int(os.environ.get('PORT', 5000))
+    # 平台 Skill 目录（INT-2476）：``GET /api/v1/agent/skill`` 的平台下载包按
+    # ``skills/<name>/`` 生成，与 agent_service 的 AGENT_SKILLS_ROOT 同一物理
+    # 目录（部署挂载 ../skills:ro）。缺失时 skill 下载回退内置模板，不阻断。
+    SKILLS_ROOT = os.environ.get(
+        'AGENT_SKILLS_ROOT', os.path.join(_PROJECT_DIR, 'skills'))
     # 本地音频上传临时存储路径（分片上传、合并、转码中间文件）
     AUDIO_STORAGE_PATH = os.environ.get(
         'AUDIO_STORAGE_PATH',
