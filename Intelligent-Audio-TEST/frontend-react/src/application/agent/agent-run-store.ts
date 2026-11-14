@@ -35,6 +35,7 @@ import {
   AGENT_AUTO_ERROR_CODE,
   AGENT_ERROR_COPY,
   AGENT_EVENT_TYPE,
+  AGENT_RUN_MODE,
   AGENT_RUN_STATUS,
   AGENT_TOOL_LABELS,
   isPendingApprovalStatus,
@@ -86,6 +87,7 @@ import {
 import {
   autoTerminalKind,
   autoTerminalMessageText,
+  isAutoRun,
 } from './auto-progress'
 
 /** Run 生命周期阶段（idle 未开始；cancelling 已发取消请求等终态） */
@@ -157,14 +159,33 @@ const CANCEL_RECONCILE_DELAY_MS = 2_000
 
 /**
  * 刷新恢复后「继续」：本页没有事件流（游标未持久化、不重接 SSE），改为按快照轮询
- * 服务端终态（INT-2477 UX 审计 P2）。首次 1.5s、之后 3s 一次，终态即停。
+ * 服务端终态（INT-2477 UX 审计 P2）。首次 1.5s、之后 5s 一次，终态即停。
  */
 const AUTO_TERMINAL_POLL_FIRST_DELAY_MS = 1_500
-const AUTO_TERMINAL_POLL_INTERVAL_MS = 3_000
+const AUTO_TERMINAL_POLL_INTERVAL_MS = 5_000
 /** 轮询上限：Auto 默认时长预算是 30 分钟，超过后不再空转，提示刷新查看 */
 const AUTO_TERMINAL_POLL_MAX_MS = 30 * 60_000
 /** 连续取快照失败多少次后停止轮询（网络抖动重试，避免永久空转） */
 const AUTO_TERMINAL_POLL_MAX_FAILURES = 4
+
+/**
+ * Auto 暂停期间的占位正文（INT-2477 代码审计 P2）：继续 / 终态收口只替换这些，
+ * 已流式产出的正文一律保留，终态由 `runStatus` 徽标与进度面板表达。
+ */
+const AUTO_PAUSE_PLACEHOLDER_CONTENT: ReadonlySet<string> = new Set([
+  AGENT_AUTO_COPY.phasePendingResume,
+  AGENT_AUTO_COPY.restoredPaused,
+  AGENT_AUTO_COPY.restoredResuming,
+])
+
+/** 气泡正文是否为空或暂停占位（空正文同样可被占位 / 终态文案填充） */
+function isAutoPausePlaceholderContent(content: string | undefined): boolean {
+  return (
+    content === undefined ||
+    content === '' ||
+    AUTO_PAUSE_PLACEHOLDER_CONTENT.has(content)
+  )
+}
 
 /** 会话标题取首条消息前若干字符（后端缺省时也可自行生成，便于会话列表识别） */
 const SESSION_TITLE_MAX_LENGTH = 32
@@ -553,31 +574,38 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     // 刷新恢复后续跑的 run 没有事件流：气泡由本处收口到 Auto 终态（P2）
     if (restoredAutoMessageKey) {
       const restoredKey = restoredAutoMessageKey
-      const content =
+      const terminalText =
         autoTerminalMessageText(autoTerminalKind(get().run)) ?? message ?? ''
-      patchRestoredAutoMessage((restored) => ({
-        ...restored,
-        status: CHAT_MESSAGE_STATUS.COMPLETE,
-        runStatus: status,
-        isReasoningStreaming: false,
-        completedAt: Date.now(),
-        durationMs: restored.startedAt
-          ? Date.now() - restored.startedAt
-          : 0,
-        versions: [
-          {
-            id: restored.versions[0]?.id ?? `${restoredKey}-v1`,
-            content,
-          },
-        ],
-      }))
+      patchRestoredAutoMessage((restored) => {
+        const existing = restored.versions[0]?.content
+        return {
+          ...restored,
+          status: CHAT_MESSAGE_STATUS.COMPLETE,
+          runStatus: status,
+          isReasoningStreaming: false,
+          completedAt: Date.now(),
+          durationMs: restored.startedAt
+            ? Date.now() - restored.startedAt
+            : 0,
+          // 代码审计 P2：已有正文保留（终态由 runStatus 徽标 + 面板终态块表达），
+          // 只有空正文 / 暂停占位才换成 Auto 终态文案。
+          versions: isAutoPausePlaceholderContent(existing)
+            ? [
+                {
+                  id: restored.versions[0]?.id ?? `${restoredKey}-v1`,
+                  content: terminalText,
+                },
+              ]
+            : restored.versions,
+        }
+      })
       restoredAutoMessageKey = null
     }
   }
 
   /**
    * 刷新恢复后「继续」的跟随（P2）：本页没有事件流可续（游标未持久化），
-   * 按 3s 间隔取 `GET /agent/runs/{id}` 直到终态 —— 终态时落 run 快照、
+   * 按 5s 间隔取 `GET /agent/runs/{id}` 直到终态或再次暂停 —— 终态时落 run 快照、
    * 收口气泡并让进度面板渲染终态，不再永久停在「正在收集步骤进度…」。
    * 取快照连续失败 / 超过上限则停止并提示刷新查看。
    */
@@ -612,6 +640,30 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         if (isTerminalRunStatus(latest.status)) {
           finishRun(latest.status, latest.error)
           void get().refreshApprovals({ runId, syncPhase: false })
+          return
+        }
+        // P3-1：续跑后可能再次进入暂停点（连续失败阈值可在继续后再次触发）。
+        // 这是「可继续」的暂停态而非执行中：恢复暂停面板与操作入口并停止轮询，
+        // 否则面板会一直挂在「正在等待服务端结果…」，直到 30 分钟上限才提示刷新。
+        if (latest.status === AGENT_RUN_STATUS.WAITING_APPROVAL) {
+          set({ autoTracking: false, autoPause: { consecutiveFailures: 0 } })
+          patchRestoredAutoMessage((restored) => ({
+            ...restored,
+            status: CHAT_MESSAGE_STATUS.COMPLETE,
+            runStatus: undefined,
+            isReasoningStreaming: false,
+            // 只把占位正文换回暂停口径；已产出的正文保留
+            versions: isAutoPausePlaceholderContent(
+              restored.versions[0]?.content
+            )
+              ? [
+                  {
+                    id: restored.versions[0]?.id ?? `${restored.key}-v1`,
+                    content: AGENT_AUTO_COPY.restoredPaused,
+                  },
+                ]
+              : restored.versions,
+          }))
           return
         }
         schedule()
@@ -714,7 +766,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         // Auto run 的空正文兜底用 Auto 终态口径（超预算 / 熔断 / 失败不显示成通用重试）
         const currentAutoRun = get().run
         const autoTerminalText =
-          currentAutoRun?.mode === 'auto'
+          isAutoRun(currentAutoRun)
             ? autoTerminalMessageText(
                 autoTerminalKind({
                   ...currentAutoRun,
@@ -776,7 +828,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         const currentRun = get().run
         if (
           event.errorCode === AGENT_AUTO_ERROR_CODE.CONSECUTIVE_TOOL_FAILURES &&
-          currentRun?.mode === 'auto'
+          isAutoRun(currentRun)
         ) {
           set({
             run: {
@@ -786,22 +838,34 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
             },
             autoPause: null,
           })
-          patchAssistant((message) => ({
-            ...message,
-            status: CHAT_MESSAGE_STATUS.COMPLETE,
-            runStatus: AGENT_RUN_STATUS.FAILED,
-            isReasoningStreaming: false,
-            completedAt: Date.now(),
-            durationMs: message.startedAt ? Date.now() - message.startedAt : 0,
-            versions: [
-              {
-                id: message.versions[0]?.id ?? `${message.key}-v1`,
-                content:
-                  autoTerminalMessageText('circuit_break') ??
-                  AGENT_ERROR_COPY.runFailed,
-              },
-            ],
-          }))
+          patchAssistant((message) => {
+            const terminal = {
+              ...message,
+              status: CHAT_MESSAGE_STATUS.COMPLETE,
+              runStatus: AGENT_RUN_STATUS.FAILED,
+              isReasoningStreaming: false,
+              completedAt: Date.now(),
+              durationMs: message.startedAt
+                ? Date.now() - message.startedAt
+                : 0,
+            }
+            // 代码审计 P2：已流式产出的正文保留（熔断由 runStatus 徽标 + 面板终态块表达），
+            // 只有正文为空时才用 Auto 熔断文案，避免通用「Agent 运行失败，请重试」（P3-5）。
+            if (message.versions[0]?.content || assistantContent) {
+              return terminal
+            }
+            return {
+              ...terminal,
+              versions: [
+                {
+                  id: message.versions[0]?.id ?? `${message.key}-v1`,
+                  content:
+                    autoTerminalMessageText('circuit_break') ??
+                    AGENT_ERROR_COPY.runFailed,
+                },
+              ],
+            }
+          })
           assistantKey = null
           finishRun(
             AGENT_RUN_STATUS.FAILED,
@@ -860,7 +924,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
           })
         }
         // Auto 暂停规则随 run_started 下发：开跑前即可展示「何时会暂停」（§9.4）
-        if (event.mode === 'auto' && event.pausePolicy) {
+        if (event.mode === AGENT_RUN_MODE.AUTO && event.pausePolicy) {
           set({ autoPausePolicy: event.pausePolicy })
         }
         return
@@ -1094,7 +1158,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
 
       // 只有 Auto 才带 mode / budget（普通对话请求体保持 {message} 单口径）
       const runInput: AgentRunInput = { message: text }
-      if (options?.mode === 'auto') {
+      if (options?.mode === AGENT_RUN_MODE.AUTO) {
         runInput.mode = 'auto'
         if (options.budget) runInput.budget = options.budget
       }
@@ -1352,11 +1416,8 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       if (!active) {
         patchRestoredAutoMessage((restored) => {
           const existing = restored.versions[0]?.content ?? ''
-          // 只替换暂停占位文案；已生成的正文保留
-          const isPausePlaceholder =
-            existing === '' ||
-            existing === AGENT_AUTO_COPY.phasePendingResume ||
-            existing === AGENT_AUTO_COPY.restoredPaused
+          // 只替换空正文 / 暂停占位文案；已生成的正文保留
+          const isPausePlaceholder = isAutoPausePlaceholderContent(existing)
           return {
             ...restored,
             status: CHAT_MESSAGE_STATUS.COMPLETE,
@@ -1626,7 +1687,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
               .find(
                 (run) =>
                   run.status === AGENT_RUN_STATUS.WAITING_APPROVAL &&
-                  run.mode === 'auto'
+                  isAutoRun(run)
               )
         restoredAutoMessageKey = null
         if (pausedAutoRun) {
@@ -1636,11 +1697,21 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
             autoPause: { consecutiveFailures: 0 },
           })
           // 暂停气泡可能已在前端收口（P3-2，status=complete），reconcile 只找「进行中」
-          // 气泡会落空；这里兜底记最后一条 assistant 气泡，继续后仍要撤掉暂停文案（P2）。
-          const lastAssistant = [...session().messages]
+          // 气泡会落空；这里兜底记本轮（最后一条 user 消息之后）的 assistant 气泡。
+          // 代码审计 P2：不能无脑取最后一条 assistant —— 刷新前消息未落盘 / 本 run 没有
+          // 服务端气泡时，那可能是上一轮正常对话的回答，继续后会被静默覆盖。
+          const messages = session().messages
+          let lastUserIndex = -1
+          for (let index = messages.length - 1; index >= 0; index -= 1) {
+            if (messages[index].from === 'user') {
+              lastUserIndex = index
+              break
+            }
+          }
+          const turnAssistant = [...messages.slice(lastUserIndex + 1)]
             .reverse()
             .find((message) => message.from === 'assistant')
-          restoredAutoMessageKey = lastAssistant?.key ?? null
+          restoredAutoMessageKey = turnAssistant?.key ?? null
         }
         reconcileInterruptedMessage(detail.runs, {
           approvalWaiting,

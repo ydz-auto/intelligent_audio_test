@@ -15,6 +15,7 @@ import {
   AGENT_AUTO_ERROR_CODE,
   AGENT_BUDGET_DIMENSION,
   AGENT_BUDGET_DIMENSION_LABELS,
+  AGENT_RUN_MODE,
   AGENT_RUN_PAUSE_REASON,
   AGENT_RUN_STATUS,
   type AgentAutoProgress,
@@ -179,8 +180,10 @@ export function pauseReasonText(
 }
 
 /** Auto run 判定（run 快照的 mode；缺省不是 Auto） */
-export function isAutoRun(run: AgentRun | null | undefined): boolean {
-  return run?.mode === 'auto'
+export function isAutoRun(
+  run: AgentRun | null | undefined
+): run is AgentRun {
+  return run?.mode === AGENT_RUN_MODE.AUTO
 }
 
 /** Auto 终态分类（进度面板收口样式与文案据此分流） */
