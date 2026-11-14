@@ -40,7 +40,8 @@ if TYPE_CHECKING:  # pragma: no cover - 仅类型标注，避免应用层模块�
 
 from agent_service.application.skill_registry import SkillRegistry
 from agent_service.domain.enums import (
-    CompactionLevel, EventType, LlmMessageRole,
+    CompactionLevel, EventType, LlmMessageRole, StepStatus, ToolCallStatus,
+    ToolRisk,
 )
 from agent_service.domain.exceptions import RunCancelled
 from agent_service.domain.model.context_budget import ContextBudget, ContextSection
@@ -52,7 +53,7 @@ from agent_service.domain.ports.artifact_store import (
 )
 from agent_service.domain.repositories import (
     ArtifactRepository, ContextSnapshotRepository, EventRepository,
-    RunRepository,
+    RunRepository, StepRepository, ToolCallRepository,
 )
 from agent_service.domain.services.token_estimator import estimate_message_tokens
 from shared.agent_tools.intent_tools import ALWAYS_AVAILABLE_TOOLS
@@ -97,6 +98,8 @@ class CompactionSettings:
     approval_error_codes: Tuple[str, ...] = ('APPROVAL_REQUIRED',)
     # 对象存储上传的有界等待：OSS 不可用时快速降级为截断，不拖住模型 Loop
     artifact_store_timeout_seconds: float = 10.0
+    # L4_REBUILD 重建块里每个清单（步骤 / 副作用 / 产物）最多列几条
+    rebuild_list_limit: int = 20
     debug: bool = False
 
 
@@ -141,6 +144,16 @@ class CompactionOutcome:
 
 
 @dataclass
+class RebuildOutcome:
+    """L4_REBUILD 的结果：从 Run 表 + 产物索引重建的上下文块（§8.2）。"""
+
+    text: str
+    memo: Dict[str, Any]
+    token_count: int
+    snapshot_version: Optional[int] = None
+
+
+@dataclass
 class _Turn:
     number: int
     deltas: List[tuple] = field(default_factory=list)   # (index, message_id, text)
@@ -163,6 +176,8 @@ class ContextAssembler:
                  artifacts: Optional[ArtifactRepository] = None,
                  artifact_store: Optional[ArtifactStore] = None,
                  settings: Optional[CompactionSettings] = None,
+                 steps: Optional[StepRepository] = None,
+                 tool_calls: Optional[ToolCallRepository] = None,
                  memory: Optional['MemoryService'] = None):
         self._events = events
         self._runs = runs
@@ -173,6 +188,10 @@ class ContextAssembler:
         self._skills = skills
         self._snapshots = snapshots
         self._artifacts = artifacts
+        # L4_REBUILD（INT-2474）：从 Run 表（step / tool_call）+ 产物索引重建
+        # 上下文；未装配时只退化为事件回放（老部署 / 单测替身）。
+        self._steps = steps
+        self._tool_calls = tool_calls
         self._artifact_store = artifact_store or NullArtifactStore()
         self._settings = settings or CompactionSettings()
         # 长期记忆注入（INT-2490）：只注入用户偏好与项目规则摘要，细节由
@@ -225,20 +244,28 @@ class ContextAssembler:
                  active_skill: Optional[str] = None,
                  active_skill_obj=None,
                  budget: Optional[ContextBudget] = None,
-                 memo_summarizer: Optional[MemoSummarizer] = None
+                 memo_summarizer: Optional[MemoSummarizer] = None,
+                 auto_prompt: Optional[str] = None,
+                 resume_context: Optional[str] = None
                  ) -> List[LlmMessage]:
         """组装本次模型调用的完整消息列表（system + 历史 + 当前轮）。
 
         ``budget`` 为空时不启用 token 压缩（仅按消息条数兜底），供 GET session
         展示等非模型调用路径复用。``memo_summarizer`` 为空时 L3 降级为 L1。
         ``active_skill_obj`` 是在办 run 的 Skill 版本快照。
+
+        ``auto_prompt`` 是 Auto 模式的运行约定（§9.3 / §9.4），
+        ``resume_context`` 是 L4_REBUILD 从 Run 表 + 产物索引重建的状态块：
+        两者都进系统提示（永不压缩），重启后模型不需要用户复述。
         """
         history_runs = self._runs.list_session_runs(session_id, self._max_runs)
         if run.id not in {r.id for r in history_runs}:
             history_runs.append(run)
         messages, system_content = self._collect(
             history_runs, permissions, active_skill, run,
-            skill_obj=active_skill_obj)
+            skill_obj=active_skill_obj,
+            extra_sections=(item for item in (auto_prompt, resume_context)
+                            if item))
         # 快照回放：L3 已把旧对话压成备忘，重建上下文时直接复用它，
         # 不再每次重新摘要（否则每轮都要调一次摘要模型）。
         replay = self._latest_memo_snapshot(history_runs)
@@ -296,7 +323,8 @@ class ContextAssembler:
                  permissions: Iterable[str],
                  active_skill: Optional[str],
                  run: Optional[AgentRun] = None,
-                 skill_obj=None
+                 skill_obj=None,
+                 extra_sections: Iterable[str] = ()
                  ) -> Tuple[List[ContextMessage], str]:
         messages: List[ContextMessage] = []
         next_turn = 0
@@ -304,14 +332,16 @@ class ContextAssembler:
             produced, next_turn = self._messages_for_run(item, next_turn)
             messages.extend(produced)
         system = self._system_content(
-            permissions, active_skill, history_runs, run, skill_obj=skill_obj)
+            permissions, active_skill, history_runs, run, skill_obj=skill_obj,
+            extra_sections=extra_sections)
         return messages, system
 
     def _system_content(self, permissions: Iterable[str],
                         active_skill: Optional[str],
                         history_runs: Sequence[AgentRun] = (),
                         run: Optional[AgentRun] = None,
-                        skill_obj=None) -> str:
+                        skill_obj=None,
+                        extra_sections: Iterable[str] = ()) -> str:
         parts: List[str] = []
         if self._system_prompt:
             parts.append(self._system_prompt)
@@ -323,6 +353,10 @@ class ContextAssembler:
                 owner_id=getattr(run, 'owner_id', None),
                 tenant_id=getattr(run, 'tenant_id', None),
                 active_skill_obj=skill_obj)
+            if section:
+                parts.append(section)
+        # Auto 约定 / L4_REBUILD 状态块：与系统不变量同属永不压缩清单（§8.4-1/3）
+        for section in extra_sections:
             if section:
                 parts.append(section)
         memory = self._memory_section(run)
@@ -639,10 +673,19 @@ class ContextAssembler:
         events = self._events.list_after(run.id, 0, self._event_fetch_limit)
         user_message = ''
         turns: Dict[int, _Turn] = {}
+        # Auto 续跑提示（INT-2474）：auto_step 事件里的 instruction 是该轮发
+        # 给模型的 user 消息（目标驱动续跑 / 用户继续）。按事件 turn 建索引，
+        # 与消息轮次编号分开 —— 同一会话里轮次跨 run 累加。
+        auto_instructions: Dict[int, str] = {}
         for event in events:
             payload = event.payload or {}
             if event.type is EventType.RUN_STARTED:
                 user_message = payload.get('user_message') or ''
+            elif event.type is EventType.AUTO_STEP:
+                instruction = payload.get('instruction')
+                if instruction:
+                    auto_instructions[int(payload.get('turn') or 0)] = str(
+                        instruction)
             elif event.type is EventType.MESSAGE_DELTA:
                 turn = turns.setdefault(
                     int(payload.get('turn') or 0), _Turn(number=0))
@@ -696,6 +739,12 @@ class ContextAssembler:
                 for result in turn.results.values())
             if not text and not tool_calls:
                 continue
+            instruction = auto_instructions.get(number)
+            if instruction:
+                messages.append(ContextMessage(
+                    message_id=f'auto:{run.id}:{number}', run_id=run.id,
+                    turn=next_turn, role=LlmMessageRole.USER.value,
+                    content=instruction))
             messages.append(ContextMessage(
                 message_id=message_id, run_id=run.id, turn=next_turn,
                 role=LlmMessageRole.ASSISTANT.value,
@@ -833,6 +882,164 @@ class ContextAssembler:
                                    exc_info=True)
             self._artifact_cache[run_id] = known
         return known
+
+    # ------------------------------------------------------------ L4 rebuild
+
+    def rebuild_from_state(self, run: AgentRun, *, reason: str = 'resume'
+                           ) -> Optional['RebuildOutcome']:
+        """L4_REBUILD：进程重启 / 恢复时从 Run 表 + 产物索引重建上下文（§8.2）。
+
+        与 L1–L3 的区别：不依赖「对话事件完整回放」，而是读**事实表**——
+        ``agent_step``（计划 / scratchpad）、``agent_tool_call``（已执行 /
+        待审批的写操作）、``agent_artifact``（产物索引）——拼出一段状态块，
+        让模型接着干：已生效的写操作明确「禁止重复提交」，待审批的不重复提案。
+
+        返回 ``None`` 表示没有可重建的状态（首轮 run / 仓储未装配），调用方
+        继续走事件回放 + 最近快照（§8.2 失败降级）。重建只读，不产生副作用。
+        """
+        steps = self._safe_list(self._steps, run.id)
+        calls = self._safe_list(self._tool_calls, run.id)
+        if not steps and not calls:
+            return None
+        artifacts = self._safe_list(self._artifacts, run.id)
+        goal = self._run_goal(run.id)
+        scratchpad = self._latest_scratchpad(steps)
+        limit = max(1, int(self._settings.rebuild_list_limit))
+
+        completed_steps = [step for step in steps
+                           if step.status is StepStatus.COMPLETED]
+        failed_steps = [step for step in steps
+                        if step.status is StepStatus.FAILED]
+        executed_writes = [call for call in calls
+                           if call.risk is not ToolRisk.READ
+                           and call.status is ToolCallStatus.COMPLETED]
+        pending_writes = [call for call in calls
+                          if call.status is ToolCallStatus.WAITING_APPROVAL]
+
+        lines = ['## 运行状态重建（L4_REBUILD）',
+                 f'- 恢复原因：{reason}'
+                 f'（进程重启 / 恢复，上下文由 Run 表与产物索引重建）']
+        if goal:
+            lines.append(f'- 目标：{goal}')
+        plan = str((scratchpad or {}).get('plan') or '').strip()
+        if plan:
+            lines.append(f'- 当前计划：{plan}')
+        lines.append(
+            f'- 已完成步骤：{len(completed_steps)}/{len(steps)}'
+            + (f'（失败 {len(failed_steps)} 步）' if failed_steps else ''))
+        for step in steps[-limit:]:
+            error = f'（{step.error}）' if step.error else ''
+            lines.append(
+                f'  - 第 {step.index} 步 {step.status.value}{error}')
+        if executed_writes:
+            lines.append('- 已生效的写操作（已执行过，禁止重复提交）：')
+            for call in executed_writes[-limit:]:
+                lines.append(
+                    f'  - tool_call_id={call.tool_call_id} tool={call.tool} '
+                    f'args_hash={call.args_hash} '
+                    f'result_code={call.result_code or "OK"}')
+        if pending_writes:
+            lines.append('- 待审批的写操作（等待用户决策，不要重复提案）：')
+            for call in pending_writes[-limit:]:
+                lines.append(
+                    f'  - tool_call_id={call.tool_call_id} tool={call.tool}')
+        if artifacts:
+            lines.append('- 已产生产物（索引永不压缩）：')
+            for artifact in artifacts[-limit:]:
+                lines.append(
+                    f'  - {artifact.id} | {artifact.kind} | {artifact.uri}')
+        lines.append('- 恢复约定：继续推进未完成的步骤；上面列出的写操作'
+                     '不得重复提交，待审批的等用户决策。')
+        text = '\n'.join(lines)
+
+        usage = (scratchpad or {}).get('usage') or {}
+        memo: Dict[str, Any] = {
+            'goal': goal,
+            'plan': plan,
+            'steps_total': len(steps),
+            'steps_completed': len(completed_steps),
+            'steps_failed': len(failed_steps),
+            'executed_writes': [
+                {'tool_call_id': call.tool_call_id, 'tool': call.tool,
+                 'args_hash': call.args_hash,
+                 'result_code': call.result_code or 'OK'}
+                for call in executed_writes[-limit:]
+            ],
+            'pending_writes': [
+                {'tool_call_id': call.tool_call_id, 'tool': call.tool}
+                for call in pending_writes[-limit:]
+            ],
+            'artifacts': [{'id': artifact.id, 'kind': artifact.kind,
+                           'uri': artifact.uri}
+                          for artifact in artifacts[-limit:]],
+            'usage': dict(usage) if isinstance(usage, dict) else {},
+            'reason': reason,
+        }
+        token_count = estimate_message_tokens(text, None)
+        version = self._record_rebuild(run, memo, token_count, reason)
+        return RebuildOutcome(text=text, memo=memo, token_count=token_count,
+                              snapshot_version=version)
+
+    def _record_rebuild(self, run: AgentRun, memo: Dict[str, Any],
+                        token_count: int, reason: str) -> Optional[int]:
+        """落一条 L4 快照 + ``context_compacted`` 事件（失败不阻断恢复）。"""
+        version = self._next_snapshot_version(run.id)
+        if self._snapshots is not None:
+            try:
+                self._snapshots.add(AgentContextSnapshot(
+                    id=_snapshot_id(run.id, version), run_id=run.id,
+                    version=version, token_count=token_count,
+                    level=CompactionLevel.L4_REBUILD,
+                    dropped_ids=[], memo=dict(memo), created_at=utcnow()))
+            except Exception as exc:  # noqa: BLE001 - 快照失败不阻断恢复
+                logger.warning(
+                    'L4 重建快照落库失败 run=%s error=%s: %s',
+                    run.id, type(exc).__name__, exc, exc_info=True)
+                version = None
+        payload: Dict[str, Any] = {
+            'level': CompactionLevel.L4_REBUILD.value,
+            'snapshot_version': version,
+            'token_count_after': token_count,
+            'dropped_count': 0,
+            'reason': reason,
+            'debug': bool(self._settings.debug),
+        }
+        if self._settings.debug:
+            payload['memo'] = dict(memo)
+        try:
+            self._events.append(run.id, EventType.CONTEXT_COMPACTED, payload)
+        except Exception:  # noqa: BLE001 - 事件写失败不阻断恢复
+            logger.warning('L4 重建事件落库失败 run=%s', run.id, exc_info=True)
+        return version
+
+    def _run_goal(self, run_id: str) -> str:
+        try:
+            events = self._events.list_by_types(
+                run_id, (EventType.RUN_STARTED,), 1)
+        except Exception:  # noqa: BLE001 - 目标读取失败不阻断重建
+            return ''
+        if not events:
+            return ''
+        return str((events[0].payload or {}).get('user_message') or '')
+
+    @staticmethod
+    def _latest_scratchpad(steps: Sequence[Any]) -> Dict[str, Any]:
+        for step in reversed(list(steps)):
+            snapshot = getattr(step, 'plan_snapshot', None) or {}
+            scratchpad = snapshot.get('scratchpad')
+            if isinstance(scratchpad, dict) and scratchpad:
+                return scratchpad
+        return {}
+
+    @staticmethod
+    def _safe_list(repository, run_id: str) -> List[Any]:
+        if repository is None:
+            return []
+        try:
+            return list(repository.list_by_run(run_id))
+        except Exception:  # noqa: BLE001 - 单表读取失败按空处理（降级为事件回放）
+            logger.warning('L4 重建读取失败 run=%s', run_id, exc_info=True)
+            return []
 
     # ------------------------------------------------------------ snapshot
 
@@ -1046,5 +1253,5 @@ def _snapshot_id(run_id: str, version: int) -> str:
 
 __all__ = [
     'CompactionOutcome', 'CompactionSettings', 'ContextAssembler',
-    'ContextMessage', 'MEMO_KEYS', 'MEMO_PREFIX',
+    'ContextMessage', 'MEMO_KEYS', 'MEMO_PREFIX', 'RebuildOutcome',
 ]

@@ -29,6 +29,38 @@ class RunCancelled(AgentDomainError):
     """Run 已被取消：当前模型调用中途中止。"""
 
 
+class InvalidRunMode(AgentDomainError):
+    """运行模式非法（只接受 chat / auto，§9.3）。"""
+
+    code = 'INVALID_RUN_MODE'
+
+    def __init__(self, mode: str):
+        self.mode = mode
+        super().__init__(f'不支持的运行模式：{mode}（只能是 chat / auto）')
+
+
+class InvalidBudgetOverride(AgentDomainError):
+    """请求侧预算非法（未知项 / 非整数，§9.4 请求不可放宽）。"""
+
+    code = 'INVALID_BUDGET'
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
+class RunNotPaused(AgentDomainError):
+    """Auto 暂停后「继续」的目标 run 不是暂停态（§9.4）。
+
+    可能是：run 已结束 / 已取消、从未暂停、仍有待审批提案（应先决策审批单）。
+    """
+
+    code = 'RUN_NOT_PAUSED'
+
+    def __init__(self, reason: str = ''):
+        self.reason = reason or 'run 当前不是暂停态，无法继续'
+        super().__init__(self.reason)
+
+
 class LlmConfigurationError(AgentDomainError):
     """LLM 配置缺失 / 非法。"""
 

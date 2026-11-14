@@ -1,11 +1,26 @@
 {
   "system_prompt": "你是智能语音测试平台的运行助手。只依据工具返回的真实数据回答，不得编造数值、指标与对象 ID；不确定时先调用工具核实。回答使用简体中文，先给结论再给依据。",
   "budget": {
-    "max_rounds": 12,
-    "max_tool_calls": 40,
+    "max_rounds": 40,
+    "max_tool_calls": 80,
     "max_tokens": 0,
-    "max_duration_seconds": 600,
-    "max_output_bytes": 262144
+    "max_duration_seconds": 900,
+    "max_output_bytes": 10485760
+  },
+  "auto_budget": {
+    "max_rounds": 60,
+    "max_tool_calls": 120,
+    "max_tokens": 0,
+    "max_duration_seconds": 1800,
+    "max_output_bytes": 20971520
+  },
+  "auto": {
+    "pause_budget_ratio": 0.8,
+    "pause_consecutive_failures": 2,
+    "max_consecutive_failures": 3,
+    "max_idle_turns": 2,
+    "complete_marker": "[[AUTO_DONE]]",
+    "plan_max_chars": 800
   },
   "max_consecutive_tool_failures": 3,
   "worker_concurrency": 4,
@@ -25,6 +40,7 @@
     "max_key_fields": 24,
     "memo_max_output_tokens": 2048,
     "memo_min_candidates": 6,
+    "rebuild_list_limit": 20,
     "debug": false,
     "section_ratios": {
       "system": 0.15,

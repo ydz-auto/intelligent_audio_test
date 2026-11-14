@@ -25,10 +25,16 @@ import json
 import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from agent_service.application.approval_service import ApprovalService
+from agent_service.application.auto_mode import (
+    COMPLETE_REASON, IDLE_REASON, PAUSE_REASON_BUDGET, PAUSE_REASON_FAILURES,
+    PHASE_CONTINUE, PHASE_RESUME, PHASE_STEP, AutoAction, AutoControlState,
+    AutoModeController, AutoSettings, BudgetUsage, artifact_brief,
+    consecutive_failures,
+)
 from agent_service.application.cancel_registry import CancelRegistry
 from agent_service.application.context_assembler import ContextAssembler
 from agent_service.application.sandbox_dispatch import (
@@ -38,7 +44,7 @@ from agent_service.application.sandbox_runner import (
     SandboxFailureReason, SandboxOutcome,
 )
 from agent_service.domain.enums import (
-    ApprovalStatus, EventType, LlmMessageRole, RunStatus, SandboxTier,
+    ApprovalStatus, EventType, LlmMessageRole, RunMode, RunStatus, SandboxTier,
     StepStatus, ToolCallStatus, ToolRisk,
 )
 from agent_service.domain.exceptions import (
@@ -195,6 +201,9 @@ class OrchestratorSettings:
     # L3 备忘单轮输出上限（与主对话输出预留分开，避免占满上下文）；
     # 实际生效值 = min(本配置, 单轮输出预留 output_limit)
     memo_max_output_tokens: int = 2048
+    # Auto 停止条件（INT-2474，§9.3 / §9.4）：预算暂停比例 / 熔断阈值 /
+    # 完成标记全部来自配置，代码里不写死。
+    auto_settings: AutoSettings = field(default_factory=AutoSettings)
 
 
 class RunOrchestrator:
@@ -228,6 +237,8 @@ class RunOrchestrator:
         # INT-2549：run 的 Skill 版本快照解析（回放不随 Skill 修改变化）
         self._skill_snapshots = skill_snapshots
         self._settings = settings
+        # INT-2474：Auto 模式停止条件判定（纯策略，参数全部来自配置）
+        self._auto = AutoModeController(settings.auto_settings)
 
     # ------------------------------------------------------------ entry
 
@@ -283,6 +294,14 @@ class RunOrchestrator:
         # （批准 → 幂等执行；拒绝 / 过期 → 记为拒绝结果），仍在等待则退出。
         if self._settle_approvals(run_id):
             return
+        # INT-2474 §9.4：Auto 的暂停门控。暂停态只有用户「继续」
+        # （run_resumed 事件）才能重进循环 —— 重启恢复或任何重复投递都会
+        # 在这里重新挂回 WAITING_APPROVAL，不静默续跑。
+        permissions, active_skill, mode, goal = self._run_scope(run_id)
+        control = self._auto_control(run_id) if mode.is_auto else None
+        if mode.is_auto and control.paused:
+            self._enter_waiting_approval(run_id)
+            return
         try:
             provider = self._provider_resolver.resolve_for_run(run)
         except LlmProviderNotConfigured as exc:
@@ -293,7 +312,7 @@ class RunOrchestrator:
             return
         window = provider.effective_context_window
         output_limit = provider.max_output_tokens or self._settings.max_output_tokens
-        budget = self._effective_budget(run, window)
+        budget = self._effective_budget(run, window, mode)
         # §8.3：预算区段与 60% / 80% 阈值统一按有效窗口派生（不写死 128k）
         context_budget = self._context_budget(provider, window, output_limit)
         soft_limit = context_budget.soft_threshold
@@ -301,14 +320,15 @@ class RunOrchestrator:
         started_at = run.started_at or utcnow()
         # §9.3：等人工审批的时长不计入执行预算（否则 TTL 内的正常审批会把
         # 15 分钟执行预算耗尽，run 在恢复时被判 BUDGET_EXCEEDED）。
-        approval_wait = self._approval_wait_seconds(run_id)
+        # INT-2474：Auto 暂停（等用户决策）的时长同样不计入执行预算。
+        approval_wait = self._excluded_wait_seconds(run_id)
         rounds = self._steps.next_index(run_id)
-        output_bytes = 0
+        # 输出字节预算跨重启累计（只在本进程累加会让重启绕过 max_output_bytes）
+        output_bytes = self._output_bytes_so_far(run_id)
         turn = self._next_turn(run_id)
         db_check_counter = 0
         # Skill 披露口径在发起 run 时固化（run_started）：权限用于 L1 过滤，
         # active_skill 决定是否注入 L2；恢复时读同一条事件，口径不变。
-        permissions, active_skill = self._run_scope(run_id)
         # INT-2549：run 的 Skill 内容按激活时的版本快照固定（停用 / 修改 /
         # 删除都不中途换内容）；无快照时退回当前可见解析。
         active_skill_obj = None
@@ -332,6 +352,17 @@ class RunOrchestrator:
         # 未激活 Skill 时同样允许（仅受用户权限约束）。
         allow_discovered = (allowed_tools is None
                             or 'tool_search' in allowed_tools)
+        # INT-2474：Auto 的运行约定（系统提示）+ L4_REBUILD 状态块。
+        # 非首轮（已有 step）说明是恢复 / 继续：按 Run 表 + 产物索引重建，
+        # 让模型知道哪些写操作已生效、哪些待审批，重启后不重复写。
+        auto_prompt = self._auto.system_prompt(budget) if mode.is_auto else None
+        resume_context = self._rebuild_context(run) if rounds > 0 else None
+        plan_text = ''
+        idle_nudges = control.idle_nudges if control is not None else 0
+        # 上一轮是「纯文本且未宣告完成」→ 本轮给续跑提示（目标驱动续跑）
+        pending_nudge = False
+        # 用户点了「继续」后循环的第一轮给一次 resume 提示
+        resume_pending = bool(control.pending_resume) if control else False
 
         def cancel_check() -> bool:
             nonlocal db_check_counter
@@ -367,23 +398,69 @@ class RunOrchestrator:
                              reason='max_duration_seconds')
                 return
 
+            # INT-2474：预算水位（进度事件与停止条件共用一份快照）
+            usage = self._usage_snapshot(
+                run_id, budget, rounds=rounds, elapsed=max(0.0, elapsed),
+                output_bytes=output_bytes)
+            live_control = (replace(control, idle_nudges=idle_nudges)
+                            if mode.is_auto else None)
+            if mode.is_auto:
+                action = self._auto.preflight(usage=usage,
+                                              control=live_control)
+                if action is AutoAction.PAUSE_BUDGET:
+                    self._pause(run_id, PAUSE_REASON_BUDGET, usage)
+                    return
+                if action is AutoAction.PAUSE_FAILURES:
+                    self._pause(run_id, PAUSE_REASON_FAILURES, usage)
+                    return
+                if action is AutoAction.FAIL_CIRCUIT:
+                    self._append_error(
+                        run_id, 'CONSECUTIVE_TOOL_FAILURES',
+                        '连续工具失败达到熔断阈值，停止自动重试')
+                    self._finish(run_id, RunStatus.FAILED,
+                                 error='CONSECUTIVE_TOOL_FAILURES')
+                    return
+
+            plan_snapshot = {
+                'turn': turn,
+                'provider_id': provider.provider_id,
+                'model': provider.model,
+                'context_window': window,
+                'context_window_source': provider.context_window_source.value,
+                'output_token_limit': output_limit,
+                'token_budget': budget.max_tokens,
+                'compaction_soft_tokens': soft_limit,
+                'compaction_hard_tokens': hard_limit,
+                'section_budgets': {
+                    section.value: context_budget.section_limit(section)
+                    for section in context_budget.sections
+                },
+            }
+            if mode.is_auto:
+                # 计划 / 进度写 scratchpad（L4 重建时直接从这里读当前计划）
+                artifacts = self._artifact_brief(run_id)
+                plan_snapshot['mode'] = mode.value
+                plan_snapshot['scratchpad'] = self._auto.scratchpad(
+                    goal=goal, step=rounds + 1, turn=turn, plan=plan_text,
+                    usage=usage, artifacts=artifacts, control=live_control)
             step = self._steps.create(
                 run_id, self._steps.next_index(run_id),
-                plan_snapshot={
-                    'turn': turn,
-                    'provider_id': provider.provider_id,
-                    'model': provider.model,
-                    'context_window': window,
-                    'context_window_source': provider.context_window_source.value,
-                    'output_token_limit': output_limit,
-                    'token_budget': budget.max_tokens,
-                    'compaction_soft_tokens': soft_limit,
-                    'compaction_hard_tokens': hard_limit,
-                    'section_budgets': {
-                        section.value: context_budget.section_limit(section)
-                        for section in context_budget.sections
-                    },
-                })
+                plan_snapshot=plan_snapshot)
+            if mode.is_auto:
+                # 每步汇报进度事件（进度时间线）；需要时带目标驱动续跑提示
+                phase, instruction = self._auto_step_plan(
+                    control, resume_pending=resume_pending,
+                    pending_nudge=pending_nudge, goal=goal, step=rounds + 1,
+                    usage=usage)
+                resume_pending = False
+                self._events.append(run_id, EventType.AUTO_STEP,
+                                    self._auto.progress_payload(
+                                        step=rounds + 1, turn=turn,
+                                        phase=phase, goal=goal,
+                                        plan=plan_text, usage=usage,
+                                        artifacts=artifacts,
+                                        instruction=instruction))
+                pending_nudge = False
             text_parts: List[str] = []
             calls: Sequence[ToolCallRequest] = ()
             message_id = str(uuid.uuid4())
@@ -397,6 +474,8 @@ class RunOrchestrator:
                     active_skill_obj=active_skill_obj,
                     allowed_tools=allowed_tools,
                     context_budget=context_budget,
+                    auto_prompt=auto_prompt,
+                    resume_context=resume_context,
                     memo_summarizer=self._memo_summarizer(
                         llm, provider, run_id, cancel_check,
                         output_limit=output_limit))
@@ -471,11 +550,40 @@ class RunOrchestrator:
                     self._finish(run_id, RunStatus.FAILED,
                                  error='EMPTY_MODEL_RESPONSE')
                     return
+                if mode.is_auto:
+                    # 目标驱动续跑（§9.3 / §9.4）：纯文本轮不是结束 —— 只有
+                    # 模型宣告完成标记才算完成；否则补一次续跑提示继续推进。
+                    if not plan_text:
+                        plan_text = self._auto.plan_digest(''.join(text_parts))
+                    action = self._auto.after_turn(
+                        text=''.join(text_parts), has_tool_calls=False,
+                        control=replace(control, idle_nudges=idle_nudges))
+                    if action is AutoAction.COMPLETE:
+                        self._emit_skill_suggestion(run_id, active_skill)
+                        self._finish(run_id, RunStatus.SUCCEEDED,
+                                     reason=COMPLETE_REASON)
+                        return
+                    if action is AutoAction.COMPLETE_IDLE:
+                        # 空转到底：不把预算烧空，按完成收口并留痕
+                        self._append_error(
+                            run_id, 'AUTO_IDLE',
+                            f'连续 {idle_nudges} 次空转（无工具调用、无完成标记），'
+                            '已按完成收口')
+                        self._finish(run_id, RunStatus.SUCCEEDED,
+                                     reason=IDLE_REASON)
+                        return
+                    pending_nudge = True
+                    idle_nudges += 1
+                    turn += 1
+                    continue
                 # INT-2549 §4.4 第 7 条第④项：正常结束后给出「沉淀为 Skill」
                 # 草案建议。仅事件、不落库；用户确认后由 POST /skills 建 DRAFT。
                 self._emit_skill_suggestion(run_id, active_skill)
                 self._finish(run_id, RunStatus.SUCCEEDED)
                 return
+            if mode.is_auto and not plan_text and text_parts:
+                # 首轮常带计划文本：记进 scratchpad，L4 重建可直接读
+                plan_text = self._auto.plan_digest(''.join(text_parts))
 
             # 取消可能发生在模型流结束之后：后续工具批次不得再执行
             latest = self._runs.get(run_id)
@@ -545,11 +653,14 @@ class RunOrchestrator:
                        active_skill_obj=None,
                        allowed_tools: Optional[frozenset] = None,
                        context_budget: Optional[ContextBudget] = None,
-                       memo_summarizer=None) -> LlmRequest:
+                       memo_summarizer=None,
+                       auto_prompt: Optional[str] = None,
+                       resume_context: Optional[str] = None) -> LlmRequest:
         messages = self._assembler.assemble(
             run.session_id, run, permissions=permissions,
             active_skill=active_skill, active_skill_obj=active_skill_obj,
-            budget=context_budget, memo_summarizer=memo_summarizer)
+            budget=context_budget, memo_summarizer=memo_summarizer,
+            auto_prompt=auto_prompt, resume_context=resume_context)
         tools = tuple(self._tool_specs(permissions, allowed_tools))
         return LlmRequest(
             messages=tuple(messages), tools=tools,
@@ -623,32 +734,59 @@ class RunOrchestrator:
         return summarize
 
     def _run_scope(self, run_id: str) -> tuple:
-        """从 run_started 取本次 run 固化的权限与激活 Skill。"""
+        """从 run_started 取本次 run 固化的权限、激活 Skill、模式与目标。
+
+        Auto 模式（INT-2474）同样只认这一条事件：恢复 / 重启后模式不变，
+        不依赖进程内状态或调用方重复声明。
+        """
         try:
             events = self._events.list_by_types(
                 run_id, (EventType.RUN_STARTED,), 1)
         except Exception:  # noqa: BLE001 - 读取失败按「无 Skill 上下文」处理
             logger.warning('读取 run_started 失败 run=%s', run_id, exc_info=True)
-            return (), None
+            return (), None, RunMode.CHAT, ''
         if not events:
-            return (), None
+            return (), None, RunMode.CHAT, ''
         payload = events[0].payload or {}
+        raw_mode = str(payload.get('mode') or RunMode.CHAT.value).strip().lower()
+        try:
+            mode = RunMode(raw_mode)
+        except ValueError:  # 历史数据 / 脏值：按普通对话处理（不静默放大预算）
+            logger.warning('run_started 含未知模式 %r run=%s，按 chat 处理',
+                           raw_mode, run_id)
+            mode = RunMode.CHAT
         return (tuple(payload.get('permissions') or ()),
-                payload.get('active_skill') or None)
+                payload.get('active_skill') or None,
+                mode,
+                str(payload.get('user_message') or ''))
 
-    def _effective_budget(self, run: AgentRun, window: int) -> RunBudget:
-        """总 token 上限按有效窗口重算（默认 2×W）。
+    def _auto_control(self, run_id: str) -> AutoControlState:
+        """从事件流重建 Auto 控制状态（暂停 / 继续 / 空转次数）。"""
+        try:
+            events = self._events.list_after(
+                run_id, 0, self._settings.event_scan_limit)
+        except Exception:  # noqa: BLE001 - 读取失败按未暂停处理
+            logger.warning('读取 Auto 控制事件失败 run=%s', run_id,
+                           exc_info=True)
+            return AutoControlState()
+        return AutoControlState.from_events(events)
+
+    def _effective_budget(self, run: AgentRun, window: int,
+                          mode: RunMode = RunMode.CHAT) -> RunBudget:
+        """总 token 上限按有效窗口重算（默认 2×W，Auto 4×W）。
 
         - ``max_tokens`` 配置为 0（默认）= 完全按 W 派生；
-        - 显式正数 = 运营方硬上限，取 ``min(硬上限, 2×W)``；
-        - Auto 4×W 的乘数已由配置给出（``auto_token_budget_multiplier``），
-          但 run 的 Auto 模式属 M1（INT-2477），M0 没有该字段，先按默认乘数。
+        - 显式正数 = 运营方 / 请求侧硬上限，取 ``min(硬上限, 乘数×W)``；
+        - 乘数由模式决定（``token_budget_multiplier`` / ``auto_*``），
+          不会因为请求体给了大值而放宽（§9.4 请求不可放宽）。
         换供应商后同会话下一次 run 会重新解析 W 并重算，不沿用旧阈值。
         """
         base = RunBudget.from_dict(
             run.budget or self._settings.budget_defaults)
-        derived = ContextWindowResolver.token_budget(
-            window, self._settings.token_budget_multiplier)
+        multiplier = (self._settings.auto_token_budget_multiplier
+                      if mode.is_auto
+                      else self._settings.token_budget_multiplier)
+        derived = ContextWindowResolver.token_budget(window, multiplier)
         if base.max_tokens > 0:
             derived = min(derived, base.max_tokens)
         return base.with_max_tokens(derived)
@@ -728,14 +866,97 @@ class RunOrchestrator:
         return max_turn + 1
 
     def _consecutive_failures(self, run_id: str) -> int:
-        limit = max(1, int(self._settings.max_consecutive_tool_failures)) + 1
-        count = 0
-        for call in self._tool_calls.recent(run_id, limit):
-            if call.status in (ToolCallStatus.FAILED, ToolCallStatus.DENIED):
-                count += 1
-            else:
-                break
-        return count
+        """连续工具失败数（与 Auto 暂停 / 熔断共用同一口径）。"""
+        return consecutive_failures(
+            self._tool_calls, run_id,
+            max(1, int(self._settings.max_consecutive_tool_failures)))
+
+    # ------------------------------------------------------------ auto mode
+
+    def _usage_snapshot(self, run_id: str, budget: RunBudget, *,
+                        rounds: int, elapsed: float,
+                        output_bytes: int) -> BudgetUsage:
+        """预算水位快照（进度事件 / 暂停判定 / scratchpad 共用一份）。"""
+        latest = self._runs.get(run_id)
+        tokens = (((latest.token_in or 0) + (latest.token_out or 0))
+                  if latest is not None else 0)
+        return BudgetUsage(
+            rounds=int(rounds),
+            tool_calls=int(self._tool_calls.count_for_run(run_id)),
+            tokens=int(tokens),
+            elapsed_seconds=float(max(0.0, elapsed)),
+            output_bytes=int(max(0, output_bytes)),
+            limits=budget.to_dict(),
+            consecutive_failures=int(self._consecutive_failures(run_id)))
+
+    def _output_bytes_so_far(self, run_id: str) -> int:
+        """本 run 已产生的文本输出字节（跨重启累计，防止重启绕过输出预算）。"""
+        try:
+            events = self._events.list_by_types(
+                run_id, (EventType.MESSAGE_DELTA,),
+                self._settings.event_scan_limit)
+        except Exception:  # noqa: BLE001 - 读取失败按 0 起算
+            logger.warning('读取输出事件失败 run=%s', run_id, exc_info=True)
+            return 0
+        total = 0
+        for event in events:
+            total += len(str((event.payload or {}).get('delta') or '')
+                         .encode('utf-8'))
+        return total
+
+    def _artifact_brief(self, run_id: str) -> List[Dict[str, str]]:
+        """已产生工件的摘要（进度事件展示用；读取失败不阻断 Loop）。"""
+        try:
+            return artifact_brief(self._artifacts.list_by_run(run_id))
+        except Exception:  # noqa: BLE001
+            logger.warning('读取产物索引失败 run=%s', run_id, exc_info=True)
+            return []
+
+    def _auto_step_plan(self, control: Optional[AutoControlState], *,
+                        resume_pending: bool, pending_nudge: bool, goal: str,
+                        step: int, usage: BudgetUsage
+                        ) -> Tuple[str, Optional[str]]:
+        """本轮进度事件的 phase 与续跑提示（无提示返回 ``None``）。"""
+        if resume_pending:
+            return PHASE_RESUME, self._auto.instruction(
+                goal=goal, step=step, usage=usage, phase=PHASE_RESUME,
+                pause_reason=(control.pause_reason if control else ''))
+        if pending_nudge:
+            return PHASE_CONTINUE, self._auto.instruction(
+                goal=goal, step=step, usage=usage, phase=PHASE_CONTINUE)
+        return PHASE_STEP, None
+
+    def _pause(self, run_id: str, reason: str, usage: BudgetUsage) -> None:
+        """Auto 暂停（§9.4）：先落 ``run_paused`` 事实，再转 WAITING_APPROVAL。
+
+        顺序不能反：重启恢复时靠事件流判定「是否暂停」，先落事实再改状态
+        才不会出现「WAITING_APPROVAL 但没有暂停事件」的静默续跑窗口。
+        """
+        current = self._runs.get(run_id)
+        if current is None or current.status.is_terminal:
+            return
+        settings = self._settings.auto_settings
+        self._events.append(run_id, EventType.RUN_PAUSED, {
+            'reason': reason,
+            'paused': True,
+            'pause_budget_ratio': settings.pause_budget_ratio,
+            'pause_consecutive_failures': settings.pause_consecutive_failures,
+            'usage': usage.to_dict(),
+            'limits': dict(usage.limits),
+            'ratio': round(usage.max_ratio, 4),
+            'consecutive_failures': int(usage.consecutive_failures or 0),
+        })
+        self._enter_waiting_approval(run_id)
+
+    def _rebuild_context(self, run: AgentRun) -> Optional[str]:
+        """L4_REBUILD 状态块（§8.2）：恢复时按 Run 表 + 产物索引重建。"""
+        try:
+            outcome = self._assembler.rebuild_from_state(run, reason='resume')
+        except Exception:  # noqa: BLE001 - 重建失败退回事件回放
+            logger.warning('L4 上下文重建失败 run=%s（退回事件回放）',
+                           run.id, exc_info=True)
+            return None
+        return outcome.text if outcome is not None else None
 
     # ------------------------------------------------------------ tools
 
@@ -1242,13 +1463,16 @@ class RunOrchestrator:
         return (f'已生成待审批提案（未执行、无副作用）：本批 {total} 张单，'
                 '全部批准后才会一次性执行（任一张拒绝或过期则整批不执行）。')
 
-    def _approval_wait_seconds(self, run_id: str) -> float:
-        """等待人工审批的累计时长（秒）：不计入 §9.3 执行时长预算。
+    def _excluded_wait_seconds(self, run_id: str) -> float:
+        """不计入 §9.3 执行时长预算的等待时长（秒）：人工审批 + Auto 暂停。
 
-        按审批单 ``created_at → decided_at`` 统计，**按批取区间并集**：同一
-        批 N 张单覆盖的是同一段等待，不能按张累加（§9.4.1 第 11 条，否则
+        审批按 ``created_at → decided_at`` 统计并**按批取区间并集**：同一批
+        N 张单覆盖的是同一段等待，不能按张累加（§9.4.1 第 11 条，否则
         §9.3 执行时长预算被放大 N 倍）。未决单算到当前时刻，过期单算到
         ``expires_at``（取消作废的单有 decided_at）。
+
+        INT-2474：Auto 暂停（等用户决策）与审批是同一类等待 —— 不扣除的话，
+        暂停一小时再「继续」会立刻被判 BUDGET_EXCEEDED。
         """
         now = utcnow()
         intervals: List[Tuple[float, float]] = []
@@ -1264,7 +1488,33 @@ class RunOrchestrator:
             start_ts = approval.created_at.timestamp()
             end_ts = max(start_ts, end.timestamp())
             intervals.append((start_ts, end_ts))
+        intervals.extend(self._pause_intervals(run_id, now))
         return _interval_union_seconds(intervals)
+
+    def _pause_intervals(self, run_id: str,
+                         now) -> List[Tuple[float, float]]:
+        """Auto 暂停区间（``run_paused → run_resumed``；未恢复算到当前）。"""
+        try:
+            events = self._events.list_by_types(
+                run_id, (EventType.RUN_PAUSED, EventType.RUN_RESUMED),
+                self._settings.event_scan_limit)
+        except Exception:  # noqa: BLE001 - 读取失败按无暂停处理
+            logger.warning('读取暂停事件失败 run=%s', run_id, exc_info=True)
+            return []
+        intervals: List[Tuple[float, float]] = []
+        paused_at: Optional[float] = None
+        for event in events:
+            if event.created_at is None:
+                continue
+            stamp = event.created_at.timestamp()
+            if event.type is EventType.RUN_PAUSED:
+                paused_at = stamp
+            elif paused_at is not None:
+                intervals.append((paused_at, max(paused_at, stamp)))
+                paused_at = None
+        if paused_at is not None:
+            intervals.append((paused_at, max(paused_at, now.timestamp())))
+        return intervals
 
     def _turn_for_call(self, run_id: str, tool_call_id: str) -> int:
         """从 tool_call 事件取调用所属轮次（崩溃恢复补事件分组用）。"""

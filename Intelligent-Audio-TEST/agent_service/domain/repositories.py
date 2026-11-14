@@ -124,6 +124,14 @@ class StepRepository(ABC):
     @abstractmethod
     def fail_running(self, run_id: str, error: str) -> int: ...
 
+    @abstractmethod
+    def list_by_run(self, run_id: str) -> List[AgentStep]:
+        """本 run 的全部 step（``index`` 升序）。
+
+        L4_REBUILD（INT-2474）据此从 Run 表重建上下文：计划 / scratchpad 与
+        已完成步骤是恢复时的事实来源，不依赖事件回放。
+        """
+
 
 class ToolCallRepository(ABC):
     @abstractmethod

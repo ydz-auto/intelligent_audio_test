@@ -16,12 +16,18 @@ class CreateSessionRequest(BaseModel):
 
 
 class CreateRunRequest(BaseModel):
-    # 预算只由服务端配置（agent_defaults.json + AGENT_MAX_* 环境变量）给定，
-    # 请求体不接受覆盖：任何调用方都不能把 token / 时长 / 轮次 / 输出字节
-    # 的上限关掉。未知字段按 pydantic 默认忽略，不报错、也不生效。
+    # 预算上限只由服务端配置（agent_defaults.json + AGENT_MAX_*）给定：
+    # 请求体里的 ``budget`` 只能**收紧**（取与服务端默认值的最小值，0 / 负
+    # 数视为不覆盖），任何调用方都不能把 token / 时长 / 轮次 / 输出字节的
+    # 上限放宽或关掉（§9.4「请求不可放宽」）。
     message: str = Field(min_length=1)
     # 可选：发起本轮时切换会话激活的 Skill（落库 agent_session.active_skill）
     active_skill: Optional[str] = None
+    # 运行模式：chat（默认，单轮问答）/ auto（目标驱动长任务，§9.3 / §9.4）
+    mode: str = 'chat'
+    # 可选：请求侧收紧预算（键同 RunBudget：max_rounds / max_tool_calls /
+    # max_tokens / max_duration_seconds / max_output_bytes）
+    budget: Optional[Dict[str, int]] = None
 
 
 class SessionResponse(BaseModel):
@@ -42,6 +48,8 @@ class RunResponse(BaseModel):
     tenant_id: str
     status: str
     model: str
+    # 运行模式（INT-2474）：chat / auto；从 run_started 固化口径读出
+    mode: str = 'chat'
     budget: Dict[str, Any] = Field(default_factory=dict)
     token_in: int = 0
     token_out: int = 0

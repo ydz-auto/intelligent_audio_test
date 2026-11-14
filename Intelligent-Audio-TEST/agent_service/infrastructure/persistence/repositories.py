@@ -555,6 +555,17 @@ class SqlStepRepository(_BaseRepo, StepRepository):
         finally:
             db.close()
 
+    def list_by_run(self, run_id: str) -> List[AgentStep]:
+        """按 ``index`` 升序返回本 run 的全部 step（INT-2474 L4 重建）。"""
+        db = self._session()
+        try:
+            rows = db.query(AgentStepPO).filter(
+                AgentStepPO.run_id == run_id,
+            ).order_by(AgentStepPO.index.asc()).all()
+            return [_to_step(row) for row in rows]
+        finally:
+            db.close()
+
 
 # ---------------------------------------------------------------- tool calls
 

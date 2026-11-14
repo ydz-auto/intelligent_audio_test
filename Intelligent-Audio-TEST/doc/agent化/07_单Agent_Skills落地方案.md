@@ -883,6 +883,40 @@ M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参�
 
 预算只能由服务端配置收紧，请求不可放宽；超限统一 `BUDGET_EXCEEDED`。
 
+> **实现口径（INT-2474，2026-11-14）**：Auto 与普通对话共用同一条 Loop，
+> 入口是 `POST /agent/sessions/{id}/runs` 的 `mode: chat|auto`（默认 chat）；
+> `budget` 可随请求下发但**只收紧**（`min(服务端, 请求值)`，`0`/负数视为不覆盖，
+> 未知键 400 `INVALID_BUDGET`；`mode` 非法 400 `INVALID_RUN_MODE`）。
+> `run_started` 载荷带 `mode` / `budget`（Auto 再带 `pause_policy = {budget_ratio,
+> consecutive_failures}`），前端在开跑前即可展示预算与暂停规则；计划见首条
+> `auto_step` 事件（模型首轮的简要计划会写进 `scratchpad.plan` 并随进度下发）。
+>
+> 进度/控制事件（SSE，均带 `run_id` / `sequence` / `timestamp`）：
+> - `auto_step`：每轮一条，含 `step` / `phase(step|continue|resume)` / `goal` /
+>   `plan` / `usage`（rounds、tool_calls、tokens、elapsed_seconds、output_bytes）/
+>   `limits` / `ratios` / `ratio` / `artifact_count` / `artifacts`；`continue` /
+>   `resume` 两种 phase 另带 `instruction`（该轮回灌模型的续跑提示）；
+> - `run_paused`：`reason ∈ {budget_threshold, consecutive_tool_failures}` +
+>   当时的 usage/ratio；run 转 `WAITING_APPROVAL`（等用户决策，不计入执行时长）；
+> - `run_resumed`：用户点「继续」，记录 `pause_reason` / `consecutive_failures` /
+>   `acked_budget_pause`；用户继续后**同一预算暂停点不再触发**，硬预算仍生效。
+>
+> 继续入口 `POST /agent/runs/{id}/resume`：仅暂停态 Auto run 可用；仍有待审批
+> 提案时 409（先处理审批单，审批决策本身会唤醒 run）；已终态 / 非 Auto /
+> 非本人 409/404。暂停态在进程重启后**不会**被恢复投递静默续跑。
+>
+> 停止条件：连续工具失败 2 次暂停、3 次熔断（`FAILED` +
+> `CONSECUTIVE_TOOL_FAILURES`，不再自动重试）；模型在最终文本输出完成标记
+> （默认 `[[AUTO_DONE]]`，`AGENT_AUTO_COMPLETE_MARKER`）→ `SUCCEEDED`
+> （`run_finished.reason=auto_complete`）；无标记又不调工具的空转达
+> `AGENT_AUTO_MAX_IDLE_TURNS` 次 → 按完成收口（`auto_idle_limit`）。
+> 长任务恢复：非首轮进入 Loop 时按 L4_REBUILD 从 `agent_step`（计划 /
+> scratchpad）+ `agent_tool_call`（已生效 / 待审批写操作）+ `agent_artifact`
+> 重建状态块并落 `L4_REBUILD` 快照，已完成的写操作明确「禁止重复提交」。
+> **边界**：Auto 下 WRITE 仍逐次走 M2 的提案 → 审批链（「计划级批量审批」尚无
+> 实现卡），DESTRUCTIVE 恒单条且不参与任何预授权；若产品要求 Auto 免逐次审批
+> WRITE，需新开卡改审批语义与审计。
+
 ## 10. 数据模型
 
 | 表 | 关键字段 |
@@ -914,6 +948,7 @@ M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参�
 | GET | `/api/v1/agent/runs/{id}` | run 快照 |
 | GET | `/api/v1/agent/runs/{id}/events?cursor=` | SSE，支持 `Last-Event-ID` 续传 |
 | POST | `/api/v1/agent/runs/{id}/cancel` | 取消 |
+| POST | `/api/v1/agent/runs/{id}/resume` | Auto 暂停后继续（INT-2474）|
 | GET | `/api/v1/agent/runs/{id}/approvals` | 待审批提案 |
 | POST | `/api/v1/agent/approvals/{id}/decision` | 批准/拒绝 |
 | GET | `/api/v1/agent/skills` | 当前用户可见 Skill 列表 |

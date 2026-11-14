@@ -32,6 +32,8 @@ def _load_defaults() -> dict:
 
 _DEFAULTS = _load_defaults()
 _BUDGET_DEFAULTS = _DEFAULTS.get('budget', {})
+_AUTO_BUDGET_DEFAULTS = _DEFAULTS.get('auto_budget', {})
+_AUTO_DEFAULTS = _DEFAULTS.get('auto', {})
 _CONTEXT_DEFAULTS = _DEFAULTS.get('context', {})
 _STREAM_DEFAULTS = _DEFAULTS.get('event_stream', {})
 _SKILL_DEFAULTS = _DEFAULTS.get('skills', {})
@@ -94,6 +96,42 @@ class Config(BaseConfig):
         'AGENT_MAX_CONSECUTIVE_TOOL_FAILURES',
         int(_DEFAULTS.get('max_consecutive_tool_failures', 3)))
 
+    # ===== Auto 模式预算 / 熔断（INT-2474，§9.3 / §9.4 拍板口径）=====
+    # Auto 预算（默认 60 轮 / 120 工具 / 4×W token / 30min / 20MB）；
+    # 请求侧同样只能收紧，不能放宽（见 RunBudget.tightened）。
+    AUTO_MAX_ROUNDS = _get_int(
+        'AGENT_AUTO_MAX_ROUNDS', int(_AUTO_BUDGET_DEFAULTS.get('max_rounds', 60)))
+    AUTO_MAX_TOOL_CALLS = _get_int(
+        'AGENT_AUTO_MAX_TOOL_CALLS',
+        int(_AUTO_BUDGET_DEFAULTS.get('max_tool_calls', 120)))
+    # 0 = 按有效上下文窗口派生（Auto 4×W）；正数作为运营侧硬上限（取 min）
+    AUTO_MAX_TOKENS = _get_int(
+        'AGENT_AUTO_MAX_TOKENS', int(_AUTO_BUDGET_DEFAULTS.get('max_tokens', 0)))
+    AUTO_MAX_DURATION_SECONDS = _get_int(
+        'AGENT_AUTO_MAX_DURATION_SECONDS',
+        int(_AUTO_BUDGET_DEFAULTS.get('max_duration_seconds', 1800)))
+    AUTO_MAX_OUTPUT_BYTES = _get_int(
+        'AGENT_AUTO_MAX_OUTPUT_BYTES',
+        int(_AUTO_BUDGET_DEFAULTS.get('max_output_bytes', 20971520)))
+    # 预算消耗到该比例（含）暂停交用户决策；用户继续后同一暂停点不再触发
+    AUTO_PAUSE_BUDGET_RATIO = _get_float(
+        'AGENT_AUTO_PAUSE_BUDGET_RATIO',
+        float(_AUTO_DEFAULTS.get('pause_budget_ratio', 0.80)))
+    # 连续工具失败到该值暂停（必须小于上面的熔断阈值，否则暂停永远轮不到）
+    AUTO_PAUSE_CONSECUTIVE_FAILURES = _get_int(
+        'AGENT_AUTO_PAUSE_CONSECUTIVE_FAILURES',
+        int(_AUTO_DEFAULTS.get('pause_consecutive_failures', 2)))
+    # 「没有完成标记也不调工具」的空转最多提示几次，超过按完成收口
+    AUTO_MAX_IDLE_TURNS = _get_int(
+        'AGENT_AUTO_MAX_IDLE_TURNS', int(_AUTO_DEFAULTS.get('max_idle_turns', 2)))
+    # 模型宣告目标完成的标记（写进 Auto 系统提示；空值禁止启动）
+    AUTO_COMPLETE_MARKER = os.environ.get(
+        'AGENT_AUTO_COMPLETE_MARKER',
+        str(_AUTO_DEFAULTS.get('complete_marker', '[[AUTO_DONE]]')))
+    # scratchpad 计划摘要长度上限（字符）
+    AUTO_PLAN_MAX_CHARS = _get_int(
+        'AGENT_AUTO_PLAN_MAX_CHARS', int(_AUTO_DEFAULTS.get('plan_max_chars', 800)))
+
     # ===== 并发 =====
     WORKER_CONCURRENCY = _get_int(
         'AGENT_WORKER_CONCURRENCY', int(_DEFAULTS.get('worker_concurrency', 4)))
@@ -149,6 +187,10 @@ class Config(BaseConfig):
     CONTEXT_MEMO_MIN_CANDIDATES = _get_int(
         'AGENT_CONTEXT_MEMO_MIN_CANDIDATES',
         int(_CONTEXT_DEFAULTS.get('memo_min_candidates', 6)))
+    # L4_REBUILD（INT-2474）：重建块里每个清单（步骤 / 副作用 / 产物）最多列几条
+    CONTEXT_REBUILD_LIST_LIMIT = _get_int(
+        'AGENT_CONTEXT_REBUILD_LIST_LIMIT',
+        int(_CONTEXT_DEFAULTS.get('rebuild_list_limit', 20)))
     # 调试模式：context_compacted 事件附带被裁消息 ID 与备忘，供回放（§8.5）
     CONTEXT_DEBUG = _get_bool(
         'AGENT_CONTEXT_DEBUG', bool(_CONTEXT_DEFAULTS.get('debug', False)))
@@ -475,6 +517,29 @@ class Config(BaseConfig):
         }
 
     @classmethod
+    def auto_budget_defaults(cls) -> dict:
+        """Auto 模式的预算默认值（§9.4 拍板：60 / 120 / 4×W / 30min / 20MB）。"""
+        return {
+            'max_rounds': cls.AUTO_MAX_ROUNDS,
+            'max_tool_calls': cls.AUTO_MAX_TOOL_CALLS,
+            'max_tokens': cls.AUTO_MAX_TOKENS,
+            'max_duration_seconds': cls.AUTO_MAX_DURATION_SECONDS,
+            'max_output_bytes': cls.AUTO_MAX_OUTPUT_BYTES,
+        }
+
+    @classmethod
+    def auto_settings(cls):
+        """Auto 停止条件参数（避免 application 反向读配置常量）。"""
+        from agent_service.application.auto_mode import AutoSettings
+        return AutoSettings(
+            pause_budget_ratio=cls.AUTO_PAUSE_BUDGET_RATIO,
+            pause_consecutive_failures=cls.AUTO_PAUSE_CONSECUTIVE_FAILURES,
+            max_consecutive_failures=cls.MAX_CONSECUTIVE_TOOL_FAILURES,
+            max_idle_turns=cls.AUTO_MAX_IDLE_TURNS,
+            complete_marker=cls.AUTO_COMPLETE_MARKER,
+            plan_max_chars=cls.AUTO_PLAN_MAX_CHARS)
+
+    @classmethod
     def validate(cls):
         super().validate()
         if cls.WORKER_CONCURRENCY <= 0:
@@ -519,6 +584,24 @@ class Config(BaseConfig):
         if cls.APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS <= 0:
             raise ValueError(
                 'AGENT_APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS 必须为正数')
+        # Auto 模式（INT-2474）：暂停阈值必须早于熔断阈值，否则「暂停交用户
+        # 决策」永远轮不到；比例在 (0, 1) 内；完成标记为空会让 Auto 永远无法
+        # 正常收口（只能烧到预算），启动即拒绝。
+        if not 0 < cls.AUTO_PAUSE_BUDGET_RATIO < 1:
+            raise ValueError('AGENT_AUTO_PAUSE_BUDGET_RATIO 必须在 (0, 1) 内')
+        if not 0 < cls.AUTO_PAUSE_CONSECUTIVE_FAILURES \
+                < cls.MAX_CONSECUTIVE_TOOL_FAILURES:
+            raise ValueError(
+                'AGENT_AUTO_PAUSE_CONSECUTIVE_FAILURES 必须为正，且小于 '
+                'AGENT_MAX_CONSECUTIVE_TOOL_FAILURES（暂停要早于熔断）')
+        if cls.AUTO_MAX_IDLE_TURNS < 0:
+            raise ValueError('AGENT_AUTO_MAX_IDLE_TURNS 不能为负数')
+        if not str(cls.AUTO_COMPLETE_MARKER or '').strip():
+            raise ValueError('AGENT_AUTO_COMPLETE_MARKER 不能为空')
+        if cls.AUTO_MAX_ROUNDS <= 0 or cls.AUTO_MAX_TOOL_CALLS <= 0 \
+                or cls.AUTO_MAX_DURATION_SECONDS <= 0 \
+                or cls.AUTO_MAX_OUTPUT_BYTES <= 0:
+            raise ValueError('AGENT_AUTO_MAX_* 预算必须为正数')
         if cls.EXPLORATION_MAX_ACTIONS <= 0:
             raise ValueError('AGENT_EXPLORATION_MAX_ACTIONS 必须为正数')
         if cls.EXPLORATION_MAX_SECONDS <= 0:

@@ -456,7 +456,7 @@ def test_batch_wait_seconds_counts_the_interval_once(tmp_path):
     finally:
         session.close()
 
-    waited = container.orchestrator._approval_wait_seconds(run.id)  # noqa: SLF001
+    waited = container.orchestrator._excluded_wait_seconds(run.id)  # noqa: SLF001
     # 21 张单覆盖同一段等待：只计一次（≈10s），不是 21 × 10s
     assert 9.0 <= waited <= 11.0, waited
     assert len(batch) == 21
