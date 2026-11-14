@@ -124,6 +124,157 @@ def test_e2e_layer_runs_real_loop_and_reports_cost():
     assert result.cost['llm_calls'] > 0
     assert result.cost['tool_calls'] == 40
     assert result.cost['approx_prompt_tokens'] > 0
+    # P2-2：数据集与整体成功率共用同一阈值（单口径）
+    assert metrics['success_threshold'] == gate.E2E_SUCCESS_THRESHOLD
+    for name, dataset in metrics['datasets'].items():
+        assert dataset['success_rate'] >= gate.E2E_SUCCESS_THRESHOLD, name
+
+
+# ---------------------------------------------------------------- P2-2 e2e 口径
+
+class _FakeTaskSet:
+    """``_e2e_dataset_failure`` 只需要 TaskSetMetrics 的这几个字段。"""
+
+    def __init__(self, total, passed, tool_selection_correct=None,
+                 failures=None):
+        self.total = total
+        self.passed = passed
+        self.tool_selection_correct = (total if tool_selection_correct is None
+                                       else tool_selection_correct)
+        self.failures = list(failures or [])
+
+
+def test_e2e_dataset_gate_uses_the_shared_threshold():
+    """P2-2：数据集门槛不再是 100%，而是与整体成功率同一条 95% 口径。"""
+    assert gate.E2E_SUCCESS_THRESHOLD < 1.0
+    assert gate._e2e_dataset_failure(_FakeTaskSet(100, 95), []) is None
+    assert gate._e2e_dataset_failure(_FakeTaskSet(100, 99), []) is None
+    detail = gate._e2e_dataset_failure(_FakeTaskSet(100, 94), [])
+    assert detail and '94/100' in detail
+    # 编造 / 工具派发是独立判据，成功率达标也照样判红
+    assert gate._e2e_dataset_failure(
+        _FakeTaskSet(100, 100), [{'reason': 'fabricated_value'}])
+    assert '工具派发异常' in gate._e2e_dataset_failure(
+        _FakeTaskSet(100, 100, tool_selection_correct=99), [])
+
+
+def test_markdown_gate_rows_cover_each_e2e_dataset():
+    """P2-2：门槛表按 e2e:<dataset> 出行，不能「表格全通过、层结论未通过」。"""
+    report = _fake_report('passed', 'passed', 'passed', 'passed', 'passed')
+    e2e = report.layers['e2e']
+    e2e.metrics = {'datasets': {'golden_tasks.json': {},
+                                'no_fabrication_tasks.json': {}}}
+    e2e.fail('e2e:no_fabrication_tasks.json', '29/30 通过（96.7% < 95%）')
+    rows = [line for line in report.to_markdown().splitlines()
+            if line.startswith('| 端到端·')]
+    assert [row.split('|')[1].strip() for row in rows] == [
+        '端到端·golden_tasks.json 成功率',
+        '端到端·no_fabrication_tasks.json 成功率',
+    ]
+    assert [row for row in rows if 'golden_tasks.json 成功率' in row][0] \
+        .rstrip().endswith('| 通过 |')
+    assert [row for row in rows if 'no_fabrication' in row][0] \
+        .rstrip().endswith('| 未通过 |')
+
+
+# ---------------------------------------------------------------- P2-3 权限边界
+
+def test_check_permissions_flags_write_tool_on_read_task():
+    """P2-3：只读任务集里出现写工具必须判红（负例，证明判据可判红）。"""
+    violations = gate._check_permissions([
+        {'task': '音频列表', 'active_skill': None,
+         'called': ['audio_query', 'audio_import']},
+    ])
+    assert [item['tool'] for item in violations] == ['audio_import']
+    assert violations[0]['reason'] == 'read_task_called_WRITE'
+
+
+def test_check_permissions_flags_tool_outside_skill_whitelist():
+    """P2-3：Skill 白名单外的工具必须判红。"""
+    violations = gate._check_permissions([
+        {'task': 't', 'active_skill': 'audio-import', 'called': ['task_query']},
+    ])
+    assert [item['tool'] for item in violations] == ['task_query']
+    assert violations[0]['reason'] == 'not_in_skill_allowed_tools'
+
+
+def test_check_permissions_flags_unknown_skill():
+    violations = gate._check_permissions([
+        {'task': 't', 'active_skill': 'not-a-skill', 'called': []},
+    ])
+    assert violations and '未知 Skill' in violations[0]['reason']
+
+
+def test_check_permissions_accepts_allowed_read_tool():
+    """正例：白名单内的只读工具不误报（负例的反面）。"""
+    assert gate._check_permissions([
+        {'task': 't', 'active_skill': 'audio-import', 'called': ['audio_query']},
+        {'task': 't', 'active_skill': None, 'called': ['audio_query']},
+    ]) == []
+
+
+# ---------------------------------------------------------------- P2-1 层完整性
+
+def _partial_report(*layers):
+    return gate.GateReport(
+        started_at=gate.datetime.now(gate.timezone.utc),
+        duration_seconds=0.2,
+        layers={layer.name: layer for layer in layers},
+        dataset_versions=gate.dataset_versions())
+
+
+def test_skipped_layer_is_not_a_pass():
+    """P2-1：被跳过的层不再让门禁 exit 0，报告顶层可辨。"""
+    report = _fake_report('passed', 'passed', 'passed', 'skipped', 'passed')
+    assert report.layers_skipped == ['sandbox']
+    assert report.degraded and not report.full_five
+    assert not report.passed and report.exit_code == 1
+    payload = report.to_dict()
+    assert payload['layers_skipped'] == ['sandbox']
+    assert payload['layers_expected'] == list(gate.LAYER_ORDER)
+    assert payload['full_five'] is False and payload['degraded'] is True
+    assert payload['allow_skip'] is False
+
+
+def test_subset_layers_are_not_full_five():
+    """P2-1：--layers 子集同样拿不到 exit 0（层不完整）。"""
+    report = _partial_report(
+        gate.LayerResult(name='e2e', status='passed'),
+        gate.LayerResult(name='skill', status='passed'))
+    assert report.layers_missing == ['compaction', 'sandbox', 'recovery']
+    assert not report.full_five and report.exit_code == 1
+    payload = report.to_dict()
+    assert payload['layers_missing'] == ['compaction', 'sandbox', 'recovery']
+    assert payload['full_five'] is False
+
+
+def test_allow_skip_passes_but_report_stays_distinguishable():
+    """P2-1：显式 --allow-skip 下 exit 0，但报告仍标出跳过的层。"""
+    report = _partial_report(
+        gate.LayerResult(name='e2e', status='passed'),
+        gate.LayerResult(name='sandbox', status='skipped'))
+    report.allow_skip = True
+    assert report.passed and report.exit_code == 0
+    payload = report.to_dict()
+    assert payload['allow_skip'] is True
+    assert payload['layers_skipped'] == ['sandbox']
+    assert payload['full_five'] is False and payload['degraded'] is True
+
+
+def test_sandbox_tier_none_reports_skipped():
+    result = gate.run_sandbox_layer('none')
+    assert result.status == 'skipped'
+    assert 'none' in result.detail
+
+
+def test_markdown_marks_degraded_layer_integrity():
+    report = _fake_report('passed', 'passed', 'passed', 'skipped', 'passed')
+    markdown = report.to_markdown()
+    assert '全五层：否' in markdown
+    integrity = [line for line in markdown.splitlines()
+                 if line.startswith('| 层完整性')][0]
+    assert integrity.rstrip().endswith('| 未通过 |')
+
 
 
 # ---------------------------------------------------------------- 报告

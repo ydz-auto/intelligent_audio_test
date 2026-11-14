@@ -26,8 +26,14 @@
 - **改坏 Skill 必须红**：``skill`` 层的失败项带 ``set``（``skill:<name>``），
   门禁非 0 退出并指出具体集合；``--changed-skills`` 只跑变更 Skill 的集合。
 
-退出码：0 全通过；1 有层未通过；2 基础设施不可用（Docker / runsc / 目标
-数据集缺失），与「用例失败」区分，便于 CI 分别处置。
+退出码：0 全通过；1 有层未通过（或层不完整：子集层 / 被跳过的层）；2 基础设施
+不可用（Docker / runsc / 目标数据集缺失），与「用例失败」区分，便于 CI 分别处置。
+
+**退出码 0 的唯一口径是「五层全跑且全过」**：``--layers`` 子集与
+``--sandbox-tier none`` 都会让层不完整，默认按 1 退出；只有显式 ``allow_skip``
+（入口的 ``--allow-skip``，仅本地排障）才放行，且报告顶层仍带
+``layers_expected`` / ``layers_skipped`` / ``full_five`` / ``degraded``，让「降级
+通过」在报告上可机器分辨。
 """
 from __future__ import annotations
 
@@ -344,6 +350,26 @@ def _load_skill_tasks() -> Dict[str, List[Dict[str, Any]]]:
 
 # ---------------------------------------------------------------- E2E 层
 
+def _e2e_dataset_failure(metrics: Any,
+                         bad: Sequence[Dict[str, Any]]) -> Optional[str]:
+    """单个端到端数据集的门槛判定：返回失败说明，``None`` 表示通过。
+
+    数据集与整体成功率共用 ``E2E_SUCCESS_THRESHOLD`` 这**一条**口径（P2-2）：
+    原先数据集额外要求 ``passed == total``（等价 100%），使 95% 永远不成为放行
+    条件，报告门槛表（≥95%）与层结论（100%）会对不上。现在两边同阈值，门槛表
+    按 ``e2e:<dataset>`` 逐行给出结论，不再出现「表格全通过、层未通过」。
+    """
+    rate = (metrics.passed / metrics.total) if metrics.total else 0.0
+    if bad or rate < E2E_SUCCESS_THRESHOLD:
+        return (f'{metrics.passed}/{metrics.total} 通过（{rate:.1%} < '
+                f'{E2E_SUCCESS_THRESHOLD:.0%}）'
+                + (f'，编造 {len(bad)} 条' if bad else ''))
+    if metrics.tool_selection_correct != metrics.total:
+        return (f'工具派发异常 {metrics.tool_selection_correct}/'
+                f'{metrics.total}')
+    return None
+
+
 def run_e2e_layer() -> LayerResult:
     """端到端层：跨域任务集走真实 Loop，核对成功率 / 编造 / 权限边界。"""
     from tests.agent_eval.runner import AgentEvalRunner
@@ -373,15 +399,9 @@ def run_e2e_layer() -> LayerResult:
                    if item.get('reason') == 'fabricated_value']
             fabricated += len(bad)
             per_dataset[name] = metrics.to_dict()
-            if bad or metrics.passed != metrics.total:
-                result.fail(f'e2e:{name}',
-                            f'{metrics.passed}/{metrics.total} 通过'
-                            + (f'，编造 {len(bad)} 条' if bad else ''))
-            elif metrics.tool_selection_correct != metrics.total:
-                result.fail(
-                    f'e2e:{name}',
-                    f'工具派发异常 {metrics.tool_selection_correct}/'
-                    f'{metrics.total}')
+            detail = _e2e_dataset_failure(metrics, bad)
+            if detail:
+                result.fail(f'e2e:{name}', detail)
     finally:
         # Windows 上 sqlite 句柄可能仍被引擎持有：清理失败不掩盖评测结论。
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -657,7 +677,8 @@ def _parse_junit(path: str) -> List[Dict[str, str]]:
 def run_gate(layers: Optional[Sequence[str]] = None,
              *, skills: Optional[Sequence[str]] = None,
              sandbox_tier: str = 't1',
-             changed: Optional[Sequence[str]] = None) -> 'GateReport':
+             changed: Optional[Sequence[str]] = None,
+             allow_skip: bool = False) -> 'GateReport':
     """跑指定层并汇总。``layers=None`` 表示五层全跑。"""
     selected = list(layers or LAYER_ORDER)
     unknown = [name for name in selected if name not in LAYER_ORDER]
@@ -682,7 +703,9 @@ def run_gate(layers: Optional[Sequence[str]] = None,
     duration = time.monotonic() - started
     return GateReport(started_at=started_at, duration_seconds=duration,
                       layers=results, changed_skills=list(changed or ()),
-                      dataset_versions=dataset_versions())
+                      dataset_versions=dataset_versions(),
+                      expected_layers=tuple(LAYER_ORDER),
+                      allow_skip=allow_skip)
 
 
 @dataclass
@@ -692,6 +715,11 @@ class GateReport:
     layers: Dict[str, LayerResult]
     changed_skills: List[str] = field(default_factory=list)
     dataset_versions: Dict[str, Any] = field(default_factory=dict)
+    #: 门禁期望跑满的层（P2-1：缺层 / 跳过层都算「层不完整」）
+    expected_layers: Sequence[str] = field(
+        default_factory=lambda: tuple(LAYER_ORDER))
+    #: 显式放行层不完整（入口 ``--allow-skip``，仅本地排障；CI 禁用）
+    allow_skip: bool = False
 
     # ---------------------------------------------------------- 判定
     @property
@@ -705,9 +733,36 @@ class GateReport:
                 if layer.status == 'unavailable']
 
     @property
+    def layers_skipped(self) -> List[str]:
+        """按参数跳过、未真正执行的层（如 ``--sandbox-tier none``）。"""
+        return [name for name, layer in self.layers.items()
+                if layer.status == 'skipped']
+
+    @property
+    def layers_missing(self) -> List[str]:
+        """``--layers`` 子集未选中的期望层。"""
+        return [name for name in self.expected_layers
+                if name not in self.layers]
+
+    @property
+    def full_five(self) -> bool:
+        """五层都真的跑了（不缺层、不跳过、不因基础设施不可用而中断）。"""
+        return (all(name in self.layers for name in LAYER_ORDER)
+                and not self.layers_skipped
+                and not self.unavailable_layers)
+
+    @property
+    def degraded(self) -> bool:
+        """门禁证据不完整（与「用例失败」区分，报告里单独标注）。"""
+        return not self.full_five
+
+    @property
     def passed(self) -> bool:
-        return (not self.failed_layers and not self.unavailable_layers
-                and bool(self.layers))
+        if not self.layers:
+            return False
+        if self.failed_layers or self.unavailable_layers:
+            return False
+        return self.full_five or self.allow_skip
 
     @property
     def exit_code(self) -> int:
@@ -715,6 +770,10 @@ class GateReport:
             return 1
         if self.unavailable_layers:
             return 2
+        # 层不完整默认非 0：CI 上凭 --layers 子集 / --sandbox-tier none 拿不到
+        # 绿灯，只有显式 allow_skip 才放行（报告仍标 layers_skipped/full_five）。
+        if not self.full_five and not self.allow_skip:
+            return 1
         return 0
 
     def failures(self) -> List[Dict[str, str]]:
@@ -750,6 +809,14 @@ class GateReport:
             'failures': self.failures(),
             'failed_layers': self.failed_layers,
             'unavailable_layers': self.unavailable_layers,
+            # P2-1：层完整性（expected 是列表，skipped 非空 / full_five=false
+            # 即「降级」，与「用例失败」在报告里可机器区分）
+            'layers_expected': list(self.expected_layers),
+            'layers_skipped': self.layers_skipped,
+            'layers_missing': self.layers_missing,
+            'full_five': self.full_five,
+            'degraded': self.degraded,
+            'allow_skip': self.allow_skip,
             'changed_skills': self.changed_skills,
             'dataset_versions': self.dataset_versions,
             'cost': self.cost_totals(),
@@ -761,6 +828,12 @@ class GateReport:
             '',
             f'- 开始：{self.started_at.isoformat()}',
             f'- 覆盖层：{", ".join(self.layers) or "无"}',
+            f'- 期望层：{", ".join(self.expected_layers) or "无"}'
+            f'（全五层：{"是" if self.full_five else "否"}）',
+            f'- 跳过层：{", ".join(self.layers_skipped) or "无"}；'
+            f'未跑层：{", ".join(self.layers_missing) or "无"}'
+            + (f'（已显式 --allow-skip 放行）' if self.allow_skip
+               and self.degraded else ''),
             f'- 总耗时：{self.duration_seconds:.1f}s',
             f'- 结论：**{"通过" if self.passed else "未通过"}**'
             f'（exit={self.exit_code}）',
@@ -797,24 +870,7 @@ class GateReport:
             '',
             '| 项 | 门槛 | 结论 |',
             '|---|---|---|',
-            f'| 端到端成功率 | ≥{E2E_SUCCESS_THRESHOLD:.0%} | '
-            f'{self._layer_ok("e2e", "e2e:success_rate")} |',
-            f'| 无编造数值 | 0 例 | '
-            f'{self._layer_ok("e2e", "e2e:no_fabrication")} |',
-            f'| 权限不越界 | 0 例 | '
-            f'{self._layer_ok("e2e", "e2e:permission_boundary")} |',
-            f'| 每 Skill golden tasks | ≥{MIN_GOLDEN_TASKS_PER_SKILL} 条 '
-            f'| {self._layer_ok("skill", "skill:")} |',
-            f'| 单 Skill 触发准确率 | ≥{SKILL_TRIGGER_THRESHOLD:.0%} | '
-            f'{self._layer_ok("skill", "skill:")} |',
-            f'| 压缩事实召回率 | ≥{COMPACTION_RECALL_THRESHOLD:.0%} | '
-            f'{self._layer_ok("compaction", "compaction:long_task")} |',
-            f'| 压缩前后成功率差 | ≤{COMPACTION_DELTA_LIMIT_POINTS:.0f} 点 | '
-            f'{self._layer_ok("compaction", "compaction:long_task")} |',
-            '| 沙箱拦截 | 100% 且无跳过/遗留 | '
-            f'{self._layer_ok("sandbox")} |',
-            '| 恢复不重复写 | 通过 | '
-            f'{self._layer_ok("recovery")} |',
+            *self._gate_rows(),
             '',
             '## 评测集版本',
             '',
@@ -839,6 +895,52 @@ class GateReport:
                              f'{self.layers[name].detail}')
         lines.append('')
         return '\n'.join(lines)
+
+    def _gate_rows(self) -> List[str]:
+        """门槛表行：每行结论必须与层结论同源（P2-2）。
+
+        端到端按 ``e2e:<dataset>`` 逐数据集出行（与失败集合名一一对应），
+        否则数据集失败时会出现「表格全通过、层结论未通过」。末行「层完整性」
+        覆盖 P2-1：层被跳过 / 未跑时这里与退出码同时变红。
+        """
+        e2e_layer = self.layers.get('e2e')
+        datasets = sorted((e2e_layer.metrics.get('datasets') or {})
+                          if e2e_layer is not None else {})
+        rows = [
+            f'| 端到端整体成功率 | ≥{E2E_SUCCESS_THRESHOLD:.0%} | '
+            f'{self._layer_ok("e2e", "e2e:success_rate")} |',
+        ]
+        for name in datasets:
+            rows.append(
+                f'| 端到端·{name} 成功率 | ≥{E2E_SUCCESS_THRESHOLD:.0%} | '
+                f'{self._layer_ok("e2e", f"e2e:{name}")} |')
+        rows += [
+            f'| 无编造数值 | 0 例 | '
+            f'{self._layer_ok("e2e", "e2e:no_fabrication")} |',
+            f'| 权限不越界 | 0 例 | '
+            f'{self._layer_ok("e2e", "e2e:permission_boundary")} |',
+            f'| 每 Skill golden tasks | ≥{MIN_GOLDEN_TASKS_PER_SKILL} 条 '
+            f'| {self._layer_ok("skill", "skill:")} |',
+            f'| 单 Skill 触发准确率 | ≥{SKILL_TRIGGER_THRESHOLD:.0%} | '
+            f'{self._layer_ok("skill", "skill:")} |',
+            f'| 压缩事实召回率 | ≥{COMPACTION_RECALL_THRESHOLD:.0%} | '
+            f'{self._layer_ok("compaction", "compaction:long_task")} |',
+            f'| 压缩前后成功率差 | ≤{COMPACTION_DELTA_LIMIT_POINTS:.0f} 点 | '
+            f'{self._layer_ok("compaction", "compaction:long_task")} |',
+            '| 沙箱拦截 | 100% 且无跳过/遗留 | '
+            f'{self._layer_ok("sandbox")} |',
+            '| 恢复不重复写 | 通过 | '
+            f'{self._layer_ok("recovery")} |',
+            f'| 层完整性 | 五层全跑（{"、".join(LAYER_ORDER)}） | '
+            f'{self._coverage_ok()} |',
+        ]
+        return rows
+
+    def _coverage_ok(self) -> str:
+        """层完整性结论：只在五层全跑时通过。"""
+        if self.full_five:
+            return '通过'
+        return '跳过（已放行）' if self.allow_skip else '未通过'
 
     def _layer_ok(self, layer_name: str, set_prefix: str = '') -> str:
         """门槛结论：未跑到该层返回「—」，否则按失败集合前缀判定。"""
@@ -875,6 +977,8 @@ def _status_cn(status: str) -> str:
 def _metrics_summary(layer: LayerResult) -> str:
     metrics = layer.metrics
     name = layer.name
+    if layer.status == 'skipped':
+        return layer.detail or '按参数跳过'
     if name == 'e2e':
         return (f'任务 {metrics.get("passed")}/{metrics.get("tasks")}，'
                 f'成功率 {metrics.get("success_rate", 0):.1%}，'

@@ -29,8 +29,9 @@ M0 验收用的评测集与运行器：验证上下文压缩 L1–L3 不丢关�
 # 五层全跑（沙箱默认 T1；报告写 tests/agent_eval/out/）
 python scripts/run_agent_eval.py
 
-# 只跑部分层 / 指定报告目录 / 指定沙箱层级
+# 只跑部分层 / 指定报告目录 / 指定沙箱层级（子集默认 exit 1，见「退出码」）
 python scripts/run_agent_eval.py --layers e2e,skill --out ./agent_eval_out
+python scripts/run_agent_eval.py --layers e2e,skill --allow-skip   # 本地排障放行
 python scripts/run_agent_eval.py --sandbox-tier t2      # 需 docker 已注册 runsc
 
 # 合并门禁：只跑变更 Skill 的对应集合（改坏一个 Skill 即 exit 1 并指出集合）
@@ -46,8 +47,17 @@ python scripts/run_agent_eval.py --changed-skills auto --base-ref V10.11.2
 | `recovery` | kill Worker 后继续（`tests/agent_eval/auto/`） | 用例全过且「不重复写」用例在场 | `recovery:kill_worker` |
 
 产物：`<out>/report.json`（层结果 / 失败集合 / 数据集版本 / 成本 / exit_code）
-与 `<out>/report.md`。**退出码**：0 全通过；1 有层未通过；2 基础设施不可用
-（Docker / 镜像 / runsc / 评测集缺失）——与「用例失败」区分，便于 CI 分别处置。
+与 `<out>/report.md`。**退出码**：0 全通过（**只认五层全跑且全过**）；1 有层未通过，
+或层不完整（`--layers` 子集的未跑层 / `--sandbox-tier none` 跳过的层）；2 基础设施
+不可用（Docker / 镜像 / runsc / 评测集缺失）——与「用例失败」区分，便于 CI 分别处置。
+
+层不完整默认按 1 退出，只有显式 `--allow-skip`（本地排障；CI 禁用）才返回 0。报告
+顶层恒带 `layers_expected` / `layers_skipped` / `layers_missing` / `full_five` /
+`degraded` / `allow_skip`，人读摘要里也有「层完整性」门槛行，因此「降级通过」在退出码
+与报告上都可机器分辨。
+
+端到端成功率与各数据集成功率共用同一条 ≥95% 阈值；门槛表按 `e2e:<dataset>` 逐数据集
+出行，与失败集合名一一对应，不会出现「表格全通过、层结论未通过」。
 
 ### 评测集与版本化
 
