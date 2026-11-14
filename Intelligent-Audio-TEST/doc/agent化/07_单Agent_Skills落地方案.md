@@ -936,8 +936,10 @@ M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参�
 > `budget` 可随请求下发但**只收紧**（`min(服务端, 请求值)`，`0`/负数视为不覆盖，
 > 未知键 400 `INVALID_BUDGET`；`mode` 非法 400 `INVALID_RUN_MODE`）。
 > `run_started` 载荷带 `mode` / `budget`（Auto 再带 `pause_policy = {budget_ratio,
-> consecutive_failures}`），前端在开跑前即可展示预算与暂停规则；计划见首条
-> `auto_step` 事件（模型首轮的简要计划会写进 `scratchpad.plan` 并随进度下发）。
+> consecutive_failures}`），前端在开跑前即可展示预算与暂停规则（`budget.max_tokens`
+> 为 0（默认）表示按有效窗口派生、Auto 取 4×W，实际生效上限见 `auto_step.limits`）；
+> 计划自第 2 轮起随 `auto_step.plan` 下发：首条 `auto_step` 早于模型首轮、尚无计划，
+> 模型首轮文本作为计划摘要写进下一 step 的 `scratchpad.plan`（INT-2601 审计订正）。
 >
 > 进度/控制事件（SSE，均带 `run_id` / `sequence` / `timestamp`）：
 > - `auto_step`：每轮一条，含 `step` / `phase(step|continue|resume)` / `goal` /
