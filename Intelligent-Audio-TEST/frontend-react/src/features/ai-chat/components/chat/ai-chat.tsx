@@ -33,10 +33,14 @@ import {
   type AgentTimelineEntry,
 } from '@/application/agent/agent-timeline'
 import {
+  isPendingApprovalStatus,
   isTerminalRunStatus,
   type AgentApproval,
   type AgentApprovalDecision,
+  type AgentAutoPause,
+  type AgentAutoProgress,
   type AgentRun,
+  type AgentRunPausePolicy,
 } from '@/domain/models/agent'
 import type { ChatMessage } from '@/domain/models/aiChat'
 
@@ -45,6 +49,7 @@ import { AiChatMessageContent } from '@/features/ai-chat/components/message/mess
 import { MessageActions } from '@/features/ai-chat/components/message/message-actions'
 import { MessageEditor } from '@/features/ai-chat/components/message/message-editor'
 import { ApprovalPanel } from '@/features/ai-chat/components/approval/approval-panel'
+import { AutoProgressPanel } from '@/features/ai-chat/components/auto-mode/auto-progress-panel'
 import { RunTimeline } from '@/features/ai-chat/components/run-timeline/run-timeline'
 
 type AiChatProps = {
@@ -81,6 +86,20 @@ type AiChatProps = {
   /** Run 时间线（事件流有序投影）与 run 快照（预算消耗） */
   timeline?: AgentTimelineEntry[]
   run?: AgentRun | null
+  /** Auto 进度 / 暂停（INT-2474；非 Auto run 为 null，面板不渲染） */
+  autoProgress?: AgentAutoProgress | null
+  autoPause?: AgentAutoPause | null
+  autoPausePolicy?: AgentRunPausePolicy | null
+  /** 「继续」在途 / 取消在途 */
+  resumingAuto?: boolean
+  /** 刷新恢复后继续：无事件流，正在轮询服务端终态（P2） */
+  autoTracking?: boolean
+  isCancelling?: boolean
+  /** Auto 暂停后继续；结束运行（取消当前 run） */
+  onResumeAuto?: () => void
+  onStopAuto?: () => void
+  /** run 级错误（事件流失败 / 继续失败提示；Auto 面板内展示） */
+  runError?: string | null
   /** 全局 Agent 工作台浮窗紧凑形态（§3.1B：高度受限更紧凑间距） */
   compact?: boolean
 }
@@ -108,6 +127,15 @@ export function AiChat({
   onRetryApprovals,
   timeline = [],
   run = null,
+  autoProgress = null,
+  autoPause = null,
+  autoPausePolicy = null,
+  resumingAuto = false,
+  autoTracking = false,
+  isCancelling = false,
+  onResumeAuto,
+  onStopAuto,
+  runError = null,
   compact = false,
 }: AiChatProps) {
   const [editText, setEditText] = useState('')
@@ -132,6 +160,10 @@ export function AiChat({
       : countLatestAssistantToolCalls(messages)
   /** run 已收口：已批准审批卡不再展示「将在服务端执行」的将来时（P3-5） */
   const runFinished = run !== null && isTerminalRunStatus(run.status)
+  /** Auto 面板的待审批计数（与审批卡同源：同一份 approvals） */
+  const pendingApprovalCount = approvals.filter((approval) =>
+    isPendingApprovalStatus(approval.status)
+  ).length
 
   const handleToggleMessageSource = (message: ChatMessage) => {
     setSourceMessageKeys((currentKeys) => {
@@ -221,7 +253,12 @@ export function AiChat({
     ]
   }
 
-  /** SSE 重连 / 取消 / 准备 / 审批等待提示（§12.2：只提示不改消息） */
+  /**
+   * SSE 重连 / 取消 / 准备 / 审批等待提示（§12.2：只提示不改消息）。
+   * Auto 暂停（无待审批提案）时不显示「等待你审批写操作」——暂停面板已给准确口径，
+   * 这里再提示会让用户以为卡在审批上。
+   */
+  const autoPausedWithoutApprovals = autoPause !== null && pendingApprovalCount === 0
   const runPhaseHint =
     runPhase === AGENT_RUN_PHASE.RECONNECTING
       ? AGENT_RUN_PHASE_COPY.reconnecting
@@ -229,7 +266,8 @@ export function AiChat({
         ? AGENT_RUN_PHASE_COPY.cancelling
         : runPhase === AGENT_RUN_PHASE.PREPARING
           ? AGENT_RUN_PHASE_COPY.preparing
-          : runPhase === AGENT_RUN_PHASE.WAITING_APPROVAL
+          : runPhase === AGENT_RUN_PHASE.WAITING_APPROVAL &&
+              !autoPausedWithoutApprovals
             ? AGENT_RUN_PHASE_COPY.waitingApproval
             : null
 
@@ -266,6 +304,20 @@ export function AiChat({
             </div>
           )}
           {chatContent}
+          {/* Auto 进度 / 暂停 / 终态（INT-2474 §9.4）：只在 Auto run 上渲染 */}
+          <AutoProgressPanel
+            error={runError}
+            onResume={onResumeAuto}
+            onStop={onStopAuto}
+            pause={autoPause}
+            pausePolicy={autoPausePolicy}
+            pendingApprovalCount={pendingApprovalCount}
+            progress={autoProgress}
+            resuming={resumingAuto}
+            run={run}
+            stopping={isCancelling}
+            tracking={autoTracking}
+          />
           {/* 写操作审批卡（§12.2）：按步骤分组展示提案 / diff / 风险 / 过期；逐条决策 */}
           {onDecideApproval && (
             <ApprovalPanel

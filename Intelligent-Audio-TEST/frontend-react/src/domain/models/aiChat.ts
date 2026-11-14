@@ -5,6 +5,8 @@
  */
 import type {
   AgentApprovalStatus,
+  AgentRunBudget,
+  AgentRunMode,
   AgentRunStatus,
   AgentToolRisk,
 } from './agent'
@@ -161,6 +163,13 @@ export interface ChatConfig {
    * 缺省按 platform 处理（normalizeChatChannel）。
    */
   chatMode?: ChatChannel
+  /**
+   * 运行模式（INT-2474）：chat=普通对话（默认），auto=目标驱动长任务。
+   * 与会话一起持久化，整页 / 浮窗两宿主同一模式；关掉 Auto 后普通对话照常。
+   */
+  runMode?: AgentRunMode
+  /** Auto 预算收紧（只含用户显式设置且 >0 的维度；缺省=全部用服务端默认） */
+  autoBudget?: AgentRunBudget
   reportContextId?: string
   reportContextLabel?: string
   reportContextType?: ReportContextType

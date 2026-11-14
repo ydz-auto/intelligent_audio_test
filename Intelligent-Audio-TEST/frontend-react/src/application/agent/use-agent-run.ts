@@ -29,7 +29,12 @@ import type { AgentTimelineEntry } from '@/application/agent/agent-timeline'
 import type {
   AgentApproval,
   AgentApprovalDecision,
+  AgentAutoPause,
+  AgentAutoProgress,
   AgentRun,
+  AgentRunBudget,
+  AgentRunMode,
+  AgentRunPausePolicy,
 } from '@/domain/models/agent'
 import type { AgentStreamStatus } from '@/infrastructure/api/agentApi'
 
@@ -51,10 +56,29 @@ export interface UseAgentRunResult {
   decidingApprovalIds: string[]
   /** Run 时间线（事件流有序投影） */
   timeline: AgentTimelineEntry[]
+  /** Auto 最新进度（auto_step；非 Auto run 为 null） */
+  autoProgress: AgentAutoProgress | null
+  /** Auto 暂停事实（run_paused；继续 / 终态后为 null） */
+  autoPause: AgentAutoPause | null
+  /** Auto 暂停策略（run_started.pause_policy；启动即展示「何时会暂停」） */
+  autoPausePolicy: AgentRunPausePolicy | null
+  /** 「继续」请求在途（按钮防连点） */
+  resumingAuto: boolean
+  /** 刷新恢复后继续：本页无事件流，正在轮询服务端终态（面板给「等待结果」口径） */
+  autoTracking: boolean
   /** 发起一轮对话（内部保证会话 + run + 订阅；失败落 error 态，不抛出） */
-  send: (text: string, options?: { appendUserMessage?: boolean }) => Promise<void>
+  send: (
+    text: string,
+    options?: {
+      appendUserMessage?: boolean
+      mode?: AgentRunMode
+      budget?: AgentRunBudget
+    }
+  ) => Promise<void>
   /** 取消当前 run；成功返回 null，失败返回中文文案（同一 run 只发一次请求） */
   cancel: () => Promise<string | null>
+  /** Auto 暂停后继续；成功返回 null，失败返回中文文案 */
+  resumeAuto: () => Promise<string | null>
   /** 审批决策（同一审批单连点只发一次请求；失败返回中文文案） */
   decideApproval: (
     approvalId: string,
@@ -83,8 +107,14 @@ export function useAgentRun(): UseAgentRunResult {
     (state) => state.decidingApprovalIds
   )
   const timeline = useAgentRunStore((state) => state.timeline)
+  const autoProgress = useAgentRunStore((state) => state.autoProgress)
+  const autoPause = useAgentRunStore((state) => state.autoPause)
+  const autoPausePolicy = useAgentRunStore((state) => state.autoPausePolicy)
+  const resumingAuto = useAgentRunStore((state) => state.resumingAuto)
+  const autoTracking = useAgentRunStore((state) => state.autoTracking)
   const send = useAgentRunStore((state) => state.send)
   const cancel = useAgentRunStore((state) => state.cancel)
+  const resumeAuto = useAgentRunStore((state) => state.resumeAuto)
   const decideApproval = useAgentRunStore((state) => state.decideApproval)
   const refreshApprovals = useAgentRunStore((state) => state.refreshApprovals)
   const reset = useAgentRunStore((state) => state.reset)
@@ -104,8 +134,14 @@ export function useAgentRun(): UseAgentRunResult {
     approvalsError,
     decidingApprovalIds,
     timeline,
+    autoProgress,
+    autoPause,
+    autoPausePolicy,
+    resumingAuto,
+    autoTracking,
     send,
     cancel,
+    resumeAuto,
     decideApproval,
     refreshApprovals,
     reset,

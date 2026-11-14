@@ -18,6 +18,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { toast } from 'sonner'
+
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useAgentRunHost } from '@/application/agent/use-agent-run'
 import { useAgentRunStore } from '@/application/agent/agent-run-store'
@@ -32,6 +34,11 @@ import {
   normalizeChatChannel,
   type ChatChannel,
 } from '@/domain/models/aiChat'
+import {
+  normalizeRunMode,
+  type AgentRunBudget,
+  type AgentRunMode,
+} from '@/domain/models/agent'
 import { useChatState } from '@/features/ai-chat/hooks/use-chat-state'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
 import { useChatConversation } from '@/features/ai-chat/hooks/use-chat-conversation'
@@ -105,6 +112,15 @@ function AgentWorkbenchSession({
     updateConfig('chatMode', next)
   }
 
+  /** 运行模式与 Auto 预算（INT-2474）：与整页同一份 config，两形态不分裂模式 */
+  const runMode = normalizeRunMode(config.runMode)
+  const handleRunModeChange = (next: AgentRunMode) => {
+    updateConfig('runMode', next)
+  }
+  const handleAutoBudgetChange = (budget: AgentRunBudget | undefined) => {
+    updateConfig('autoBudget', budget)
+  }
+
   const {
     sendChat,
     stopGeneration,
@@ -117,6 +133,13 @@ function AgentWorkbenchSession({
     approvalsError,
     decidingApprovalIds,
     timeline,
+    autoProgress,
+    autoPause,
+    autoPausePolicy,
+    resumingAuto,
+    autoTracking,
+    error: runError,
+    resumeAuto,
     decideApproval,
     refreshApprovals,
     resetChat,
@@ -152,6 +175,32 @@ function AgentWorkbenchSession({
     resetChat()
     clearMessages()
   }
+
+  /** Auto 暂停后继续：失败文案 toast（与整页同口径） */
+  const handleResumeAuto = () => {
+    void resumeAuto().then((failure) => {
+      if (failure) toast.error(failure)
+    })
+  }
+
+  /** Auto 面板 / 输入区 props（与整页同一组语义，浮窗紧凑形态共用） */
+  const autoChatProps = {
+    autoProgress,
+    autoPause,
+    autoPausePolicy,
+    resumingAuto,
+    autoTracking,
+    isCancelling,
+    runError,
+    onResumeAuto: handleResumeAuto,
+    onStopAuto: stopGeneration,
+  } as const
+  const autoInputProps = {
+    runMode,
+    onRunModeChange: handleRunModeChange,
+    autoBudget: config.autoBudget,
+    onAutoBudgetChange: handleAutoBudgetChange,
+  } as const
 
   return (
     <>
@@ -213,6 +262,7 @@ function AgentWorkbenchSession({
           onRetryApprovals={() => void refreshApprovals()}
           run={run}
           timeline={timeline}
+          {...autoChatProps}
         />
       </div>
       <div className='shrink-0'>
@@ -234,6 +284,7 @@ function AgentWorkbenchSession({
           onValueChange={setDraftText}
           providers={providers}
           value={draftText}
+          {...autoInputProps}
         />
       </div>
       <ProviderManager

@@ -12,6 +12,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
+  CirclePause,
+  CirclePlay,
   Flag,
   Layers,
   MessageSquare,
@@ -61,6 +63,10 @@ const KIND_META: Record<
   tool_result: { icon: CheckCircle2, className: 'text-muted-foreground' },
   approval: { icon: ShieldAlert, className: 'text-warning' },
   context_compacted: { icon: Layers, className: 'text-muted-foreground' },
+  // Auto（INT-2474）：步进 / 暂停 / 继续
+  auto_step: { icon: Play, className: 'text-foreground/70' },
+  run_paused: { icon: CirclePause, className: 'text-warning' },
+  run_resumed: { icon: CirclePlay, className: 'text-muted-foreground' },
   run_finished: { icon: Flag, className: 'text-muted-foreground' },
   error: { icon: AlertTriangle, className: 'text-destructive' },
 }

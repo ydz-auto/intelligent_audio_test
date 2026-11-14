@@ -201,8 +201,11 @@ export function useChatHandler({
       if (isPlatformChannel) {
         // 平台通道：user 气泡 + assistant 占位与后续事件补丁都在共享 store 内完成，
         // 两个宿主看到同一份消息与同一个 run（不再各持一套补丁器）。
+        // Auto 模式与收紧预算来自会话 config（INT-2474；普通对话不带 mode / budget）。
         void agentRun.send(text, {
           appendUserMessage: options?.appendUserMessage ?? true,
+          mode: configRef.current.runMode,
+          budget: configRef.current.autoBudget,
         })
         return
       }
@@ -360,6 +363,15 @@ export function useChatHandler({
     decidingApprovalIds: isPlatformChannel ? agentRun.decidingApprovalIds : [],
     /** Run 时间线（INT-2472；事件流有序投影） */
     timeline: isPlatformChannel ? agentRun.timeline : [],
+    /** Auto 进度 / 暂停 / 暂停策略（INT-2474；仅平台通道有） */
+    autoProgress: isPlatformChannel ? agentRun.autoProgress : null,
+    autoPause: isPlatformChannel ? agentRun.autoPause : null,
+    autoPausePolicy: isPlatformChannel ? agentRun.autoPausePolicy : null,
+    resumingAuto: isPlatformChannel && agentRun.resumingAuto,
+    /** 刷新恢复后继续：无事件流，正在轮询服务端终态（INT-2477 P2） */
+    autoTracking: isPlatformChannel && agentRun.autoTracking,
+    error: isPlatformChannel ? agentRun.error : null,
+    resumeAuto: agentRun.resumeAuto,
     decideApproval: agentRun.decideApproval,
     refreshApprovals: agentRun.refreshApprovals,
     resetChat,

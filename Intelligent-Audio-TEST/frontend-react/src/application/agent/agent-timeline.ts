@@ -13,6 +13,7 @@
 import {
   AGENT_APPROVAL_COPY,
   AGENT_APPROVAL_STATUS,
+  AGENT_AUTO_COPY,
   AGENT_EVENT_TYPE,
   AGENT_TOOL_LABELS,
   AGENT_TOOL_RISK_LABELS,
@@ -22,6 +23,11 @@ import {
   type AgentToolRisk,
 } from '@/domain/models/agent'
 
+import {
+  formatAutoUsageSummary,
+  pauseReasonText,
+} from './auto-progress'
+
 /** 时间线条目类型（与事件类型一一对应，message_delta 聚合为 message） */
 export const AGENT_TIMELINE_KIND = {
   RUN_STARTED: 'run_started',
@@ -30,6 +36,10 @@ export const AGENT_TIMELINE_KIND = {
   TOOL_RESULT: 'tool_result',
   APPROVAL: 'approval',
   CONTEXT_COMPACTED: 'context_compacted',
+  /** Auto 每轮进度（INT-2474） */
+  AUTO_STEP: 'auto_step',
+  RUN_PAUSED: 'run_paused',
+  RUN_RESUMED: 'run_resumed',
   RUN_FINISHED: 'run_finished',
   ERROR: 'error',
 } as const
@@ -57,6 +67,10 @@ export interface AgentTimelineEntry {
   charCount?: number
   /** context_compacted 调试标记 */
   debug?: boolean
+  /** Auto 步进序号 / 最高预算消耗比 / 产物数（INT-2474 时间线展示） */
+  step?: number
+  ratio?: number
+  artifactCount?: number
   /** 审批决策人与时间（由 applyApprovalToTimeline 回填） */
   decidedBy?: number
   decidedAt?: string
@@ -165,6 +179,52 @@ function toEntry(event: AgentRunEvent): AgentTimelineEntry {
         detail: contextCompactedDetail(event),
         status: event.level,
         debug: event.debug === true,
+      }
+    case AGENT_EVENT_TYPE.AUTO_STEP:
+      // 每轮一条：步序号 + 计划/目标摘要 + 预算水位（详情面板另给完整五维）
+      return {
+        ...base,
+        kind: AGENT_TIMELINE_KIND.AUTO_STEP,
+        label: `Auto 第 ${event.progress.step} 步`,
+        detail: [event.progress.plan || event.progress.goal, formatAutoUsageSummary(event.progress)]
+          .filter((item): item is string => Boolean(item && item.trim()))
+          .join(' · '),
+        status: event.progress.phase,
+        step: event.progress.step,
+        ratio: event.progress.ratio,
+        artifactCount: event.progress.artifactCount,
+      }
+    case AGENT_EVENT_TYPE.RUN_PAUSED: {
+      const reasonText = pauseReasonText(
+        event.pause.reason,
+        event.pause.policy?.consecutiveFailures
+      )
+      const usageText =
+        event.pause.usage && event.pause.limits
+          ? formatAutoUsageSummary({
+              usage: event.pause.usage,
+              limits: event.pause.limits,
+              ratio: event.pause.ratio ?? 0,
+            })
+          : ''
+      return {
+        ...base,
+        kind: AGENT_TIMELINE_KIND.RUN_PAUSED,
+        label: AGENT_AUTO_COPY.pausedTitle,
+        detail: [reasonText, usageText]
+          .filter((item) => Boolean(item))
+          .join(' · '),
+        status: event.pause.reason,
+      }
+    }
+    case AGENT_EVENT_TYPE.RUN_RESUMED:
+      return {
+        ...base,
+        kind: AGENT_TIMELINE_KIND.RUN_RESUMED,
+        label: '用户确认继续',
+        // 预算暂停点被确认后同一暂停点不再触发（§9.4），在时间线里标明
+        detail: event.ackedBudgetPause ? '已确认预算暂停点' : undefined,
+        status: event.pauseReason,
       }
     case AGENT_EVENT_TYPE.RUN_FINISHED:
       return {
