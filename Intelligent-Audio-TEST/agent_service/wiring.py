@@ -385,6 +385,8 @@ def build_container(session_factory,
                     skill_guard=None,
                     skill_settings=None,
                     approval_settings: Optional[ApprovalSettings] = None,
+                    auto_budget_defaults: Optional[dict] = None,
+                    auto_settings=None,
                     ) -> AgentContainer:
     """组合根。``budget_defaults`` / ``terminal_grace_seconds`` /
     ``skill_registry`` / ``skills_root`` 与 ``provider_resolver`` /
@@ -392,8 +394,13 @@ def build_container(session_factory,
     ``sandbox`` / ``http_transport`` 仅供测试注入替身；生产一律取 Config + 环境。
     ``context_max_runs`` / ``context_max_messages`` / ``artifact_store`` /
     ``compaction_settings`` / ``budget_ratios`` / ``context_debug`` /
-    ``approval_settings`` 同样仅供测试（如拆单阈值 / 粒度 / 对象上限）覆盖配置。"""
+    ``approval_settings`` / ``auto_budget_defaults`` / ``auto_settings``
+    同样仅供测试（如拆单阈值 / 粒度 / 对象上限、Auto 预算与暂停阈值）覆盖配置。"""
     budgets = budget_defaults or Config.budget_defaults()
+    # INT-2474：Auto 预算与停止条件（同一份配置同时给 RunService 与 Loop，
+    # 避免「创建时按 Auto 预算、执行时按默认预算」的双口径）
+    auto_budgets = auto_budget_defaults or Config.auto_budget_defaults()
+    auto_config = auto_settings or Config.auto_settings()
     sessions = SqlSessionRepository(session_factory)
     runs = SqlRunRepository(session_factory)
     events = SqlEventRepository(session_factory)
@@ -498,6 +505,7 @@ def build_container(session_factory,
         memo_min_candidates=Config.CONTEXT_MEMO_MIN_CANDIDATES,
         artifact_store_timeout_seconds=(
             Config.CONTEXT_ARTIFACT_TIMEOUT_SECONDS),
+        rebuild_list_limit=Config.CONTEXT_REBUILD_LIST_LIMIT,
         debug=(Config.CONTEXT_DEBUG if context_debug is None
                else bool(context_debug)),
     )
@@ -512,7 +520,9 @@ def build_container(session_factory,
         event_fetch_limit=Config.EVENT_SCAN_LIMIT,
         skills=skills, snapshots=snapshots, artifacts=artifacts,
         artifact_store=artifact_store or OssArtifactStore(),
-        settings=compaction, memory=memory)
+        settings=compaction, memory=memory,
+        # INT-2474 L4_REBUILD：从 Run 表（step / tool_call）+ 产物索引重建
+        steps=steps, tool_calls=tool_calls)
 
     ratios = budget_ratios or SectionRatios.from_dict(
         Config.context_section_ratios())
@@ -537,6 +547,8 @@ def build_container(session_factory,
         compaction_hard_ratio=Config.COMPACTION_HARD_RATIO,
         budget_policy=budget_policy,
         memo_max_output_tokens=Config.CONTEXT_MEMO_MAX_OUTPUT_TOKENS,
+        # INT-2474：Auto 停止条件（预算暂停比例 / 熔断阈值 / 完成标记）
+        auto_settings=auto_config,
     )
     orchestrator = RunOrchestrator(
         sessions=sessions, runs=runs, events=events, steps=steps,
@@ -552,10 +564,14 @@ def build_container(session_factory,
     run_service = RunService(
         sessions, runs, events, wakeup, cancel_registry,
         budget_defaults=dict(budgets),
+        # INT-2474：Auto 预算（60/120/4×W/30min/20MB）与暂停继续口径
+        auto_budget_defaults=dict(auto_budgets),
         default_model='',
         skills=skills,
         approvals=approval_service,
         run_skills=run_skill_repository,
+        auto_settings=auto_config,
+        tool_calls=tool_calls,
     )
     event_stream = EventStreamService(
         events, runs, wakeup, page_size=Config.EVENT_PAGE_SIZE,

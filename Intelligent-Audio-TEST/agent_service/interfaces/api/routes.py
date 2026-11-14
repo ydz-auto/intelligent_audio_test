@@ -9,6 +9,7 @@
 | GET  | /api/v1/agent/runs/{id} | run 快照 |
 | GET  | /api/v1/agent/runs/{id}/events?cursor= | SSE，支持 Last-Event-ID |
 | POST | /api/v1/agent/runs/{id}/cancel | 取消 |
+| POST | /api/v1/agent/runs/{id}/resume | Auto 暂停后继续（INT-2474）|
 | GET  | /api/v1/agent/runs/{id}/approvals | 本 run 的审批单（待审批 + 已决）|
 | POST | /api/v1/agent/approvals/{id}/decision | 批准 / 拒绝写操作提案 |
 | GET  | /api/v1/agent/runs/{id}/context-snapshots | 上下文压缩快照（调试模式可回放）|
@@ -63,10 +64,11 @@ def _serialize_session(session: AgentSession) -> SessionResponse:
     )
 
 
-def _serialize_run(run: AgentRun) -> RunResponse:
+def _serialize_run(run: AgentRun, mode: str = 'chat') -> RunResponse:
     return RunResponse(
         id=run.id, session_id=run.session_id, owner_id=run.owner_id,
         tenant_id=run.tenant_id, status=run.status.value, model=run.model,
+        mode=mode,
         budget=run.budget or {}, token_in=run.token_in, token_out=run.token_out,
         error=run.error, created_at=_iso(run.created_at),
         started_at=_iso(run.started_at), finished_at=_iso(run.finished_at),
@@ -114,7 +116,8 @@ def get_session(session_id: str, request: Request,
         session.id, latest, Config.CONTEXT_RECENT_MESSAGES)
     return SessionDetailResponse(
         session=_serialize_session(session), messages=messages,
-        runs=[_serialize_run(run) for run in runs],
+        runs=[_serialize_run(run, container.run_service.run_mode(run.id).value)
+              for run in runs],
     )
 
 
@@ -129,6 +132,7 @@ def create_run(session_id: str, payload: CreateRunRequest, request: Request,
         session_id, owner_id=identity.user_id, tenant_id=identity.tenant_id,
         message=payload.message, idempotency_key=idempotency_key,
         permissions=identity.permissions, active_skill=payload.active_skill,
+        mode=payload.mode, budget_overrides=payload.budget,
     )
     # INT-2453：只读 ToolGateway 以用户身份回源网关 REST。Authorization 只在
     # 进程内按 run 暂存（不落库 / 不进事件），run 结束或 TTL 到期即失效。
@@ -140,7 +144,10 @@ def create_run(session_id: str, payload: CreateRunRequest, request: Request,
         if latest is not None:
             run = latest
     response.status_code = 201 if created else 200
-    return CreateRunResponse(run=_serialize_run(run), created=created)
+    return CreateRunResponse(
+        run=_serialize_run(
+            run, container.run_service.run_mode(run.id).value),
+        created=created)
 
 
 @router.get('/runs/{run_id}', response_model=RunResponse)
@@ -149,7 +156,7 @@ def get_run(run_id: str, request: Request,
     container = get_container(request)
     run = container.run_service.get_run(
         run_id, owner_id=identity.user_id, tenant_id=identity.tenant_id)
-    return _serialize_run(run)
+    return _serialize_run(run, container.run_service.run_mode(run.id).value)
 
 
 @router.get('/runs/{run_id}/events')
@@ -193,7 +200,30 @@ def cancel_run(run_id: str, request: Request,
     container = get_container(request)
     run = container.run_service.cancel_run(
         run_id, owner_id=identity.user_id, tenant_id=identity.tenant_id)
-    return _serialize_run(run)
+    return _serialize_run(
+        run, container.run_service.run_mode(run.id).value)
+
+
+@router.post('/runs/{run_id}/resume', response_model=RunResponse)
+def resume_run(run_id: str, request: Request,
+               identity: Identity = Depends(get_identity)):
+    """Auto 暂停后「继续」（INT-2474，§9.4）。
+
+    只在**暂停态**的 Auto run 上生效：预算到 80% / 连续 2 次工具失败暂停后，
+    由用户确认继续（``run_resumed`` 事件）；仍有待审批提案时 409，先把审批
+    单处理掉（审批决策本身会唤醒 run）。继续后凭据从本次请求刷新。
+    """
+    container = get_container(request)
+    run = container.run_service.resume_run(
+        run_id, owner_id=identity.user_id, tenant_id=identity.tenant_id)
+    container.credentials.put(run.id,
+                              request.headers.get('Authorization'))
+    container.executor.submit(run.id)
+    # 与发起 run 同口径：投递后回读最新状态（同步执行器下可能已到下一步 /
+    # 下一个暂停点 / 终态），不返回投递前的旧快照。
+    latest = container.repositories['runs'].get(run.id) or run
+    return _serialize_run(
+        latest, container.run_service.run_mode(run.id).value)
 
 
 @router.get('/runs/{run_id}/approvals')

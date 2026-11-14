@@ -53,6 +53,31 @@ class RunBudget:
             max_output_bytes=self.max_output_bytes,
         )
 
+    def tightened(self, overrides: Optional[Dict[str, Any]]) -> 'RunBudget':
+        """按请求侧给定的上限**收紧**预算（§9.4：请求不可放宽）。
+
+        只接受已知预算键；``0`` / 负数 / 缺省视为「不覆盖」（不能让调用方把
+        某一维度关掉），正数取 ``min(服务端默认, 请求值)``。未知键抛
+        ``ValueError``，由接口层转 400（不静默忽略，避免调用方以为生效）。
+        """
+        if not overrides:
+            return self
+        data = self.to_dict()
+        for key, raw in overrides.items():
+            if key not in _BUDGET_KEYS:
+                raise ValueError(f'未知预算项：{key}')
+            if raw is None:
+                continue
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                raise ValueError(f'预算项 {key} 必须为整数')
+            if value <= 0:
+                continue
+            current = data[key]
+            data[key] = value if current <= 0 else min(current, value)
+        return RunBudget.from_dict(data)
+
     @staticmethod
     def _exceeded(value: int, limit: int) -> bool:
         # limit <= 0 表示该维度不启用（配置可关闭单个预算）

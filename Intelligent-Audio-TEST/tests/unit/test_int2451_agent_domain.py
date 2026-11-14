@@ -34,7 +34,14 @@ class TestEnums:
             'approval_required', 'context_compacted',
             # INT-2549：对话沉淀建议（仅事件、不落库）
             'skill_draft_suggested',
+            # INT-2474：Auto 模式进度 / 暂停 / 继续
+            'auto_step', 'run_paused', 'run_resumed',
             'run_finished', 'error'}
+
+    def test_run_mode_values(self):
+        from agent_service.domain.enums import RunMode
+        assert {m.value for m in RunMode} == {'chat', 'auto'}
+        assert RunMode.AUTO.is_auto and not RunMode.CHAT.is_auto
 
     def test_terminal_flags(self):
         assert RunStatus.SUCCEEDED.is_terminal

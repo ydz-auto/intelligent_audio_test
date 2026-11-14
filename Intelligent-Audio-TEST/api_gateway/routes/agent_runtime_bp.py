@@ -261,6 +261,16 @@ async def proxy_cancel_run(run_id: str, request: Request):
     return await _forward(request, 'POST')
 
 
+@router.post('/runs/{run_id}/resume')
+async def proxy_resume_run(run_id: str, request: Request):
+    """Auto 暂停后继续（INT-2474，§9.4）。
+
+    归属、暂停态与「是否仍有待审批提案」由 agent_service 判定（非本人 404、
+    不可继续 409）；网关只做鉴权后的透明转发。
+    """
+    return await _forward(request, 'POST')
+
+
 @router.get('/runs/{run_id}/approvals')
 async def proxy_approvals(run_id: str, request: Request):
     return await _forward(request, 'GET')

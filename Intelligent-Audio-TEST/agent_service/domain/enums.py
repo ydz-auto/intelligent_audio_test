@@ -43,6 +43,23 @@ _ACTIVE_RUN_STATUSES = frozenset({
 })
 
 
+class RunMode(str, Enum):
+    """Run 运行模式（§9.3 / §9.4，INT-2474）。
+
+    ``CHAT``：单轮问答式 Loop，模型给出文本答复即收口；
+    ``AUTO``：无人值守长任务，目标驱动续跑（同一 Loop、不新增 agent），
+    计划写 scratchpad，每步汇报 ``auto_step`` 进度事件；受 Auto 预算约束，
+    预算到 80% 或连续 2 次工具失败时暂停交用户决策。
+    """
+
+    CHAT = 'chat'
+    AUTO = 'auto'
+
+    @property
+    def is_auto(self) -> bool:
+        return self is RunMode.AUTO
+
+
 class ToolRisk(str, Enum):
     """工具风险等级（§6.1）。写操作必须走审批，M0 只执行 READ。"""
 
@@ -76,7 +93,8 @@ class SandboxRuntime(str, Enum):
 
 
 class CompactionLevel(str, Enum):
-    """上下文压缩层级（§8.2）。M0 启用 L1/L2/L3；L4 属 M3。"""
+    """上下文压缩层级（§8.2）。L1/L2/L3 每轮按预算触发；L4 在进程重启 /
+    恢复时从 Run 表 + 产物索引重建上下文（INT-2474）。"""
 
     L1_TRIM = 'L1_TRIM'
     L2_DEDUPE = 'L2_DEDUPE'
@@ -97,6 +115,13 @@ class EventType(str, Enum):
     # 「把本次流程沉淀为 Skill」的草案建议。仅事件、不落库，用户确认后
     # 才走 POST /skills 创建 DRAFT。
     SKILL_DRAFT_SUGGESTED = 'skill_draft_suggested'
+    # Auto 模式（INT-2474 §9.3）：每步进度汇报 / 暂停 / 用户恢复。
+    # ``AUTO_STEP`` 承载进度时间线（当前步骤、预算消耗、产物）并可按需带
+    # ``instruction`` 作为下一步的目标驱动续跑提示；``RUN_PAUSED`` 是熔断
+    # 暂停点，``RUN_RESUMED`` 记录用户确认继续时的预算水位。
+    AUTO_STEP = 'auto_step'
+    RUN_PAUSED = 'run_paused'
+    RUN_RESUMED = 'run_resumed'
     RUN_FINISHED = 'run_finished'
     ERROR = 'error'
 

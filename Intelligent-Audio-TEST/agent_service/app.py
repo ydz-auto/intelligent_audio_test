@@ -31,8 +31,9 @@ from agent_service.domain.exceptions import (
     ApprovalConflict, ApprovalConfirmationRequired, ApprovalExpired,
     ApprovalNotFound,
     CredentialDecryptError, CredentialKeyUnavailable,
-    InvalidContextWindow, InvalidProviderConfiguration,
-    InvalidRunTransition, ProviderNotFound, RunNotFound, SessionNotFound,
+    InvalidBudgetOverride, InvalidContextWindow, InvalidProviderConfiguration,
+    InvalidRunMode, InvalidRunTransition, ProviderNotFound, RunNotFound,
+    RunNotPaused, SessionNotFound,
     SkillGateFailed, SkillImportInvalid, SkillInjectionDetected,
     SkillNameConflict, SkillNotAvailable, SkillNotFound,
     SkillPackageTooLarge, SkillPermissionEscalation, SkillReviewForbidden,
@@ -160,6 +161,23 @@ def _register_error_handlers(app: FastAPI) -> None:
             content={'detail': '非法的 Run 状态迁移',
                      'current': exc.current, 'target': exc.target},
         )
+
+    # ---- INT-2474 Auto 模式（模式 / 预算收紧 / 暂停继续）----
+    @app.exception_handler(InvalidRunMode)
+    async def _invalid_run_mode(_request: Request, exc: InvalidRunMode):
+        return JSONResponse(status_code=400,
+                            content={'detail': str(exc), 'code': exc.code})
+
+    @app.exception_handler(InvalidBudgetOverride)
+    async def _invalid_budget(_request: Request, exc: InvalidBudgetOverride):
+        return JSONResponse(status_code=400,
+                            content={'detail': str(exc), 'code': exc.code})
+
+    @app.exception_handler(RunNotPaused)
+    async def _run_not_paused(_request: Request, exc: RunNotPaused):
+        # 暂停继续的状态冲突：已结束 / 正在执行 / 有待审批提案
+        return JSONResponse(status_code=409,
+                            content={'detail': str(exc), 'code': exc.code})
 
     @app.exception_handler(SkillNotAvailable)
     async def _skill_not_available(_request: Request, exc: SkillNotAvailable):

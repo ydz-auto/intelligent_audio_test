@@ -104,6 +104,15 @@ class EventRepository(ABC):
         """按事件类型定向查询，sequence 升序。"""
 
     @abstractmethod
+    def list_by_types_tail(self, run_id: str, event_types: Sequence,
+                           limit: int) -> List[AgentRunEvent]:
+        """按事件类型定向查询**末尾** N 条，返回 sequence 升序。
+
+        供长 run 的控制状态重建使用：暂停 / 继续等控制事实只看最新一条，
+        不能按「前 N 条」取（message_delta 等高频事件会把尾部控制事件挤出窗口）。
+        """
+
+    @abstractmethod
     def max_sequence(self, run_id: str) -> int: ...
 
     @abstractmethod
@@ -123,6 +132,14 @@ class StepRepository(ABC):
 
     @abstractmethod
     def fail_running(self, run_id: str, error: str) -> int: ...
+
+    @abstractmethod
+    def list_by_run(self, run_id: str) -> List[AgentStep]:
+        """本 run 的全部 step（``index`` 升序）。
+
+        L4_REBUILD（INT-2474）据此从 Run 表重建上下文：计划 / scratchpad 与
+        已完成步骤是恢复时的事实来源，不依赖事件回放。
+        """
 
 
 class ToolCallRepository(ABC):
