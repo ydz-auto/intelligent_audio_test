@@ -71,9 +71,12 @@ export function AiChatMessageContent({
   const hasDocumentChanges = (message.documentChanges?.length ?? 0) > 0
   /** 平台 Agent 终态徽标（INT-2457）：只标取消/失败/超预算，成功完成不占位 */
   const runStatus = message.runStatus
+  /** 刷新恢复时 run 仍在等审批：中性徽标「等待审批」，不落错误态（INT-2472 P2-1） */
+  const waitingApproval = runStatus === AGENT_RUN_STATUS.WAITING_APPROVAL
   const showRunStatus =
     !isUser &&
-    (runStatus === AGENT_RUN_STATUS.CANCELLED ||
+    (waitingApproval ||
+      runStatus === AGENT_RUN_STATUS.CANCELLED ||
       runStatus === AGENT_RUN_STATUS.FAILED ||
       runStatus === AGENT_RUN_STATUS.BUDGET_EXCEEDED)
 
@@ -182,7 +185,11 @@ export function AiChatMessageContent({
               <Badge
                 data-agent-run-status={runStatus}
                 variant={
-                  runStatus === AGENT_RUN_STATUS.FAILED ? 'destructive' : 'secondary'
+                  runStatus === AGENT_RUN_STATUS.FAILED
+                    ? 'destructive'
+                    : waitingApproval
+                      ? 'warning'
+                      : 'secondary'
                 }
               >
                 {AGENT_RUN_STATUS_LABELS[runStatus]}

@@ -8,6 +8,9 @@ import { describe, expect, it } from 'vitest'
 import { AGENT_RUN_STATUS } from '@/domain/models/agent'
 import {
   AgentContractError,
+  toAgentApproval,
+  toAgentApprovalDecisionDto,
+  toAgentApprovalDecisionResult,
   toAgentApprovals,
   toAgentRun,
   toAgentRunCreateDto,
@@ -17,6 +20,7 @@ import {
   toAgentSessionCreateDto,
   toAgentSessionDetail,
   toAgentSourceRefs,
+  toUtcIso,
 } from '@/infrastructure/dto/agent.dto'
 
 describe('agent.dto', () => {
@@ -344,5 +348,225 @@ describe('agent.dto', () => {
     expect(
       toAgentRunEvent({ run_id: 'r', sequence: 1, type: 'message_delta', payload: { message_id: 'm-1', delta: '你好' } })
     ).toBeNull()
+  })
+})
+
+describe('agent.dto 审批与时间线（INT-2472）', () => {
+  it('审批单：proposal / diff / 决策人时间 snake_case → camelCase', () => {
+    const approval = toAgentApproval({
+      id: 'ap-1',
+      run_id: 'r-1',
+      tool_call_id: 'tc-1',
+      status: 'APPROVED',
+      proposal: {
+        tool: 'memory_write',
+        risk: 'WRITE',
+        arguments: { section: 'USER_PROFILE' },
+        args_hash: 'abc',
+        idempotency_key: 'k-1',
+        step_id: 'step-1',
+        turn: 2,
+        requested_by: 9,
+        session_id: 's-1',
+      },
+      diff: { kind: 'rest_request', method: 'POST', path: '/api/v1/memory' },
+      expires_at: '2026-11-14T02:15:00Z',
+      decided_by: 7,
+      decided_at: '2026-11-14T02:03:00Z',
+      created_at: '2026-11-14T02:00:00Z',
+    })
+    expect(approval).toMatchObject({
+      id: 'ap-1',
+      runId: 'r-1',
+      toolCallId: 'tc-1',
+      status: 'APPROVED',
+      expiresAt: '2026-11-14T02:15:00Z',
+      decidedBy: 7,
+      decidedAt: '2026-11-14T02:03:00Z',
+      createdAt: '2026-11-14T02:00:00Z',
+    })
+    expect(approval.proposal).toMatchObject({
+      tool: 'memory_write',
+      risk: 'WRITE',
+      arguments: { section: 'USER_PROFILE' },
+      argsHash: 'abc',
+      idempotencyKey: 'k-1',
+      stepId: 'step-1',
+      turn: 2,
+      requestedBy: 9,
+      sessionId: 's-1',
+    })
+    expect(approval.diff).toEqual({
+      kind: 'rest_request',
+      method: 'POST',
+      path: '/api/v1/memory',
+    })
+  })
+
+  it('审批单：risk 缺失 / 未知时不降级成 READ（安全：未知风险不能伪装只读）', () => {
+    expect(
+      toAgentApproval({ id: 'ap-1', proposal: { tool: 'x' } }).proposal?.risk
+    ).toBeUndefined()
+    expect(
+      toAgentApproval({
+        id: 'ap-1',
+        proposal: { tool: 'x', risk: 'SOMETHING_NEW' },
+      }).proposal?.risk
+    ).toBeUndefined()
+  })
+
+  it('审批决策响应：{approval, run_status} → 领域结果；缺信封判契约错误', () => {
+    const result = toAgentApprovalDecisionResult({
+      approval: {
+        id: 'ap-1',
+        run_id: 'r-1',
+        status: 'APPROVED',
+        proposal: { tool: 'memory_write', risk: 'WRITE' },
+      },
+      run_status: 'WAITING_APPROVAL',
+    })
+    expect(result.approval.status).toBe('APPROVED')
+    expect(result.runStatus).toBe(AGENT_RUN_STATUS.WAITING_APPROVAL)
+
+    expect(() =>
+      toAgentApprovalDecisionResult({} as never)
+    ).toThrow(AgentContractError)
+  })
+
+  it('审批决策请求：只有二次确认才带 confirm（INT-2467）', () => {
+    expect(toAgentApprovalDecisionDto('APPROVE')).toEqual({
+      decision: 'APPROVE',
+    })
+    expect(toAgentApprovalDecisionDto('REJECT', true)).toEqual({
+      decision: 'REJECT',
+      confirm: true,
+    })
+    expect(toAgentApprovalDecisionDto('APPROVE', true)).toEqual({
+      decision: 'APPROVE',
+      confirm: true,
+    })
+  })
+
+  it('run / run_started：budget 上限转 camelCase（时间线展示预算消耗）', () => {
+    const run = toAgentRun({
+      id: 'r-1',
+      status: 'RUNNING',
+      budget: {
+        max_rounds: 12,
+        max_tool_calls: 40,
+        max_tokens: 128000,
+        max_duration_seconds: 600,
+        max_output_bytes: 262144,
+      },
+      token_in: 10,
+      token_out: 20,
+    })
+    expect(run.budget).toEqual({
+      maxRounds: 12,
+      maxToolCalls: 40,
+      maxTokens: 128000,
+      maxDurationSeconds: 600,
+      maxOutputBytes: 262144,
+    })
+    expect(run.tokenIn).toBe(10)
+    expect(run.tokenOut).toBe(20)
+
+    const event = toAgentRunEvent({
+      run_id: 'r-1',
+      sequence: 1,
+      type: 'run_started',
+      model: 'deepseek-chat',
+      budget: { max_rounds: 12, max_tool_calls: 40 },
+    })
+    expect(event).toMatchObject({
+      type: 'run_started',
+      budget: { maxRounds: 12, maxToolCalls: 40 },
+    })
+  })
+
+  it('approval_required 事件：approval_id / tool / risk / expires_at / proposal', () => {
+    const event = toAgentRunEvent({
+      run_id: 'r-1',
+      sequence: 2,
+      type: 'approval_required',
+      approval_id: 'ap-1',
+      tool_call_id: 'tc-1',
+      tool: 'memory_write',
+      risk: 'DESTRUCTIVE',
+      expires_at: '2026-11-14T02:15:00Z',
+      proposal: {
+        tool: 'memory_write',
+        risk: 'DESTRUCTIVE',
+        step_id: 'step-1',
+        turn: 3,
+      },
+    })
+    expect(event).toMatchObject({
+      type: 'approval_required',
+      approvalId: 'ap-1',
+      toolCallId: 'tc-1',
+      tool: 'memory_write',
+      risk: 'DESTRUCTIVE',
+      expiresAt: '2026-11-14T02:15:00Z',
+      proposal: { tool: 'memory_write', risk: 'DESTRUCTIVE', stepId: 'step-1', turn: 3 },
+    })
+  })
+
+  it('context_compacted 事件：层级 / token / 裁剪数 / 调试开关', () => {
+    const event = toAgentRunEvent({
+      run_id: 'r-1',
+      sequence: 3,
+      type: 'context_compacted',
+      level: 'L2_DEDUPE',
+      snapshot_version: 2,
+      token_count_before: 1200,
+      token_count_after: 800,
+      dropped_count: 4,
+      debug: true,
+    })
+    expect(event).toMatchObject({
+      type: 'context_compacted',
+      level: 'L2_DEDUPE',
+      snapshotVersion: 2,
+      tokenCountBefore: 1200,
+      tokenCountAfter: 800,
+      droppedCount: 4,
+      debug: true,
+    })
+  })
+})
+
+describe('agent.dto 时间戳口径（INT-2472）', () => {
+  it('后端 naive UTC 时间戳补 Z：否则 UTC+8 下审批单会被判早 8 小时过期', () => {
+    expect(toUtcIso('2026-11-13T18:49:24.031859')).toBe(
+      '2026-11-13T18:49:24.031859Z'
+    )
+    // 已带时区 / 非 ISO 原样返回
+    expect(toUtcIso('2026-11-13T18:49:24Z')).toBe('2026-11-13T18:49:24Z')
+    expect(toUtcIso('not-a-date')).toBe('not-a-date')
+    expect(toUtcIso(undefined)).toBeUndefined()
+
+    const approval = toAgentApproval({
+      id: 'ap-1',
+      expires_at: '2026-11-13T18:49:24.031859',
+      decided_at: '2026-11-13T18:50:24.031859',
+      created_at: '2026-11-13T18:34:24.031859',
+    })
+    expect(approval.expiresAt).toBe('2026-11-13T18:49:24.031859Z')
+    expect(approval.decidedAt).toBe('2026-11-13T18:50:24.031859Z')
+    expect(approval.createdAt).toBe('2026-11-13T18:34:24.031859Z')
+
+    const event = toAgentRunEvent({
+      run_id: 'r-1',
+      sequence: 3,
+      type: 'approval_required',
+      approval_id: 'ap-1',
+      expires_at: '2026-11-13T18:49:24.031859',
+      timestamp: '2026-11-13T18:34:24.031859',
+    })
+    expect(event).toMatchObject({
+      expiresAt: '2026-11-13T18:49:24.031859Z',
+      timestamp: '2026-11-13T18:34:24.031859Z',
+    })
   })
 })

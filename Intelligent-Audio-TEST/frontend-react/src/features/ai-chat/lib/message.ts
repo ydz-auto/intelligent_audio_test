@@ -52,6 +52,22 @@ export function getPreviousUserMessage(
   return null
 }
 
+/**
+ * 最近一条 assistant 消息里的工具卡数量（INT-2472 审计 P3-1）。
+ * 刷新后时间线是空的（事件流投影只在当前页面会话内），审批面板的「工具调用」改用
+ * 这一轮（最后一条 assistant 气泡）已落的工具卡计数，避免出现「工具调用 0 / 待审批 1」。
+ */
+export function countLatestAssistantToolCalls(
+  messages: ChatMessage[]
+): number {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i].from === 'assistant') {
+      return messages[i].toolCalls?.length ?? 0
+    }
+  }
+  return 0
+}
+
 /** 渲染态：该条是否正在编辑、操作组是否恒显（最后一条 assistant 恒显） */
 export function getChatMessageRenderState(
   messages: ChatMessage[],

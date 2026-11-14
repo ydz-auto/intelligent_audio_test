@@ -25,11 +25,17 @@ import {
   type AgentRunHostKind,
   type AgentRunPhase,
 } from '@/application/agent/agent-run-store'
-import type { AgentRun } from '@/domain/models/agent'
+import type { AgentTimelineEntry } from '@/application/agent/agent-timeline'
+import type {
+  AgentApproval,
+  AgentApprovalDecision,
+  AgentRun,
+} from '@/domain/models/agent'
 import type { AgentStreamStatus } from '@/infrastructure/api/agentApi'
 
 export { AGENT_RUN_PHASE, AGENT_RUN_UNMOUNT_CANCEL_COPY, isAgentRunActive }
 export type { AgentRunPhase }
+export type { AgentTimelineEntry }
 
 export interface UseAgentRunResult {
   phase: AgentRunPhase
@@ -37,10 +43,30 @@ export interface UseAgentRunResult {
   /** 事件流连接状态（reconnecting 时页面提示重连中） */
   streamStatus: AgentStreamStatus | null
   error: string | null
+  /** 本 run 的审批单（待审批 + 已决；重连 / 刷新后按服务端列表还原） */
+  approvals: AgentApproval[]
+  approvalsLoading: boolean
+  approvalsError: string | null
+  /** 决策请求在途的审批单 id（卡片按钮据此立即禁用，防连点） */
+  decidingApprovalIds: string[]
+  /** Run 时间线（事件流有序投影） */
+  timeline: AgentTimelineEntry[]
   /** 发起一轮对话（内部保证会话 + run + 订阅；失败落 error 态，不抛出） */
   send: (text: string, options?: { appendUserMessage?: boolean }) => Promise<void>
   /** 取消当前 run；成功返回 null，失败返回中文文案（同一 run 只发一次请求） */
   cancel: () => Promise<string | null>
+  /** 审批决策（同一审批单连点只发一次请求；失败返回中文文案） */
+  decideApproval: (
+    approvalId: string,
+    decision: AgentApprovalDecision,
+    /** DESTRUCTIVE 二次确认：仅确认后带 true（后端 INT-2467 契约） */
+    confirm?: boolean
+  ) => Promise<string | null>
+  /** 同步本 run 的审批单（重连恢复 / 面板重试） */
+  refreshApprovals: (options?: {
+    runId?: string
+    syncPhase?: boolean
+  }) => Promise<void>
   /** 复位（keepSession=true 保留会话上下文，仅清空本轮状态） */
   reset: (options?: { keepSession?: boolean }) => void
 }
@@ -50,8 +76,17 @@ export function useAgentRun(): UseAgentRunResult {
   const run = useAgentRunStore((state) => state.run)
   const streamStatus = useAgentRunStore((state) => state.streamStatus)
   const error = useAgentRunStore((state) => state.error)
+  const approvals = useAgentRunStore((state) => state.approvals)
+  const approvalsLoading = useAgentRunStore((state) => state.approvalsLoading)
+  const approvalsError = useAgentRunStore((state) => state.approvalsError)
+  const decidingApprovalIds = useAgentRunStore(
+    (state) => state.decidingApprovalIds
+  )
+  const timeline = useAgentRunStore((state) => state.timeline)
   const send = useAgentRunStore((state) => state.send)
   const cancel = useAgentRunStore((state) => state.cancel)
+  const decideApproval = useAgentRunStore((state) => state.decideApproval)
+  const refreshApprovals = useAgentRunStore((state) => state.refreshApprovals)
   const reset = useAgentRunStore((state) => state.reset)
 
   // 宿主挂载恢复（幂等；浮窗展开整页 / 刷新都会走到这里，不打断进行中的 run）
@@ -59,7 +94,22 @@ export function useAgentRun(): UseAgentRunResult {
     void useAgentRunStore.getState().restore()
   }, [])
 
-  return { phase, run, streamStatus, error, send, cancel, reset }
+  return {
+    phase,
+    run,
+    streamStatus,
+    error,
+    approvals,
+    approvalsLoading,
+    approvalsError,
+    decidingApprovalIds,
+    timeline,
+    send,
+    cancel,
+    decideApproval,
+    refreshApprovals,
+    reset,
+  }
 }
 
 /**
