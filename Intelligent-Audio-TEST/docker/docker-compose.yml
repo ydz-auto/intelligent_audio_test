@@ -132,6 +132,16 @@ services:
       retries: 5
       start_period: 20s
     restart: unless-stopped
+    # INT-2591：agent_service 的 OSS_ENDPOINT=http://rustfs:9000，但它按
+    # INT-2529 只挂 agent_internal / agent_egress、不挂默认网络，此前 rustfs
+    # 仅在 default 上 → 容器内 rustfs 主机名解析不到（NO_DNS），Skill fork /
+    # zip 导入复制 references 到对象存储时 EndpointConnectionError → 500。
+    # 按本文件既有约定「新增被 agent 依赖的容器需同时加入 agent_internal」，
+    # 让 rustfs 进内部网络（agent_service 不进 default，保住 INT-2529 的入站面）。
+    # rustfs 是 S3 服务端，无出网需求；控制台/预签名仍走 default + 宿主端口映射。
+    networks:
+      - default
+      - agent_internal
 
   api_gateway:
     # INT-2373：Docker 引擎抖动/重启后长驻业务容器曾整批 Exited(255) 不自愈。
@@ -770,7 +780,9 @@ volumes:
 networks:
   # 默认网络：现役全栈互访口径（未显式声明 networks 的服务自动加入）。
   default:
-  # INT-2529：agent_service 专用内部网络，成员仅 api_gateway / postgres / redis。
+  # INT-2529：agent_service 专用内部网络，成员为 api_gateway / postgres /
+  # redis / rustfs（INT-2591：rustfs 是 agent_service 的 OSS 后端，按「被 agent
+  # 依赖的容器同时加入 agent_internal」的约定入网；其它业务容器无入站改动）。
   # internal 断掉该网络的出网与外部路由，收掉「同网络容器凭 X-User-Id 头绕过
   # 网关开关直连建 run」的面。
   agent_internal:
