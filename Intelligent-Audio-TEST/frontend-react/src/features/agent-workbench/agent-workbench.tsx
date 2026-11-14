@@ -111,6 +111,14 @@ function AgentWorkbenchSession({
     isGenerating,
     isCancelling,
     runPhase,
+    run,
+    approvals,
+    approvalsLoading,
+    approvalsError,
+    decidingApprovalIds,
+    timeline,
+    decideApproval,
+    refreshApprovals,
     resetChat,
   } = useChatHandler({
     channel,
@@ -197,6 +205,14 @@ function AgentWorkbenchSession({
           onSaveEditAndSubmit={(content) => applyEdit(content, true)}
           onUndoMessage={handleUndoMessage}
           runPhase={runPhase}
+          approvals={approvals}
+          approvalsError={approvalsError}
+          approvalsLoading={approvalsLoading}
+          decidingApprovalIds={decidingApprovalIds}
+          onDecideApproval={decideApproval}
+          onRetryApprovals={() => void refreshApprovals()}
+          run={run}
+          timeline={timeline}
         />
       </div>
       <div className='shrink-0'>

@@ -21,6 +21,8 @@ import {
   AGENT_ERROR_COPY,
   AGENT_EVENT_TYPE,
   type AgentApproval,
+  type AgentApprovalDecision,
+  type AgentApprovalDecisionResult,
   type AgentRun,
   type AgentRunEvent,
   type AgentRunInput,
@@ -29,6 +31,8 @@ import {
 } from '@/domain/models/agent'
 import {
   toAgentApprovals,
+  toAgentApprovalDecisionDto,
+  toAgentApprovalDecisionResult,
   toAgentRun,
   toAgentRunCreateDto,
   toAgentRunEvent,
@@ -36,6 +40,7 @@ import {
   toAgentSession,
   toAgentSessionCreateDto,
   toAgentSessionDetail,
+  type AgentApprovalDecisionResponseDto,
   type AgentApprovalsResponseDto,
   type AgentEventDto,
   type AgentRunCreateResponseDto,
@@ -60,6 +65,9 @@ export const AGENT_API_PATHS = {
   runCancel: (runId: string) => `/agent/runs/${encodeURIComponent(runId)}/cancel`,
   runApprovals: (runId: string) =>
     `/agent/runs/${encodeURIComponent(runId)}/approvals`,
+  /** 审批决策（§9.4；批准/拒绝一条写操作提案，决策本身不执行业务写） */
+  approvalDecision: (approvalId: string) =>
+    `/agent/approvals/${encodeURIComponent(approvalId)}/decision`,
 } as const
 
 // ===== 事件流参数（禁止魔法数字；§5.3「预算、阈值、超时写入配置」） =====
@@ -256,9 +264,9 @@ export async function cancelAgentRun(
 }
 
 /**
- * GET /agent/runs/{id}/approvals —— 待审批提案（`{"items": [...]}`）。
- * 审批卡与决策流程属 M2（INT-2472）；本卡只接列表契约。端点已实现，404 只可能是
- * 路径/网关配错，照常上抛（不伪装成「暂无待审批」）。
+ * GET /agent/runs/{id}/approvals —— 本 run 的审批单（待审批 + 已决，`{"items": [...]}`）。
+ * 重连 / 刷新恢复时据此还原待审批卡；查询侧只读（§3.1 CQRS），过期结算在服务端命令侧，
+ * 这里如实返回库内状态。端点已实现，404 只可能是路径/网关配错，照常上抛。
  */
 export async function listAgentApprovals(
   runId: string,
@@ -271,6 +279,28 @@ export async function listAgentApprovals(
     options
   )
   return toAgentApprovals(dto)
+}
+
+/**
+ * POST /agent/approvals/{id}/decision —— 批准 / 拒绝一条写操作提案（§9.4）。
+ * 服务端保证：只有 run 归属者本人可决策；并发审批只有一个生效，其余 409；
+ * 过期单 409 且不执行。响应 `{approval, run_status}` 供卡片就地更新。
+ * `confirm` 只对 DESTRUCTIVE 的 APPROVE 传 true（INT-2467 二次确认契约），
+ * 缺省不带该字段。
+ */
+export async function decideAgentApproval(
+  approvalId: string,
+  decision: AgentApprovalDecision,
+  confirm = false,
+  options?: ApiRequestOptions
+): Promise<AgentApprovalDecisionResult> {
+  const dto = await request<AgentApprovalDecisionResponseDto>(
+    'POST',
+    AGENT_API_PATHS.approvalDecision(approvalId),
+    toAgentApprovalDecisionDto(decision, confirm),
+    options
+  )
+  return toAgentApprovalDecisionResult(dto)
 }
 
 // ===== Run 事件流（SSE + Last-Event-ID 续传） =====
