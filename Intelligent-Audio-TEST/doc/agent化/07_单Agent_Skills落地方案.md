@@ -794,6 +794,79 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 - `DESTRUCTIVE`：永远单条审批，不允许批量或 Auto 预授权。
 - Auto 只预授权 `WRITE`，启动前必须展示计划与预算；预算到 80% 或连续 2 次工具失败时暂停。
 
+#### 9.4.1 「>20 对象强制单条」落地契约（INT-2571 定稿，2026-11-14）
+
+上面「单次影响 > 20 个对象必须单条审批」在 M2 现行实现（一次 tool call 一张
+`agent_approval`，`(run_id, tool_call_id)` 唯一）下的落地口径。**拆单 = 把一次 tool
+call 拆成 N 张审批单，决策逐张、执行仍然只有一次。**
+
+1. **对象计数**只统计参数里显式枚举的独立对象，按 `(kind, id)` 去重后计数；计数来源
+   必须登记在「可拆参数注册表」（工具 + 动作 + 参数路径 + 对象 kind）。未登记的参数
+   不参与计数；**写入工具新增的数组参数必须在注册表里显式分类**（拆 / 原子 /
+   不适用），注册期测试枚举写工具的数组参数，漏登记判红（对齐 INT-2562 风险探针的
+   fail-closed 做法）。非枚举范围（`mode=all` / `failed_only` 这类由服务端决定影响面）
+   按 1 个对象计，审批单必须展示范围语义（`mode` / 上级对象），不伪造数量。
+   一个参数可拆的前提：**只带其中一个对象时该调用仍然合法**（`merge` 这种少一个对象
+   就非法的动作因此不可拆）。
+2. **阈值**：严格 `> 20` 才拆，`= 20` 不拆。服务端配置
+   `AGENT_APPROVAL_SPLIT_THRESHOLD` 默认 20，只允许收紧；请求不可放宽。拆单粒度
+   `AGENT_APPROVAL_SPLIT_CHUNK_SIZE` 默认 1（每对象一张单）。重复对象只计一次，
+   分块顺序按参数原顺序（去重后）。
+3. **单次调用对象上限** `AGENT_APPROVAL_MAX_OBJECTS`（默认 100）：超过不建单，提案前
+   直接拒绝 `APPROVAL_OBJECT_LIMIT_EXCEEDED`，提示模型改成多次调用（避免一次调用
+   在库里堆出上千张单）。
+4. **拆单产物**：一次 tool call → N 张审批单，共享 `batch_id`，各带 `batch_index`
+   （1..N）/ `batch_total` / `object_ref = {kind, ids}`；`proposal.object_count` 是本批
+   总对象数。**每张单的 `proposal.arguments` 与 `diff` 收窄到本单负责的对象**（用户
+   逐张看到的就是这一份），完整参数保留在 `agent_tool_call.arguments` 供审计。唯一键
+   改为 `(run_id, tool_call_id, batch_index)`；`list_for_run` 不再假设一次调用一张单。
+5. **执行语义：全批准才执行（all-or-nothing），不逐单执行、不部分执行。**
+   - 同批任一单 `PENDING` → run 停在 `WAITING_APPROVAL`，不执行；
+   - 全部 `APPROVED` → 用**完整原始参数**执行一次（执行前按每张单的
+     `decision_permissions` 快照逐一复核，任一不再授权即整批不执行）；
+   - 任一单 `REJECTED` → 整批拒绝，其余 `PENDING` 自动转 `REJECTED`，回灌
+     `APPROVAL_REJECTED`（带被拒对象）；
+   - 任一单 `EXPIRED` 且整批未全批准 → 整批按 `APPROVAL_EXPIRED` 收口，其余
+     `PENDING` 转 `EXPIRED`；若全批准发生在过期之前则照常执行。
+   不做逐单执行：网关一次调用就是一个业务动作（`merge` 这类集合操作必须一次成型），
+   拆成多次执行会造出非法中间态；也不做「部分对象执行」。
+6. **决策接口不变**：仍按 approval id 逐张决策，本卡不提供批量决策端点
+   （§9.4 的批量单条正是为了禁止一键放行）；`confirm=true` 仍只属于 DESTRUCTIVE。
+7. **DESTRUCTIVE 恒一张单**（`batch_total=1`）：`device_control` 的 `device_ids`
+   只计数、不拆单，不参与 Auto 预授权；前端对 DESTRUCTIVE 批量维持逐项核对展示。
+8. **原子集合操作不拆单**：`task_run.merge`（`body.task_ids`）是一个原子动作，保持
+   一张单，审批单展示对象数；后续同类工具在注册表标 `atomic`。
+9. **恢复幂等**：拆单是 `(参数, 配置)` 的确定性函数；同一 tool call 已存在任一单时整批
+   复用（不按新配置重建），`(run_id, tool_call_id, batch_index)` 唯一键兜底。
+10. **SSE**：`approval_required` 每张单一条事件，载荷带 `batch_id` / `batch_index` /
+    `batch_total` / `object_count`，同一批的 `tool_call_id` 相同。
+11. **预算口径**：等人工审批的时长按批次取区间并集计一次，不能按 N 张单累加
+    （否则同一段等待被重复扣除，§9.3 执行时长预算被放大）。
+12. **前端**：审批面板按卡逐张渲染（已支持多卡同屏）；批次卡需显示「第 i/N 条 ·
+    本批 N 条全部批准后才执行」。INT-2472 已实现的「>20 对象强制逐项核对」保留作
+    纵深防御（DESTRUCTIVE 批量、以及拆单前的历史提案仍靠它兜底），批次卡本身
+    不再触发逐项核对。
+13. **§9.4 其余「必须单条」类别**：M2 工具面里没有跨租户参数（隔离由服务端按登录
+    身份构造），删除类动作在动作级已是 `DESTRUCTIVE`，导出含敏感数据（`report_export`）
+    仍是 reserved；这三类一律不进拆单注册表。未来新增同类能力必须按 `DESTRUCTIVE`
+    处理（单张 + `confirm=true`），不得靠拆单绕开二次确认。
+
+M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参数，未列入本表的必须给出
+`atomic` / `not_applicable` 分类，否则测试判红）：
+
+| 工具 | 动作 / 条件 | 参数路径 | 对象 kind | 分类 |
+|---|---|---|---|---|
+| `tag_group_manage` | `batch_tag` 且 `batch_action ∈ {add_tags, remove_tags}` | `ids` | `testcase` | 拆 |
+| `audio_annotate` | `batch_annotate` | `items[].audio_id` | `audio` | 拆 |
+| `task_run` | `retry` 且 `body.mode=selected` | `body.case_ids` | `testcase` | 拆 |
+| `evaluation_manage` | `reevaluate` 且 `body.mode=selected` | `body.case_ids` | `testcase` | 拆 |
+| `device_control` | `batch` | `device_ids` | `device` | 计数不拆（DESTRUCTIVE） |
+| `task_run` | `merge` | `body.task_ids` | `task` | 原子（不拆） |
+| 其余写工具数组参数（`audio_import.tags`、`audio_annotate.algorithms`、`testcase_write.tags`、`tag_group_manage.tags`、`evaluation_manage.body.dimension_ids` 等） | — | — | — | 属性 / 范围，不计入对象数 |
+
+注：`evaluation_manage.reevaluate` 只有在 `mode=selected` 时 `case_ids` 才决定影响面；
+`mode=all` / `failed_only` 按非枚举范围计 1 个对象（见第 1 条）。
+
 预算（单 run，W = 有效上下文窗口：用户覆盖 → 模型目录默认 → 128k 兜底）：
 
 | 项 | 默认 | Auto |
@@ -818,12 +891,12 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 | `agent_run_event` | id, run_id, sequence, type, payload, created_at |
 | `agent_step` | id, run_id, index, plan_snapshot, status, created_at |
 | `agent_tool_call` | id, run_id, step_id, tool, args_hash, risk, status, result_ref, latency_ms, permission_decision, result_code |
-| `agent_approval` | id, run_id, tool_call_id, proposal, diff, status, expires_at, decided_by, decided_at |
+| `agent_approval` | id, run_id, tool_call_id, proposal, diff, status, expires_at, decided_by, decided_at；拆单批次（INT-2571）：batch_id, batch_index, batch_total, object_ref |
 | `agent_artifact` | id, run_id, kind, uri, size, metadata |
 | `agent_context_snapshot` | id, run_id, version, token_count, dropped_ids, memo, level |
 | `agent_skill` / `agent_skill_version` | 自定义 Skill 与版本快照，字段见 §4.4；M2/M3 交付，当前未建表 |
 
-索引：session owner、run owner/status、(`run_id`, `sequence`)、approval status/expiry、idempotency key 唯一索引。
+索引：session owner、run owner/status、(`run_id`, `sequence`)、approval status/expiry、(`run_id`, `tool_call_id`, `batch_index`) 唯一（拆单后一次调用多张单，INT-2571）、idempotency key 唯一索引。
 
 长期记忆不建表：使用 `memory/` 文件树（按 tenant/owner 隔离），检索走 `rg`；`agent_context_snapshot` 只存会话内压缩快照。
 
@@ -858,6 +931,8 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 | POST | `/api/v1/mcp` | 外部 MCP（保留） |
 
 SSE 事件载荷统一包含 `run_id`、`sequence`、`type`、`timestamp`；`message_delta` 带 `message_id`，避免重连重复拼接。
+
+审批单响应字段（§9.4.1 拆单）：`id` / `run_id` / `tool_call_id` / `status` / `proposal`（含 `object_count`）/ `diff` / `expires_at` / `decided_by` / `decided_at` / `batch_id` / `batch_index` / `batch_total` / `object_ref`；不新增端点。
 
 ## 12. 代码落位
 
@@ -913,6 +988,7 @@ tests/agent_eval/coverage/       # M1 汇总评测：清单一致性 / 长尾 / 
 | `application/agent/agent-run-store.ts` 宿主离场 | 宿主（整页 / 浮窗）登记存活；**只有最后一个宿主按取消语义离场**（浮窗「关闭」、离开 `/ai-chat` 路由）才给 `phase ∈ {preparing,running,reconnecting}` 的 run 发一次 `cancel` 并提示「已中断当前回答」——浮窗「最小化」「展开整页」与整页 ↔ 浮窗切换不取消（INT-2507 单实例下另一宿主仍在展示该 run）；建 run 请求在途时等响应返回后补发取消，不留孤儿 run；离场判定有宽限窗口，StrictMode 双挂载不会误取消 | INT-2521（按 INT-2507 A5–A7 收窄） |
 | `features/ai-chat` | 接真实事件流；保留工具卡与来源卡 | INT-2457 |
 | `features/ai-chat` 审批卡 + Run 时间线 | 审批提案/diff/风险/过期；事件时间线；重连恢复待审批 | INT-2472 |
+| `features/ai-chat` 审批批次展示 | 拆单后按「第 i/N 条 · 本批 N 条全部批准后才执行」展示批次与对象标识；DTO 补 `batch_id` / `batch_index` / `batch_total` / `object_ref`（§9.4.1） | INT-2571 后端落地的跟进卡（不阻塞后端） |
 | `features/ai-chat` Report Studio 文档面板 | 取数 → 起草 → 版本 → 导出（PDF/PPTX/HTML/MD） | INT-2473 |
 | Auto 模式 | 目标输入、预算设置、进度汇报、中断/暂停/继续 | INT-2477 |
 | `features/agent-workbench` | 保留页面能力映射，快捷指令仍只回填不自动发送 | INT-2457（保留） |
