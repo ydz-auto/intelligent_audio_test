@@ -33,6 +33,7 @@ from shared.models.common_enums import (
     AuditLogCategory,
     DeviceKind,
 )
+from shared.models.database import remove_db_session
 from shared.utils.log_handler import log_not_emit
 from shared.utils.config_manager import config_manager
 
@@ -398,19 +399,37 @@ class DeviceMonitorThread:
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
 
+    def _end_round_session(self):
+        """轮次收尾：结束当前线程 session，释放上一轮只读查询留下的事务。
+
+        INT-2590：``list_enabled_alarm_rules`` 等只读查询在后台线程没有请求级
+        scope，SELECT 后既不 commit 也不 rollback，连接以 ``idle in transaction``
+        常驻并持有 AccessShareLock（INT-2588 实证：挡 db_bootstrap 的 DDL）。
+        监控线程与进程同生命周期，收尾必须每轮执行；本轮写路径均在仓储内部
+        commit，remove 不会吞掉未提交写。收尾失败不影响下一轮。
+        """
+        try:
+            remove_db_session()
+        except Exception:  # noqa: BLE001 - 收尾失败不得影响监控主流程
+            logger.debug("[DeviceMonitor] 轮次收尾 remove_db_session 失败", exc_info=True)
+
     def _loop(self):
         from device_service.application.commands.device_command_service import device_command_service
         while not self._stop_event.wait(timeout=self.interval_seconds):
             try:
-                device_command_service.health_check()
-            except Exception:
-                logger.warning("[DeviceMonitor] 周期健康检查失败", exc_info=True)
-            try:
-                triggered = device_monitor_service.evaluate_alarm_rules()
-                if triggered:
-                    logger.info("[DeviceMonitor] 本轮触发 %s 条告警", len(triggered))
-            except Exception:
-                logger.warning("[DeviceMonitor] 告警规则评估失败", exc_info=True)
+                try:
+                    device_command_service.health_check()
+                except Exception:
+                    logger.warning("[DeviceMonitor] 周期健康检查失败", exc_info=True)
+                try:
+                    triggered = device_monitor_service.evaluate_alarm_rules()
+                    if triggered:
+                        logger.info("[DeviceMonitor] 本轮触发 %s 条告警", len(triggered))
+                except Exception:
+                    logger.warning("[DeviceMonitor] 告警规则评估失败", exc_info=True)
+            finally:
+                # 两个分支都异常时同样收尾
+                self._end_round_session()
 
     def start(self):
         if self._thread is not None and self._thread.is_alive():
