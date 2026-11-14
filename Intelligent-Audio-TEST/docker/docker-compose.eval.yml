@@ -12,7 +12,14 @@
 #   # 宿主完整五层（含沙箱）
 #   python scripts/run_agent_eval.py --out ./eval-out
 #
-# 报告：宿主 docker/eval-out/report.json + report.md（容器内 /app/eval-out）。
+# INT-2618：INT-2614 起「层不完整」默认 exit 1，唯一放行口是 --allow-skip /
+# AGENT_EVAL_ALLOW_SKIP。本入口的四层 + sandbox-tier none 是入口的**显式选择**，
+# 不是意外降级，故显式放行；报告里 allow_skip=true / full_five=false /
+# degraded=true / layers_missing 非空仍如实标记（本入口用 --layers 子集排除沙箱层，
+# 故记 layers_missing 而非 layers_skipped），降级可见性不受影响。
+# 不能改成默认五层：容器内没有 docker CLI / runsc，沙箱层跑不了。
+#
+# 报告：宿主 docker/eval-out/report.json + report.md（容器内 /out）。
 # --changed-skills auto 需要 .git（worktree 的 .git 是文件、指向主仓库），
 # 容器内不可用；变更 Skill 门禁在宿主执行。
 name: intelligent-audio-test-eval
@@ -25,6 +32,8 @@ services:
     environment:
       AGENT_EVAL_LAYERS: "${AGENT_EVAL_LAYERS:-e2e,skill,compaction,recovery}"
       AGENT_EVAL_SANDBOX_TIER: "${AGENT_EVAL_SANDBOX_TIER:-none}"
+      # 四层入口的显式放行（默认 1；置 0 可复现严格口径 exit 1）
+      AGENT_EVAL_ALLOW_SKIP: "${AGENT_EVAL_ALLOW_SKIP:-1}"
       AGENT_EVAL_OUT: "/out"
       # 离线评测的固定兜底（不连真库 / OSS；评测替身不读这些值做真实 IO）
       DATABASE_URL: "sqlite:///:memory:"

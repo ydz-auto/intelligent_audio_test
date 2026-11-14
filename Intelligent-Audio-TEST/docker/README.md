@@ -359,12 +359,19 @@ compose 新增 `agent_service`（`docker/Dockerfile.agent_service`），依赖
   （需 Docker + `python:3.11-slim`）；`--sandbox-tier t2` 需宿主已注册
   `runsc`（同 §8.1 T2 运行时）。产物 `tests/agent_eval/out/report.json` +
   `report.md`（可用 `--out` / `AGENT_EVAL_OUT` 改到构建产物目录）。
-- **退出码**：0 全通过；1 有层未通过；2 基础设施不可用（Docker / 镜像 / runsc /
-  评测集缺失）。CI 据此区分「用例失败」与「环境不可用」。
+- **退出码**（INT-2614 起的编码层完整性口径）：0 = 门槛满足（默认只认五层全跑且全过，
+  开启放行口后层子集全过也按 0）；1 = 有层未通过 **或层不完整**；2 = 基础设施不可用
+  （Docker / 镜像 / runsc / 评测集缺失）。层不完整指 `--layers` 子集少跑的层
+  （报告 `layers_missing`）或 `--sandbox-tier none` 选而不跑的层（报告
+  `layers_skipped`），默认都按 1 退出；**唯一放行口是显式 `--allow-skip` /
+  环境变量 `AGENT_EVAL_ALLOW_SKIP=1`**，开启后退出码 0，且报告仍带 `allow_skip=true`、
+  `full_five=false`、`degraded=true` 与 `layers_missing` / `layers_skipped`，降级可在
+  报告里机器分辨，不会被当成「五层全过」。CI 据此区分「用例失败」「层不完整」与
+  「环境不可用」。
 - **变更 Skill 门禁**：`--changed-skills auto --base-ref V10.11.2` 按 `git diff`
   （含工作区未提交改动）只跑变更 Skill 的集合，失败项精确到 `skill:<name>`。
 - **一次性容器（四层）**：`docker/docker-compose.eval.yml` 复用
-  `agent_service` 镜像（`AGENT_EVAL_IMAGE` 可覆盖），把仓库只读挂到 `/app`，
+  `agent_service` 镜像（`AGENT_EVAL_IMAGE` 可覆盖），把仓库只读挂到 `/repo`，
   报告写宿主 `docker/eval-out/`：
 
   ```bash
@@ -373,7 +380,13 @@ compose 新增 `agent_service`（`docker/Dockerfile.agent_service`），依赖
 
   容器内没有 docker CLI / `.git`，故固定 `--sandbox-tier none`，且
   `--changed-skills auto` 不可用；**合并门禁仍应在宿主跑完整五层**，容器只作
-  无宿主环境的四层回归。
+  无宿主环境的四层回归。四层是该入口的**显式选择**而非意外降级，compose 里已设
+  `AGENT_EVAL_ALLOW_SKIP=1`（INT-2618），故四层全过即 exit 0，报告里
+  `allow_skip=true` / `full_five=false` / `degraded=true` /
+  `layers_missing=["sandbox"]` 仍如实标注（`layers_skipped` 为空：沙箱层是被
+  `--layers` 子集排除，不是选中后跳过）；需要复现严格口径时用
+  `AGENT_EVAL_ALLOW_SKIP=0 docker compose …`（或宿主 `--layers` 子集不加
+  `--allow-skip`），预期 exit 1。
 - **口径边界**：Skill 触发是确定性词面代理（`trigger_proxy: true`），不是模型
   实测；成本是确定性替身的相对口径（轮次 / 工具调用 / 近似 token），不产生计费。
   详见 `tests/agent_eval/README.md` 与方案 07 §14.1。
