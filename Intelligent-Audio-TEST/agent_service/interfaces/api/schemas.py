@@ -63,7 +63,12 @@ class SessionDetailResponse(BaseModel):
 
 
 class ApprovalResponse(BaseModel):
-    """一张写调用审批单（§10 agent_approval；与 React AgentApprovalDto 对齐）。"""
+    """一张写调用审批单（§10 agent_approval；与 React AgentApprovalDto 对齐）。
+
+    ``batch_*`` / ``object_ref`` 是 §9.4.1 拆单字段：一次 tool call 影响 >20
+    个对象时拆成 N 张单，同批共享 ``batch_id``，``batch_index`` 1..N；未拆单
+    时 ``batch_id`` 为空、``batch_index`` / ``batch_total`` 为 1。
+    """
 
     id: str
     run_id: str
@@ -75,6 +80,10 @@ class ApprovalResponse(BaseModel):
     decided_by: Optional[int] = None
     decided_at: Optional[str] = None
     created_at: Optional[str] = None
+    batch_id: Optional[str] = None
+    batch_index: int = 1
+    batch_total: int = 1
+    object_ref: Optional[Dict[str, Any]] = None
 
 
 class ApprovalDecisionRequest(BaseModel):

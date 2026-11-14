@@ -126,6 +126,12 @@ def _to_approval(row: AgentApprovalPO) -> AgentApproval:
         decision_permissions=(
             list(row.decision_permissions)
             if isinstance(row.decision_permissions, list) else None),
+        # INT-2571：历史行（加列前）取列默认值，不出现 None/None
+        batch_id=row.batch_id,
+        batch_index=int(row.batch_index or 1),
+        batch_total=int(row.batch_total or 1),
+        object_ref=(row.object_ref
+                    if isinstance(row.object_ref, dict) else None),
         created_at=row.created_at, updated_at=row.updated_at,
     )
 
@@ -694,7 +700,7 @@ class SqlToolCallRepository(_BaseRepo, ToolCallRepository):
 # ---------------------------------------------------------------- approvals
 
 class SqlApprovalRepository(_BaseRepo, ApprovalRepository):
-    """写调用审批单仓储（INT-2466）：决策 / 过期的互斥交给条件更新。"""
+    """写调用审批单仓储（INT-2466 / INT-2571）：决策 / 过期的互斥交给条件更新。"""
 
     def add(self, approval: AgentApproval) -> AgentApproval:
         db = self._session()
@@ -708,6 +714,10 @@ class SqlApprovalRepository(_BaseRepo, ApprovalRepository):
                 decided_by=approval.decided_by,
                 decided_at=approval.decided_at,
                 decision_permissions=approval.decision_permissions,
+                batch_id=approval.batch_id,
+                batch_index=int(approval.batch_index or 1),
+                batch_total=int(approval.batch_total or 1),
+                object_ref=approval.object_ref,
                 created_at=approval.created_at or utcnow(),
                 updated_at=approval.updated_at or utcnow(),
             )
@@ -715,14 +725,16 @@ class SqlApprovalRepository(_BaseRepo, ApprovalRepository):
             db.commit()
             return _to_approval(row)
         except IntegrityError:
-            # 并发 / 重复提案：同一 tool call 只保留一张单，复用已有行
+            # 并发 / 重复提案：同一 (run_id, tool_call_id, batch_index) 只保留
+            # 一张单，复用已有行（拆单批次按 batch_index 逐张幂等）
             db.rollback()
-            existing = self.find_for_tool_call(
-                approval.run_id, approval.tool_call_id)
+            existing = self._find_one(
+                approval.run_id, approval.tool_call_id,
+                int(approval.batch_index or 1))
             if existing is None:
                 raise
-            logger.debug('审批单已存在，复用 tool_call_id=%s',
-                         approval.tool_call_id)
+            logger.debug('审批单已存在，复用 tool_call_id=%s batch_index=%s',
+                         approval.tool_call_id, approval.batch_index)
             return existing
         finally:
             db.close()
@@ -735,15 +747,28 @@ class SqlApprovalRepository(_BaseRepo, ApprovalRepository):
         finally:
             db.close()
 
-    def find_for_tool_call(self, run_id: str,
-                           tool_call_id: str) -> Optional[AgentApproval]:
+    def _find_one(self, run_id: str, tool_call_id: str,
+                  batch_index: int) -> Optional[AgentApproval]:
         db = self._session()
         try:
             row = db.query(AgentApprovalPO).filter(
                 AgentApprovalPO.run_id == run_id,
                 AgentApprovalPO.tool_call_id == tool_call_id,
+                AgentApprovalPO.batch_index == batch_index,
             ).one_or_none()
             return _to_approval(row) if row else None
+        finally:
+            db.close()
+
+    def list_for_tool_call(self, run_id: str,
+                           tool_call_id: str) -> List[AgentApproval]:
+        db = self._session()
+        try:
+            rows = db.query(AgentApprovalPO).filter(
+                AgentApprovalPO.run_id == run_id,
+                AgentApprovalPO.tool_call_id == tool_call_id,
+            ).order_by(AgentApprovalPO.batch_index.asc()).all()
+            return [_to_approval(r) for r in rows]
         finally:
             db.close()
 
@@ -752,7 +777,8 @@ class SqlApprovalRepository(_BaseRepo, ApprovalRepository):
         try:
             rows = db.query(AgentApprovalPO).filter(
                 AgentApprovalPO.run_id == run_id,
-            ).order_by(AgentApprovalPO.created_at.asc()).all()
+            ).order_by(AgentApprovalPO.created_at.asc(),
+                       AgentApprovalPO.batch_index.asc()).all()
             return [_to_approval(r) for r in rows]
         finally:
             db.close()
@@ -763,7 +789,8 @@ class SqlApprovalRepository(_BaseRepo, ApprovalRepository):
             rows = db.query(AgentApprovalPO).filter(
                 AgentApprovalPO.run_id == run_id,
                 AgentApprovalPO.status == ApprovalStatus.PENDING.value,
-            ).order_by(AgentApprovalPO.created_at.asc()).all()
+            ).order_by(AgentApprovalPO.created_at.asc(),
+                       AgentApprovalPO.batch_index.asc()).all()
             return [_to_approval(r) for r in rows]
         finally:
             db.close()
@@ -805,6 +832,34 @@ class SqlApprovalRepository(_BaseRepo, ApprovalRepository):
                       'updated_at': now}, synchronize_session=False)
             db.commit()
             return bool(hit)
+        finally:
+            db.close()
+
+    def settle_batch(self, run_id: str, tool_call_id: str,
+                     target: ApprovalStatus, *,
+                     decided_by: Optional[int] = None,
+                     decided_at: Optional[datetime] = None,
+                     now: datetime) -> int:
+        """整批收口同一次调用剩余的 PENDING 单（§9.4.1 第 5 条）。
+
+        拒绝记决策人；过期是系统结算，不记 ``decided_by``。不校验
+        ``expires_at``：批内某一张过期即整批按过期收口，未到点的兄弟单也要
+        一起关掉，不能留半批 PENDING。
+        """
+        values: Dict[str, Any] = {
+            'status': target.value, 'updated_at': now}
+        if target is ApprovalStatus.REJECTED:
+            values['decided_by'] = decided_by
+            values['decided_at'] = decided_at or now
+        db = self._session()
+        try:
+            hit = db.query(AgentApprovalPO).filter(
+                AgentApprovalPO.run_id == run_id,
+                AgentApprovalPO.tool_call_id == tool_call_id,
+                AgentApprovalPO.status == ApprovalStatus.PENDING.value,
+            ).update(values, synchronize_session=False)
+            db.commit()
+            return int(hit or 0)
         finally:
             db.close()
 

@@ -75,6 +75,15 @@ ACTIONS: Dict[str, WriteAction] = {
 
 ACTION_NAMES: Tuple[str, ...] = tuple(ACTIONS)
 
+# §9.4.1（INT-2571）：重试 / 合并 body 里的数组字段。注册期拆单探针据此枚举
+# 写工具数组参数；未在 ``shared.agent_tools.approval_split.ARRAY_PARAMS`` 显式
+# 分类的判红（可拆 / 原子 / 不适用必须写清）。
+RETRY_BODY_ARRAY_FIELDS: Tuple[str, ...] = ('case_ids',)
+MERGE_BODY_ARRAY_FIELDS: Tuple[str, ...] = ('task_ids',)
+# body 允许的全部字段（数组字段 + 标量字段），供参数白名单与探针共用
+RETRY_BODY_FIELDS: Tuple[str, ...] = RETRY_BODY_ARRAY_FIELDS + ('mode',)
+MERGE_BODY_FIELDS: Tuple[str, ...] = MERGE_BODY_ARRAY_FIELDS
+
 
 def _prepare_retry(merged: Dict[str, Any]) -> Optional[str]:
     body = merged.get('body')
@@ -82,7 +91,7 @@ def _prepare_retry(merged: Dict[str, Any]) -> Optional[str]:
         return None
     if not isinstance(body, dict) or not body:
         return 'action=retry 的 body 必须是非空对象（case_ids / mode）'
-    unknown = sorted(set(body) - {'case_ids', 'mode'})
+    unknown = sorted(set(body) - set(RETRY_BODY_FIELDS))
     if unknown:
         return (f'action=retry 的 body 不支持字段：{"、".join(unknown)}'
                 '（只支持 case_ids / mode）')
@@ -107,7 +116,7 @@ def _prepare_merge(merged: Dict[str, Any]) -> Optional[str]:
     if error:
         return error
     body = merged['body']
-    unknown = sorted(set(body) - {'task_ids'})
+    unknown = sorted(set(body) - set(MERGE_BODY_FIELDS))
     if unknown:
         return (f'action=merge 的 body 不支持字段：{"、".join(unknown)}'
                 '（网关 TaskMergeRequest 只接受 task_ids，'
@@ -175,6 +184,7 @@ def resolve(arguments: Optional[Dict[str, Any]]
 
 __all__ = [
     'ACTIONS', 'ACTION_NAMES', 'EVALUATION_STATUS_VALUES',
-    'EXECUTION_STATUS_DEFAULT', 'EXECUTION_STATUS_VALUES', 'MERGE_MIN_TASKS',
-    'RETRY_MODES', 'resolve',
+    'EXECUTION_STATUS_DEFAULT', 'EXECUTION_STATUS_VALUES',
+    'MERGE_BODY_ARRAY_FIELDS', 'MERGE_BODY_FIELDS', 'MERGE_MIN_TASKS',
+    'RETRY_BODY_ARRAY_FIELDS', 'RETRY_BODY_FIELDS', 'RETRY_MODES', 'resolve',
 ]

@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
-"""迁移脚本：agent_approval 写操作审批单（INT-2466 / 方案 §9.4 / §10）
+"""迁移脚本：agent_approval 写操作审批单（INT-2466 / INT-2571，§9.4 / §10）
 
 表：agent_approval（id / run_id / tool_call_id / proposal / diff / status /
     expires_at / decided_by / decided_at / decision_permissions /
+    batch_id / batch_index / batch_total / object_ref /
     created_at / updated_at）。
 
 约束与索引：
-- (run_id, tool_call_id) 唯一 —— 一次写调用只允许一张提案，重复提交幂等；
+- (run_id, tool_call_id, batch_index) 唯一 —— 一次 tool call 1..N 张单
+  （INT-2571 §9.4.1 拆单），按 batch_index 逐张幂等；历史单张口径
+  batch_index 恒为 1。旧约束 uq_agent_approval_run_call 由本脚本先删再建新，
+  回滚可逆（删新约束、加回旧约束即可）；
 - (status, expires_at) —— 待审批列表与过期扫描；
 - (run_id, created_at) —— 按 run 回放审批历史。
 
@@ -17,8 +21,10 @@
 
 幂等：
 - CREATE TABLE/INDEX IF NOT EXISTS，唯一约束先查 pg_constraint 再补；
+- 存量库按列存在性补 ADD COLUMN（batch_id / batch_index / batch_total /
+  object_ref，默认值保证历史行落到单张口径），再替换唯一约束；
 - 全新库 create_all 已建表 / 约束 / 索引，本脚本为全 [SKIP]；
-- 存量库（建库早于本卡）由本脚本补建。
+- 存量库（建库早于本卡）由本脚本补齐。
 
 用法:
     python scripts/migrations/202611/add_agent_approval_table.py          # dry-run
@@ -50,15 +56,33 @@ CREATE TABLE IF NOT EXISTS agent_approval (
     decided_by BIGINT NULL,
     decided_at TIMESTAMP NULL,
     decision_permissions JSON NULL,
+    batch_id VARCHAR(36) NULL,
+    batch_index INTEGER NOT NULL DEFAULT 1,
+    batch_total INTEGER NOT NULL DEFAULT 1,
+    object_ref JSON NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 )
 """),
 ]
 
+# 存量库补列（INT-2571）：列名 → 列定义（带默认值，历史行落单张口径）
+ADDED_COLUMNS = [
+    ('batch_id', 'VARCHAR(36) NULL'),
+    ('batch_index', 'INTEGER NOT NULL DEFAULT 1'),
+    ('batch_total', 'INTEGER NOT NULL DEFAULT 1'),
+    ('object_ref', 'JSON NULL'),
+]
+
 # (约束名, 表, 定义)
 UNIQUE_CONSTRAINTS = [
-    ('uq_agent_approval_run_call', TABLE, 'run_id, tool_call_id'),
+    ('uq_agent_approval_run_call_batch', TABLE,
+     'run_id, tool_call_id, batch_index'),
+]
+
+# 先删的旧约束（INT-2466 的一次调用一张单口径，被首批次唯一键取代）
+DROPPED_CONSTRAINTS = [
+    ('uq_agent_approval_run_call', TABLE),
 ]
 
 # (索引名, 表, 列, 是否唯一)
@@ -92,6 +116,13 @@ def _constraint_exists(cur, table, name):
     return cur.fetchone() is not None
 
 
+def _column_exists(cur, table, name):
+    cur.execute(
+        'SELECT 1 FROM information_schema.columns '
+        'WHERE table_name = %s AND column_name = %s', (table, name))
+    return cur.fetchone() is not None
+
+
 def _index_exists(cur, table, index):
     cur.execute(
         'SELECT 1 FROM pg_indexes WHERE tablename = %s AND indexname = %s',
@@ -113,6 +144,36 @@ def migrate(dry_run=False):
             print(f'[EXEC] CREATE TABLE {table}')
             cur.execute(sql.strip())
             print(f'[DONE] 表 {table} 已就绪')
+
+    for collision in DROPPED_CONSTRAINTS:
+        name, table = collision
+        if not _table_exists(cur, table):
+            print(f'[SKIP] 旧约束 {name}（表 {table} 不存在）')
+            continue
+        if not _constraint_exists(cur, table, name):
+            print(f'[SKIP] 旧约束 {name} 不存在')
+            continue
+        sql = f'ALTER TABLE {table} DROP CONSTRAINT {name}'
+        if dry_run:
+            print(f'[DRY-RUN] {sql}')
+        else:
+            print(f'[EXEC] {sql}')
+            cur.execute(sql)
+            print(f'[DONE] 旧约束 {name} 已删除（唯一键改为含 batch_index）')
+
+    for name, definition in ADDED_COLUMNS:
+        if not _table_exists(cur, TABLE):
+            print(f'[SKIP] 列 {name}（表 {TABLE} 不存在）')
+            continue
+        if _column_exists(cur, TABLE, name):
+            print(f'[SKIP] 列 {name} 已存在')
+            continue
+        sql = f'ALTER TABLE {TABLE} ADD COLUMN {name} {definition}'
+        if dry_run:
+            print(f'[DRY-RUN] {sql}')
+        else:
+            print(f'[EXEC] {sql}')
+            cur.execute(sql)
 
     for name, table, definition in UNIQUE_CONSTRAINTS:
         if not _table_exists(cur, table):

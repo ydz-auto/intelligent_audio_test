@@ -116,6 +116,23 @@ class ApprovalConfirmationRequired(AgentDomainError):
             f'{", tool=" + tool if tool else ""}）')
 
 
+class ApprovalObjectLimitExceeded(AgentDomainError):
+    """单次调用影响对象超过上限（INT-2571，§9.4.1 第 3 条）。
+
+    提案前拒绝：不建单、无副作用，错误码回灌模型，让它改成多次调用（避免
+    一次调用在库里堆出上千张审批单）。
+    """
+
+    code = 'APPROVAL_OBJECT_LIMIT_EXCEEDED'
+
+    def __init__(self, count: int, limit: int):
+        self.count = int(count)
+        self.limit = int(limit)
+        super().__init__(
+            f'APPROVAL_OBJECT_LIMIT_EXCEEDED: 单次调用影响对象 {self.count} 个，'
+            f'超过上限 {self.limit} 个；请拆成多次调用')
+
+
 class SkillNotAvailable(AgentDomainError):
     """Skill 未注册，或当前用户权限不满足（§4.2 规则 7）。"""
 

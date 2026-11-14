@@ -80,14 +80,15 @@ def test_ddl_columns_match_orm(migration, metadata):
 
 
 def test_unique_constraint_on_tool_call(metadata):
-    """一次 tool call 只允许一张提案（重复提案幂等）。"""
+    """一次 tool call 1..N 张单（INT-2571 拆单）：按 batch_index 唯一。"""
     table = metadata.tables[_TABLE]
     names = {constraint.name for constraint in table.constraints}
-    assert 'uq_agent_approval_run_call' in names
+    assert 'uq_agent_approval_run_call_batch' in names
+    assert 'uq_agent_approval_run_call' not in names
     unique = next(constraint for constraint in table.constraints
-                  if constraint.name == 'uq_agent_approval_run_call')
+                  if constraint.name == 'uq_agent_approval_run_call_batch')
     assert {column.name for column in unique.columns} == {
-        'run_id', 'tool_call_id'}
+        'run_id', 'tool_call_id', 'batch_index'}
 
 
 def test_indexes_for_status_expiry_and_run(metadata):
@@ -104,10 +105,24 @@ def test_indexes_for_status_expiry_and_run(metadata):
 
 def test_migration_declares_same_constraints(migration):
     assert migration.UNIQUE_CONSTRAINTS == [
-        ('uq_agent_approval_run_call', _TABLE, 'run_id, tool_call_id')]
+        ('uq_agent_approval_run_call_batch', _TABLE,
+         'run_id, tool_call_id, batch_index')]
+    # 旧唯一键必须先删再建新：存量库否则会保留「一次调用一张单」的约束
+    assert migration.DROPPED_CONSTRAINTS == [
+        ('uq_agent_approval_run_call', _TABLE)]
     index_names = {name for name, *_rest in migration.INDEXES}
     assert index_names == {
         'ix_agent_approval_status_expires', 'ix_agent_approval_run'}
+
+
+def test_migration_adds_batch_columns_for_existing_tables(migration):
+    """存量库补列：拆单字段全部有 ADD COLUMN 口径（历史行落单张默认值）。"""
+    columns = dict(migration.ADDED_COLUMNS)
+    assert set(columns) == {
+        'batch_id', 'batch_index', 'batch_total', 'object_ref'}
+    assert 'NOT NULL DEFAULT 1' in columns['batch_index']
+    assert 'NOT NULL DEFAULT 1' in columns['batch_total']
+    assert 'NULL' in columns['batch_id'] and 'NULL' in columns['object_ref']
 
 
 def test_bootstrap_chain_and_prod_whitelist():

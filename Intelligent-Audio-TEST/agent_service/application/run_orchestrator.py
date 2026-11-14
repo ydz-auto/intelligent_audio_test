@@ -42,8 +42,8 @@ from agent_service.domain.enums import (
     StepStatus, ToolCallStatus, ToolRisk,
 )
 from agent_service.domain.exceptions import (
-    InvalidRunTransition, LlmConfigurationError, LlmInvocationError,
-    LlmProviderNotConfigured, RunCancelled,
+    ApprovalObjectLimitExceeded, InvalidRunTransition, LlmConfigurationError,
+    LlmInvocationError, LlmProviderNotConfigured, RunCancelled,
 )
 from agent_service.domain.model.budget import RunBudget
 from agent_service.domain.model.context_budget import ContextBudget
@@ -135,6 +135,29 @@ def _has_permission(granted: Sequence[str],
     if '*' in perms:
         return True
     return bool(perms & set(required))
+
+
+def _interval_union_seconds(
+        intervals: Sequence[Tuple[float, float]]) -> float:
+    """区间并集总时长（秒）：重叠的等待只算一次（§9.4.1 第 11 条）。
+
+    同一批 N 张审批单覆盖同一段等待，按张累加会把 §9.3 执行时长预算放大 N
+    倍；跨调用并行的审批同理。并集与「逐段不重叠时求和」等价，历史单张口径
+    不变。
+    """
+    if not intervals:
+        return 0.0
+    ordered = sorted(intervals)
+    total = 0.0
+    start, end = ordered[0]
+    for next_start, next_end in ordered[1:]:
+        if next_start <= end:
+            end = max(end, next_end)
+            continue
+        total += max(0.0, end - start)
+        start, end = next_start, next_end
+    total += max(0.0, end - start)
+    return total
 
 
 def _as_sandbox_tier(value) -> Optional[SandboxTier]:
@@ -1002,10 +1025,13 @@ class RunOrchestrator:
                        risk: ToolRisk, idempotency_key: str,
                        args_hash: str,
                        permissions: Sequence[str]) -> ToolResult:
-        """WRITE / DESTRUCTIVE 提案路径（§5.2 硬规则 5 / §9.4）。
+        """WRITE / DESTRUCTIVE 提案路径（§5.2 硬规则 5 / §9.4.1）。
 
         - 提案前按**当前**权限与参数校验：无权用户不能生成提案；
-        - 提案落 ``agent_approval``（一次 tool call 一张单，重复提交幂等）；
+        - 单次影响对象超过上限 → 提案前拒绝（``APPROVAL_OBJECT_LIMIT_EXCEEDED``，
+          不建单、无副作用，错误回灌模型让它改成多次调用）；
+        - 提案落 ``agent_approval``（一次 tool call 1..N 张单，同批共享
+          ``batch_id``，重复提交幂等）；
         - 工具调用状态置 ``WAITING_APPROVAL``，**不写 tool_result**：写操作
           还没有结果，回灌会让模型把「待审批」当成「已完成」；
         - run 由调用方在本批结束后转 ``WAITING_APPROVAL``，不做任何副作用。
@@ -1029,26 +1055,41 @@ class RunOrchestrator:
                 run, call, turn, emitted,
                 code='INVALID_ARGUMENTS', decision='deny', message=validation)
 
-        approval, _created = self._approvals.propose(
-            run, step_id=step_id, call=call, risk=risk, turn=turn,
-            idempotency_key=idempotency_key, args_hash=args_hash)
+        try:
+            approvals, _created = self._approvals.propose(
+                run, step_id=step_id, call=call, risk=risk, turn=turn,
+                idempotency_key=idempotency_key, args_hash=args_hash)
+        except ApprovalObjectLimitExceeded as exc:
+            # §9.4.1 第 3 条：超过对象上限不建单，直接回灌，run 继续（不挂死）
+            return self._write_rejection(
+                run, call, turn, emitted,
+                code=exc.code, decision='deny',
+                message=f'{exc}。已拒绝本次调用，未生成任何审批单。')
+        first = approvals[0]
         # 崩溃可能发生在「落库 tool call」与「写 tool_call 事件」之间：补事件
         existing = self._tool_calls.find(run.id, call.tool_call_id)
         if existing is not None:
             self._ensure_tool_call_event(run.id, existing, turn, emitted)
-        message = '已生成待审批提案（未执行、无副作用）；批准后才会执行。'
+        result_payload = {
+            'ok': False,
+            'content': self._proposal_message(approvals),
+            'error_code': APPROVAL_REQUIRED,
+            'approval_id': first.id,
+            'approval_ids': [item.id for item in approvals],
+            'batch_id': first.batch_id,
+            'batch_index': first.batch_index,
+            'batch_total': first.batch_total,
+            'object_count': int((first.proposal or {}).get('object_count', 1)),
+            'object_ref': first.object_ref,
+            'expires_at': (first.expires_at.isoformat()
+                           if first.expires_at else None),
+        }
+        message = result_payload['content']
         self._tool_calls.update(
             call.tool_call_id, run.id,
             status=ToolCallStatus.WAITING_APPROVAL,
             permission_decision='approval_required',
-            result={
-                'ok': False,
-                'content': message,
-                'error_code': APPROVAL_REQUIRED,
-                'approval_id': approval.id,
-                'expires_at': (approval.expires_at.isoformat()
-                               if approval.expires_at else None),
-            },
+            result=result_payload,
             result_code=APPROVAL_REQUIRED,
             error=None)
         return ToolResult(
@@ -1073,14 +1114,19 @@ class RunOrchestrator:
         return result
 
     def _settle_approvals(self, run_id: str) -> bool:
-        """进入模型循环前处置本 run 的写调用与审批单。
+        """进入模型循环前处置本 run 的写调用与审批单（§9.4.1 按批结算）。
 
         返回 ``True`` 表示本次不应发起模型请求：
-        - 仍有未决提案 → run 转 WAITING_APPROVAL；
+        - 仍有未决提案（同批任一 ``PENDING``）→ run 转 WAITING_APPROVAL；
         - 审批通过但执行前复核失败 → run 已收口 FAILED。
 
+        **all-or-nothing**：同一次调用的 N 张单按 ``batch_index`` 聚成一批 ——
+        任一 ``REJECTED`` 整批拒绝、任一 ``EXPIRED`` 且未全批准整批过期；
+        全部 ``APPROVED`` 才用**完整原始参数**执行一次（不是 N 次单对象执行），
+        执行前逐张复核决策权限快照。
+
         崩溃窗口兜底：写调用已落库但提案还没落（进程在最窄的窗口被杀）时，
-        按落库记录重建提案（幂等），不让 run 卡在「无提案的 PENDING 写」上。
+        按落库记录重建整批提案（幂等），不让 run 卡在「无提案的 PENDING 写」上。
         """
         run = self._runs.get(run_id)
         if run is None or run.status.is_terminal:
@@ -1093,38 +1139,48 @@ class RunOrchestrator:
                                          ToolCallStatus.WAITING_APPROVAL)]
         if not records:
             return False
-        approvals = {}
+        batches: Dict[str, List[AgentApproval]] = {}
         for item in self._approvals.list_for_run(run_id):
             # §3.1 CQRS：列表只读，到点结算放在命令侧。本轮 Loop 恢复时先
             # 把过期的 PENDING 落 EXPIRED，下面按 EXPIRED 分支回灌模型，
             # 避免「无人决策 + TTL 到点」把 run 永远挂在 WAITING_APPROVAL。
             if item.status is ApprovalStatus.PENDING:
                 item = self._approvals.settle(item)
-            approvals[item.tool_call_id] = item
+            batches.setdefault(item.tool_call_id, []).append(item)
+        for batch in batches.values():
+            batch.sort(key=lambda item: item.batch_index)
         emitted = self._emitted_tool_events(run_id)
         waiting = False
         for record in records:
-            approval = approvals.get(record.tool_call_id)
-            if approval is None:
+            batch = batches.get(record.tool_call_id) or []
+            if not batch:
                 turn = self._turn_for_call(run_id, record.tool_call_id)
-                self._repropose_write(run, record, turn, emitted)
+                if not self._repropose_write(run, record, turn, emitted):
+                    # 重建被拒（对象超限）：已按失败回灌，不当成「待审批」
+                    continue
                 waiting = True
                 continue
-            turn = int((approval.proposal or {}).get('turn') or 0)
-            if approval.status is ApprovalStatus.PENDING:
+            turn = int((batch[0].proposal or {}).get('turn') or 0)
+            statuses = {item.status for item in batch}
+            if ApprovalStatus.REJECTED in statuses:
+                # 任一被拒 → 整批拒绝（其余 PENDING 一并转 REJECTED）
+                self._settle_batch_denied(
+                    run, record, batch, turn, emitted, APPROVAL_REJECTED,
+                    '审批未通过，写操作未执行。', 'approval_rejected',
+                    {ApprovalStatus.REJECTED})
+                continue
+            if ApprovalStatus.EXPIRED in statuses:
+                # 任一张过期且整批未全批准 → 整批按过期收口
+                self._settle_batch_denied(
+                    run, record, batch, turn, emitted, APPROVAL_EXPIRED,
+                    '审批已过期，写操作未执行。', 'approval_expired',
+                    {ApprovalStatus.EXPIRED})
+                continue
+            if ApprovalStatus.PENDING in statuses:
                 waiting = True
                 continue
-            if approval.status is ApprovalStatus.REJECTED:
-                self._settle_write_denied(
-                    run, record, turn, emitted, APPROVAL_REJECTED,
-                    '审批未通过，写操作未执行。', 'approval_rejected')
-                continue
-            if approval.status is ApprovalStatus.EXPIRED:
-                self._settle_write_denied(
-                    run, record, turn, emitted, APPROVAL_EXPIRED,
-                    '审批已过期，写操作未执行。', 'approval_expired')
-                continue
-            if self._execute_approved(run, record, approval, turn, emitted):
+            # 全部 APPROVED：用完整参数执行一次
+            if self._execute_approved(run, record, batch, turn, emitted):
                 return True
         if waiting:
             self._enter_waiting_approval(run_id)
@@ -1132,16 +1188,27 @@ class RunOrchestrator:
         return False
 
     def _repropose_write(self, run: AgentRun, record: AgentToolCall,
-                         turn: int, emitted: set) -> AgentApproval:
-        """按落库记录重建提案（崩溃窗口兜底；propose 本身幂等）。"""
+                         turn: int, emitted: set) -> bool:
+        """按落库记录重建整批提案（崩溃窗口兜底；propose 本身幂等）。
+
+        返回 ``False`` 表示对象超限、已按失败回灌（不再当待审批挂住 run）。
+        """
         call = ToolCallRequest(
             tool_call_id=record.tool_call_id, name=record.tool,
             arguments=record.arguments or {})
-        approval, _created = self._approvals.propose(
-            run, step_id=record.step_id, call=call, risk=record.risk,
-            turn=turn,
-            idempotency_key=record.idempotency_key or '',
-            args_hash=record.args_hash)
+        try:
+            approvals, _created = self._approvals.propose(
+                run, step_id=record.step_id, call=call, risk=record.risk,
+                turn=turn,
+                idempotency_key=record.idempotency_key or '',
+                args_hash=record.args_hash)
+        except ApprovalObjectLimitExceeded as exc:
+            self._settle_write_denied(
+                run, record, turn, emitted, exc.code,
+                f'{exc}。恢复时重建提案失败，写操作未执行。',
+                'approval_rejected')
+            return False
+        first = approvals[0]
         self._ensure_tool_call_event(run.id, record, turn, emitted)
         self._tool_calls.update(
             record.tool_call_id, run.id,
@@ -1149,24 +1216,42 @@ class RunOrchestrator:
             permission_decision='approval_required',
             result={
                 'ok': False,
-                'content': '已生成待审批提案（未执行、无副作用）；批准后才会执行。',
+                'content': self._proposal_message(approvals),
                 'error_code': APPROVAL_REQUIRED,
-                'approval_id': approval.id,
-                'expires_at': (approval.expires_at.isoformat()
-                               if approval.expires_at else None),
+                'approval_id': first.id,
+                'approval_ids': [item.id for item in approvals],
+                'batch_id': first.batch_id,
+                'batch_index': first.batch_index,
+                'batch_total': first.batch_total,
+                'object_count': int(
+                    (first.proposal or {}).get('object_count', 1)),
+                'object_ref': first.object_ref,
+                'expires_at': (first.expires_at.isoformat()
+                               if first.expires_at else None),
             },
             result_code=APPROVAL_REQUIRED,
             error=None)
-        return approval
+        return True
+
+    @staticmethod
+    def _proposal_message(approvals: Sequence[AgentApproval]) -> str:
+        total = len(approvals)
+        base = '已生成待审批提案（未执行、无副作用）；批准后才会执行。'
+        if total <= 1:
+            return base
+        return (f'已生成待审批提案（未执行、无副作用）：本批 {total} 张单，'
+                '全部批准后才会一次性执行（任一张拒绝或过期则整批不执行）。')
 
     def _approval_wait_seconds(self, run_id: str) -> float:
         """等待人工审批的累计时长（秒）：不计入 §9.3 执行时长预算。
 
-        按审批单 ``created_at → decided_at`` 累计；未决单算到当前时刻，过期
-        单算到 ``expires_at``（取消作废的单有 decided_at）。
+        按审批单 ``created_at → decided_at`` 统计，**按批取区间并集**：同一
+        批 N 张单覆盖的是同一段等待，不能按张累加（§9.4.1 第 11 条，否则
+        §9.3 执行时长预算被放大 N 倍）。未决单算到当前时刻，过期单算到
+        ``expires_at``（取消作废的单有 decided_at）。
         """
         now = utcnow()
-        total = 0.0
+        intervals: List[Tuple[float, float]] = []
         for approval in self._approvals.list_for_run(run_id):
             if approval.created_at is None:
                 continue
@@ -1176,8 +1261,10 @@ class RunOrchestrator:
                     end = now
                 else:
                     end = approval.expires_at or approval.updated_at or now
-            total += max(0.0, (end - approval.created_at).total_seconds())
-        return total
+            start_ts = approval.created_at.timestamp()
+            end_ts = max(start_ts, end.timestamp())
+            intervals.append((start_ts, end_ts))
+        return _interval_union_seconds(intervals)
 
     def _turn_for_call(self, run_id: str, tool_call_id: str) -> int:
         """从 tool_call 事件取调用所属轮次（崩溃恢复补事件分组用）。"""
@@ -1204,10 +1291,76 @@ class RunOrchestrator:
         self._append_tool_result(run.id, result, turn, emitted)
         return result
 
+    def _settle_batch_denied(self, run: AgentRun, record: AgentToolCall,
+                             batch: Sequence[AgentApproval], turn: int,
+                             emitted: set, code: str, message: str,
+                             decision: str, statuses: set) -> ToolResult:
+        """整批拒绝 / 过期：收口同批剩余 PENDING 单，并把失败回灌模型。
+
+        §9.4.1 第 5 条：不能留半批状态 —— 同一次调用其余的 ``PENDING`` 一并
+        转 REJECTED（留决策人）/ EXPIRED（系统结算），再按整批失败记账。
+        """
+        target = (ApprovalStatus.REJECTED if code == APPROVAL_REJECTED
+                  else ApprovalStatus.EXPIRED)
+        self._approvals.close_remaining(
+            batch[0], target,
+            actor=(run.owner_id if target is ApprovalStatus.REJECTED else None))
+        detail = self._batch_object_label(batch, statuses)
+        if detail:
+            message = f'{message} {detail}'
+        ids = [item.id for item in batch]
+        payload = {
+            'ok': False, 'content': message, 'error_code': code,
+            'approval_id': ids[0], 'approval_ids': ids,
+            'batch_id': batch[0].batch_id,
+            'batch_index': batch[0].batch_index,
+            'batch_total': batch[0].batch_total,
+            'approval': self._approval_audit(batch, statuses=statuses),
+        }
+        self._tool_calls.update(
+            record.tool_call_id, run.id,
+            status=ToolCallStatus.DENIED,
+            permission_decision=decision,
+            result=payload,
+            result_code=code, error=message)
+        result = ToolResult(
+            tool_call_id=record.tool_call_id, tool=record.tool, ok=False,
+            content=message, error_code=code)
+        self._append_tool_result(run.id, result, turn, emitted)
+        return result
+
+    @staticmethod
+    def _batch_object_label(batch: Sequence[AgentApproval],
+                            statuses: set) -> str:
+        """回灌文案里的「被拒 / 过期对象」摘要（§9.4.1：带被拒对象）。"""
+        ids: List[Any] = []
+        kinds = set()
+        hit = 0
+        for item in batch:
+            if item.status not in statuses:
+                continue
+            hit += 1
+            ref = item.object_ref or {}
+            if ref.get('kind'):
+                kinds.add(str(ref['kind']))
+            ids.extend(list(ref.get('ids') or []))
+        parts = [f'本批 {len(batch)} 张审批单，{hit} 张已结算。']
+        if ids:
+            sample = '、'.join(str(value) for value in ids[:10])
+            suffix = '…' if len(ids) > 10 else ''
+            kind = ' / '.join(sorted(kinds)) or '对象'
+            parts.append(f'涉及对象 {kind} 共 {len(ids)} 个（{sample}{suffix}）。')
+        return ''.join(parts)
+
     def _execute_approved(self, run: AgentRun, record: AgentToolCall,
-                          approval: AgentApproval, turn: int,
+                          approvals: Sequence[AgentApproval], turn: int,
                           emitted: set) -> bool:
-        """执行一条已批准的写调用；返回 ``True`` 表示 run 已收口、停止循环。
+        """执行一次已批准的写调用；返回 ``True`` 表示 run 已收口、停止循环。
+
+        ``approvals`` 是同一次调用的整批单（§9.4.1：逐张决策、**全批批准后
+        一次执行**）。执行前逐张复核决策权限快照，任一不通过即整批不执行；
+        执行入参是**完整原始参数**（``agent_tool_call.arguments``），不是收窄
+        后的单对象参数。
 
         幂等 / 并发：先做 DB 条件迁移（WAITING_APPROVAL → RUNNING），抢不到
         说明别的执行者已接手，本线程不再执行（同一 Idempotency-Key 只落一次）。
@@ -1215,7 +1368,9 @@ class RunOrchestrator:
         call = ToolCallRequest(
             tool_call_id=record.tool_call_id, name=record.tool,
             arguments=record.arguments or {})
-        failure = self._approvals.check_execution(approval, record)
+        failure = self._approvals.check_batch_execution(
+            list(approvals), record)
+        audit = self._approval_audit(approvals)
         if failure is not None:
             code, message = failure
             self._tool_calls.update(
@@ -1223,7 +1378,7 @@ class RunOrchestrator:
                 status=ToolCallStatus.FAILED,
                 permission_decision='deny',
                 result={'ok': False, 'content': message, 'error_code': code,
-                        'approval': self._approval_audit(approval)},
+                        'approval': audit},
                 result_code=code, error=message)
             result = ToolResult(
                 tool_call_id=record.tool_call_id, tool=record.tool,
@@ -1244,16 +1399,17 @@ class RunOrchestrator:
             # 已被并发执行者抢到（重复决策 / 重复恢复）：不重复产生副作用
             return False
 
+        first = approvals[0]
         context = ToolInvocationContext(
             run_id=run.id, session_id=run.session_id, owner_id=run.owner_id,
             tenant_id=run.tenant_id, step_id=record.step_id,
-            permissions=tuple(approval.decision_permissions or ()),
+            permissions=tuple(first.decision_permissions or ()),
             idempotency_key=record.idempotency_key or '',
             approval=ToolApproval(
-                approval_id=approval.id,
+                approval_id=first.id,
                 risk=record.risk,
-                proposal=dict(approval.proposal or {}),
-                diff=approval.diff),
+                proposal=dict(first.proposal or {}),
+                diff=first.diff),
         )
         started = utcnow()
         try:
@@ -1276,7 +1432,7 @@ class RunOrchestrator:
             status=final_status,
             result={'ok': result.ok, 'content': result.content,
                     'error_code': result.error_code,
-                    'approval': self._approval_audit(approval)},
+                    'approval': audit},
             latency_ms=latency_ms,
             # 审计三问：谁发起（run.owner_id）、谁批准（decided_by）、
             # 产生什么副作用（result / result_code）
@@ -1287,12 +1443,27 @@ class RunOrchestrator:
         return False
 
     @staticmethod
-    def _approval_audit(approval: AgentApproval) -> Dict[str, Any]:
+    def _approval_audit(approvals: Sequence[AgentApproval], *,
+                        statuses: Optional[set] = None) -> Dict[str, Any]:
+        """审计用审批事实（整批）：谁批准 / 何时 / 哪些单（§9.4.1 拆单）。"""
+        items = [item for item in approvals
+                 if statuses is None or item.status in statuses]
+        if not items:
+            items = list(approvals)
+        first = items[0]
+        decided = [item.decided_at for item in items if item.decided_at]
+        actors = {item.decided_by for item in items
+                  if item.decided_by is not None}
         return {
-            'approval_id': approval.id,
-            'decided_by': approval.decided_by,
-            'decided_at': (approval.decided_at.isoformat()
-                           if approval.decided_at else None),
+            'approval_id': first.id,
+            'approval_ids': [item.id for item in items],
+            'batch_id': first.batch_id,
+            'batch_index': first.batch_index,
+            'batch_total': first.batch_total,
+            # 同一批通常同一审批人；跨人时如实回列表，不挑一个冒充
+            'decided_by': (next(iter(actors)) if len(actors) == 1
+                           else sorted(actors) or None),
+            'decided_at': (max(decided).isoformat() if decided else None),
         }
 
     def _has_unsettled_write(self, run_id: str) -> bool:

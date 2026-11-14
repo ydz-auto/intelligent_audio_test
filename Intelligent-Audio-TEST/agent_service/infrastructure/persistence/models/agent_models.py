@@ -148,10 +148,15 @@ class AgentToolCall(Base):
 
 
 class AgentApproval(Base):
-    """写调用审批单（INT-2466，§10）。
+    """写调用审批单（INT-2466 / INT-2571，§10）。
 
-    - 一次 tool call 一张单：``(run_id, tool_call_id)`` 唯一，重复提案幂等；
+    - 一次 tool call 1..N 张单（§9.4.1 拆单）：``(run_id, tool_call_id,
+      batch_index)`` 唯一，重复提案幂等；未拆单时 ``batch_index`` /
+      ``batch_total`` 都是 1，``batch_id`` 为空（历史口径）；
     - ``proposal`` / ``diff`` 是审批人可见的内容（参数已按审计口径脱敏）；
+      拆单时它们**收窄到本单负责的对象**，完整参数留在 ``agent_tool_call``；
+    - ``object_ref`` = ``{kind, ids}`` 是本单对象；``proposal.object_count``
+      是本批总对象数；
     - ``decision_permissions`` 是决策时的实时权限快照，执行前据此重新校验
       「审批后权限是否还在」，不回读 run 发起时的旧权限；
     - 决策 / 过期都是 ``WHERE status='PENDING'`` 的条件更新，并发审批只有
@@ -161,8 +166,8 @@ class AgentApproval(Base):
 
     __tablename__ = 'agent_approval'
     __table_args__ = (
-        UniqueConstraint('run_id', 'tool_call_id',
-                         name='uq_agent_approval_run_call'),
+        UniqueConstraint('run_id', 'tool_call_id', 'batch_index',
+                         name='uq_agent_approval_run_call_batch'),
         Index('ix_agent_approval_status_expires', 'status', 'expires_at'),
         Index('ix_agent_approval_run', 'run_id', 'created_at'),
     )
@@ -172,7 +177,7 @@ class AgentApproval(Base):
     tool_call_id = Column(String(128), nullable=False,
                           comment='模型返回的 tool_call_id')
     proposal = Column(JSON, nullable=False, default=dict,
-                      comment='审批人可见的提案（参数已脱敏）')
+                      comment='审批人可见的提案（参数已脱敏 / 拆单时已收窄）')
     diff = Column(JSON, nullable=True, comment='变更预览 / diff（工具提供）')
     status = Column(String(20), nullable=False, comment='ApprovalStatus')
     expires_at = Column(DateTime, nullable=True, comment='过期时间（UTC naive）')
@@ -180,6 +185,15 @@ class AgentApproval(Base):
     decided_at = Column(DateTime, nullable=True)
     decision_permissions = Column(JSON, nullable=True,
                                   comment='决策时的实时权限快照')
+    # INT-2571：拆单批次字段（未拆单时 batch_id 为空、index/total 为 1）
+    batch_id = Column(String(36), nullable=True,
+                      comment='同批审批单共享（拆单时非空）')
+    batch_index = Column(Integer, nullable=False, default=1,
+                         server_default='1', comment='1..batch_total')
+    batch_total = Column(Integer, nullable=False, default=1,
+                         server_default='1', comment='本批单数')
+    object_ref = Column(JSON, nullable=True,
+                        comment='本单负责的对象 {kind, ids}')
     created_at = Column(DateTime, nullable=False, default=utcnow,
                         server_default=func.now())
     updated_at = Column(DateTime, nullable=False, default=utcnow,

@@ -1,17 +1,24 @@
 # -*- coding: utf-8 -*-
-"""写操作审批服务（INT-2466，方案 §5.2 / §9 / §10 / §9.4）。
+"""写操作审批服务（INT-2466 / INT-2571，方案 §5.2 / §9 / §10 / §9.4）。
 
 职责：
 
 1. **提案**：WRITE / DESTRUCTIVE 工具调用先落 ``agent_approval``（一次
-   tool call 一张单，``(run_id, tool_call_id)`` 唯一），审批前不产生任何
-   副作用；同一次调用重复提交只复用已有提案（重启 / 重复投递幂等）。
+   tool call 1..N 张单，``(run_id, tool_call_id, batch_index)`` 唯一），审批
+   前不产生任何副作用；同一次调用重复提交只复用已有提案（重启 / 重复投递
+   幂等）。单次影响 > 阈值（默认 20）个显式枚举对象时按 §9.4.1 拆单：同批
+   共享 ``batch_id``，逐张决策、**全批批准后一次执行**；``DESTRUCTIVE`` 恒
+   一张单。超过对象上限（默认 100）在提案前拒绝
+   （``APPROVAL_OBJECT_LIMIT_EXCEEDED``：不建单、无副作用）。
 2. **决策**：只有 run 归属者本人能审批（越权一律 404，不泄漏存在性）；
    决策 / 过期都是 ``WHERE status='PENDING'`` 的条件更新，并发审批只有一个
    请求生效；过期单不再允许决策（``ApprovalExpired``，调用方据此唤醒 run）。
+   拒绝 / 过期按**批**收口：同一次调用剩余的 PENDING 单一起转 REJECTED /
+   EXPIRED，不留半批状态。
 3. **执行前复核**：决策时把审批人的实时权限快照写入 ``decision_permissions``；
    真正执行前用它重新校验权限，并重新校验工具注册状态与参数 Schema ——
-   「审批后权限被收回」或注册表变化都让执行失败，而不是照旧执行。
+   「审批后权限被收回」或注册表变化都让执行失败，而不是照旧执行。拆单批次
+   逐张复核，任一不再授权即整批不执行。
 4. **过期**：``expires_at`` 到点即不可执行（决策路径 / 命令侧结算 /
    周期扫描三处判定，幂等）。查询侧只读，不落库（§3.1 CQRS）。
 5. **取消**：run 被取消时未决提案转 REJECTED（不执行、留决策人）。
@@ -21,14 +28,14 @@
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from agent_service.domain.enums import (
     ApprovalDecision, ApprovalStatus, EventType, ToolRisk,
 )
 from agent_service.domain.exceptions import (
     ApprovalConflict, ApprovalConfirmationRequired, ApprovalExpired,
-    ApprovalNotFound,
+    ApprovalNotFound, ApprovalObjectLimitExceeded,
 )
 from agent_service.domain.model.entities import (
     AgentApproval, AgentRun, AgentToolCall, ToolCallRequest,
@@ -37,15 +44,24 @@ from agent_service.domain.ports.tool_gateway import ToolGateway
 from agent_service.domain.repositories import (
     ApprovalRepository, EventRepository, RunRepository,
 )
+from shared.agent_tools import approval_split
 from shared.agent_tools.intent_tools import redact_for_audit
 from shared.utils.time_utils import utcnow
 
 @dataclass(frozen=True)
 class ApprovalSettings:
-    """审批行为参数（全部来自配置）。"""
+    """审批行为参数（全部来自配置）。
+
+    ``split_threshold`` / ``split_chunk_size`` / ``max_objects`` 是 §9.4.1
+    拆单口径：阈值只允许收紧（收敛在配置层，见 ``Config``）；粒度默认 1
+    （每对象一张单）；单次调用对象上限默认 100，超过提案前拒绝。
+    """
 
     ttl_seconds: int = 900
     expiry_scan_limit: int = 200
+    split_threshold: int = 20
+    split_chunk_size: int = 1
+    max_objects: int = 100
 
 
 def _granted(granted: Sequence[str], required: Sequence[str]) -> bool:
@@ -74,57 +90,92 @@ class ApprovalService:
     def propose(self, run: AgentRun, *, step_id: Optional[str],
                 call: ToolCallRequest, risk: ToolRisk, turn: int,
                 idempotency_key: str,
-                args_hash: str) -> Tuple[AgentApproval, bool]:
-        """生成待审批提案；同一 tool call 已提案时复用（不重复建单）。
+                args_hash: str) -> Tuple[List[AgentApproval], bool]:
+        """生成待审批提案（§9.4.1：1..N 张单，同批共享 ``batch_id``）。
 
-        返回 ``(审批单, 是否新建)``。新建时额外落一条 ``approval_required``
-        事件（SSE 的审批入口），重复提案不再重复发事件。
+        返回 ``(审批单列表, 是否新建)``，列表按 ``batch_index`` 升序。新建时
+        每张单各落一条 ``approval_required`` 事件（SSE 的审批入口，载荷带
+        批次字段），重复提案不再重复发事件。
+
+        幂等：同一 tool call 已存在**任一**单时整批复用（不按新配置重建）；
+        ``(run_id, tool_call_id, batch_index)`` 唯一键兜底并发插入。
+
+        超过对象上限抛 ``ApprovalObjectLimitExceeded``（提案前拒绝，不建单、
+        无副作用）。
         """
-        existing = self._approvals.find_for_tool_call(
+        existing = self._approvals.list_for_tool_call(
             run.id, call.tool_call_id)
-        if existing is not None:
+        if existing:
             return existing, False
 
+        try:
+            plan = approval_split.plan_approvals(
+                call.name, call.arguments, risk=risk.value,
+                threshold=self._settings.split_threshold,
+                chunk_size=self._settings.split_chunk_size,
+                max_objects=self._settings.max_objects)
+        except approval_split.ObjectLimitExceeded as exc:
+            raise ApprovalObjectLimitExceeded(exc.count, exc.limit) from exc
+
         now = utcnow()
-        approval_id = uuid.uuid4().hex
-        approval = AgentApproval(
-            id=approval_id,
-            run_id=run.id,
-            tool_call_id=call.tool_call_id,
-            status=ApprovalStatus.PENDING,
-            proposal={
+        batch_id = (approval_split.new_batch_id()
+                    if plan.total > 1 else None)
+        approvals: List[AgentApproval] = []
+        created_any = False
+        for chunk in plan.chunks:
+            approval_id = uuid.uuid4().hex
+            approval = AgentApproval(
+                id=approval_id,
+                run_id=run.id,
+                tool_call_id=call.tool_call_id,
+                status=ApprovalStatus.PENDING,
+                proposal={
+                    'tool': call.name,
+                    'risk': risk.value,
+                    # 审计 / 审批视图都不落正文（memory_write 内容已被脱敏）；
+                    # 拆单时参数收窄到本单对象，完整参数留在 agent_tool_call
+                    'arguments': redact_for_audit(call.name, chunk.arguments),
+                    'args_hash': args_hash,
+                    'idempotency_key': idempotency_key,
+                    'step_id': step_id,
+                    'turn': int(turn),
+                    'requested_by': run.owner_id,
+                    'session_id': run.session_id,
+                    # §9.4.1：本批总对象数（非枚举范围计 1）
+                    'object_count': int(plan.object_count),
+                },
+                # 变更预览同样收窄到本单对象；拿不到就留 None，不伪造。
+                diff=self._gateway.proposal_diff(call.name, chunk.arguments),
+                expires_at=now + timedelta(
+                    seconds=max(1, int(self._settings.ttl_seconds))),
+                batch_id=batch_id,
+                batch_index=chunk.index,
+                batch_total=chunk.total,
+                object_ref=chunk.object_ref,
+                created_at=now, updated_at=now,
+            )
+            approval = self._approvals.add(approval)
+            approvals.append(approval)
+            # 并发唯一键冲突时 add 返回已存在的行：只有本次真正建出的才发事件
+            if approval.id != approval_id:
+                continue
+            created_any = True
+            self._events.append(run.id, EventType.APPROVAL_REQUIRED, {
+                'approval_id': approval.id,
+                'tool_call_id': call.tool_call_id,
                 'tool': call.name,
                 'risk': risk.value,
-                # 审计 / 审批视图都不落正文（memory_write 内容已被脱敏）
-                'arguments': redact_for_audit(call.name, call.arguments),
-                'args_hash': args_hash,
-                'idempotency_key': idempotency_key,
-                'step_id': step_id,
-                'turn': int(turn),
-                'requested_by': run.owner_id,
-                'session_id': run.session_id,
-            },
-            # 变更预览：REST 写工具给「方法 + 路径 + 参数」，域写工具可覆盖成
-            # 字段级 diff；拿不到预览就留 None，不伪造。
-            diff=self._gateway.proposal_diff(call.name, call.arguments),
-            expires_at=now + timedelta(
-                seconds=max(1, int(self._settings.ttl_seconds))),
-            created_at=now, updated_at=now,
-        )
-        approval = self._approvals.add(approval)
-        # 并发唯一键冲突时 add 返回已存在的行：只有本次真正建出的才发事件
-        if approval.id != approval_id:
-            return approval, False
-        self._events.append(run.id, EventType.APPROVAL_REQUIRED, {
-            'approval_id': approval.id,
-            'tool_call_id': call.tool_call_id,
-            'tool': call.name,
-            'risk': risk.value,
-            'proposal': approval.proposal,
-            'expires_at': (approval.expires_at.isoformat()
-                           if approval.expires_at else None),
-        })
-        return approval, True
+                'proposal': approval.proposal,
+                'expires_at': (approval.expires_at.isoformat()
+                               if approval.expires_at else None),
+                # §9.4.1 第 10 条：每张单一条事件，同批 tool_call_id 相同
+                'batch_id': approval.batch_id,
+                'batch_index': approval.batch_index,
+                'batch_total': approval.batch_total,
+                'object_count': int(plan.object_count),
+            })
+        approvals.sort(key=lambda item: item.batch_index)
+        return approvals, created_any
 
     # ------------------------------------------------------------ 决策
 
@@ -163,11 +214,14 @@ class ApprovalService:
         if approval.status is ApprovalStatus.EXPIRED:
             # 已被命令侧 / 周期扫描结算成 EXPIRED：仍按「过期」语义返回，
             # 调用方据此唤醒 run 把 APPROVAL_EXPIRED 回灌模型（不是 409 挂死）。
+            # 同批兄弟单一起收盘，不留半批 PENDING（§9.4.1 第 5 条）。
+            self._close_batch(approval, ApprovalStatus.EXPIRED, now)
             raise ApprovalExpired(approval.id, approval.run_id)
         if approval.status is not ApprovalStatus.PENDING:
             raise ApprovalConflict(approval_id)
         if self._is_due(approval, now):
             self._approvals.expire(approval.id, now)
+            self._close_batch(approval, ApprovalStatus.EXPIRED, now)
             raise ApprovalExpired(approval.id, approval.run_id)
 
         if decision is ApprovalDecision.APPROVE and not confirm:
@@ -194,6 +248,12 @@ class ApprovalService:
         latest = self._approvals.get(approval.id)
         if latest is None:  # pragma: no cover - 条件更新刚命中过
             raise ApprovalConflict(approval.id)
+        if decision is ApprovalDecision.REJECT:
+            # §9.4.1 第 5 条：任一单被拒 → 整批拒绝，其余 PENDING 自动转
+            # REJECTED（不执行、留决策人），不留半批状态。
+            self._close_batch(latest, ApprovalStatus.REJECTED, now,
+                              actor=owner_id)
+            latest = self._approvals.get(approval.id) or latest
         return latest, run
 
     # ------------------------------------------------------------ 状态处置
@@ -214,14 +274,18 @@ class ApprovalService:
         返回**受影响的 run id**（去重、保序）：调用方据此提交 run，让 Loop
         把 ``APPROVAL_EXPIRED`` 作为工具结果回灌模型并继续收口 —— 否则
         「TTL 到点且无人决策」只能等重启。
+
+        拆单批次按批收口：一张到点即整批（同一次调用的其余 PENDING）转
+        EXPIRED，不留半批状态（§9.4.1 第 5 条）。
         """
         now = utcnow()
         expired_runs: List[str] = []
         for approval in self._approvals.list_due(
                 now, self._settings.expiry_scan_limit):
-            if self._approvals.expire(approval.id, now) \
-                    and approval.run_id not in expired_runs:
-                expired_runs.append(approval.run_id)
+            if self._approvals.expire(approval.id, now):
+                self._close_batch(approval, ApprovalStatus.EXPIRED, now)
+                if approval.run_id not in expired_runs:
+                    expired_runs.append(approval.run_id)
         return expired_runs
 
     def cancel_pending(self, run_id: str, actor_id: int) -> int:
@@ -278,6 +342,39 @@ class ApprovalService:
         return self._approvals.list_by_run(run_id)
 
     # ------------------------------------------------------------ internals
+
+    def close_remaining(self, approval: AgentApproval,
+                        target: ApprovalStatus, *,
+                        actor: Optional[int] = None) -> int:
+        """命令侧整批收口：把同一次调用剩余的 PENDING 单一起关掉。
+
+        Loop 结算（拒绝 / 过期）用它保证不留半批 PENDING；只动
+        ``status='PENDING'`` 的行，已决单不受影响。
+        """
+        return self._close_batch(approval, target, utcnow(), actor=actor)
+
+    def check_batch_execution(self, approvals: Sequence[AgentApproval],
+                              call: AgentToolCall) -> Optional[Tuple[str, str]]:
+        """拆单批次的执行前复核：逐张校验，任一不通过则整批不执行。
+
+        用**完整原始参数**（``agent_tool_call.arguments``）校验，不是收窄后的
+        单对象参数 —— 真正执行的就是这一份（§9.4.1 第 5 条）。
+        """
+        for approval in approvals:
+            failure = self.check_execution(approval, call)
+            if failure is not None:
+                return failure
+        return None
+
+    def _close_batch(self, approval: AgentApproval,
+                     target: ApprovalStatus, now: datetime, *,
+                     actor: Optional[int] = None) -> int:
+        """把同一次调用剩余的 PENDING 单整批收口（拒绝 / 过期）。"""
+        return self._approvals.settle_batch(
+            approval.run_id, approval.tool_call_id, target,
+            decided_by=actor,
+            decided_at=(now if actor is not None else None),
+            now=now)
 
     @staticmethod
     def _is_due(approval: AgentApproval, now: datetime) -> bool:
