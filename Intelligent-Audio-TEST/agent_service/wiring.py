@@ -101,6 +101,7 @@ from agent_service.infrastructure.persistence.skill_repositories import (
 from agent_service.infrastructure.sandbox.docker_runner import (
     DockerRunnerConfig, DockerRunnerMode, SandboxPolicy, build_sandbox_executor,
 )
+from agent_service.infrastructure.adapters.ui_device_http import UiDeviceHttpAdapter
 from agent_service.infrastructure.tools.device_lease import (
     PhysicalDeviceLeaseAdapter,
 )
@@ -343,6 +344,21 @@ def build_driver_proposal_runner() -> Optional[SandboxRunner]:
         return None
 
 
+def build_ui_device_adapter(rest, credentials) -> Optional[UiDeviceHttpAdapter]:
+    """装配设备 UI 通道适配器（INT-2579）。
+
+    复用 ``TOOL_GATEWAY_BASE_URL``（``RestToolClient`` 的同一基址）；基址缺失时
+    **不伪造设备端口**：返回 ``None``，``ui_tree`` / ``ui_action`` 保持
+    ``EXPLORATION_UNAVAILABLE`` 显式不可用，绝不静默降级成空树。
+    """
+    base = (Config.TOOL_GATEWAY_BASE_URL or '').strip()
+    if not base:
+        logger.warning('AGENT_TOOL_GATEWAY_BASE_URL 未配置：设备 UI 通道未接入，'
+                       'ui_tree / ui_action 将显式返回 EXPLORATION_UNAVAILABLE')
+        return None
+    return UiDeviceHttpAdapter(rest=rest, credentials=credentials)
+
+
 def build_container(session_factory,
                     provider_resolver: Optional[LlmProviderResolver] = None,
                     tool_gateway: Optional[ToolGateway] = None,
@@ -421,10 +437,11 @@ def build_container(session_factory,
         Config.TOOL_GATEWAY_BASE_URL,
         timeout_seconds=Config.TOOL_HTTP_TIMEOUT_SECONDS)
     # 探索-生成层（INT-2492）：设备租约复用任务派发的物理设备互斥锁；
-    # 设备侧 UI 通道（ui_tree / ui_action 的端口实现）尚未接入设备服务，
-    # 端口传 None → 工具返回 EXPLORATION_UNAVAILABLE，不伪造树。
+    # 设备侧 UI 通道走网关 HTTP 适配器（INT-2579）：读树 / 动作 / 截图三端点，
+    # 四个设备方法都带 run 的 holder 取调用方凭据回源。网关基址缺失时适配器
+    # 为 None → 工具显式 EXPLORATION_UNAVAILABLE（不伪造端口、不降级成空树）。
     exploration = ExplorationService(
-        devices=None,
+        devices=build_ui_device_adapter(tool_rest, tool_credentials),
         leases=PhysicalDeviceLeaseAdapter(
             rest=tool_rest, credentials=tool_credentials,
             ttl_seconds=Config.EXPLORATION_LEASE_TTL_SECONDS),
