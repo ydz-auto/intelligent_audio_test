@@ -25,7 +25,11 @@ import {
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
 
-import { AGENT_SKILLS_COPY } from '../constants'
+import {
+  AGENT_SKILLS_COPY,
+  SKILL_ERROR_CODE_COPY,
+  SKILL_UPLOAD_MAX_BYTES,
+} from '../constants'
 import { SkillIssueList } from './skill-issue-list'
 
 type SkillImportDialogProps = {
@@ -67,6 +71,15 @@ export function SkillImportDialog({
       setLocalError(AGENT_SKILLS_COPY.invalidFile)
       return
     }
+    if (file.size > SKILL_UPLOAD_MAX_BYTES) {
+      setLocalError(
+        AGENT_SKILLS_COPY.importTooLarge.replace(
+          '{mb}',
+          String(SKILL_UPLOAD_MAX_BYTES / (1024 * 1024))
+        )
+      )
+      return
+    }
     try {
       const created = await importPackage.mutateAsync(file)
       onImported(created)
@@ -75,7 +88,13 @@ export function SkillImportDialog({
       const found = skillIssuesFromError(error)
       setIssues(found)
       if (found.length === 0) {
-        setErrorMessage(skillErrorMessage(error, AGENT_SKILLS_COPY.importFailed))
+        setErrorMessage(
+          skillErrorMessage(
+            error,
+            AGENT_SKILLS_COPY.importFailed,
+            SKILL_ERROR_CODE_COPY
+          )
+        )
       }
     }
   }

@@ -227,6 +227,15 @@ export function skillIssuesFromError(error: unknown): SkillIssue[] {
   return toSkillIssues(error.issues as SkillIssueDto[])
 }
 
+/**
+ * 服务端业务错误码（SkillErrorCode；响应无码时 null）。
+ * 错误体形如 `{"detail": "...", "code": "SKILL_VALIDATION_FAILED", "issues": [...]}`
+ * ——顶层 `code` 是字符串枚举，`ApiError.rawCode` 保留原文供页面查表。
+ */
+export function skillApiErrorCode(error: unknown): string | null {
+  return error instanceof ApiError ? error.rawCode : null
+}
+
 /** 触发浏览器下载（导出的 zip 原字节） */
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)

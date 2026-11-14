@@ -46,7 +46,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 
-import { AGENT_SKILLS_COPY, SKILL_ISSUE_FIELD_ANCHOR } from '../constants'
+import { AGENT_SKILLS_COPY, SKILL_ERROR_CODE_COPY, SKILL_ISSUE_FIELD_ANCHOR } from '../constants'
 import { formatSkillTime } from './agent-skill-list'
 import { SkillGatePanel } from './skill-gate-panel'
 import { SkillIssueList } from './skill-issue-list'
@@ -138,6 +138,8 @@ export function SkillEditorDialog({
   const [gate, setGate] = useState<SkillGate | null>(null)
   const [docRequested, setDocRequested] = useState(false)
   const [docLoaded, setDocLoaded] = useState(false)
+  /** 最近一次保存结果：成功且只剩 WARNING 时汇总文案不能再说「未保存」 */
+  const [saveState, setSaveState] = useState<'idle' | 'saved' | 'failed'>('idle')
   // 只在「打开 / 切换到另一个 Skill」时重置；列表刷新回传新对象不重置表单
   const loadedSkillId = useRef<string | null>(null)
   const wasOpen = useRef(false)
@@ -166,6 +168,7 @@ export function SkillEditorDialog({
     setErrorMessage(null)
     setLocalErrors({})
     setGate(null)
+    setSaveState('idle')
     setDocLoaded(!skill)
     setDocRequested(Boolean(skill?.id))
     loadedSkillId.current = requestedId
@@ -186,6 +189,11 @@ export function SkillEditorDialog({
   const pending = create.isPending || update.isPending
   const publishing = publish.isPending
   const unmet = gate !== null && !gate.passed
+  /** 保存失败 / 校验有 ERROR 才说「未保存」；只剩 WARNING 时是成功态提示 */
+  const errorIssues = issues.filter(
+    (issue) => issue.severity === SKILL_ISSUE_SEVERITY.ERROR
+  )
+  const issueBlocked = errorIssues.length > 0 || Boolean(errorMessage)
 
   const setField = (field: keyof EditorForm, value: string) => {
     setForm((previous) => ({ ...previous, [field]: value }))
@@ -216,6 +224,7 @@ export function SkillEditorDialog({
 
   const handleSave = async () => {
     setErrorMessage(null)
+    setSaveState('idle')
     if (!validate()) return
     const allowedTools = toLines(form.allowedTools)
     const permissions = toLines(form.permissions)
@@ -236,11 +245,17 @@ export function SkillEditorDialog({
       setGate(null)
       setDocLoaded(true)
       setDocRequested(false)
+      setSaveState('saved')
       onSaved(saved)
     } catch (error) {
       const found = skillIssuesFromError(error)
       setIssues(found)
-      setErrorMessage(found.length > 0 ? null : skillErrorMessage(error, '保存失败'))
+      setSaveState('failed')
+      setErrorMessage(
+        found.length > 0
+          ? null
+          : skillErrorMessage(error, '保存失败', SKILL_ERROR_CODE_COPY)
+      )
     }
   }
 
@@ -248,6 +263,7 @@ export function SkillEditorDialog({
     if (!current) return
     setErrorMessage(null)
     setIssues([])
+    setSaveState('idle')
     try {
       const result = await publish.mutateAsync(current.id)
       setGate(result.gate)
@@ -261,7 +277,9 @@ export function SkillEditorDialog({
       const found = skillIssuesFromError(error)
       setIssues(found)
       setErrorMessage(
-        found.length > 0 ? null : skillErrorMessage(error, '发布失败')
+        found.length > 0
+          ? null
+          : skillErrorMessage(error, '发布失败', SKILL_ERROR_CODE_COPY)
       )
     }
   }
@@ -319,7 +337,8 @@ export function SkillEditorDialog({
                 {AGENT_SKILLS_COPY.loadDocumentErrorTitle}
               </p>
               <Button
-                onClick={() => setDocRequested(true)}
+                data-testid='skill-doc-retry'
+                onClick={() => void documentQuery.refetch()}
                 size='sm'
                 type='button'
                 variant='outline'
@@ -335,18 +354,32 @@ export function SkillEditorDialog({
               <div className='grid min-w-0 gap-4'>
                 {(issues.length > 0 || errorMessage) && (
                   <div
-                    className='border-destructive/30 bg-destructive/5 grid gap-2 rounded-xl border p-3'
+                    className={cn(
+                      'grid gap-2 rounded-xl border p-3',
+                      issueBlocked
+                        ? 'border-destructive/30 bg-destructive/5'
+                        : 'border-warning/40 bg-warning/10'
+                    )}
                     data-testid='skill-editor-issues'
                   >
-                    <p className='text-destructive text-xs font-medium'>
-                      {AGENT_SKILLS_COPY.issueSummary.replace(
-                        '{count}',
-                        String(
-                          issues.filter(
-                            (issue) => issue.severity === SKILL_ISSUE_SEVERITY.ERROR
-                          ).length || issues.length
-                        )
+                    <p
+                      className={cn(
+                        'text-xs font-medium',
+                        issueBlocked ? 'text-destructive' : 'text-warning'
                       )}
+                    >
+                      {issueBlocked
+                        ? (saveState === 'failed'
+                            ? AGENT_SKILLS_COPY.issueSummary
+                            : AGENT_SKILLS_COPY.issueBlockedSummary
+                          ).replace(
+                            '{count}',
+                            String(errorIssues.length || issues.length)
+                          )
+                        : AGENT_SKILLS_COPY.issueWarningSummary.replace(
+                            '{count}',
+                            String(issues.length)
+                          )}
                     </p>
                     <SkillIssueList
                       issues={issues}
@@ -357,6 +390,15 @@ export function SkillEditorDialog({
                       <p className='text-destructive text-xs'>{errorMessage}</p>
                     )}
                   </div>
+                )}
+
+                {saveState === 'saved' && issues.length === 0 && (
+                  <p
+                    className='text-success text-xs'
+                    data-testid='skill-editor-saved'
+                  >
+                    {AGENT_SKILLS_COPY.saveSuccessHint}
+                  </p>
                 )}
 
                 <div className='grid gap-1.5'>

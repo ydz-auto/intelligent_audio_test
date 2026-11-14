@@ -67,6 +67,11 @@ function resolveUserMessage(payload: {
 export class ApiError extends Error {
   /** 领域业务错误码（响应无业务码时为 null；网络层失败亦为 null） */
   readonly code: ApiErrorCode | null
+  /**
+   * 服务端原始业务码原文（字符串枚举，如 Agent Skill 的 `SKILL_VALIDATION_FAILED`；
+   * INT-2550 错误码→文案映射用）。数字码仍走 `code`，这里为 null。
+   */
+  readonly rawCode: string | null
   /** HTTP 状态码（网络层失败为 null） */
   readonly httpStatus: number | null
   /** 服务端原始 message（可为空） */
@@ -90,6 +95,10 @@ export class ApiError extends Error {
     super(message)
     this.name = 'ApiError'
     this.code = code
+    this.rawCode =
+      typeof payload.code === 'string' && payload.code.trim() !== ''
+        ? payload.code
+        : null
     this.httpStatus = payload.httpStatus ?? null
     this.serverMessage = message
     this.detail = payload.detail

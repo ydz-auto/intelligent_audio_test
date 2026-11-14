@@ -29,6 +29,7 @@ import {
   listAgentSkills,
   listAgentSkillVersions,
   publishAgentSkill,
+  skillApiErrorCode,
   skillIssuesFromError,
   updateAgentSkill,
 } from '@/infrastructure/api/agentSkillApi'
@@ -47,8 +48,17 @@ export function agentSkillDocumentQueryKey(skillId: string) {
   return [...AGENT_SKILLS_QUERY_KEY, skillId, 'document'] as const
 }
 
-/** 页面可直接展示的错误文案（ApiError 已含中文归一） */
-export function skillErrorMessage(error: unknown, fallback: string): string {
+/**
+ * 页面可直接展示的错误文案：已知业务码查 `codeCopy` 表（features 传入，
+ * 避免 application 反向依赖 features 文案），否则回退 ApiError 归一文案。
+ */
+export function skillErrorMessage(
+  error: unknown,
+  fallback: string,
+  codeCopy?: Record<string, string>
+): string {
+  const code = skillApiErrorCode(error)
+  if (code && codeCopy?.[code]) return codeCopy[code]
   if (error instanceof ApiError && error.userMessage) return error.userMessage
   if (error instanceof Error && error.message) return error.message
   return fallback

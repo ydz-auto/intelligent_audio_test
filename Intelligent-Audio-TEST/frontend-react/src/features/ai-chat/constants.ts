@@ -329,6 +329,21 @@ export const AGENT_RUN_STATUS_LABELS = {
   BUDGET_EXCEEDED: '超出预算',
 } as const
 
+/**
+ * 「沉淀为 Skill」建议卡文案（INT-2550 卡面「做」第 10 项）。
+ * 后端 skill_draft_suggested 事件只在 run 正常结束且 ≥2 个工具时下发；
+ * 卡片只做跳转预填，创建动作仍由用户在 Skill 管理页确认。
+ */
+export const SKILL_SUGGESTION_COPY = {
+  title: '沉淀为 Skill',
+  description: '本次 run 调用了 {count} 个工具，可以把这套流程固化成可复用的 Skill。',
+  suggestedNameLabel: '建议名称',
+  toolsLabel: '本次用到的工具',
+  note: '草案建议：确认后才创建草稿，不自动落库、不自动触发。',
+  createAction: '去创建草稿',
+  createdBadge: '已创建',
+} as const
+
 /** 供应商管理弹窗文案（§3.11/§6；INT-2493：本机供应商降级为「直连 Demo」） */
 export const PROVIDER_MANAGER_COPY = {
   title: 'LLM 供应商管理',

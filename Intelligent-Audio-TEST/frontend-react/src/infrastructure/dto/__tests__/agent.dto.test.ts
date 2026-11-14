@@ -333,6 +333,46 @@ describe('agent.dto', () => {
     })
   })
 
+  it('事件：skill_draft_suggested 读真实键 {suggested_name, tools_used, ...}', () => {
+    expect(
+      toAgentRunEvent({
+        run_id: 'r-1',
+        sequence: 9,
+        type: 'skill_draft_suggested',
+        timestamp: '2026-11-14T01:00:00Z',
+        suggested_name: 'studio-export-report',
+        description: '基于本次 run 的执行流程沉淀的 Skill 草案',
+        tools_used: ['report_get_facts', 'studio_request_export'],
+        source_skill: 'platform-reference',
+        created: false,
+        requires_confirmation: true,
+      })
+    ).toEqual({
+      runId: 'r-1',
+      sequence: 9,
+      type: 'skill_draft_suggested',
+      timestamp: '2026-11-14T01:00:00Z',
+      suggestedName: 'studio-export-report',
+      description: '基于本次 run 的执行流程沉淀的 Skill 草案',
+      toolsUsed: ['report_get_facts', 'studio_request_export'],
+      sourceSkill: 'platform-reference',
+      created: false,
+      requiresConfirmation: true,
+    })
+  })
+
+  it('事件：skill_draft_suggested 缺 name 视为未知事件（不渲染空建议）', () => {
+    expect(
+      toAgentRunEvent({
+        run_id: 'r-1',
+        sequence: 10,
+        type: 'skill_draft_suggested',
+        description: '没有名称',
+        tools_used: ['a', 'b'],
+      })
+    ).toBeNull()
+  })
+
   it('事件：未知类型 / 缺 sequence / 缺必需键 → 丢弃（不把未知载荷当已知结构渲染）', () => {
     expect(
       toAgentRunEvent({ run_id: 'r', sequence: 1, type: 'brand_new_event' })

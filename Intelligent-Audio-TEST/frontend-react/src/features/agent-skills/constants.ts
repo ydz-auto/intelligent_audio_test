@@ -5,7 +5,7 @@
  * 映射集中在这里（方案 §4.4 的 SkillIssueCode / SkillErrorCode，INT-2549
  * 后端枚举），页面与弹窗一律按 code 查表，不散落字符串。
  */
-import type { SkillScope, SkillStatus } from '@/domain/models/agentSkill'
+import type { SkillScope } from '@/domain/models/agentSkill'
 
 /** 页面路由 */
 export const AGENT_SKILLS_ROUTE = '/agent-skills'
@@ -15,12 +15,6 @@ export const AGENT_SKILL_MANAGE_PERMISSION = 'agent:skill:manage'
 
 /** 导入包体积上限（与后端 AGENT_SKILL_MAX_UPLOAD_BYTES 缺省一致，用于前置提示） */
 export const SKILL_UPLOAD_MAX_BYTES = 5 * 1024 * 1024
-
-/** 正文 / 资源上限（§4.4 落库前校验口径，仅作前端提示） */
-export const SKILL_LIMITS = {
-  bodyBytes: 64 * 1024,
-  bodyLines: 500,
-} as const
 
 /** 校验问题码 → 中文文案（SkillIssueCode；未知码回退服务端 message） */
 export const SKILL_ISSUE_CODE_COPY: Record<string, string> = {
@@ -94,19 +88,6 @@ export const SKILL_STATUS_TABS = [
   { value: 'DISABLED', label: '已停用' },
 ] as const
 
-/** 页签 value → 来源标签 / 状态标签（避免页面散落枚举字面量） */
-export const SKILL_SCOPE_TAB_LABELS: Record<string, string> = {
-  PLATFORM: '平台内置',
-  TENANT: '租户共享',
-  USER: '我的',
-}
-
-export const SKILL_STATUS_TAB_LABELS: Record<SkillStatus, string> = {
-  DRAFT: '草稿',
-  ACTIVE: '已发布',
-  DISABLED: '已停用',
-}
-
 export const AGENT_SKILLS_COPY = {
   pageTitle: 'Skill 管理',
   pageDescription:
@@ -159,24 +140,23 @@ export const AGENT_SKILLS_COPY = {
   invalidDescription: '请填写描述',
   invalidBody: '请填写正文',
   invalidFile: '请选择一个 zip 文件',
+  importTooLarge: '导入包不能超过 {mb} MB（服务端同样拒绝超体积包）',
 
   save: '保存',
   saving: '保存中…',
   cancel: '取消',
 
   issueSummary: '校验未通过（{count} 项），未保存',
+  issueBlockedSummary: '校验未通过（{count} 项）',
+  issueWarningSummary: '保存成功，版本已 +1；以下 {count} 项告警不阻塞保存',
   issueSummaryTop: '以下问题未定位到具体字段，请逐项检查：',
   issueUnlocated: '未定位',
   saveSuccessHint: '保存成功，版本已 +1',
 
   versionsTitle: '版本历史',
   versionsEmpty: '暂无版本记录',
-  versionLabel: '版本',
-  versionHash: '内容哈希',
-  versionCreatedAt: '创建时间',
 
   gateTitle: '发布门槛',
-  gatePending: '尚无线索',
   gateNotChecked: '发布时会检查 golden tasks 与触发判定；未达标只能留作草稿。',
   gateGoldenTasks: 'golden tasks',
   gateTrigger: '触发判定',
@@ -198,7 +178,6 @@ export const AGENT_SKILLS_COPY = {
   importFile: 'zip 包',
   importSubmit: '开始导入',
   importSubmitting: '正在导入…',
-  importSuccess: '导入成功，已作为草稿加入列表',
   importFailed: '导入失败',
   importIssues: '导入失败原因',
 
@@ -216,8 +195,6 @@ export const AGENT_SKILLS_COPY = {
   updatedAt: '更新时间',
   contentHash: '内容哈希',
   versionShort: '版本',
-
-  exportFilenameHint: '导出文件名 {name}',
 } as const
 
 /** 来源标签（列表徽标） */
@@ -229,7 +206,3 @@ export const SKILL_SCOPE_BADGE_TONE: Record<
   TENANT: 'secondary',
   USER: 'default',
 }
-
-/** 页签文案统一取常量（供 Tabs 渲染） */
-export const SKILL_STATUS_LABEL_BY_VALUE: Record<string, string> =
-  SKILL_STATUS_TAB_LABELS as Record<string, string>

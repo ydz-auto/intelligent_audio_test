@@ -32,7 +32,6 @@ export function SkillIssueList({
   showSummary = false,
 }: SkillIssueListProps) {
   if (issues.length === 0) return null
-  const located = issues.filter((issue) => issue.field)
   const unlocated = issues.filter((issue) => !issue.field)
 
   return (
@@ -102,7 +101,6 @@ export function SkillIssueList({
           )
         })}
       </ul>
-      {showSummary && located.length === 0 && unlocated.length === 0 && null}
     </div>
   )
 }

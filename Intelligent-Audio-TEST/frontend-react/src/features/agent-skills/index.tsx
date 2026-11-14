@@ -36,6 +36,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import {
   AGENT_SKILLS_COPY,
+  SKILL_ERROR_CODE_COPY,
   SKILL_SCOPE_TABS,
   SKILL_STATUS_TABS,
 } from './constants'
@@ -294,7 +295,11 @@ export function AgentSkillsPage({ prefill = null }: AgentSkillsPageProps) {
                 busySkillId={busy?.id ?? null}
                 errorMessage={
                   list.isError
-                    ? skillErrorMessage(list.error, AGENT_SKILLS_COPY.loadErrorTitle)
+                    ? skillErrorMessage(
+                        list.error,
+                        AGENT_SKILLS_COPY.loadErrorTitle,
+                        SKILL_ERROR_CODE_COPY
+                      )
                     : null
                 }
                 filtered={

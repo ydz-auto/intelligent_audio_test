@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
 
-import { AGENT_SKILLS_COPY } from '../constants'
+import { AGENT_SKILLS_COPY, SKILL_ERROR_CODE_COPY } from '../constants'
 import { SkillIssueList } from './skill-issue-list'
 
 type SkillForkDialogProps = {
@@ -65,7 +65,9 @@ export function SkillForkDialog({
       const found = skillIssuesFromError(error)
       setIssues(found)
       if (found.length === 0) {
-        setErrorMessage(skillErrorMessage(error, 'fork Skill 失败'))
+        setErrorMessage(
+          skillErrorMessage(error, 'fork Skill 失败', SKILL_ERROR_CODE_COPY)
+        )
       }
     }
   }

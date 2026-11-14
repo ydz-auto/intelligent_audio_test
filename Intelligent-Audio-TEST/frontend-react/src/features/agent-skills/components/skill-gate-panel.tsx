@@ -44,7 +44,7 @@ export function SkillGatePanel({
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <h3 className='flex items-center gap-1.5 text-sm font-semibold'>
           {gate?.passed ? (
-            <ShieldCheck aria-hidden='true' className='size-4 text-emerald-600' />
+            <ShieldCheck aria-hidden='true' className='text-success size-4' />
           ) : (
             <ShieldAlert aria-hidden='true' className='text-warning size-4' />
           )}
@@ -83,7 +83,7 @@ export function SkillGatePanel({
                 aria-hidden='true'
                 className={
                   gate.goldenTasks >= 3
-                    ? 'size-3.5 text-emerald-600'
+                    ? 'text-success size-3.5'
                     : 'text-muted-foreground size-3.5'
                 }
               />
@@ -139,7 +139,7 @@ export function SkillGatePanel({
         </p>
       ) : (
         gate?.passed && (
-          <p className='text-xs text-emerald-600' data-testid='skill-gate-met'>
+          <p className='text-success text-xs' data-testid='skill-gate-met'>
             {AGENT_SKILLS_COPY.gateMetHint}
           </p>
         )

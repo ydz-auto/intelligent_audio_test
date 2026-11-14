@@ -462,6 +462,22 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         failRun(event.errorMessage || AGENT_ERROR_COPY.runFailed, event.errorCode)
         return
       }
+      case AGENT_EVENT_TYPE.SKILL_DRAFT_SUGGESTED: {
+        // 「沉淀为 Skill」草案建议（§4.4 第 7 条第④项）：只透传给气泡渲染建议卡，
+        // 不落库、不自动创建；事件可能先于 run_finished 到达，如实保留在消息上。
+        patchAssistant((message) => ({
+          ...message,
+          skillSuggestion: {
+            suggestedName: event.suggestedName,
+            description: event.description,
+            toolsUsed: event.toolsUsed,
+            sourceSkill: event.sourceSkill,
+            created: event.created,
+            requiresConfirmation: event.requiresConfirmation,
+          },
+        }))
+        return
+      }
       case AGENT_EVENT_TYPE.RUN_STARTED: {
         const current = get().run
         if (current) set({ run: { ...current, status: event.status } })

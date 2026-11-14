@@ -21,6 +21,7 @@
 import {
   isSkillScope,
   normalizeSkillIssueSeverity,
+  normalizeSkillScope,
   normalizeSkillStatus,
   type AgentSkill,
   type AgentSkillDraftInput,
@@ -140,7 +141,7 @@ export function toAgentSkill(dto: AgentSkillViewDto): AgentSkill {
   }
   return {
     id: dto.id ?? '',
-    scope: isSkillScope(dto.scope) ? dto.scope : 'PLATFORM',
+    scope: normalizeSkillScope(dto.scope),
     name: dto.name ?? '',
     description: dto.description ?? '',
     version: dto.version ?? '',
