@@ -6,7 +6,8 @@
 事实源**：
 
 - ``ArrayParam``：一个数组参数的分类（``split`` / ``atomic`` /
-  ``not_applicable``）+ 参数路径 + 对象 kind；
+  ``not_applicable``）+ 参数路径 + 对象 kind（数组元素本身是对象时用
+  ``id_field`` 声明对象标识字段，如导入的算法条目取 ``type``）；
 - ``object_scope``：按 ``(工具, 动作, 参数路径)`` 数出**显式枚举**的独立对
   象（按 ``(kind, id)`` 去重，保持参数原顺序）；
 - ``plan_approvals``：按阈值 / 粒度给出分块，并把每块的参数**收窄到本单对
@@ -69,8 +70,12 @@ class ArrayParam:
 
     - ``tool`` / ``action``：意图工具名与动作；``action=None`` 表示不限动作；
     - ``path``：参数路径（见 ``_PATH_RE``）；
-    - ``kind``：对象 kind（``testcase`` / ``audio`` / ``task`` / ``device``）；
+    - ``kind``：对象 kind（``testcase`` / ``audio`` / ``task`` / ``device`` /
+      ``algorithm_definition``）；
     - ``classification``：``split`` / ``atomic`` / ``not_applicable``；
+    - ``id_field``：数组元素是对象（而非裸 ID）时，取哪个字段作为对象标识
+      （如算法导入条目取 ``type``）；为空表示元素本身即对象 ID。收窄时保留
+      命中元素的**完整字段**，审批人能看到该对象的其它属性；
     - ``when``：额外条件（例如 ``batch_action`` / ``body.mode``），不满足时
       该参数不参与计数（动作可能是非枚举范围）；
     - ``reason``：为什么这样分类（探针与文档都读它）。
@@ -81,6 +86,7 @@ class ArrayParam:
     path: str
     classification: str
     kind: Optional[str] = None
+    id_field: Optional[str] = None
     when: Optional[Callable[[Mapping[str, Any]], bool]] = None
     reason: str = ''
 
@@ -93,6 +99,16 @@ class ArrayParam:
             raise ValueError(f'参数路径非法：{self.path!r}')
         if self.classification == SPLIT and not self.kind:
             raise ValueError(f'可拆参数必须声明对象 kind：{self.path}')
+        if self.id_field is not None:
+            if not re.fullmatch(r'[A-Za-z0-9_]+', self.id_field):
+                raise ValueError(
+                    f'对象标识字段非法：{self.id_field!r}（必须是单个字段名）')
+            if self.classification == NOT_APPLICABLE:
+                raise ValueError(
+                    f'不参与计数的参数不能声明 id_field：{self.path}')
+            if _PATH_RE.match(self.path).group('each'):
+                raise ValueError(
+                    f'参数路径已指定元素字段，不能再声明 id_field：{self.path}')
 
     @property
     def countable(self) -> bool:
@@ -113,6 +129,16 @@ def _mode_is_selected(arguments: Mapping[str, Any]) -> bool:
     return isinstance(body, Mapping) and body.get('mode') == 'selected'
 
 
+# INT-2593：算法定义类动作 body 的数组字段是**同一份定义**的内嵌子实体
+# （设备 / API / 用例 / 参考参数、参数映射、关联维度），随该定义同一次写入；
+# 一次调用只写一个定义，不构成独立对象枚举，因此统一显式登记
+# ``not_applicable``（不计数、不拆单）。逐字段登记而不是用容器通配，是为了
+# 让注册表逐项可审计：新增定义数组字段时由注册期探针判红、必须显式分类。
+_DEFINITION_ARRAY_REASON = (
+    '算法定义的内嵌子实体 / 字段属性：随所属定义同一次写入，'
+    '一次调用只写一个定义，不是独立对象')
+
+
 ARRAY_PARAMS: Tuple[ArrayParam, ...] = (
     # ---- 可拆（每对象一张单） ----
     ArrayParam(
@@ -131,6 +157,13 @@ ARRAY_PARAMS: Tuple[ArrayParam, ...] = (
         'evaluation_manage', 'reevaluate', 'body.case_ids', SPLIT,
         kind='testcase', when=_mode_is_selected,
         reason='按所选用例重评估（mode=selected）：单一用例重评估合法'),
+    ArrayParam(
+        'algorithm_manage', 'import', 'body.algorithms', SPLIT,
+        kind='algorithm_definition', id_field='type',
+        reason='批量导入的 algorithms 是 N 份彼此独立的算法定义（服务端按 type '
+               '只增不改、参数逐份追加），只导入其中一份仍然合法，满足 §9.4.1 '
+               '的可拆前提；对象标识取条目 type（条目内的 params 是该定义的'
+               '设备参数，随定义一起提交）'),
     # ---- 只计数、不拆 ----
     ArrayParam(
         'device_control', 'batch', 'device_ids', ATOMIC, kind='device',
@@ -181,6 +214,47 @@ ARRAY_PARAMS: Tuple[ArrayParam, ...] = (
     ArrayParam(
         'evaluation_manage', 'dimension_update', 'body.*', NOT_APPLICABLE,
         reason='维度字段属性（端点 / 输入 / 输出 / 关联算法），不构成对象枚举'),
+    # 算法定义（INT-2593）：definition_* 的数组字段是同一份定义的内嵌子实体，
+    # 对象只有「这个定义」一个；逐字段登记见 ``_DEFINITION_ARRAY_REASON``。
+    ArrayParam('algorithm_manage', 'definition_create', 'body.device_params',
+               NOT_APPLICABLE, reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_create', 'body.api_params',
+               NOT_APPLICABLE, reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_create', 'body.case_params',
+               NOT_APPLICABLE, reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_create',
+               'body.reference_params', NOT_APPLICABLE,
+               reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_create', 'body.mappings',
+               NOT_APPLICABLE, reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_create',
+               'body.associated_dimensions', NOT_APPLICABLE,
+               reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_update', 'body.device_params',
+               NOT_APPLICABLE, reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_update', 'body.api_params',
+               NOT_APPLICABLE, reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_update', 'body.case_params',
+               NOT_APPLICABLE, reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_update', 'body.mappings',
+               NOT_APPLICABLE, reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_update',
+               'body.associated_dimensions', NOT_APPLICABLE,
+               reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_save', 'body.device_params',
+               NOT_APPLICABLE, reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_save', 'body.api_params',
+               NOT_APPLICABLE, reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_save', 'body.case_params',
+               NOT_APPLICABLE, reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_save',
+               'body.reference_params', NOT_APPLICABLE,
+               reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_save', 'body.mappings',
+               NOT_APPLICABLE, reason=_DEFINITION_ARRAY_REASON),
+    ArrayParam('algorithm_manage', 'definition_save',
+               'body.associated_dimensions', NOT_APPLICABLE,
+               reason=_DEFINITION_ARRAY_REASON),
 )
 
 
@@ -254,6 +328,22 @@ def _parse(path: str) -> Tuple[str, bool, Optional[str]]:
             match.group('field'))
 
 
+def _array_rows(values: Sequence[Any],
+                id_field: Optional[str]) -> List[Tuple[Any, Any]]:
+    """数组元素 → ``[(对象 id, 参数内选择器)]``（原顺序）。
+
+    ``id_field`` 为空时元素本身即对象 ID（``ids`` / ``body.case_ids`` 这类裸
+    ID 数组）；否则元素是对象，取 ``id_field`` 作为对象标识，选择器保留整项
+    （收窄时该对象的其它字段一并保留，例如算法导入条目里的名称与参数）。
+    缺 ``id_field`` 的元素无法确定对象身份，跳过不计数（调用校验会先拒绝
+    这类条目）。
+    """
+    if id_field is None:
+        return [(value, value) for value in values]
+    return [(item[id_field], item) for item in values
+            if isinstance(item, Mapping) and id_field in item]
+
+
 def _rows(arguments: Mapping[str, Any],
           rule: ArrayParam) -> List[Tuple[Any, Any]]:
     """参数路径 → ``[(对象 id, 参数内选择器)]``（原顺序）。
@@ -270,7 +360,7 @@ def _rows(arguments: Mapping[str, Any],
     if field is None:
         if not isinstance(container, (list, tuple)):
             return []
-        return [(value, value) for value in container]
+        return _array_rows(container, rule.id_field)
     if each:
         if not isinstance(container, (list, tuple)):
             return []
@@ -284,7 +374,7 @@ def _rows(arguments: Mapping[str, Any],
     values = container.get(field)
     if not isinstance(values, (list, tuple)):
         return []
-    return [(value, value) for value in values]
+    return _array_rows(values, rule.id_field)
 
 
 def _rule_applies(rule: ArrayParam,
@@ -387,6 +477,14 @@ class ApprovalPlan:
         return len(self.chunks)
 
 
+def _pick_objects(values: Any, id_field: str,
+                  wanted: Mapping[Tuple[str, Any], Any]) -> List[Any]:
+    """保留 ``id_field`` 命中本单对象的元素（原顺序 + 完整字段）。"""
+    return [item for item in (values or [])
+            if isinstance(item, Mapping)
+            and _id_key(item.get(id_field)) in wanted]
+
+
 def _narrow(arguments: Mapping[str, Any], rule: ArrayParam,
             ids: Sequence[Any]) -> Dict[str, Any]:
     """把参数收窄到本单对象（浅层深拷贝，避免改动原调用参数）。"""
@@ -394,6 +492,10 @@ def _narrow(arguments: Mapping[str, Any], rule: ArrayParam,
     key, each, field = _parse(rule.path)
     wanted = {_id_key(value): value for value in ids}
     if field is None:
+        if rule.id_field is not None:
+            narrowed[key] = _pick_objects(
+                narrowed.get(key), rule.id_field, wanted)
+            return narrowed
         narrowed[key] = [wanted[_id_key(v)] for v in ids]
         return narrowed
     container = narrowed.get(key)
@@ -404,7 +506,10 @@ def _narrow(arguments: Mapping[str, Any], rule: ArrayParam,
             and _id_key(item.get(field)) in wanted]
         return narrowed
     body = dict(container or {})
-    body[field] = [wanted[_id_key(v)] for v in ids]
+    if rule.id_field is not None:
+        body[field] = _pick_objects(body.get(field), rule.id_field, wanted)
+    else:
+        body[field] = [wanted[_id_key(v)] for v in ids]
     narrowed[key] = body
     return narrowed
 

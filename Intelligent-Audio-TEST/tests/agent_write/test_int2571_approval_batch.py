@@ -349,6 +349,44 @@ def test_range_mode_counts_one_object(tmp_path):
     assert batch[0].proposal['arguments']['body']['mode'] == 'all'
 
 
+# ---------------------------------------------------------------- 算法域（INT-2593）
+
+def _import_args(count):
+    return {'action': 'import', 'body': {'algorithms': [
+        {'type': f'algo_{index}', 'name': f'算法 {index}',
+         'params': [{'param_code': f'p{index}'}]}
+        for index in range(1, count + 1)]}}
+
+
+def test_algorithm_import_splits_into_approvals(tmp_path):
+    """25 份算法导入 → 25 张单；全批批准后只用完整参数执行一次（INT-2593）。"""
+    args = _import_args(25)
+    container, _llm, gateway, run = _split_scenario(
+        tmp_path,
+        tool=write_tool('algorithm_manage',
+                        permissions=('algorithm:definition_manage',)),
+        args=args)
+    batch = _batch(container, run.id)
+
+    assert len(batch) == 25
+    assert [item.batch_index for item in batch] == list(range(1, 26))
+    assert batch[0].object_ref == {
+        'kind': 'algorithm_definition', 'ids': ['algo_1']}
+    # 每张单只展示自己那份定义（名称 / 设备参数一并保留）
+    assert batch[0].proposal['arguments']['body']['algorithms'] == \
+        [args['body']['algorithms'][0]]
+    assert batch[0].proposal['object_count'] == 25
+    # 完整参数留在 agent_tool_call（执行入参）
+    record = container.repositories['tool_calls'].find(run.id, 'c1')
+    assert len(record.arguments['body']['algorithms']) == 25
+
+    for approval in batch:
+        decide(container, approval.id, 'APPROVE')
+    container.executor.submit(run.id)
+    assert len(gateway.executed) == 1
+    assert len(gateway.executed[0][2]['body']['algorithms']) == 25
+
+
 # ---------------------------------------------------------------- 11 恢复幂等
 
 def test_repropose_reuses_existing_batch_not_new_config(tmp_path):
