@@ -273,6 +273,8 @@ class SkillService:
         —— 不允许 PUT 静默越过审核状态机、也不允许把已批准版本打回草稿后
         不留痕迹。迁移 / 版本行 / 当前行 / 审计是同一事务（``apply_edit``）
         的四件事，任一步失败整体回滚；资源写排在事务之前，失败时状态不动。
+        资源键带本次请求的一次性段（见 ``_store_resources``），并发编辑的
+        落败方不会覆盖胜出版本已提交的资源字节。
         """
         row = self._owned_row(skill_id, owner_id=owner_id,
                               tenant_id=tenant_id, writable=True,
@@ -807,10 +809,23 @@ class SkillService:
 
     def _store_resources(self, skill_id: str, version: str,
                          resources: Mapping[str, bytes]) -> Dict[str, str]:
+        """写入资源字节，返回 ``path → 完整 key``。
+
+        key 带**本次写请求的一次性段**（INT-2594 打回项）：资源写排在事务
+        之前，同一 ``(skill_id, version)`` 的并发编辑（两人同时保存 / 同一人
+        双击重试）会算出同一个 ``version``，若 key 只由 ``(skill, version,
+        path)`` 决定，CAS / 版本行落败方会把自己那份字节写进胜出版本正在
+        引用的键 —— 请求被 409 拒绝，却改写了已提交版本的内容。带一次性段
+        后每次写各自成键，落败方写的是无人引用的孤儿对象（不可达、无害）。
+
+        版本行存的是完整 key，历史版本照常可读，无需迁移。
+        """
         prefix = self._settings.resource_prefix
+        # 同一次写请求的所有资源共用一个段，便于按写入溯源
+        write_token = uuid.uuid4().hex
         stored: Dict[str, str] = {}
         for path, payload in (resources or {}).items():
-            key = f'{prefix}/{skill_id}/{version}/{path}'
+            key = f'{prefix}/{skill_id}/{version}/{write_token}/{path}'
             stored[path] = self._resources.put(key, payload)
         return stored
 

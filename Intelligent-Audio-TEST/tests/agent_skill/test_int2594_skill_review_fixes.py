@@ -19,6 +19,8 @@
 「先迁移、后审计」窗口在 ``decide`` 侧按 fail-closed 拒绝。
 """
 import os
+import threading
+import time
 from datetime import datetime, timezone
 
 os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
@@ -274,6 +276,116 @@ def test_apply_edit_rolls_back_state_when_audit_write_fails(tmp_path):
     assert repository.get_version(view.id, next_version) is None
     assert [row for row in _history(reviews, view.id)
             if row.action is SkillReviewAction.EDIT] == []
+
+
+def test_concurrent_edit_loser_does_not_overwrite_winner_resources(tmp_path):
+    """CAS 落败方不得改写胜出版本已提交的资源字节（本轮阻塞项）。
+
+    事件顺序取最坏情况：落败方先读到 ACTIVE 快照、算出同一个 ``version+1``
+    并进入资源写；胜出版本整笔提交后，落败方才把字节写进对象存储，随后
+    CAS 未命中 409。修复前两者写同一个 ``{version}/{path}`` 键，落败方在
+    409 之前就把胜出版本引用的资源换成了自己的内容。
+    """
+    container, store = build_skill_stack(
+        tmp_path, golden=StaticGoldenTasks(GATE_GOLDEN))
+    skills, reviews = container.skill_service, container.skill_review_service
+    view = _activate(container, skills, reviews)
+    repository = container.repositories['skills']
+
+    winner_body = demo_body('赢家正文')
+    loser_body = demo_body('落败方正文')
+    loser_read = threading.Event()       # 落败方已读到 ACTIVE 快照
+    winner_committed = threading.Event()  # 胜出版本已整笔提交
+    loser_thread = {}
+    results = {}
+
+    real_put, real_get = store.put, repository.get
+    seen = set()
+
+    def gated_put(key, data, content_type='application/octet-stream'):
+        if threading.current_thread() is loser_thread.get('obj'):
+            # 落败方的资源写等胜者提交完成 —— 最坏的交错顺序
+            winner_committed.wait(5)
+        return real_put(key, data, content_type)
+
+    def watched_get(skill_id):
+        row = real_get(skill_id)
+        if (threading.current_thread() is loser_thread.get('obj')
+                and 'read' not in seen):
+            seen.add('read')
+            loser_read.set()
+        return row
+
+    def save(tag, body):
+        try:
+            saved = skills.update(
+                view.id,
+                draft_payload(body=body,
+                              resources={'references/guide.md': body}),
+                owner_id=CREATOR_ID, tenant_id=TENANT_ID,
+                permissions=['*'], is_admin=True)
+            results[tag] = ('ok', saved.status.value, saved.version)
+        except SkillStatusInvalid as exc:
+            results[tag] = ('err', exc.code)
+
+    store.put, repository.get = gated_put, watched_get
+    try:
+        t_loser = threading.Thread(target=save, args=('loser', loser_body))
+        loser_thread['obj'] = t_loser
+
+        def save_winner():
+            assert loser_read.wait(5), '落败方未读到快照，用例没有构造出交错'
+            time.sleep(0.05)
+            save('winner', winner_body)
+            winner_committed.set()
+
+        t_winner = threading.Thread(target=save_winner)
+        t_loser.start()
+        t_winner.start()
+        t_loser.join(30)
+        t_winner.join(30)
+    finally:
+        store.put, repository.get = real_put, real_get
+
+    assert results['winner'][0] == 'ok', results
+    assert results['loser'] == ('err', 'SKILL_STATUS_INVALID'), results
+
+    row = repository.get(view.id)
+    committed = repository.get_version(view.id, row.version)
+    winner_key = committed.resources['references/guide.md']
+    assert store.items[winner_key] == winner_body.encode('utf-8'), (
+        '被 409 拒绝的落败方改写了胜出版本引用的资源字节')
+    # 落败方写的是各自独立的、无人引用的孤儿键（不覆盖胜者）
+    guide_keys = [key for key in store.items
+                  if key.endswith('/references/guide.md')]
+    assert len(guide_keys) == 2, guide_keys
+    orphan_key = [key for key in guide_keys if key != winner_key][0]
+    assert store.items[orphan_key] == loser_body.encode('utf-8')
+
+
+def test_back_to_back_saves_keep_each_version_resources(tmp_path):
+    """同一人连续两次快速保存：前一版引用的资源不被后一次改写。"""
+    container, store = build_skill_stack(
+        tmp_path, golden=StaticGoldenTasks(GATE_GOLDEN))
+    skills, reviews = container.skill_service, container.skill_review_service
+    view = _activate(container, skills, reviews)
+    repository = container.repositories['skills']
+
+    first_body = demo_body('第一次保存')
+    second_body = demo_body('第二次保存')
+    for body in (first_body, second_body):
+        skills.update(
+            view.id,
+            draft_payload(body=body, resources={'references/guide.md': body}),
+            owner_id=CREATOR_ID, tenant_id=TENANT_ID,
+            permissions=['*'], is_admin=True)
+
+    versions = {row.version: row for row in repository.list_versions(view.id)}
+    first_key = versions['2'].resources['references/guide.md']
+    second_key = versions['3'].resources['references/guide.md']
+    assert first_key != second_key
+    assert store.items[first_key] == first_body.encode('utf-8')
+    assert store.items[second_key] == second_body.encode('utf-8')
 
 
 def test_disabled_tenant_edit_is_rejected(tmp_path):
