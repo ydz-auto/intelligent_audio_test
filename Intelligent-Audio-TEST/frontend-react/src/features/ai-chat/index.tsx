@@ -8,6 +8,7 @@
 import { Badge } from '@/components/ui/badge'
 import { PanelRight } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -24,6 +25,11 @@ import {
   type ChatConfig,
   type ReportContextOption,
 } from '@/domain/models/aiChat'
+import {
+  normalizeRunMode,
+  type AgentRunBudget,
+  type AgentRunMode,
+} from '@/domain/models/agent'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
 import { useAgentRunHost } from '@/application/agent/use-agent-run'
 import { useTaskReportId } from '@/application/reports/use-report-studio'
@@ -234,6 +240,15 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     updateConfig('chatMode', next)
   }
 
+  /** 运行模式与 Auto 预算（INT-2474）：随会话 config 持久化，两宿主同一份 */
+  const runMode = normalizeRunMode(config.runMode)
+  const handleRunModeChange = (next: AgentRunMode) => {
+    updateConfig('runMode', next)
+  }
+  const handleAutoBudgetChange = (budget: AgentRunBudget | undefined) => {
+    updateConfig('autoBudget', budget)
+  }
+
   const {
     sendChat,
     stopGeneration,
@@ -246,6 +261,12 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     approvalsError,
     decidingApprovalIds,
     timeline,
+    autoProgress,
+    autoPause,
+    autoPausePolicy,
+    resumingAuto,
+    error: runError,
+    resumeAuto,
     decideApproval,
     refreshApprovals,
     resetChat,
@@ -290,6 +311,31 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     resetChat()
     clearMessages()
   }
+
+  /** Auto 暂停后继续：失败文案走 toast（面板按钮就地恢复为可点） */
+  const handleResumeAuto = () => {
+    void resumeAuto().then((failure) => {
+      if (failure) toast.error(failure)
+    })
+  }
+
+  /** Auto 面板 / 输入区在两处装配（宽屏双栏与普通布局）复用同一组 props */
+  const autoChatProps = {
+    autoProgress,
+    autoPause,
+    autoPausePolicy,
+    resumingAuto,
+    isCancelling,
+    runError,
+    onResumeAuto: handleResumeAuto,
+    onStopAuto: stopGeneration,
+  } as const
+  const autoInputProps = {
+    runMode,
+    onRunModeChange: handleRunModeChange,
+    autoBudget: config.autoBudget,
+    onAutoBudgetChange: handleAutoBudgetChange,
+  } as const
 
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
@@ -362,6 +408,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                   onRetryApprovals={() => void refreshApprovals()}
                   run={run}
                   timeline={timeline}
+                  {...autoChatProps}
                 />
               </div>
               <div className='shrink-0'>
@@ -385,6 +432,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                   providers={providers}
                   textareaRef={textareaRef}
                   value={draftText}
+                  {...autoInputProps}
                 />
               </div>
             </div>
@@ -440,6 +488,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
               onRetryApprovals={() => void refreshApprovals()}
               run={run}
               timeline={timeline}
+              {...autoChatProps}
             />
           </div>
 
@@ -464,6 +513,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
               providers={providers}
               textareaRef={textareaRef}
               value={draftText}
+              {...autoInputProps}
             />
           </div>
         </>

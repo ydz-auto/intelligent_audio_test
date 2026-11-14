@@ -31,6 +31,8 @@ import {
   AGENT_APPROVAL_COPY,
   AGENT_APPROVAL_ERROR_CODE,
   AGENT_APPROVAL_STATUS,
+  AGENT_AUTO_COPY,
+  AGENT_AUTO_ERROR_CODE,
   AGENT_ERROR_COPY,
   AGENT_EVENT_TYPE,
   AGENT_RUN_STATUS,
@@ -39,8 +41,14 @@ import {
   isTerminalRunStatus,
   type AgentApproval,
   type AgentApprovalDecision,
+  type AgentAutoPause,
+  type AgentAutoProgress,
   type AgentRun,
+  type AgentRunBudget,
   type AgentRunEvent,
+  type AgentRunInput,
+  type AgentRunMode,
+  type AgentRunPausePolicy,
   type AgentRunStatus,
   type AgentSessionMessage,
 } from '@/domain/models/agent'
@@ -62,6 +70,7 @@ import {
   getAgentRun,
   getAgentSession,
   listAgentApprovals,
+  resumeAgentRun,
   subscribeAgentRunEvents,
   toAgentErrorMessage,
   type AgentStreamStatus,
@@ -214,6 +223,13 @@ function toRestoredMessages(messages: AgentSessionMessage[]): ChatMessage[] {
 export interface SendAgentRunOptions {
   /** 是否追加本轮 user 消息（重新生成=原指令已在截断数组内，只补 assistant 占位） */
   appendUserMessage?: boolean
+  /**
+   * 运行模式（INT-2474）：缺省 chat。Auto 打开只影响本轮发起，
+   * 关掉后普通对话照常（请求体不带 mode / budget）。
+   */
+  mode?: AgentRunMode
+  /** Auto 预算（只能收紧；仅 Auto 模式下发） */
+  budget?: AgentRunBudget
 }
 
 type AgentRunStoreState = {
@@ -232,6 +248,16 @@ type AgentRunStoreState = {
   decidingApprovalIds: string[]
   /** Run 时间线（事件流有序投影；重连回放不重复） */
   timeline: AgentTimelineEntry[]
+  /** Auto 最新进度快照（auto_step；非 Auto / 本轮未开始为 null） */
+  autoProgress: AgentAutoProgress | null
+  /** Auto 暂停事实（run_paused；继续或终态后清空） */
+  autoPause: AgentAutoPause | null
+  /** Auto 暂停策略（run_started.pause_policy；启动即展示「何时会暂停」） */
+  autoPausePolicy: AgentRunPausePolicy | null
+  /** 继续请求在途（按钮防连点） */
+  resumingAuto: boolean
+  /** Auto 暂停后继续（POST /agent/runs/{id}/resume；失败返回中文文案） */
+  resumeAuto: () => Promise<string | null>
   /** 发起一轮对话（内部保证会话 + run + 订阅；失败落 error 态，不抛出） */
   send: (text: string, options?: SendAgentRunOptions) => Promise<void>
   /** 取消当前 run；成功返回 null，失败返回中文文案（同一 run 只发一次请求） */
@@ -303,6 +329,8 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
   let approvalRefreshToken = 0
   /** run 快照请求令牌（终态补 token / 预算消耗，晚到的旧响应不覆盖新 run） */
   let runSnapshotToken = 0
+  /** Auto「继续」请求在途（同一暂停点防连点） */
+  let resumeRequested = false
 
   const session = () => useAiChatSession.getState()
 
@@ -580,6 +608,9 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
           }
         })
         assistantKey = null
+        // 终态：暂停点不再可操作（进度保留，供收口面板展示最终水位与产物）
+        resumeRequested = false
+        set({ autoPause: null, resumingAuto: false })
         finishRun(event.status, event.error)
         // 终态后补 token / 预算消耗（run_finished 不带 token 统计；失败不影响展示）
         void refreshRunSnapshot(get().run?.id ?? event.runId)
@@ -594,6 +625,23 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
             setPhase(AGENT_RUN_PHASE.RECONNECTING)
           }
           return
+        }
+        // Auto 熔断：后端先落 error 事件再 run_finished，但 error 事件本身会关流，
+        // 紧随其后的终态帧可能收不到。这里按同一个错误码直接落 FAILED，保证
+        // 熔断在面板上是明确终态（不是「运行失败但还显示运行中」）。
+        const currentRun = get().run
+        if (
+          event.errorCode === AGENT_AUTO_ERROR_CODE.CONSECUTIVE_TOOL_FAILURES &&
+          currentRun?.mode === 'auto'
+        ) {
+          set({
+            run: {
+              ...currentRun,
+              status: AGENT_RUN_STATUS.FAILED,
+              error: AGENT_AUTO_ERROR_CODE.CONSECUTIVE_TOOL_FAILURES,
+            },
+            autoPause: null,
+          })
         }
         failRun(event.errorMessage || AGENT_ERROR_COPY.runFailed, event.errorCode)
         return
@@ -639,10 +687,62 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
             run: {
               ...current,
               status: event.status,
+              mode: event.mode ?? current.mode,
               model: event.model ?? current.model,
               budget: event.budget ?? current.budget,
             },
           })
+        }
+        // Auto 暂停规则随 run_started 下发：开跑前即可展示「何时会暂停」（§9.4）
+        if (event.mode === 'auto' && event.pausePolicy) {
+          set({ autoPausePolicy: event.pausePolicy })
+        }
+        return
+      }
+      case AGENT_EVENT_TYPE.AUTO_STEP: {
+        // 进度只更新水位，不改生命周期阶段（阶段仍由 RUNNING / 暂停 / 取消驱动）
+        set({ autoProgress: event.progress })
+        return
+      }
+      case AGENT_EVENT_TYPE.RUN_PAUSED: {
+        // Auto 暂停（§9.4）：run 转 WAITING_APPROVAL 等用户确认继续；
+        // 暂停点自身带用量，进度面板据此展示停在哪一项
+        const progress = get().autoProgress
+        const currentRun = get().run
+        set({
+          autoPause: event.pause,
+          autoProgress:
+            progress && event.pause.usage
+              ? {
+                  ...progress,
+                  usage: event.pause.usage,
+                  limits: event.pause.limits ?? progress.limits,
+                  ratio: event.pause.ratio ?? progress.ratio,
+                  consecutiveFailures: event.pause.consecutiveFailures,
+                  pauseReason: event.pause.reason,
+                }
+              : progress,
+          run: currentRun
+            ? { ...currentRun, status: AGENT_RUN_STATUS.WAITING_APPROVAL }
+            : currentRun,
+        })
+        if (get().phase !== AGENT_RUN_PHASE.CANCELLING) {
+          setPhase(AGENT_RUN_PHASE.WAITING_APPROVAL)
+        }
+        return
+      }
+      case AGENT_EVENT_TYPE.RUN_RESUMED: {
+        // 用户确认继续：暂停点解除，同一预算暂停点不再触发（硬预算仍生效）
+        const currentRun = get().run
+        set({
+          autoPause: null,
+          run: currentRun
+            ? { ...currentRun, status: AGENT_RUN_STATUS.RUNNING }
+            : currentRun,
+        })
+        resumeRequested = false
+        if (get().phase !== AGENT_RUN_PHASE.CANCELLING) {
+          setPhase(AGENT_RUN_PHASE.RUNNING)
         }
         return
       }
@@ -753,6 +853,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     approvalRefreshToken += 1
     runSnapshotToken += 1
     decidingApprovals.clear()
+    resumeRequested = false
     set({
       error: null,
       streamStatus: null,
@@ -762,6 +863,10 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       approvalsError: null,
       decidingApprovalIds: [],
       timeline: [],
+      autoProgress: null,
+      autoPause: null,
+      autoPausePolicy: null,
+      resumingAuto: false,
     })
 
     // user 气泡 + assistant 占位落共享消息列表：两宿主读同一份，切换形态不丢
@@ -793,11 +898,13 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         restoredSessionId = sessionId
       }
 
-      const run = await createAgentRun(
-        sessionId,
-        { message: text },
-        buildIdempotencyKey()
-      )
+      // 只有 Auto 才带 mode / budget（普通对话请求体保持 {message} 单口径）
+      const runInput: AgentRunInput = { message: text }
+      if (options?.mode === 'auto') {
+        runInput.mode = 'auto'
+        if (options.budget) runInput.budget = options.budget
+      }
+      const run = await createAgentRun(sessionId, runInput, buildIdempotencyKey())
       if (runToken !== token) return
       set({ run })
       session().setAgentRunId(run.id)
@@ -848,6 +955,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       set({
         run: {
           ...current,
+          mode: latest.mode ?? current.mode,
           tokenIn: latest.tokenIn ?? current.tokenIn,
           tokenOut: latest.tokenOut ?? current.tokenOut,
           budget: latest.budget ?? current.budget,
@@ -1011,6 +1119,82 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     }
   }
 
+  /**
+   * Auto 暂停后「继续」（POST /agent/runs/{id}/resume，INT-2474 §9.4）。
+   * - 同一暂停点只发一次请求（按钮防连点）；
+   * - 409 分两种：仍有待审批提案（先刷新审批列表并把用户引向审批卡）/
+   *   已不在暂停态（刷新 run 快照，暂停面板据此消失），文案取服务端 detail；
+   * - 成功后落 run 快照并回到 RUNNING；随后的 run_resumed 事件解除暂停面板。
+   */
+  const resumeAuto = async (): Promise<string | null> => {
+    const current = get().run
+    if (!current || resumeRequested) return null
+    resumeRequested = true
+    set({ resumingAuto: true })
+    const runToken = token
+    try {
+      const snapshot = await resumeAgentRun(current.id)
+      if (runToken !== token) return null
+      // 竞态：服务端「继续」可能立刻跑完（短任务），事件流先一步把 run 收口。
+      // 这时不能拿 resume 返回的旧快照把终态覆盖回 RUNNING（页面会永远停在运行中）。
+      const live = get().run
+      if (
+        live &&
+        live.id === snapshot.id &&
+        isTerminalRunStatus(live.status)
+      ) {
+        set({ autoPause: null })
+        return null
+      }
+      set({ run: snapshot, autoPause: null })
+      if (isTerminalRunStatus(snapshot.status)) {
+        emitSyntheticFinished(snapshot, snapshot.status, snapshot.error)
+        finishRun(snapshot.status, snapshot.error)
+        return null
+      }
+      // 事件流已收口（FINISHED / ERROR）时不再把阶段拉回 RUNNING
+      if (isAgentRunActive(get().phase)) {
+        setPhase(AGENT_RUN_PHASE.RUNNING)
+      }
+      return null
+    } catch (err) {
+      if (runToken !== token) return null
+      if (err instanceof ApiError) {
+        if (err.httpStatus === 409) {
+          // 待审批提案 / 已不在暂停态：都用服务端列表与快照对齐，再给中文文案
+          await get().refreshApprovals()
+          if (runToken !== token) return null
+          if (hasPendingApprovals(get().approvals)) {
+            return AGENT_AUTO_COPY.resumeNeedsApproval
+          }
+          try {
+            const latest = await getAgentRun(current.id)
+            if (runToken !== token) return null
+            set({ run: latest })
+            if (isTerminalRunStatus(latest.status)) {
+              emitSyntheticFinished(latest, latest.status, latest.error)
+              finishRun(latest.status, latest.error)
+            } else if (latest.status !== AGENT_RUN_STATUS.WAITING_APPROVAL) {
+              // 已继续 / 正在执行：暂停面板撤掉，交给事件流继续推送
+              set({ autoPause: null })
+              setPhase(AGENT_RUN_PHASE.RUNNING)
+            }
+          } catch {
+            // 快照刷新失败不影响提示：用户可再点一次
+          }
+          return err.userMessage || AGENT_AUTO_COPY.resumeNotPaused
+        }
+        return err.userMessage || AGENT_AUTO_COPY.resumeFailed
+      }
+      return AGENT_AUTO_COPY.resumeFailed
+    } finally {
+      if (runToken === token) {
+        resumeRequested = false
+        set({ resumingAuto: false })
+      }
+    }
+  }
+
   const reset = (options?: { keepSession?: boolean }) => {
     token += 1
     active = false
@@ -1026,6 +1210,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     approvalRefreshToken += 1
     runSnapshotToken += 1
     decidingApprovals.clear()
+    resumeRequested = false
     closeStream()
     assistantKey = null
     assistantContent = ''
@@ -1039,6 +1224,10 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       approvalsError: null,
       decidingApprovalIds: [],
       timeline: [],
+      autoProgress: null,
+      autoPause: null,
+      autoPausePolicy: null,
+      resumingAuto: false,
       phase: AGENT_RUN_PHASE.IDLE,
     })
     if (!options?.keepSession) {
@@ -1064,7 +1253,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
    */
   const reconcileInterruptedMessage = (
     runs: AgentRun[],
-    options?: { approvalWaiting?: boolean }
+    options?: { approvalWaiting?: boolean; pausedAuto?: boolean }
   ) => {
     const pending = [...session().messages]
       .reverse()
@@ -1080,6 +1269,26 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       runs.find((run) => !isTerminalRunStatus(run.status)) ??
       runs[runs.length - 1]
     const patch = (message: ChatMessage): ChatMessage => {
+      // Auto 暂停（刷新恢复）：不落「事件流中断」错误态，气泡中性收口并引导继续 / 结束
+      if (
+        options?.pausedAuto === true &&
+        latestRun?.status === AGENT_RUN_STATUS.WAITING_APPROVAL
+      ) {
+        return {
+          ...message,
+          status: CHAT_MESSAGE_STATUS.COMPLETE,
+          runStatus: AGENT_RUN_STATUS.WAITING_APPROVAL,
+          isReasoningStreaming: false,
+          versions: message.versions[0]?.content
+            ? message.versions
+            : [
+                {
+                  id: message.versions[0]?.id ?? `${message.key}-v1`,
+                  content: AGENT_AUTO_COPY.restoredPaused,
+                },
+              ],
+        }
+      }
       const waitingApproval =
         latestRun?.status === AGENT_RUN_STATUS.WAITING_APPROVAL &&
         options?.approvalWaiting === true
@@ -1181,7 +1390,27 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         const approvalWaiting = await restorePendingApprovals(detail.runs)
         if (runToken !== token) return
         if (session().agentSessionId !== sessionId) return
-        reconcileInterruptedMessage(detail.runs, { approvalWaiting })
+        // Auto 暂停（无待审批提案的 WAITING_APPROVAL）：恢复暂停面板，让用户可继续 / 结束
+        const pausedAutoRun = approvalWaiting
+          ? undefined
+          : [...detail.runs]
+              .reverse()
+              .find(
+                (run) =>
+                  run.status === AGENT_RUN_STATUS.WAITING_APPROVAL &&
+                  run.mode === 'auto'
+              )
+        if (pausedAutoRun) {
+          set({
+            run: pausedAutoRun,
+            // 刷新不重接事件流：进度与暂停原因不可回放，用占位事实驱动「继续 / 结束」
+            autoPause: { consecutiveFailures: 0 },
+          })
+        }
+        reconcileInterruptedMessage(detail.runs, {
+          approvalWaiting,
+          pausedAuto: Boolean(pausedAutoRun),
+        })
       } catch (err) {
         if (runToken !== token) return
         if (session().agentSessionId !== sessionId) return
@@ -1213,8 +1442,13 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     approvalsError: null,
     decidingApprovalIds: [],
     timeline: [],
+    autoProgress: null,
+    autoPause: null,
+    autoPausePolicy: null,
+    resumingAuto: false,
     send,
     cancel,
+    resumeAuto,
     decideApproval,
     refreshApprovals,
     reset,

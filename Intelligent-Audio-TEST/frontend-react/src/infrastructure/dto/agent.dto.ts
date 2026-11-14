@@ -8,11 +8,14 @@
  * snake_case ↔ camelCase 只在此文件发生。
  */
 import {
+  AGENT_BUDGET_DIMENSION,
   AGENT_EVENT_TYPE,
   AGENT_RUN_STATUS,
   AGENT_TOOL_RESULT_STATUS,
   AGENT_TOOL_RISK,
   isRecoverableAgentErrorCode,
+  normalizePauseReason,
+  normalizeRunMode,
   normalizeRunStatus,
   normalizeToolRisk,
   type AgentApproval,
@@ -20,11 +23,18 @@ import {
   type AgentApprovalObjectRef,
   type AgentApprovalProposal,
   type AgentApprovalStatus,
+  type AgentAutoArtifact,
+  type AgentAutoPause,
+  type AgentAutoProgress,
+  type AgentAutoStepPhase,
+  type AgentAutoUsage,
+  type AgentBudgetDimension,
   type AgentEventSourceRef,
   type AgentRun,
   type AgentRunBudget,
   type AgentRunEvent,
   type AgentRunInput,
+  type AgentRunPausePolicy,
   type AgentSession,
   type AgentSessionDetail,
   type AgentToolRisk,
@@ -60,6 +70,16 @@ export interface AgentSessionDto {
 /** POST /agent/sessions/{id}/runs 请求体（§5.1 输入 user_message；幂等键走 Idempotency-Key 头） */
 export interface AgentRunCreateDto {
   message: string
+  /**
+   * 运行模式（INT-2474）：chat（默认）/ auto。字段缺省即 chat，
+   * 普通对话不带此键（Auto 关闭不影响普通对话）。
+   */
+  mode?: string
+  /**
+   * 请求侧收紧预算（键同 RunBudget 蛇形键；只能收紧，0 / 负数视为不覆盖，
+   * 未知键服务端 400 INVALID_BUDGET）。
+   */
+  budget?: Record<string, number>
 }
 
 /**
@@ -96,6 +116,8 @@ export interface AgentRunDto {
   id: string
   session_id?: string
   status?: string
+  /** 运行模式（INT-2474 RunResponse.mode：chat / auto） */
+  mode?: string
   model?: string
   token_in?: number
   token_out?: number
@@ -214,6 +236,135 @@ export function toAgentBudget(value: unknown): AgentRunBudget | undefined {
     : undefined
 }
 
+/** 领域预算对象 → 请求体蛇形键（只带显式给出且 > 0 的维度；0 / 负数视为不覆盖） */
+export function toAgentBudgetRequestDto(
+  budget: AgentRunBudget | undefined
+): Record<string, number> | undefined {
+  if (!budget) return undefined
+  const dto: Record<string, number> = {}
+  const pairs: Array<[AgentBudgetDimension, number | undefined]> = [
+    [AGENT_BUDGET_DIMENSION.ROUNDS, budget.maxRounds],
+    [AGENT_BUDGET_DIMENSION.TOOL_CALLS, budget.maxToolCalls],
+    [AGENT_BUDGET_DIMENSION.TOKENS, budget.maxTokens],
+    [AGENT_BUDGET_DIMENSION.DURATION, budget.maxDurationSeconds],
+    [AGENT_BUDGET_DIMENSION.OUTPUT, budget.maxOutputBytes],
+  ]
+  const snakeKeys: Record<AgentBudgetDimension, string> = {
+    maxRounds: 'max_rounds',
+    maxToolCalls: 'max_tool_calls',
+    maxTokens: 'max_tokens',
+    maxDurationSeconds: 'max_duration_seconds',
+    maxOutputBytes: 'max_output_bytes',
+  }
+  for (const [key, value] of pairs) {
+    if (value === undefined || !Number.isFinite(value) || value <= 0) continue
+    dto[snakeKeys[key]] = Math.trunc(value)
+  }
+  return Object.keys(dto).length > 0 ? dto : undefined
+}
+
+/** run_started.payload.pause_policy（仅 Auto）→ 领域暂停策略 */
+export function toAgentPausePolicy(value: unknown): AgentRunPausePolicy | undefined {
+  if (!isObject(value)) return undefined
+  const budgetRatio = toFiniteNumber(value['budget_ratio'])
+  const consecutiveFailures = toFiniteNumber(value['consecutive_failures'])
+  if (budgetRatio === undefined && consecutiveFailures === undefined) return undefined
+  return { budgetRatio, consecutiveFailures }
+}
+
+/** auto_step / run_paused 载荷的 usage → 领域用量（缺字段按 0，不让展示层出现 NaN） */
+export function toAgentAutoUsage(value: unknown): AgentAutoUsage {
+  const raw = isObject(value) ? value : {}
+  return {
+    rounds: toFiniteNumber(raw['rounds']) ?? 0,
+    toolCalls: toFiniteNumber(raw['tool_calls']) ?? 0,
+    tokens: toFiniteNumber(raw['tokens']) ?? 0,
+    elapsedSeconds: toFiniteNumber(raw['elapsed_seconds']) ?? 0,
+    outputBytes: toFiniteNumber(raw['output_bytes']) ?? 0,
+  }
+}
+
+/** auto_step.payload.ratios → 各维度消耗比（未知维度丢弃；未启用维度不在表内） */
+function toAgentBudgetRatios(
+  value: unknown
+): Partial<Record<AgentBudgetDimension, number>> | undefined {
+  if (!isObject(value)) return undefined
+  const ratios: Partial<Record<AgentBudgetDimension, number>> = {}
+  const known: Record<string, AgentBudgetDimension> = {
+    max_rounds: AGENT_BUDGET_DIMENSION.ROUNDS,
+    max_tool_calls: AGENT_BUDGET_DIMENSION.TOOL_CALLS,
+    max_tokens: AGENT_BUDGET_DIMENSION.TOKENS,
+    max_duration_seconds: AGENT_BUDGET_DIMENSION.DURATION,
+    max_output_bytes: AGENT_BUDGET_DIMENSION.OUTPUT,
+  }
+  for (const [rawKey, dimension] of Object.entries(known)) {
+    const ratio = toFiniteNumber(value[rawKey])
+    if (ratio !== undefined) ratios[dimension] = ratio
+  }
+  return Object.keys(ratios).length > 0 ? ratios : undefined
+}
+
+/** auto_step.payload.artifacts → 产物摘要（非数组 / 缺 id 的条目丢弃） */
+function toAgentAutoArtifacts(value: unknown): AgentAutoArtifact[] {
+  if (!Array.isArray(value)) return []
+  const artifacts: AgentAutoArtifact[] = []
+  for (const item of value) {
+    if (!isObject(item)) continue
+    const id = toStringValue(item['id'])
+    if (!id) continue
+    artifacts.push({
+      id,
+      kind: toStringValue(item['kind']) ?? '',
+      uri: toStringValue(item['uri']) ?? '',
+    })
+  }
+  return artifacts
+}
+
+/** auto_step 载荷 → 领域进度快照（step 缺失视为契约不符，返回 null 丢弃该事件） */
+export function toAgentAutoProgress(value: unknown): AgentAutoProgress | null {
+  if (!isObject(value)) return null
+  const step = toFiniteNumber(value['step'])
+  if (step === undefined) return null
+  const phase = toStringValue(value['phase'])
+  return {
+    step,
+    turn: toFiniteNumber(value['turn']),
+    phase: phase as AgentAutoStepPhase | undefined,
+    goal: toStringValue(value['goal']),
+    plan: toStringValue(value['plan']),
+    usage: toAgentAutoUsage(value['usage']),
+    limits: toAgentBudget(value['limits']),
+    ratios: toAgentBudgetRatios(value['ratios']),
+    ratio: toFiniteNumber(value['ratio']) ?? 0,
+    consecutiveFailures: toFiniteNumber(value['consecutive_failures']) ?? 0,
+    idleNudges: toFiniteNumber(value['idle_nudges']),
+    artifactCount:
+      toFiniteNumber(value['artifact_count']) ??
+      toAgentAutoArtifacts(value['artifacts']).length,
+    artifacts: toAgentAutoArtifacts(value['artifacts']),
+    instruction: toStringValue(value['instruction']),
+    pauseReason: normalizePauseReason(value['pause_reason']),
+  }
+}
+
+/** run_paused 载荷 → 暂停事实（策略阈值随事件下发，用于展示「暂停点」） */
+export function toAgentAutoPause(value: unknown): AgentAutoPause {
+  const raw = isObject(value) ? value : {}
+  return {
+    reason: normalizePauseReason(raw['reason']),
+    usage: isObject(raw['usage']) ? toAgentAutoUsage(raw['usage']) : undefined,
+    limits: toAgentBudget(raw['limits']),
+    ratio: toFiniteNumber(raw['ratio']),
+    consecutiveFailures: toFiniteNumber(raw['consecutive_failures']) ?? 0,
+    policy: {
+      budgetRatio: toFiniteNumber(raw['pause_budget_ratio']),
+      consecutiveFailures: toFiniteNumber(raw['pause_consecutive_failures']),
+    },
+    at: toUtcIso(raw['timestamp']),
+  }
+}
+
 /** snake_case sourceRefs → camelCase 域对象（非数组/字段缺失返回 undefined） */
 export function toAgentSourceRefs(value: unknown): AgentEventSourceRef[] | undefined {
   if (!Array.isArray(value)) return undefined
@@ -252,6 +403,8 @@ export function toAgentRun(dto: AgentRunDto): AgentRun {
     id: dto.id,
     sessionId: dto.session_id ?? '',
     status: normalizeRunStatus(dto.status),
+    // mode 缺省按 chat（旧 run 无该字段；只在 Auto 才需要区分展示）
+    mode: dto.mode === undefined ? undefined : normalizeRunMode(dto.mode),
     model: dto.model,
     tokenIn: toFiniteNumber(dto.token_in),
     tokenOut: toFiniteNumber(dto.token_out),
@@ -416,7 +569,14 @@ export function toAgentSessionCreateDto(title?: string): AgentSessionCreateDto {
 }
 
 export function toAgentRunCreateDto(input: AgentRunInput): AgentRunCreateDto {
-  return { message: input.message }
+  const dto: AgentRunCreateDto = { message: input.message }
+  // 只有 Auto 才带 mode / budget：普通对话保持 `{message}` 单口径（Auto 关闭不影响普通对话）
+  if (input.mode === 'auto') {
+    dto.mode = 'auto'
+    const budget = toAgentBudgetRequestDto(input.budget)
+    if (budget) dto.budget = budget
+  }
+  return dto
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -467,14 +627,16 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
 
   switch (type) {
     case AGENT_EVENT_TYPE.RUN_STARTED:
-      // 后端 run_started 载荷为 {user_message, session_id, model, budget}，无 status；
-      // 收到即代表 run 已受理进入执行，状态归一为 RUNNING。
+      // 后端 run_started 载荷为 {user_message, session_id, model, budget, mode,
+      // pause_policy?}，无 status；收到即代表 run 已受理进入执行，状态归一为 RUNNING。
       return {
         ...base,
         type: AGENT_EVENT_TYPE.RUN_STARTED,
         status: normalizeRunStatus(dto['status']),
         model: toStringValue(dto['model']),
         budget: toAgentBudget(dto['budget']),
+        mode: normalizeRunMode(dto['mode']),
+        pausePolicy: toAgentPausePolicy(dto['pause_policy']),
       }
     case AGENT_EVENT_TYPE.MESSAGE_DELTA: {
       const messageId = toStringValue(dto['message_id'])
@@ -549,6 +711,30 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
         batchTotal: toFiniteNumber(dto['batch_total']),
       }
     }
+    case AGENT_EVENT_TYPE.AUTO_STEP: {
+      // 真实载荷（auto_mode.AutoModeController.progress_payload）平铺在本帧：
+      // step / turn / phase / goal / plan / usage / limits / ratios / ratio /
+      // consecutive_failures / artifact_count / artifacts / instruction? / pause_reason?
+      const progress = toAgentAutoProgress(dto)
+      if (!progress) return null
+      return { ...base, type: AGENT_EVENT_TYPE.AUTO_STEP, progress }
+    }
+    case AGENT_EVENT_TYPE.RUN_PAUSED:
+      // reason ∈ {budget_threshold, consecutive_tool_failures} + 当时用量与策略阈值
+      return {
+        ...base,
+        type: AGENT_EVENT_TYPE.RUN_PAUSED,
+        pause: toAgentAutoPause(dto),
+      }
+    case AGENT_EVENT_TYPE.RUN_RESUMED:
+      return {
+        ...base,
+        type: AGENT_EVENT_TYPE.RUN_RESUMED,
+        pauseReason: normalizePauseReason(dto['pause_reason']),
+        ackedBudgetPause: dto['acked_budget_pause'] === true,
+        consecutiveFailures: toFiniteNumber(dto['consecutive_failures']),
+        budget: toAgentBudget(dto['budget']),
+      }
     case AGENT_EVENT_TYPE.CONTEXT_COMPACTED:
       // 真实载荷（context_assembler）：level / snapshot_version / token_count_before /
       // token_count_after / dropped_count / debug；debug 开启才附被裁消息与备忘。

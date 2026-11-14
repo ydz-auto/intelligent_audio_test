@@ -63,6 +63,8 @@ export const AGENT_API_PATHS = {
   run: (runId: string) => `/agent/runs/${encodeURIComponent(runId)}`,
   runEvents: (runId: string) => `/agent/runs/${encodeURIComponent(runId)}/events`,
   runCancel: (runId: string) => `/agent/runs/${encodeURIComponent(runId)}/cancel`,
+  /** Auto 暂停后继续（INT-2474；仅暂停态 Auto run，仍有待审批提案时 409） */
+  runResume: (runId: string) => `/agent/runs/${encodeURIComponent(runId)}/resume`,
   runApprovals: (runId: string) =>
     `/agent/runs/${encodeURIComponent(runId)}/approvals`,
   /** 审批决策（§9.4；批准/拒绝一条写操作提案，决策本身不执行业务写） */
@@ -257,6 +259,25 @@ export async function cancelAgentRun(
   const dto = await request<AgentRunDto>(
     'POST',
     AGENT_API_PATHS.runCancel(runId),
+    undefined,
+    options
+  )
+  return toAgentRun(dto)
+}
+
+/**
+ * POST /agent/runs/{id}/resume —— Auto 暂停后「继续」（INT-2474 §9.4）。
+ * 后端只在「暂停态 Auto run 且无待审批提案」时接受：其余情况 409
+ * （RUN_NOT_PAUSED，detail 里给出中文原因），页面据此刷新状态并提示。
+ * 与 cancel 同口径：恒返 RunResponse 快照。
+ */
+export async function resumeAgentRun(
+  runId: string,
+  options?: ApiRequestOptions
+): Promise<AgentRun> {
+  const dto = await request<AgentRunDto>(
+    'POST',
+    AGENT_API_PATHS.runResume(runId),
     undefined,
     options
   )

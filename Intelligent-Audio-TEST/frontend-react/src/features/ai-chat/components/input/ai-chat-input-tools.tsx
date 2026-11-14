@@ -18,7 +18,12 @@ import {
 } from '@/components/ui/tooltip'
 
 import { CHAT_CHANNEL, type ChatChannel, type ChatConfig, type LlmProvider } from '@/domain/models/aiChat'
+import {
+  AGENT_RUN_MODE,
+  type AgentRunMode,
+} from '@/domain/models/agent'
 import { CHAT_CHANNEL_COPY } from '@/features/ai-chat/constants'
+import { AutoModeSwitcher } from '../auto-mode/auto-mode-switcher'
 import { ChatChannelSwitcher } from './chat-channel-switcher'
 import { ModelProviderSwitcher } from './model-provider-switcher'
 
@@ -34,6 +39,9 @@ type AiChatInputToolsProps = {
   onSelectProvider: (providerId: string) => void
   onSelectModel: (providerId: string, modelId: string) => void
   onManageProviders: () => void
+  /** 运行模式（INT-2474；仅平台通道渲染切换器） */
+  runMode?: AgentRunMode
+  onRunModeChange?: (mode: AgentRunMode) => void
 }
 
 export function AiChatInputTools({
@@ -47,6 +55,8 @@ export function AiChatInputTools({
   onSelectProvider,
   onSelectModel,
   onManageProviders,
+  runMode = AGENT_RUN_MODE.CHAT,
+  onRunModeChange,
 }: AiChatInputToolsProps) {
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
 
@@ -68,18 +78,28 @@ export function AiChatInputTools({
         )}
 
         {channel === CHAT_CHANNEL.PLATFORM ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Badge className='text-muted-foreground' variant='secondary'>
-                  {CHAT_CHANNEL_COPY.platformModelBadge}
-                </Badge>
-              }
-            />
-            <TooltipContent>
-              <p>{CHAT_CHANNEL_COPY.platformHint}</p>
-            </TooltipContent>
-          </Tooltip>
+          <>
+            {/* 运行模式（INT-2474）：Auto 只在平台 Agent 通道可选 */}
+            {onRunModeChange && (
+              <AutoModeSwitcher
+                disabled={disabled}
+                mode={runMode}
+                onModeChange={onRunModeChange}
+              />
+            )}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Badge className='text-muted-foreground' variant='secondary'>
+                    {CHAT_CHANNEL_COPY.platformModelBadge}
+                  </Badge>
+                }
+              />
+              <TooltipContent>
+                <p>{CHAT_CHANNEL_COPY.platformHint}</p>
+              </TooltipContent>
+            </Tooltip>
+          </>
         ) : (
           <ModelProviderSwitcher
             className='bg-transparent shadow-none'

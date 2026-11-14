@@ -23,7 +23,14 @@ import {
   type ChatConfig,
   type LlmProvider,
 } from '@/domain/models/aiChat'
+import {
+  AGENT_AUTO_COPY,
+  AGENT_RUN_MODE,
+  type AgentRunBudget,
+  type AgentRunMode,
+} from '@/domain/models/agent'
 
+import { AutoBudgetSettings } from '../auto-mode/auto-budget-settings'
 import { AiChatInputTools } from './ai-chat-input-tools'
 
 type AiChatInputProps = {
@@ -52,6 +59,12 @@ type AiChatInputProps = {
   compact?: boolean
   /** 工具行左侧扩展槽（INT-2473：报告上下文选择器，只传不拥有数据） */
   contextSlot?: ReactNode
+  /** 运行模式（INT-2474：对话 / Auto；仅平台 Agent 通道提供切换） */
+  runMode?: AgentRunMode
+  onRunModeChange?: (mode: AgentRunMode) => void
+  /** Auto 预算（会话 config 里的收紧预算） */
+  autoBudget?: AgentRunBudget
+  onAutoBudgetChange?: (budget: AgentRunBudget | undefined) => void
 }
 
 export function AiChatInput({
@@ -74,6 +87,10 @@ export function AiChatInput({
   isStopping = false,
   compact = false,
   contextSlot,
+  runMode = AGENT_RUN_MODE.CHAT,
+  onRunModeChange,
+  autoBudget,
+  onAutoBudgetChange,
 }: AiChatInputProps) {
   const { canSubmit, shouldShowStop } = getInputControlState({
     disabled,
@@ -85,6 +102,10 @@ export function AiChatInput({
   const requiresProvider = channel === CHAT_CHANNEL.PROVIDER
   const effectiveCanSubmit =
     canSubmit && (!requiresProvider || providers.length > 0)
+
+  /** Auto 只在平台 Agent 通道可用（供应商直连无工具/预算，不能假装 Auto） */
+  const isPlatform = channel === CHAT_CHANNEL.PLATFORM
+  const isAutoMode = isPlatform && runMode === AGENT_RUN_MODE.AUTO
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -141,6 +162,14 @@ export function AiChatInput({
         className='border-border/70 bg-background/95 dark:bg-background/80 ring-foreground/5 shadow-[0_18px_60px_-32px_rgba(0,0,0,0.65)] ring-1 rounded-xl overflow-hidden transition-all duration-200 focus-within:border-primary/45 focus-within:ring-primary/15 focus-within:shadow-[0_22px_70px_-34px_rgba(0,0,0,0.75)]'
         onSubmit={handleSubmit}
       >
+        {/* Auto 预算：选 Auto 后启动前即可展示 / 收紧五项上限（§9.4） */}
+        {isAutoMode && onAutoBudgetChange && (
+          <AutoBudgetSettings
+            budget={autoBudget}
+            disabled={disabled}
+            onBudgetChange={onAutoBudgetChange}
+          />
+        )}
         <PromptInputTextarea
           autoCapitalize='off'
           autoComplete='off'
@@ -153,7 +182,11 @@ export function AiChatInput({
           disabled={disabled}
           onChange={(event) => onValueChange(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder='描述你的报告需求，例如：帮我把任务 #320 的测试结果生成一份报告'
+          placeholder={
+            isAutoMode
+              ? AGENT_AUTO_COPY.goalPlaceholder
+              : '描述你的报告需求，例如：帮我把任务 #320 的测试结果生成一份报告'
+          }
           ref={textareaRef}
           spellCheck={false}
           value={value}
@@ -171,9 +204,11 @@ export function AiChatInput({
                 hasMessages={hasMessages}
                 onClearMessages={onClearMessages}
                 onManageProviders={onManageProviders}
+                onRunModeChange={onRunModeChange}
                 onSelectModel={onSelectModel}
                 onSelectProvider={onSelectProvider}
                 providers={providers}
+                runMode={runMode}
               />
               <div className='flex items-center gap-1.5 md:hidden'>
                 {renderSubmitButton()}

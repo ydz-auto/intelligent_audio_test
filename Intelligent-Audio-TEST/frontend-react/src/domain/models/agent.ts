@@ -77,6 +77,12 @@ export const AGENT_EVENT_TYPE = {
   TOOL_RESULT: 'tool_result',
   APPROVAL_REQUIRED: 'approval_required',
   CONTEXT_COMPACTED: 'context_compacted',
+  /** Auto 模式每轮进度（当前步骤 / 预算水位 / 产物；INT-2474 §9.4） */
+  AUTO_STEP: 'auto_step',
+  /** Auto 暂停（预算到阈值 / 连续工具失败；run 转 WAITING_APPROVAL） */
+  RUN_PAUSED: 'run_paused',
+  /** 用户确认继续（POST /agent/runs/{id}/resume） */
+  RUN_RESUMED: 'run_resumed',
   RUN_FINISHED: 'run_finished',
   ERROR: 'error',
 } as const
@@ -134,6 +140,8 @@ export interface AgentRun {
   id: string
   sessionId: string
   status: AgentRunStatus
+  /** 运行模式（INT-2474：chat / auto；缺省按 chat） */
+  mode?: AgentRunMode
   model?: string
   tokenIn?: number
   tokenOut?: number
@@ -284,6 +292,137 @@ export interface AgentRunBudget {
   maxOutputBytes?: number
 }
 
+/** 预算维度（领域键；creation 请求与进度展示共用，禁止散落字符串） */
+export const AGENT_BUDGET_DIMENSION = {
+  ROUNDS: 'maxRounds',
+  TOOL_CALLS: 'maxToolCalls',
+  TOKENS: 'maxTokens',
+  DURATION: 'maxDurationSeconds',
+  OUTPUT: 'maxOutputBytes',
+} as const
+
+export type AgentBudgetDimension =
+  (typeof AGENT_BUDGET_DIMENSION)[keyof typeof AGENT_BUDGET_DIMENSION]
+
+/** 预算维度中文名（Auto 预算设置与进度面板共用） */
+export const AGENT_BUDGET_DIMENSION_LABELS: Record<AgentBudgetDimension, string> = {
+  maxRounds: '轮次',
+  maxToolCalls: '工具调用',
+  maxTokens: 'token',
+  maxDurationSeconds: '时长',
+  maxOutputBytes: '输出字节',
+}
+
+/**
+ * Run 运行模式（INT-2474 §9.4）：
+ * - chat：单轮问答（默认，普通对话不受 Auto 影响）；
+ * - auto：目标驱动长任务（预算约束 + 进度汇报 + 暂停继续）。
+ */
+export const AGENT_RUN_MODE = {
+  CHAT: 'chat',
+  AUTO: 'auto',
+} as const
+
+export type AgentRunMode = (typeof AGENT_RUN_MODE)[keyof typeof AGENT_RUN_MODE]
+
+export function normalizeRunMode(value: unknown): AgentRunMode {
+  return value === AGENT_RUN_MODE.AUTO ? AGENT_RUN_MODE.AUTO : AGENT_RUN_MODE.CHAT
+}
+
+/** Auto 暂停原因（run_paused.payload.reason；§9.4） */
+export const AGENT_RUN_PAUSE_REASON = {
+  /** 预算消耗到暂停比例（默认 80%） */
+  BUDGET_THRESHOLD: 'budget_threshold',
+  /** 连续工具失败到暂停阈值（默认 2 次） */
+  CONSECUTIVE_TOOL_FAILURES: 'consecutive_tool_failures',
+} as const
+
+export type AgentRunPauseReason =
+  (typeof AGENT_RUN_PAUSE_REASON)[keyof typeof AGENT_RUN_PAUSE_REASON]
+
+export function normalizePauseReason(value: unknown): AgentRunPauseReason | undefined {
+  // 键名（BUDGET_THRESHOLD）与后端原值（budget_threshold）不同，必须按值匹配
+  return typeof value === 'string' &&
+    (Object.values(AGENT_RUN_PAUSE_REASON) as string[]).includes(value)
+    ? (value as AgentRunPauseReason)
+    : undefined
+}
+
+/** Auto 暂停策略（run_started.payload.pause_policy；启动前展示「何时会暂停」） */
+export interface AgentRunPausePolicy {
+  /** 预算消耗比例阈值（0–1；默认 0.8） */
+  budgetRatio?: number
+  /** 连续工具失败阈值（默认 2） */
+  consecutiveFailures?: number
+}
+
+/** Auto 步进阶段（auto_step.payload.phase） */
+export const AGENT_AUTO_STEP_PHASE = {
+  STEP: 'step',
+  CONTINUE: 'continue',
+  RESUME: 'resume',
+} as const
+
+export type AgentAutoStepPhase =
+  (typeof AGENT_AUTO_STEP_PHASE)[keyof typeof AGENT_AUTO_STEP_PHASE]
+
+/** Auto 预算水位用量（auto_step.payload.usage） */
+export interface AgentAutoUsage {
+  rounds: number
+  toolCalls: number
+  tokens: number
+  elapsedSeconds: number
+  outputBytes: number
+}
+
+/** Auto 已产出的工件摘要（只含 id / kind / uri，不含正文） */
+export interface AgentAutoArtifact {
+  id: string
+  kind: string
+  uri: string
+}
+
+/**
+ * Auto 进度快照（auto_step 事件归约；进度时间线 / 预算水位 / 产物）。
+ * 后端每轮一条，`phase` 标明本轮是正常步进、续跑提示还是用户确认继续。
+ */
+export interface AgentAutoProgress {
+  step: number
+  turn?: number
+  phase?: AgentAutoStepPhase
+  /** 目标（用户原始目标，模型首轮计划可能收窄） */
+  goal?: string
+  /** 当前计划（模型首轮写入 scratchpad.plan，随进度下发） */
+  plan?: string
+  usage: AgentAutoUsage
+  limits?: AgentRunBudget
+  /** 各维度消耗比（0–1；未启用的维度不在表内） */
+  ratios?: Partial<Record<AgentBudgetDimension, number>>
+  /** 最高维度消耗比 */
+  ratio: number
+  consecutiveFailures: number
+  /** 累计空转提示次数（重启恢复用，展示层忽略） */
+  idleNudges?: number
+  artifactCount: number
+  artifacts: AgentAutoArtifact[]
+  /** 续跑提示（continue / resume 两相另带；展示为「已回灌模型」提示） */
+  instruction?: string
+  pauseReason?: AgentRunPauseReason
+}
+
+/** Auto 暂停事实（run_paused 事件；run_resumed 后清空） */
+export interface AgentAutoPause {
+  reason?: AgentRunPauseReason
+  /** 暂停时的预算水位（可能与最近一条 auto_step 相同或更新） */
+  usage?: AgentAutoUsage
+  limits?: AgentRunBudget
+  ratio?: number
+  consecutiveFailures: number
+  /** 暂停策略（服务端在 run_paused 载荷里带同一份阈值；刷新恢复的占位事实缺省） */
+  policy?: AgentRunPausePolicy
+  at?: string
+}
+
 /** 审批决策结果（POST /agent/approvals/{id}/decision 的 {approval, run_status}） */
 export interface AgentApprovalDecisionResult {
   approval: AgentApproval
@@ -311,6 +450,33 @@ export interface AgentRunStartedEvent extends AgentRunEventBase {
   status: AgentRunStatus
   model?: string
   /** 本次 run 的预算上限（后端 run_started 载荷 budget） */
+  budget?: AgentRunBudget
+  /** 运行模式（INT-2474；缺省 chat） */
+  mode?: AgentRunMode
+  /** Auto 暂停策略（仅 Auto；启动前即可展示「何时会暂停」） */
+  pausePolicy?: AgentRunPausePolicy
+}
+
+/** Auto 每轮进度（§9.4；当前步骤 / 预算水位 / 产物 / 续跑提示） */
+export interface AgentAutoStepEvent extends AgentRunEventBase {
+  type: typeof AGENT_EVENT_TYPE.AUTO_STEP
+  progress: AgentAutoProgress
+}
+
+/** Auto 暂停（预算阈值 / 连续工具失败；run 转 WAITING_APPROVAL） */
+export interface AgentRunPausedEvent extends AgentRunEventBase {
+  type: typeof AGENT_EVENT_TYPE.RUN_PAUSED
+  pause: AgentAutoPause
+}
+
+/** 用户确认继续（记录暂停原因与预算确认，不产生正文） */
+export interface AgentRunResumedEvent extends AgentRunEventBase {
+  type: typeof AGENT_EVENT_TYPE.RUN_RESUMED
+  /** 被确认继续的暂停原因 */
+  pauseReason?: AgentRunPauseReason
+  /** 这次继续是否确认了预算暂停点（同一暂停点不再触发） */
+  ackedBudgetPause?: boolean
+  consecutiveFailures?: number
   budget?: AgentRunBudget
 }
 
@@ -399,13 +565,20 @@ export type AgentRunEvent =
   | AgentToolResultEvent
   | AgentApprovalRequiredEvent
   | AgentContextCompactedEvent
+  | AgentAutoStepEvent
+  | AgentRunPausedEvent
+  | AgentRunResumedEvent
   | AgentRunFinishedEvent
   | AgentErrorEvent
 
 /** 发起 run 的输入（POST /agent/sessions/{id}/runs） */
 export interface AgentRunInput {
-  /** 用户本轮消息正文 */
+  /** 用户本轮消息正文（Auto 模式下即目标描述） */
   message: string
+  /** 运行模式（缺省 chat；Auto 才带预算） */
+  mode?: AgentRunMode
+  /** 请求侧收紧预算（只能收紧，服务端取 min；0 / 负数视为不覆盖） */
+  budget?: AgentRunBudget
 }
 
 /**
@@ -456,6 +629,102 @@ export const AGENT_ERROR_COPY = {
   cancelFailed: '取消请求失败，请稍后重试',
   /** 空响应（run 既无事件也无终态） */
   emptyRun: 'Agent 未返回任何事件，请重试',
+} as const
+
+/**
+ * Auto 模式文案（§9.4 / INT-2474；interface 层与 application 层共用，归 domain）。
+ * 预算默认值只作「服务端默认」的说明文案（实际上限由服务端给定、请求只能收紧）。
+ */
+export const AGENT_AUTO_COPY = {
+  /** 模式切换 */
+  modeLabel: '运行模式',
+  modeChat: '对话',
+  modeChatHint: '单轮问答：一问一答，不自动多轮推进',
+  modeAuto: 'Auto',
+  modeAutoHint: '目标驱动：自动多轮推进，受预算约束，写操作仍需审批',
+  autoBadge: 'Auto',
+  /** 目标输入 */
+  goalPlaceholder:
+    '描述要让 Auto 完成的目标，例如：把标签为「回归测试」的用例全部跑一遍，再对比上次结果',
+  /** 预算设置 */
+  budgetTitle: 'Auto 预算',
+  budgetHint: '只能收紧、不能放宽：留空即用服务端默认，超限会导致运行停止',
+  budgetDefaultHint:
+    '服务端默认（§9.4）：轮次 60 · 工具调用 120 · token 4×上下文窗口 · 时长 30 分钟 · 输出 20MB',
+  budgetRounds: '最大轮次',
+  budgetToolCalls: '最大工具调用',
+  budgetTokens: '最大 token（输入+输出）',
+  budgetDuration: '最大时长',
+  budgetOutput: '最大输出',
+  unitRounds: '轮',
+  unitToolCalls: '次',
+  unitTokens: 'token',
+  unitMinutes: '分钟',
+  unitMegabytes: 'MB',
+  budgetPlaceholderDefault: '默认',
+  budgetInvalid: '请输入正整数，留空表示不收紧该项',
+  budgetOpen: '设置预算',
+  budgetClose: '收起预算',
+  /** 暂停策略 */
+  pausePolicy:
+    '预算消耗到 80% 或连续 2 次工具失败时暂停，等你确认继续；DESTRUCTIVE 操作始终逐条审批',
+  /** 进度面板 */
+  progressTitle: 'Auto 进度',
+  progressGoal: '目标',
+  progressPlan: '当前计划',
+  progressStep: '当前步骤',
+  progressStepUnit: '步',
+  progressBudget: '预算消耗',
+  progressArtifacts: '已产出',
+  progressArtifactCount: '个产物',
+  progressNoArtifacts: '暂无产物',
+  progressConsecutiveFailures: '连续失败',
+  progressTimes: '次',
+  progressInstruction: '已向模型回灌续跑提示',
+  phasePendingResume: '已暂停，等待你确认继续',
+  phaseResume: '已确认继续',
+  phaseContinue: '续跑中',
+  phaseStep: '执行中',
+  /** 暂停 / 继续 / 结束 */
+  pausedTitle: 'Auto 已暂停',
+  pausedBudget: '预算已消耗到暂停阈值，请确认是否继续',
+  pausedFailures: '连续 2 次工具失败，已暂停自动重试',
+  pausedUnknown: 'Auto 已暂停，请确认是否继续',
+  pausedUsage: '暂停时的预算水位',
+  resume: '继续运行',
+  resuming: '正在继续…',
+  resumeFailed: '继续失败，请稍后重试',
+  resumeNotPaused: '当前运行不处于暂停态，已刷新状态',
+  resumeNeedsApproval: '仍有待审批提案，请先处理审批卡再继续',
+  stop: '结束运行',
+  stopping: '正在结束…',
+  /** 终态 */
+  finishedTitle: 'Auto 已完成',
+  budgetExceededTitle: 'Auto 超出预算已停止',
+  budgetExceededDesc: '已完成步骤与产物保留，调整目标或预算后可重新发起',
+  circuitTitle: 'Auto 已熔断停止',
+  circuitDesc: '连续工具失败达上限，不再自动重试；已完成产物保留',
+  failedTitle: 'Auto 运行失败',
+  cancelledTitle: 'Auto 已结束',
+  /** 审批联动（Auto 下写操作仍逐条确认，不提供「全部自动批准」） */
+  approvalsTitle: '待审批写操作',
+  approvalsCount: '条待审批',
+  approvalsHint: 'Auto 模式不预授权高危操作，须逐条确认',
+  noBulkApprove: '不提供「全部自动批准」',
+  /** 刷新恢复 */
+  restoredPaused: 'Auto 运行处于暂停态（刷新前的进度不可回放），可继续或结束',
+  restoreHint: '刷新后仅恢复暂停状态，进度时间线在本轮不可回放',
+  /** 请求失败 */
+  sendFailed: 'Auto 任务发起失败，请稍后重试',
+  loadFailed: 'Auto 状态加载失败',
+} as const
+
+/** Auto 模式目标输入最小长度（后端 message min_length=1，空串不派发） */
+export const AUTO_GOAL_MIN_LENGTH = 1
+
+/** Auto 终态判定所需的错误码（后端 run_finished.error / 熔断原因） */
+export const AGENT_AUTO_ERROR_CODE = {
+  CONSECUTIVE_TOOL_FAILURES: 'CONSECUTIVE_TOOL_FAILURES',
 } as const
 
 /**
