@@ -135,7 +135,7 @@ skill 包内 **SKILL.md** 包含：能力清单、服务地址配置说明、Acc
 
 - skill 内所有 URL 路径**均可配置**，适配多网络环境（IP / http(s) 域名均支持）。
 - 入口页面默认取**当前浏览器地址栏**（`window.location.origin`，如 `http://192.168.x.x:5000`）作为服务地址，**可编辑修改**后再下载。
-- 下载时服务地址作为 `base_url` 参数传给 `GET /api/v1/agent/skill?base_url=<服务地址>`，注入 skill 包模板（SKILL.md 与 mcp.json 内 URL 预填该值）；后端另从 Host / Origin 头兜底。下载本身需登录（JWT）。
+- 下载时服务地址作为 `base_url` 参数传给 `GET /api/v1/agent/skill?base_url=<服务地址>`，注入 skill 包模板（SKILL.md 与 `assets/mcp.json` 内 URL 预填该值）；后端另从 Host / Origin 头兜底。下载本身需登录（JWT）。
 
 ### 3.4 用 token 调通能力接口示例
 

@@ -200,12 +200,12 @@ budgets:
 > `ALWAYS_AVAILABLE_TOOLS`（`shared/agent_tools/intent_tools.py:1438`），
 > `ContextAssembler.allowed_tools()` 返回的是
 > `frozenset(skill.meta.allowed_tools) | ALWAYS_AVAILABLE_TOOLS`
-> （`agent_service/application/context_assembler.py:241`），`run_orchestrator._scope_denial()`
+> （`agent_service/application/context_assembler.py:249`），`run_orchestrator._scope_denial()`
 > 命中即放行（`run_orchestrator.py:857` 先判 `ALWAYS_AVAILABLE_TOOLS` 再判 Skill 声明）。
 > 因此**激活任意 Skill 后这两个记忆工具仍可调用，不存在 `memory_write` 被
 > `SKILL_TOOL_DENIED` 拦下的问题**，Skill 正文也不是必须把它们写进 `allowed-tools`。
 > 唯一「仅通用会话可用」的是 `dashboard_query`（INT-2461）：它不在
-> `ALWAYS_AVAILABLE_TOOLS` 里，13 个 M1 Skill 也都没声明它。
+> `ALWAYS_AVAILABLE_TOOLS` 里，12 个 M1 Skill 也都没声明它。
 > 保留的后续拍板只有两条：记忆两工具是否并入基础工具集并在文档中显式声明、
 > `dashboard_query` 是否给 Skill 补声明；两者都不影响当前行为。
 > §16 的 INT-2556 条目按本条收口，相关缺陷卡不再按「未授权工具」处理。
@@ -1093,6 +1093,10 @@ M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参�
 
 敏感数据：音频、完整日志、Prompt 全文、模型 API Key 明文均不入事件表与日志；Key 只存密文与掩码，日志脱敏。
 
+> **例外（INT-2517 D4，与 §11-4 同一口径）**：续跑必需的回合消息与工具结果**可入库**；
+> system prompt、完整模型请求与密钥**不**入库、不落日志。即「不入库」清单是
+> 音频 / 完整日志 / system prompt / 完整请求 / 密钥，不是所有对话内容。
+
 ## 11. API 与 SSE
 
 | 方法 | 路径 | 说明 |
@@ -1353,7 +1357,7 @@ tests/agent_eval/coverage/       # M1 汇总评测：清单一致性 / 长尾 / 
 | 阶段 | 交付 | 验收 |
 |---|---|---|
 | M0 底座 | 单 loop、SkillRegistry、意图工具 **4 个（3 业务 + `tool_search`）**、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1 + T2（首期启用）；压缩 L1–L3；`platform-reference` | T1/T2 逃逸测试全拦截；50 轮压缩任务不丢事实（原写「60 轮」，实现下限 50 轮，见 §14 口径）；进程内重启模拟可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
-| M1 只读全平台 | 11 域只读意图工具；**§4.3 除 `app-api-onboarding` 外的 12 个** Skill 的 L1/L2；`tool_search` 轻量语义扩展（中文 bigram / 词表扩展，无向量，INT-2465；关键词检索 M0 已交付）；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%（当前为确定性词面代理，模型实测归 INT-2475）；无编造数值；记忆写入需审批 |
+| M1 只读全平台 | 11 域只读意图工具；**§4.3 除 `platform-reference` 与 `app-api-onboarding` 外的 12 个** Skill 的 L1/L2；`tool_search` 轻量语义扩展（中文 bigram / 词表扩展，无向量，INT-2465；关键词检索 M0 已交付）；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%（当前为确定性词面代理，模型实测归 INT-2475）；无编造数值；记忆写入需审批 |
 | M2 写操作与报告 | 探索-生成层（`ui_tree`/`ui_action`/`api_spec`）；写工具、审批、幂等；App/API 接入全流程（受理→发现→计划→生成→验证→迭代→交付）；驱动提案（设备驱动 + API 适配器，提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；**用户自定义 Skill（USER 级 CRUD + zip 导入导出 + 逐项校验 + 版本快照 + 触发门槛）+ Skill 管理页**；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；两类提案均可复现且未审批不写注册表；接入包在 staging 冒烟通过；三类报告指标与 Report Service 逐字段一致；自定义 Skill 不得提权、不得越权引用工具、同名不得覆盖内置、历史 run 按版本回放 |
 | M3 自动化与评测 | Auto 模式、预算/熔断、全量评测；**TENANT 级共享 Skill 与发布审核流**；外部 Skill zip/MCP 对齐、文档更新；**总开关灰度（租户 / 用户白名单，INT-2478）** | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致；**总闸关闭 / 灰度未命中与总闸关闭同一表现（`AGENT_DISABLED`，无后台 run）**；灰名单用户可用、非灰名单不可用；M0–M3 文档与实现对齐（07 / 08 / 09 回写完成） |
 
@@ -1418,7 +1422,7 @@ M3 门，登记在此、由后续前端卡收口：
 | A1 | 快照轮询到 `WAITING_APPROVAL` 时未触发 `refreshApprovals`，暂停恢复后审批卡可能不刷新 | `frontend-react/src/application/agent/agent-run-store.ts:648-649` | 轮询进入 `WAITING_APPROVAL` 时补一次审批刷新（后续前端卡） |
 | A2 | `runInput.mode` 用字面量 `'auto'` / `'chat'`，未走枚举常量 | `agent-run-store.ts:1178` | 收敛到域枚举（类型层面修正） |
 | A3 | `AGENT_AUTO_COPY.pausePolicy` / `restoreHint` 无引用，开跑前不展示暂停规则 | `frontend-react/src/**/agent-auto-copy.ts` | 开跑前展示暂停规则，或删掉未用文案 |
-| A4 | `auto-progress.ts` 暂停文案写「阈值」，未用实际 `pause.consecutive_failures` | `frontend-react/src/**/auto-progress.ts` | 文案改用事件下发的实际阈值 |
+| A4 | 连续失败暂停的**兜底文案**硬编码「连续 2 次」：`auto-progress.ts:168-180` 已优先用事件下发的 `policyFailures`，只有事件未带该值时才落到兜底 | `frontend-react/src/domain/models/agent.ts:716`（`AGENT_AUTO_COPY.pausedFailures`） | 兜底改为不带具体次数的表述，或由事件补齐阈值；已带阈值的正常路径无需改 |
 
 ### 已登记残留（INT-2609 / INT-2610 / INT-2621 文档批，2026-11-15）
 
@@ -1456,7 +1460,7 @@ M3 门，登记在此、由后续前端卡收口：
 | INT-2517 | D1–D7 | 已回写 §11 的「SSE 与信封口径」段（三种信封 / 游标 / error 帧 / 单通道 / 错误码 / skills 落点） |
 | INT-2522 | D1–D6 / P2-1~P2-3 | 已回写 §13.1、§12.1、§16 C1–C5、08 手册 §2/§4 |
 | INT-2523 / 2525 | 音频 / 算法域口径 | 已回写 §6.1 注、§6.2 参数口径、`docs/RBAC权限划分.md` §3.10、`contract.py` 状态标注 |
-| INT-2524 | 评估子维度「不独立算分」表述 | **已修**：`skills/evaluation-config/SKILL.md` 硬规则 6 |
+| INT-2524 | P1-1 评估子维度「不独立算分」表述；P2-1 导出一节缺「M1 未开放为意图工具」边界说明 | **P1-1 已修**：`skills/evaluation-config/SKILL.md` 硬规则 6（`:303`）；**P2-1 内容基线即有**：同文件 §导入导出 `:217-229`（「本工具链不承载文件上传……导入 / 导出请引导用户在产品『评估维度』页操作」），本条只补标注 |
 | INT-2532 | 沙箱接线 / 原因码映射 / 终态事件 | 已回写 §7 映射表、§9.3、§12.1 |
 | INT-2536 | ArtifactKind / dropped_ids / keep_recent_turns / SCRATCHPAD / 召回率 | 已回写 §5.3 注、§14-4、`context_assembler.py` / `context_budget.py` 注释 |
 | INT-2544 | 配置路径 `agent_service/config/config.py` | 已核对一致（见本节 C 段末） |
