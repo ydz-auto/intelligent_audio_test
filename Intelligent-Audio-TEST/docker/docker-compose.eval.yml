@@ -1,0 +1,39 @@
+# INT-2475：Agent 五层评测门禁的一次性容器（profile: eval）
+#
+# 复用 agent_service 镜像（**不改业务镜像**，不新增 Dockerfile），把仓库只读挂到
+# /repo 跑离线评测：端到端 / 单 Skill / 压缩 / 恢复。评测不连栈、不写业务库，
+# 模型与工具都是确定性替身，因此没有 depends_on、也不进 agent_internal 网络。
+#
+# 沙箱层需要宿主 Docker（T1 一次性容器 / T2 runsc），容器内拿不到 docker CLI，
+# 所以这里固定 --sandbox-tier none；合并门禁请在宿主执行完整五层：
+#
+#   # 一次性容器（四层）
+#   docker compose -f docker/docker-compose.eval.yml --profile eval run --rm agent_eval
+#   # 宿主完整五层（含沙箱）
+#   python scripts/run_agent_eval.py --out ./eval-out
+#
+# 报告：宿主 docker/eval-out/report.json + report.md（容器内 /app/eval-out）。
+# --changed-skills auto 需要 .git（worktree 的 .git 是文件、指向主仓库），
+# 容器内不可用；变更 Skill 门禁在宿主执行。
+name: intelligent-audio-test-eval
+
+services:
+  agent_eval:
+    profiles: ["eval"]
+    image: ${AGENT_EVAL_IMAGE:-intelligent-audio-test-agent_service:latest}
+    working_dir: /repo
+    environment:
+      AGENT_EVAL_LAYERS: "${AGENT_EVAL_LAYERS:-e2e,skill,compaction,recovery}"
+      AGENT_EVAL_SANDBOX_TIER: "${AGENT_EVAL_SANDBOX_TIER:-none}"
+      AGENT_EVAL_OUT: "/out"
+      # 离线评测的固定兜底（不连真库 / OSS；评测替身不读这些值做真实 IO）
+      DATABASE_URL: "sqlite:///:memory:"
+      OSS_ACCESS_KEY: eval
+      OSS_SECRET_KEY: eval
+    volumes:
+      # 仓库只读挂载（评测只有读代码 / 评测集）；报告单独挂到 /out，
+      # 避免在只读 bind 里创建嵌套挂载点（Docker 会在 ro 根 fs 上 mkdir 失败）。
+      - ..:/repo:ro
+      - ./eval-out:/out
+    command: ["python", "scripts/run_agent_eval.py"]
+    restart: "no"

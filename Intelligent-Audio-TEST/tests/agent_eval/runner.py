@@ -72,6 +72,42 @@ class GoldenMetrics:
 
 
 @dataclass
+class TaskSetMetrics:
+    """一次任务集运行的完整口径（INT-2475 门禁复用，含工具调用与成本）。
+
+    ``calls`` 逐条记录「任务 → 实际调用的工具 / 期望工具 / 激活 Skill」，
+    供门禁层核对工具选择正确率与权限边界；``cost`` 是确定性替身的成本快照
+    （模型轮次 / 工具调用 / 输入近似 token），用于报告「耗时与成本可观测」。
+    """
+
+    dataset: str
+    total: int
+    passed: int
+    failures: List[Dict[str, Any]] = field(default_factory=list)
+    tool_calls: int = 0
+    tool_selection_correct: int = 0
+    calls: List[Dict[str, Any]] = field(default_factory=list)
+    cost: Dict[str, int] = field(default_factory=dict)
+
+    @property
+    def success_rate(self) -> float:
+        return self.passed / self.total if self.total else 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'dataset': self.dataset,
+            'total': self.total,
+            'passed': self.passed,
+            'failed': self.total - self.passed,
+            'success_rate': round(self.success_rate, 4),
+            'tool_calls': self.tool_calls,
+            'tool_selection_correct': self.tool_selection_correct,
+            'failures': list(self.failures),
+            'cost': dict(self.cost),
+        }
+
+
+@dataclass
 class EvalReport:
     window: int
     golden: GoldenMetrics
@@ -168,6 +204,13 @@ class AgentEvalRunner:
 
     def run_golden(self, dataset: str = 'golden_tasks.json',
                    *, dataset_dir: Optional[str] = None) -> GoldenMetrics:
+        metrics = self.run_task_set(dataset, dataset_dir=dataset_dir)
+        return GoldenMetrics(total=metrics.total, passed=metrics.passed,
+                             failures=metrics.failures)
+
+    def run_task_set(self, dataset: str = 'golden_tasks.json',
+                     *, dataset_dir: Optional[str] = None) -> TaskSetMetrics:
+        """跑一个「事实问答」任务集，返回通过率 / 工具调用 / 成本明细。"""
         tasks = _load_json(dataset, dataset_dir)['tasks']
         _assert_dataset_truth(tasks, id_key='id')
         stats = SimulationStats()
@@ -178,6 +221,8 @@ class AgentEvalRunner:
             os.path.join(self._work_dir, db_name), model, gateway,
             compression=True)
         failures: List[Dict[str, Any]] = []
+        calls: List[Dict[str, Any]] = []
+        selection_correct = 0
         try:
             for task in tasks:
                 session = container.run_service.create_session(
@@ -190,9 +235,19 @@ class AgentEvalRunner:
                 }
                 message = f"[[EVAL {json.dumps(marker, ensure_ascii=False)}]] " \
                           f"{task['prompt']}"
+                calls_before = len(gateway.calls)
                 run, answer, status = self._run(
                     container, session, message,
                     active_skill=task.get('active_skill'))
+                called = [item['tool'] for item in gateway.calls[calls_before:]]
+                calls.append({
+                    'task_id': task['id'],
+                    'expected_tool': task['tool'],
+                    'called': called,
+                    'active_skill': task.get('active_skill'),
+                })
+                if called and set(called) == {task['tool']}:
+                    selection_correct += 1
                 tool_value = gateway.returned_facts.get(task['fact_key'])
                 reason = None
                 if status != 'SUCCEEDED':
@@ -210,8 +265,12 @@ class AgentEvalRunner:
                     })
         finally:
             container.shutdown()
-        return GoldenMetrics(total=len(tasks), passed=len(tasks) - len(failures),
-                             failures=failures)
+        return TaskSetMetrics(
+            dataset=dataset, total=len(tasks),
+            passed=len(tasks) - len(failures), failures=failures,
+            tool_calls=len(gateway.calls),
+            tool_selection_correct=selection_correct,
+            calls=calls, cost=stats.to_cost())
 
     def run_long_task(self, *, compression: bool) -> ScenarioMetrics:
         rounds = _load_json('long_task.json')['rounds']
@@ -250,7 +309,8 @@ class AgentEvalRunner:
             levels = _snapshot_levels(container, session)
         finally:
             container.shutdown()
-        return summarize_rounds(name, results, levels, run_failures)
+        return summarize_rounds(name, results, levels, run_failures,
+                                cost=stats.to_cost())
 
     def run_all(self) -> EvalReport:
         golden = self.run_golden()

@@ -14,6 +14,7 @@
     python scripts/sandbox_gate.py --tier t2       # T2 门禁（需 runsc）
     python scripts/sandbox_gate.py --tier all --pull
     python scripts/sandbox_gate.py --tier t2 --json
+    python scripts/sandbox_gate.py --json-out ./out/sandbox.json   # 五层门禁聚合
 
 退出码：0 全通过；1 用例失败/跳过；2 预检失败。
 """
@@ -115,6 +116,28 @@ def _skipped_count(output: str) -> int:
     return sum(int(value) for value in matches)
 
 
+def _summary_counts(output: str) -> dict:
+    """解析 pytest 摘要里的 passed / failed / skipped / error 数（报告口径）。"""
+    counts = {}
+    for name in ('passed', 'failed', 'skipped', 'error', 'errors'):
+        matches = re.findall(r'(\d+) ' + name + r'\b', output)
+        if matches:
+            counts['error' if name == 'errors' else name] = sum(
+                int(value) for value in matches)
+    return counts
+
+
+def _write_json_out(args, payload: dict) -> None:
+    """把机器可读结果另存一份（INT-2475 五层门禁聚合用）。"""
+    if not getattr(args, 'json_out', ''):
+        return
+    path = os.path.abspath(args.json_out)
+    os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+        handle.write('\n')
+
+
 def _clean_env() -> dict:
     """不带宿主 AGENT_SANDBOX_* 变量，门禁结果只取决于本脚本显式配置。"""
     return {k: v for k, v in os.environ.items() if not k.startswith('AGENT_SANDBOX_')}
@@ -126,6 +149,8 @@ def main() -> int:
                         help='门禁层级：t1（默认）/ t2（需 runsc）/ all')
     parser.add_argument('--pull', action='store_true', help='镜像缺失时先 docker pull')
     parser.add_argument('--json', action='store_true', help='输出机器可读结果')
+    parser.add_argument('--json-out', default='',
+                        help='把机器可读结果另存为文件（供五层评测聚合）')
     parser.add_argument('--image', default=DEFAULT_IMAGE, help='沙箱镜像（默认 python:3.11-slim）')
     parser.add_argument('--t2-image', default=os.environ.get('AGENT_SANDBOX_T2_IMAGE', DEFAULT_IMAGE),
                         help='T2 沙箱镜像（默认 python:3.11-slim）')
@@ -169,16 +194,19 @@ def main() -> int:
     leftover = [name for label in labels for name in _leftover_containers(label)]
     passed = result.returncode == 0 and not skipped and not leftover
 
+    payload = {
+        'gate': f'INT-2455/INT-2489:{args.tier}',
+        'pass': passed,
+        'pytest_exit': result.returncode,
+        'skipped_any': skipped,
+        'leftover_containers': leftover,
+        'image': args.image,
+        'tier': args.tier,
+        'counts': _summary_counts(output),
+    }
     if args.json:
-        print(json.dumps({
-            'gate': f'INT-2455/INT-2489:{args.tier}',
-            'pass': passed,
-            'pytest_exit': result.returncode,
-            'skipped_any': skipped,
-            'leftover_containers': leftover,
-            'image': args.image,
-            'tier': args.tier,
-        }, ensure_ascii=False, indent=2))
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    _write_json_out(args, payload)
     print(f'==== {args.tier.upper()} 沙箱门禁: ' + ('PASS' if passed else 'FAIL') + ' ====')
     if not passed:
         if skipped:
@@ -190,13 +218,15 @@ def main() -> int:
 
 def _fail(args, stage: str, detail: str) -> int:
     print(f'[FAIL] {stage}：{detail}')
+    payload = {
+        'gate': f'INT-2455/INT-2489:{args.tier}',
+        'pass': False,
+        'stage': stage,
+        'detail': detail,
+    }
     if args.json:
-        print(json.dumps({
-            'gate': f'INT-2455/INT-2489:{args.tier}',
-            'pass': False,
-            'stage': stage,
-            'detail': detail,
-        }, ensure_ascii=False, indent=2))
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    _write_json_out(args, payload)
     return 2
 
 

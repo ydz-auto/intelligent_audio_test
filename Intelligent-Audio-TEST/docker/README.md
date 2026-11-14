@@ -350,6 +350,34 @@ compose 新增 `agent_service`（`docker/Dockerfile.agent_service`），依赖
 > `t2_runtime.status` 会是 `unavailable`，属预期结论而非缺陷；T2 真机用例
 > 在 `tests/agent_sandbox` 里按运行时缺失 skip。
 
+### 8.2 Agent 五层评测门禁（INT-2475）
+
+评测门禁是**离线**工具链，不是常驻服务：不连网关 / 数据库 / OSS，模型与工具都是
+确定性替身，因此不需要改业务镜像，也不需要把容器放进 `agent_internal`。
+
+- **入口（宿主，五层全跑）**：`python scripts/run_agent_eval.py`。默认沙箱 T1
+  （需 Docker + `python:3.11-slim`）；`--sandbox-tier t2` 需宿主已注册
+  `runsc`（同 §8.1 T2 运行时）。产物 `tests/agent_eval/out/report.json` +
+  `report.md`（可用 `--out` / `AGENT_EVAL_OUT` 改到构建产物目录）。
+- **退出码**：0 全通过；1 有层未通过；2 基础设施不可用（Docker / 镜像 / runsc /
+  评测集缺失）。CI 据此区分「用例失败」与「环境不可用」。
+- **变更 Skill 门禁**：`--changed-skills auto --base-ref V10.11.2` 按 `git diff`
+  （含工作区未提交改动）只跑变更 Skill 的集合，失败项精确到 `skill:<name>`。
+- **一次性容器（四层）**：`docker/docker-compose.eval.yml` 复用
+  `agent_service` 镜像（`AGENT_EVAL_IMAGE` 可覆盖），把仓库只读挂到 `/app`，
+  报告写宿主 `docker/eval-out/`：
+
+  ```bash
+  docker compose -f docker/docker-compose.eval.yml --profile eval run --rm agent_eval
+  ```
+
+  容器内没有 docker CLI / `.git`，故固定 `--sandbox-tier none`，且
+  `--changed-skills auto` 不可用；**合并门禁仍应在宿主跑完整五层**，容器只作
+  无宿主环境的四层回归。
+- **口径边界**：Skill 触发是确定性词面代理（`trigger_proxy: true`），不是模型
+  实测；成本是确定性替身的相对口径（轮次 / 工具调用 / 近似 token），不产生计费。
+  详见 `tests/agent_eval/README.md` 与方案 07 §14.1。
+
 ## 9. 演示前端部署（15173 / 16173）的三道护栏（INT-2012）
 
 `docker/deploy_demo_frontends.ps1` 把 build 产物打进 nginx 镜像托管两个演示地址。2026-10-26 起

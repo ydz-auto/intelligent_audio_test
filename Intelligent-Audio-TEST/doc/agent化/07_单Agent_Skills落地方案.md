@@ -1132,6 +1132,40 @@ tests/agent_eval/coverage/       # M1 汇总评测：清单一致性 / 长尾 / 
 > 做词面打分，**不调用真实模型**。真实模型级触发准确率需要用户供应商 Key / 计费通道，
 > 归 M3 全量评测卡 INT-2475；代理结论不等同于模型实测。
 
+### 14.1 评测门禁落地（INT-2475，2026-11-14）
+
+五层评测集入库 + 一条命令 + 非 0 退出码即门禁（仓库当前无 CI 配置，先落「脚本 +
+文档 + 退出码」，接外部 CI 另行立项）。实现：`tests/agent_eval/gate.py`（层与阈值）、
+`scripts/run_agent_eval.py`（入口）、`tests/agent_eval/README.md`（用法与口径）。
+
+| 层 | 评测集 | 门槛 | 失败集合名 |
+|---|---|---|---|
+| 端到端 | `datasets/e2e_cross_domain.json`（清单）→ `golden_tasks.json`（10）+ `no_fabrication_tasks.json`（30） | 成功率 ≥95%、编造 0、越权 0 | `e2e:<dataset>` / `e2e:success_rate` / `e2e:permission_boundary` |
+| 单 Skill | `coverage/datasets/skill_trigger_tasks.json`（14 Skill × ≥10） | 每条 ≥10、触发准确率 ≥90%、L1 描述可追溯 | `skill:<name>` |
+| 压缩 | `datasets/long_task.json`（68 轮，关/开各跑一遍） | 成功率差 ≤5 点、事实召回 ≥95%、观察到压缩 | `compaction:long_task` |
+| 沙箱 | `tests/agent_sandbox/`（T1 默认，T2 按宿主 runsc 可选） | 100% 拦截、无跳过、无遗留容器 | `sandbox:<tier>` |
+| 恢复 | `tests/agent_eval/auto/`（kill Worker / 暂停继续） | 用例全过且「不重复写」用例在场 | `recovery:kill_worker` |
+
+- **入口**：`python scripts/run_agent_eval.py`。产物 `<out>/report.json`（层结果 /
+  失败集合 / 数据集版本 / 成本 / exit_code）与 `<out>/report.md`。
+- **退出码**：0 全通过；1 有层未通过；2 基础设施不可用（Docker / 镜像 / runsc /
+  评测集缺失），与「用例失败」区分。
+- **Skill 变更门禁**：`--changed-skills auto --base-ref <ref>` 按 `git diff`（含工作区
+  未提交改动）判定变更 Skill，只跑对应集合；失败项精确到 `skill:<name>`，即「故意改坏
+  一个 Skill，门禁失败并指出具体集合」。门禁同时校验代理词汇表能在 L1 描述里找到依据，
+  改坏正文不会被词表兜底掩盖。
+- **版本化**：评测集全部入库并带整数 `version`，缺失即按基础设施错误退出；端到端任务集
+  由 `datasets/e2e_cross_domain.json` 清单登记，新增域只加成员 + version，不改评测代码。
+- **成本可观测**：每层墙钟耗时 + 模型轮次 / 工具调用 / 输入字符（近似 token = chars/4）。
+  确定性替身不产生真实计费，用于**相对**成本回归。
+- **口径边界**：Skill 触发仍是确定性词面代理（`trigger_proxy: true`），**不是模型实测**；
+  模型级触发 / 工具选择准确率需要用户供应商 Key，本门禁未覆盖，报告与文档均按代理口径
+  表述，不冒充模型结论。`runner.py` 的「工具选择正确率」是 Loop 派发口径（实际调用工具
+  == 任务声明工具）。
+- **沙箱层级**：默认 T1；T2 需宿主 Docker 已注册 gVisor `runsc`，缺失时门禁按
+  `unavailable`（exit 2）上报，不静默降级。`--sandbox-tier none` 仅在无 Docker 的
+  本地排障时使用，不作为合并门禁证据。
+
 ## 15. 里程碑与验收
 
 | 阶段 | 交付 | 验收 |

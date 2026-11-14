@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""12 个 M1 Skill 的触发评测代理（INT-2465 汇总）。
+"""Skill 触发评测代理（INT-2465 汇总；INT-2475 纳入 M2 的 app-api-onboarding）。
 
 口径：**确定性词面代理**，不是真实模型调用。评分只用 Skill 的 L1
 ``description``（「触发词：」段）+ 本域词汇表；同域近义说法靠词汇表收敛，
 避免「描述没写、代理替它兜底」。真实模型级触发评测需要供应商 Key / 计费
-通道，本 run 不跑，结论在交付评论里注明。
+通道，五层门禁（``tests/agent_eval/gate.py``）默认跑本代理，结论按代理口径
+表述，不冒充模型实测。
 
 评分 = Σ(命中词长度²)，域词汇表与触发词同权；平局先比最长命中词，再比
 Skill 名（与 SkillRegistry 目录序一致）。0 分视为未命中。
@@ -26,8 +27,10 @@ M1_SKILLS: Tuple[str, ...] = (
     'evaluation-config', 'log-diagnostics', 'report-compare', 'report-studio',
     'spl-calibration', 'tag-group', 'task-operations', 'testcase-authoring',
 )
+# M2 追加的 Skill（§4.3 / §6.6）：INT-2475 起纳入「每 Skill ≥10 条」口径
+M2_SKILLS: Tuple[str, ...] = ('app-api-onboarding',)
 EXTRA_SKILLS: Tuple[str, ...] = ('platform-reference',)
-ALL_SKILLS: Tuple[str, ...] = M1_SKILLS + EXTRA_SKILLS
+ALL_SKILLS: Tuple[str, ...] = M1_SKILLS + M2_SKILLS + EXTRA_SKILLS
 
 # 域词汇表：每个 Skill 的口语核心词（与 L1 触发词同域，不跨域借词）。
 # 词汇表只做「同义收敛」，不替代 description —— 测试同时校验这些词能在
@@ -65,6 +68,9 @@ DOMAIN_TERMS: Dict[str, Tuple[str, ...]] = {
     'testcase-authoring': (
         '用例', '轮次', '参考参数', '用例导出', '用例统计', '分组下的用例',
         '标注生成用例', '用例变体'),
+    'app-api-onboarding': (
+        '接入 app', '接入 api', '接入包', 'onboarding', '测量路径',
+        '冒烟用例', 'ui_trace', 'capabilities', '接入计划', '缺口清单'),
     'platform-reference': (
         '接口', '字段', '枚举', '权限码', 'schema', 'tool_search', '平台',
         '状态枚举', '返回的是什么类型'),
@@ -78,9 +84,9 @@ def skills_root() -> str:
     return os.path.join(_PROJECT_ROOT, 'skills')
 
 
-def load_skills() -> SkillRegistry:
+def load_skills(root: str = None) -> SkillRegistry:
     return SkillRegistry(
-        FsSkillRepository(skills_root()),
+        FsSkillRepository(root or skills_root()),
         known_tools=lambda: [t.name for t in INTENT_TOOLS]).load()
 
 
@@ -137,6 +143,7 @@ def describe(registry: SkillRegistry = None) -> Dict[str, List[str]]:
 
 
 __all__ = [
-    'ALL_SKILLS', 'DOMAIN_TERMS', 'EXTRA_SKILLS', 'M1_SKILLS', 'describe',
-    'load_skills', 'route', 'score_skill', 'skill_terms', 'skills_root',
+    'ALL_SKILLS', 'DOMAIN_TERMS', 'EXTRA_SKILLS', 'M1_SKILLS', 'M2_SKILLS',
+    'describe', 'load_skills', 'route', 'score_skill', 'skill_terms',
+    'skills_root',
 ]
