@@ -90,6 +90,7 @@ pip install -r requirements.txt
 # ASR_SERVER_URL=http://<ASR主机IP>:10095
 # ASR_TIMEOUT=120
 # LLM_JUDGE_API_KEY=<LLM中转站API Key>
+# EVAL_ADMIN_TOKEN=<管理令牌>             # 可选：启用 PUT /admin/config/api_key 运行时更新 LLM_JUDGE_API_KEY（无需重启）
 # 结构配置在 config.yaml（端口 / 并发 / LLM 默认模型 / 品牌识别规则等）
 
 # 启动服务

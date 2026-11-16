@@ -454,7 +454,21 @@ create_task
 
 ## 11. 配置
 
-配置加载顺序：`config.yaml`（默认值）→ `.env`（密钥与部署级覆盖）→ `config.LLM_JUDGE` 等单例暴露。修改后需重启 eval_server 生效。
+配置加载顺序：`config.yaml`（默认值）→ `.env`（密钥与部署级覆盖）→ `config.LLM_JUDGE` 等单例暴露。除 `LLM_JUDGE_API_KEY` 可通过管理端点运行时更新（见 11.1）外，其余配置修改后需重启 eval_server 生效。
+
+### 11.1 管理端点：运行时更新 LLM_JUDGE_API_KEY（VEGA-77）
+
+`PUT /admin/config/api_key`，请求头 `X-Admin-Token: <EVAL_ADMIN_TOKEN 值>`，
+请求体 `{"key_name": "LLM_JUDGE_API_KEY", "api_key": "<新值>"}`。
+
+- 仅当 `.env` 配置了非空 `EVAL_ADMIN_TOKEN` 后端点才启用（未设置/空串/纯空白
+  一律视为未配置，端点返回 403 禁用，默认安全）；token 比较为常数时间；
+- 流程：白名单校验 → 备份 `.env.bak`（单槽）→ 同目录临时文件 + `os.replace`
+  原子写回（保留其余行/注释/顺序/行尾）→ 更新 `os.environ` 与
+  `config.LLM_JUDGE['api_key']`，热生效无需重启（`get_llm_config()` 调用期
+  实时读取），重启后经 `.env` 仍生效；
+- 安全：无读端点（GET 返回 405），响应 data 只含 `key_name`/`updated_at`，
+  永不回显 key 值；日志仅一行结果记录，不含 key 值与 token 值。
 
 ### eval_server .env（密钥与部署覆盖）
 

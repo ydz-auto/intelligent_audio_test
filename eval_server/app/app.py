@@ -1,5 +1,6 @@
 from flask import Flask
 from .config import config
+from .controllers.admin import admin_bp
 from .controllers.api import api_bp
 from .controllers.health import health_bp
 from .models.task import TaskModel
@@ -52,6 +53,7 @@ def create_app():
     # 注册蓝图
     app.register_blueprint(health_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(admin_bp)
 
     # 启动后台 worker
     TaskService.start_worker()
