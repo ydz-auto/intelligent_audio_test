@@ -28,11 +28,18 @@ function jsonResponse(payload: unknown, status = 200): Response {
   })
 }
 
+/** zip 字节转 Response 体：复制到独立 ArrayBuffer，满足 BodyInit 类型约束。 */
+function zipBody(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
+}
+
 async function zipResponse(skillMd: string): Promise<Response> {
   const zip = new JSZip()
   zip.file('SKILL.md', skillMd)
   const bytes = await zip.generateAsync({ type: 'uint8array' })
-  return new Response(bytes, {
+  return new Response(zipBody(bytes), {
     status: 200,
     headers: { 'Content-Type': 'application/zip' },
   })
@@ -233,7 +240,7 @@ describe('agentSkillApi', () => {
         const zip = new JSZip()
         zip.file('README.md', '# not a skill')
         const bytes = await zip.generateAsync({ type: 'uint8array' })
-        return new Response(bytes, { status: 200 })
+        return new Response(zipBody(bytes), { status: 200 })
       })
     )
 
