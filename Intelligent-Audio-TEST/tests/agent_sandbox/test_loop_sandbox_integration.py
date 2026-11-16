@@ -75,8 +75,17 @@ def _dispatcher(skill_root: Path, executor) -> SandboxScriptDispatcher:
 
 def _run(container, message='执行脚本'):
     session = new_session(container)
+    # 集成用例只验证沙箱行为，不验证预算语义：显式放宽单 run 预算，
+    # 避免并发/镜像预热等环境抖动被判定为 BUDGET_EXCEEDED（测试隔离缺陷）。
     run, created = container.run_service.create_run(
-        session.id, owner_id=7, tenant_id='t1', message=message)
+        session.id, owner_id=7, tenant_id='t1', message=message,
+        budget_overrides={
+            'max_rounds': 6,
+            'max_tool_calls': 20,
+            'max_tokens': 200000,
+            'max_duration_seconds': 600,
+            'max_output_bytes': 8 * 1024 * 1024,
+        })
     assert created
     container.executor.submit(run.id)
     return run
