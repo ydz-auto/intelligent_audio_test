@@ -289,7 +289,7 @@ def _format_chunks_timeline(chunks, max_items=TIMELINE_MAX_ITEMS_CHUNKS):
             lines.append(f"  [{ts[0]:.2f}-{ts[1]:.2f}] {text}")
         else:
             lines.append(f"  {text}")
-    if len(chunks) > max_items:
+    if max_items is not None and len(chunks) > max_items:
         lines.append(f"  ...（共 {len(chunks)} 条，已截断）")
     return '\n'.join(lines)
 
@@ -302,7 +302,7 @@ def _format_pause_timeline(pause_intervals, max_items=TIMELINE_MAX_ITEMS_PAUSES)
         if ts and len(ts) >= 2:
             dur = ts[1] - ts[0]
             lines.append(f"  [{ts[0]:.2f}-{ts[1]:.2f}] （停顿{dur:.2f}秒）")
-    if len(pause_intervals) > max_items:
+    if max_items is not None and len(pause_intervals) > max_items:
         lines.append(f"  ...（共 {len(pause_intervals)} 条，已截断）")
     return '\n'.join(lines)
 
@@ -1025,8 +1025,8 @@ def _aggregate_chunks(chunks: List[Dict[str, Any]],
     """将词级 chunks 按停顿聚类为时间段（供 query 匹配 prompt 全量展示）。
 
     LLM 枚举单条词 chunk 的前提是时间线全部可见；多轮合并模式下一路 ASR
-    chunks 可达数百条，直接截断（TIMELINE_MAX_ITEMS_CHUNKS=30）会让 LLM
-    看不到后半段的 AI 回复而返回空 ai_chunks。这里按停顿聚成段：
+    chunks 可达数百条，若按词条条数截断会让 LLM 看不到后半段的 AI 回复
+    而返回空 ai_chunks。这里按停顿聚成段：
     - 相邻 chunk 间隙 ≤ gap_s 并入同一段（一轮语音/一段回复通常合为 1 段）
     - 间隙 > gap_s 断开（轮与轮之间的长停顿自然分段）
     - 无时间戳的 chunk 单独成段，保证仍可被 LLM 引用

@@ -43,9 +43,11 @@ ROUND_DIGITS = 3      # 数值聚合保留小数位
 TAKEOVER_OFFSET_MS = 40              # legacy 录屏 ASR 首词时延补偿（毫秒）
 TAKEOVER_FIRST_FRAME_OFFSET_MS = 100  # legacy 首帧时间戳固定偏移（毫秒）
 
-# ─────────── LLM 时间线展示截断 ───────────
-TIMELINE_MAX_ITEMS_CHUNKS = 30  # LLM prompt 中 chunks 时间线最大展示条数
-TIMELINE_MAX_ITEMS_PAUSES = 20  # LLM prompt 中 pause 时间线最大展示条数
+# ─────────── LLM 时间线展示 ───────────
+# 不设上限：词级时间线全量展示，避免截断后 LLM 拿不到用户最后一条语句（T_user），
+# 导致误接管判定只能依赖推断（None 表示展示全部）。
+TIMELINE_MAX_ITEMS_CHUNKS = None  # chunks 时间线展示条数上限（None=不限）
+TIMELINE_MAX_ITEMS_PAUSES = None  # pause 时间线展示条数上限（None=不限）
 QUERY_MATCH_MAX_SEGMENTS = 200  # query 匹配 prompt 中聚合段落最大展示条数（安全上限）
 
 # ─────────── 相似度阈值 ───────────
