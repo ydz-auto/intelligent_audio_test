@@ -157,13 +157,17 @@ def test_agent_service_is_off_the_default_network():
     assert 'default' not in _networks(compose, 'agent_service')
 
 
-def test_agent_internal_membership_is_only_gateway_db_redis():
+def test_agent_internal_membership_is_closed_set():
+    """内部网络成员是封闭集合：新增成员必须在本断言显式登记。"""
     compose = _compose()
     members = sorted(
         name for name, service in compose['services'].items()
         if 'agent_internal' in (service.get('networks') or []))
-    assert members == ['agent_service', 'api_gateway', 'postgres', 'redis']
-    for name in ('api_gateway', 'postgres', 'redis'):
+    # rustfs（INT-2591）：agent_service 不挂 default，Skills 资源读写需经
+    # http://rustfs:9000，容器内必须能解析该主机名。
+    assert members == ['agent_service', 'api_gateway', 'postgres', 'redis',
+                       'rustfs']
+    for name in ('api_gateway', 'postgres', 'redis', 'rustfs'):
         assert 'default' in _networks(compose, name), name
 
 
