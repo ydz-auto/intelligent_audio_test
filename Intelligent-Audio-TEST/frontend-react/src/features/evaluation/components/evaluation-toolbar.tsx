@@ -10,9 +10,7 @@ import { Search, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
-  ALGORITHM_FILTER_ALL_LABEL,
   CATEGORY_FILTER_ALL_LABEL,
   DIMENSION_SEARCH_PLACEHOLDER,
   STATUS_FILTER_OPTIONS,
@@ -28,12 +26,6 @@ export function EvaluationToolbar({
   categoryFilter,
   onCategoryFilter,
   categories,
-  algorithmFilter,
-  algorithmFacetValue,
-  onAlgorithmFilter,
-  algorithmOptions,
-  globalAlgorithmLabel,
-  onClearGlobalAlgorithm,
   canFilter,
   onReset,
 }: {
@@ -44,22 +36,13 @@ export function EvaluationToolbar({
   categoryFilter: string
   onCategoryFilter: (value: string) => void
   categories: EvaluationCategory[]
-  algorithmFilter: string
-  /** facet 实际生效值（显式选择优先，否则继承全局算法；无全局时 'all'） */
-  algorithmFacetValue: string
-  onAlgorithmFilter: (value: string) => void
-  algorithmOptions: Array<{ value: string; label: string }>
-  /** 全局算法名（联动 chip；null=无全局选择） */
-  globalAlgorithmLabel: string | null
-  onClearGlobalAlgorithm: () => void
   canFilter: boolean
   onReset: () => void
 }) {
   const isFiltered =
     searchValue.trim() !== '' ||
     statusFilter !== 'all' ||
-    categoryFilter !== 'all' ||
-    algorithmFilter !== 'all'
+    categoryFilter !== 'all'
 
   return (
     <div className='flex flex-wrap items-center gap-2'>

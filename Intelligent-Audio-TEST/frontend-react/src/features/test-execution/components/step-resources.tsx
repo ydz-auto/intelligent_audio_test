@@ -74,7 +74,6 @@ interface StepResourcesProps {
   readOnly: boolean
   onOpenApiEdit: (api?: ApiConfig) => void
   onOpenApiHealth: (api: ApiConfig) => void
-  onScanDevices: () => void
   onAddDevice: () => void
 }
 
@@ -83,7 +82,6 @@ export function StepResources({
   readOnly,
   onOpenApiEdit,
   onOpenApiHealth,
-  onScanDevices,
   onAddDevice,
 }: StepResourcesProps) {
   const { hasPermission } = usePermissions()

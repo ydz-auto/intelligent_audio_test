@@ -22,8 +22,8 @@ export const CASE_CONFIG_FIELD_PRESETS = [{ code: 'audios', name: '被播放音�
 
 /** 源参数选项（设备共用：用例参数 + 参考参数；评估按 source 取对应集合） */
 export function buildSourceOptions(
-  caseParams: Array<{ paramCode: string; paramName?: string }>,
-  referenceParams: Array<{ code: string; name?: string }>
+  caseParams: Array<{ paramCode: string; paramName?: string | null }>,
+  referenceParams: Array<{ code: string; name?: string | null }>
 ): ParamOption[] {
   return [
     ...caseParams.map((param) => ({
@@ -39,7 +39,7 @@ export function buildSourceOptions(
 
 /** 按 code 取参数名（caseParams / deviceParams 走 paramCode/paramName；referenceParams 走 code/name） */
 export function paramNameByCode(
-  list: Array<{ paramCode?: string; paramName?: string; code?: string; name?: string }>,
+  list: Array<{ paramCode?: string; paramName?: string | null; code?: string; name?: string | null }>,
   code: string
 ): string {
   if (!code) return ''
@@ -51,9 +51,9 @@ export function paramNameByCode(
 export function evalSourceParamName(
   source: string,
   code: string,
-  caseParams: Array<{ paramCode: string; paramName?: string }>,
-  referenceParams: Array<{ code: string; name?: string }>,
-  deviceParams: Array<{ paramCode: string; paramName?: string }>
+  caseParams: Array<{ paramCode: string; paramName?: string | null }>,
+  referenceParams: Array<{ code: string; name?: string | null }>,
+  deviceParams: Array<{ paramCode: string; paramName?: string | null }>
 ): string {
   if (!code) return ''
   switch (source) {
@@ -72,11 +72,11 @@ export function evalSourceParamName(
 /** 评估来源参数选项（按 source 取集合；V9.7.10 getSourceParams） */
 export function evalSourceOptions(
   source: string,
-  caseParams: Array<{ paramCode: string; paramName?: string }>,
-  referenceParams: Array<{ code: string; name?: string }>,
-  deviceParams: Array<{ paramCode: string; paramName?: string }>
+  caseParams: Array<{ paramCode: string; paramName?: string | null }>,
+  referenceParams: Array<{ code: string; name?: string | null }>,
+  deviceParams: Array<{ paramCode: string; paramName?: string | null }>
 ): ParamOption[] {
-  const toOptions = (list: Array<{ paramCode?: string; paramName?: string; code?: string; name?: string }>) =>
+  const toOptions = (list: Array<{ paramCode?: string; paramName?: string | null; code?: string; name?: string | null }>) =>
     list
       .map((param) => {
         const code = param.paramCode ?? param.code ?? ''
@@ -142,7 +142,7 @@ export const DEVICE_API_GROUP_LABEL: Record<DeviceApiGroupKey, string> = {
 
 export function deviceApiGroupKey(
   sourceParam: string,
-  caseParams: Array<{ paramCode: string; scope?: string }>,
+  caseParams: Array<{ paramCode: string; scope?: string | null }>,
   referenceParams: Array<{ code: string }>
 ): DeviceApiGroupKey {
   if (!sourceParam) return 'unknown'
@@ -165,7 +165,7 @@ export function evalGroupKey(row: { dimensionId?: string | null; dimensionName?:
 
 export function evalGroupName(
   key: string,
-  dimensions: Array<{ id: number; name: string }>,
+  dimensions: ReadonlyArray<{ id: number | string; name?: string | null }>,
   dimensionNameById: Map<string, string>
 ): string {
   if (key === '__none__') return '未指定维度'

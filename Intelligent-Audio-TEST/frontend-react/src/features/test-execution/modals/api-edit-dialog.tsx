@@ -2099,7 +2099,7 @@ function AudioFormatFields({
   value: AudioFormatDraft
   onChange: (patch: Partial<AudioFormatDraft>) => void
 }) {
-  const pick = (raw: string) => (raw && raw !== UNSET ? raw : '')
+  const pick = (raw: string | null) => (raw && raw !== UNSET ? raw : '')
   return (
     <div className='space-y-2'>
       <div>

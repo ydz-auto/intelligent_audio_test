@@ -139,9 +139,9 @@ export const EvaluationMappingRowView = memo(function EvaluationMappingRowView({
   sourceDisabled = false,
 }: {
   value: EvaluationMappingRowValues
-  caseParams: Array<{ paramCode: string; paramName?: string }>
-  referenceParams: Array<{ code: string; name?: string }>
-  deviceParams: Array<{ paramCode: string; paramName?: string }>
+  caseParams: Array<{ paramCode: string; paramName?: string | null }>
+  referenceParams: Array<{ code: string; name?: string | null }>
+  deviceParams: Array<{ paramCode: string; paramName?: string | null }>
   dimensions: Dimension[]
   categories?: EvaluationCategory[]
   /** 当前维度内的目标参数（`/algorithm/dimension-params`） */

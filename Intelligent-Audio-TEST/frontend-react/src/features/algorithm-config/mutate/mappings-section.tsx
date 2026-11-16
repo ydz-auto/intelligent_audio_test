@@ -96,11 +96,11 @@ function DeviceMappingSection({
 }: {
   form: UseFormReturn<AlgorithmFormValues>
   /** 用例参数（源参数选项 + 分组键 scope） */
-  caseParams: Array<{ paramCode: string; paramName?: string; scope: string }>
+  caseParams: Array<{ paramCode: string; paramName?: string | null; scope: string }>
   /** 参考参数（源参数选项 + 分组键） */
-  referenceParams: Array<{ code: string; name?: string }>
+  referenceParams: Array<{ code: string; name?: string | null }>
   /** 目标参数（设备参数） */
-  targetParams: Array<{ paramCode: string; paramName?: string }>
+  targetParams: Array<{ paramCode: string; paramName?: string | null }>
 }) {
   const arrayName = 'mappings.device' as const
   const sectionLabel = '设备'

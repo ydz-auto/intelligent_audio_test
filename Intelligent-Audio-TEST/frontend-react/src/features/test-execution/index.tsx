@@ -48,7 +48,6 @@ import type { DevicesTabKey } from '@/features/devices/constants'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
-import type { DeviceScanSelection } from '@/domain/models/deviceScan'
 import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { ApiHealthCheckResult } from '@/domain/models/apiConfig'
 
@@ -273,7 +272,6 @@ export function TestExecutionPage({
               readOnly={readOnly}
               onOpenApiEdit={(api) => setApiEdit({ open: true, api })}
               onOpenApiHealth={(api) => runApiHealthTest(api.id)}
-              onScanDevices={handleDeviceEntry}
               onAddDevice={handleDeviceEntry}
             />
           )}

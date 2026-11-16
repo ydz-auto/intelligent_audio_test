@@ -6,7 +6,7 @@
  * 算法筛选与全局切换器联动（§2.2：切换全局算法后同步为当前全局算法，可改选）。
  */
 import { ChevronDown, ChevronUp, Eraser, Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,7 +18,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import type { AlgorithmSwitchOption } from '@/domain/models/algorithm'
 import {
   LOG_CATEGORY_OPTIONS,
   LOG_LEVEL_OPTIONS,
@@ -47,7 +46,6 @@ export type LogsFilterToolbarProps = {
   onMarkFilter: (value: string) => void
   algorithmType: string
   onAlgorithmType: (value: string) => void
-  algorithmOptions: AlgorithmSwitchOption[]
   startTime: string
   onStartTime: (value: string) => void
   endTime: string
@@ -96,15 +94,6 @@ function LevelChips({
 
 export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false)
-
-  // 算法 Select 的 items：『全部算法』+ 全局算法选项（关闭态由 Select.Value 按此映射回显 label）
-  const algorithmItems = useMemo(
-    () => [
-      { value: 'all', label: '全部算法' },
-      ...props.algorithmOptions.map((option) => ({ value: option.value, label: option.name })),
-    ],
-    [props.algorithmOptions]
-  )
 
   const hasAdvanced = Object.values(props.advanced).some(Boolean)
   const advancedText = hasAdvanced
