@@ -40,7 +40,7 @@ export function ConversationHistory({
   const sessions = data ?? []
 
   return (
-    <aside className='border-border/60 bg-muted/20 hidden w-60 min-w-0 shrink-0 flex-col border-r md:flex'>
+    <aside className='border-border/60 bg-muted/20 flex w-60 min-w-0 shrink-0 flex-col border-r'>
       <div className='flex shrink-0 items-center justify-between gap-2 px-3 py-3'>
         <span className='text-sm font-medium'>对话记录</span>
         <Button

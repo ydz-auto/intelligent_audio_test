@@ -28,7 +28,8 @@ export function AgentProvidersPage() {
 
   const list = useAgentProvidersQuery()
   const catalog = useAgentModelCatalogQuery()
-  const { create, update, remove, setDefault, verify } = useAgentProviderMutations()
+  const { create, update, remove, setDefault, verify, discoverModels } =
+    useAgentProviderMutations()
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<AgentProvider | null>(null)
@@ -166,6 +167,7 @@ export function AgentProvidersPage() {
 
       <AgentProviderFormDialog
         catalog={catalog.data}
+        onDiscoverModels={(input) => discoverModels.mutateAsync(input)}
         onOpenChange={setFormOpen}
         onSubmit={handleSubmit}
         open={formOpen}

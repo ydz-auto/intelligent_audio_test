@@ -8,6 +8,7 @@
  * - PUT    /api/v1/agent/providers/{id}       → ProviderResponse（未出现字段不变，api_key 留空不变）
  * - DELETE /api/v1/agent/providers/{id}       → { id, status: 'DELETED' }
  * - POST   /api/v1/agent/providers/{id}/verify → VerifyProviderResponse
+ * - POST   /api/v1/agent/providers/discover-models → DiscoverModelsResponse
  * - POST   /api/v1/agent/providers/{id}/set-default → ProviderResponse
  * - GET    /api/v1/agent/model-catalog        → { fallback_context_window, bounds, models[] }
  *
@@ -16,6 +17,8 @@
 import {
   type AgentProvider,
   type AgentProviderInput,
+  type AgentProviderModelDiscovery,
+  type AgentProviderModelDiscoveryInput,
   type AgentProviderStatus,
   type AgentProviderVerification,
   type ContextWindowBounds,
@@ -65,6 +68,22 @@ export interface AgentProviderVerifyDto {
   message?: string
   status?: string
   last_verified_at?: string | null
+}
+
+/** POST /agent/providers/discover-models 响应 */
+export interface AgentProviderDiscoverModelsDto {
+  ok?: boolean
+  code?: string
+  message?: string
+  models?: string[]
+}
+
+/** POST /agent/providers/discover-models 载荷 */
+export interface AgentProviderDiscoverModelsPayload {
+  provider_id?: string
+  protocol?: string
+  base_url?: string
+  api_key?: string
 }
 
 /** GET /agent/model-catalog 响应 */
@@ -158,6 +177,32 @@ export function toAgentProviderVerification(
     status: normalizeAgentProviderStatus(dto.status),
     lastVerifiedAt: dto.last_verified_at ?? null,
   }
+}
+
+/** DiscoverModelsResponse → 领域结果 */
+export function toAgentProviderModelDiscovery(
+  dto: AgentProviderDiscoverModelsDto
+): AgentProviderModelDiscovery {
+  return {
+    ok: dto.ok === true,
+    code: dto.code ?? '',
+    message: dto.message ?? '',
+    models: (dto.models ?? []).filter((item): item is string => Boolean(item)),
+  }
+}
+
+/** 领域入参 → 自动发现载荷（snake_case；空值不下发） */
+export function toDiscoverModelsPayload(
+  input: AgentProviderModelDiscoveryInput
+): AgentProviderDiscoverModelsPayload {
+  const payload: AgentProviderDiscoverModelsPayload = {}
+  if (input.providerId) payload.provider_id = input.providerId
+  if (input.protocol) payload.protocol = input.protocol
+  const baseUrl = input.baseUrl?.trim()
+  if (baseUrl) payload.base_url = baseUrl
+  const apiKey = input.apiKey?.trim()
+  if (apiKey) payload.api_key = apiKey
+  return payload
 }
 
 /** ModelCatalog 响应 → 领域模型目录 */

@@ -10,17 +10,26 @@ import { AutoBudgetSettings } from '@/features/ai-chat/components/auto-mode/auto
 import { AutoModeSwitcher } from '@/features/ai-chat/components/auto-mode/auto-mode-switcher'
 
 describe('AutoModeSwitcher', () => {
-  it('默认对话选中；点 Auto 触发模式切换', () => {
+  it('默认未激活；点目标模式触发 auto 切换', () => {
     const onModeChange = vi.fn()
     render(<AutoModeSwitcher mode='chat' onModeChange={onModeChange} />)
 
-    const chatButton = screen.getByText(AGENT_AUTO_COPY.modeChat).closest('button')
     const autoButton = screen.getByText(AGENT_AUTO_COPY.modeAuto).closest('button')
-    expect(chatButton?.getAttribute('aria-checked')).toBe('true')
-    expect(autoButton?.getAttribute('aria-checked')).toBe('false')
+    expect(autoButton?.getAttribute('aria-pressed')).toBe('false')
 
     fireEvent.click(autoButton as HTMLButtonElement)
     expect(onModeChange).toHaveBeenCalledWith('auto')
+  })
+
+  it('已激活时再点回到普通对话', () => {
+    const onModeChange = vi.fn()
+    render(<AutoModeSwitcher mode='auto' onModeChange={onModeChange} />)
+
+    const autoButton = screen.getByText(AGENT_AUTO_COPY.modeAuto).closest('button')
+    expect(autoButton?.getAttribute('aria-pressed')).toBe('true')
+
+    fireEvent.click(autoButton as HTMLButtonElement)
+    expect(onModeChange).toHaveBeenCalledWith('chat')
   })
 
   it('禁用时点击不触发切换', () => {

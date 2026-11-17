@@ -1,8 +1,8 @@
 /**
- * 输入区工具行（interfaces 层 ai-chat/input）：运行模式（对话 / Auto）+ 清空对话。
- * 对话只有平台 Agent 一条通道，不再渲染通道切换与供应商选择。
+ * 输入区工具行（interfaces 层 ai-chat/input）：模型供应商入口 + 目标模式开关 + 清空对话。
+ * 默认普通对话；「目标模式」开启后按目标多轮推进（含预算 / 暂停继续）。
  */
-import { Trash2 } from 'lucide-react'
+import { KeyRound, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -24,9 +24,10 @@ type AiChatInputToolsProps = {
   disabled?: boolean
   hasMessages?: boolean
   onClearMessages?: () => void
-  /** 运行模式（INT-2474；平台 Agent 通道的对话 / Auto） */
   runMode?: AgentRunMode
   onRunModeChange?: (mode: AgentRunMode) => void
+  /** 打开模型供应商管理（新增 / 编辑 / 自动发现模型） */
+  onManageProviders?: () => void
 }
 
 export function AiChatInputTools({
@@ -35,6 +36,7 @@ export function AiChatInputTools({
   onClearMessages,
   runMode = AGENT_RUN_MODE.CHAT,
   onRunModeChange,
+  onManageProviders,
 }: AiChatInputToolsProps) {
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
 
@@ -47,7 +49,26 @@ export function AiChatInputTools({
   return (
     <>
       <PromptInputTools className='bg-background/70 border-border/60 rounded-lg border p-1 shadow-xs'>
-        {/* 运行模式（INT-2474）：Auto 只在平台 Agent 通道可选 */}
+        {onManageProviders && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <PromptInputButton
+                  aria-label='模型供应商'
+                  className='text-muted-foreground hover:text-foreground font-medium'
+                  onClick={onManageProviders}
+                  variant='ghost'
+                >
+                  <KeyRound className='size-4' />
+                </PromptInputButton>
+              }
+            />
+            <TooltipContent>
+              <p>模型供应商</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
         {onRunModeChange && (
           <AutoModeSwitcher
             disabled={disabled}

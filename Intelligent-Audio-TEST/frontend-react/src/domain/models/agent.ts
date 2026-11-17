@@ -661,16 +661,14 @@ export const AGENT_ERROR_COPY = {
 export const AGENT_AUTO_COPY = {
   /** 模式切换 */
   modeLabel: '运行模式',
-  modeChat: '对话',
-  modeChatHint: '单轮问答：一问一答，不自动多轮推进',
-  modeAuto: 'Auto',
+  modeAuto: '目标模式',
   modeAutoHint: '目标驱动：自动多轮推进，受预算约束，写操作仍需审批',
-  autoBadge: 'Auto',
+  autoBadge: '目标模式',
   /** 目标输入 */
   goalPlaceholder:
-    '描述要让 Auto 完成的目标，例如：把标签为「回归测试」的用例全部跑一遍，再对比上次结果',
+    '描述要让目标模式完成的目标，例如：把标签为「回归测试」的用例全部跑一遍，再对比上次结果',
   /** 预算设置 */
-  budgetTitle: 'Auto 预算',
+  budgetTitle: '目标模式预算',
   budgetHint: '只能收紧、不能放宽：留空即用服务端默认，超限会导致运行停止',
   budgetDefaultHint:
     '服务端默认（§9.4）：轮次 60 · 工具调用 120 · token 4×上下文窗口 · 时长 30 分钟 · 输出 20MB',
@@ -694,7 +692,7 @@ export const AGENT_AUTO_COPY = {
   pausePolicy:
     '预算消耗到 80% 或连续 2 次工具失败时暂停，等你确认继续；DESTRUCTIVE 操作始终逐条审批',
   /** 进度面板 */
-  progressTitle: 'Auto 进度',
+  progressTitle: '目标模式进度',
   progressGoal: '目标',
   progressPlan: '当前计划',
   progressStep: '当前步骤',
@@ -711,10 +709,10 @@ export const AGENT_AUTO_COPY = {
   phaseContinue: '续跑中',
   phaseStep: '执行中',
   /** 暂停 / 继续 / 结束 */
-  pausedTitle: 'Auto 已暂停',
+  pausedTitle: '目标模式已暂停',
   pausedBudget: '预算已消耗到暂停阈值，请确认是否继续',
   pausedFailures: '连续 2 次工具失败，已暂停自动重试',
-  pausedUnknown: 'Auto 已暂停，请确认是否继续',
+  pausedUnknown: '目标模式已暂停，请确认是否继续',
   pausedUsage: '暂停时的预算水位',
   resume: '继续运行',
   resuming: '正在继续…',
@@ -724,21 +722,21 @@ export const AGENT_AUTO_COPY = {
   stop: '结束运行',
   stopping: '正在结束…',
   /** 终态 */
-  finishedTitle: 'Auto 已完成',
-  budgetExceededTitle: 'Auto 超出预算已停止',
+  finishedTitle: '目标模式已完成',
+  budgetExceededTitle: '目标模式超出预算已停止',
   budgetExceededDesc: '已完成步骤与产物保留，调整目标或预算后可重新发起',
-  circuitTitle: 'Auto 已熔断停止',
+  circuitTitle: '目标模式已熔断停止',
   circuitDesc: '连续工具失败达上限，不再自动重试；已完成产物保留',
-  failedTitle: 'Auto 运行失败',
+  failedTitle: '目标模式运行失败',
   failedDesc: '运行未能完成，请检查目标或稍后重试',
-  cancelledTitle: 'Auto 已结束',
+  cancelledTitle: '目标模式已结束',
   /** 审批联动（Auto 下写操作仍逐条确认，不提供「全部自动批准」） */
   approvalsTitle: '待审批写操作',
   approvalsCount: '条待审批',
-  approvalsHint: 'Auto 模式不预授权高危操作，须逐条确认',
+  approvalsHint: '目标模式不预授权高危操作，须逐条确认',
   noBulkApprove: '不提供「全部自动批准」',
   /** 刷新恢复 */
-  restoredPaused: 'Auto 运行处于暂停态（刷新前的进度不可回放），可继续或结束',
+  restoredPaused: '目标模式运行处于暂停态（刷新前的进度不可回放），可继续或结束',
   restoreHint: '刷新后仅恢复暂停状态，进度时间线在本轮不可回放',
   /** 刷新恢复后点「继续」：本页不重接事件流，改按服务端快照跟随终态（P2） */
   restoredResuming: '已继续运行，正在等待服务端结果（刷新后的执行过程不在本页回放）',
@@ -746,8 +744,8 @@ export const AGENT_AUTO_COPY = {
   trackingFailed: '暂时无法获取运行结果，请刷新页面查看',
   trackingTimeout: '等待运行结果超时，请刷新页面查看',
   /** 请求失败 */
-  sendFailed: 'Auto 任务发起失败，请稍后重试',
-  loadFailed: 'Auto 状态加载失败',
+  sendFailed: '目标模式任务发起失败，请稍后重试',
+  loadFailed: '目标模式状态加载失败',
 } as const
 
 /** Auto 模式目标输入最小长度（后端 message min_length=1，空串不派发） */

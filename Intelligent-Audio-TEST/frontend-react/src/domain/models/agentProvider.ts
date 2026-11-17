@@ -171,6 +171,22 @@ export interface AgentProviderVerification {
   lastVerifiedAt: string | null
 }
 
+/** 自动发现模型的探测入参（编辑时可只传 providerId，Key 用服务端已存密文） */
+export interface AgentProviderModelDiscoveryInput {
+  providerId?: string
+  protocol?: AgentProviderProtocol
+  baseUrl?: string
+  apiKey?: string
+}
+
+/** POST /agent/providers/discover-models 结果 */
+export interface AgentProviderModelDiscovery {
+  ok: boolean
+  code: string
+  message: string
+  models: string[]
+}
+
 /** 表单提交载荷（camelCase；api 层转 snake_case） */
 export interface AgentProviderInput {
   name: string

@@ -114,9 +114,22 @@ export type CapabilityGroup = {
   icon: LucideIcon
   /** 在册权限码（命中即显可执行；null=无码域统一标「待接入」） */
   requiredPermission: string | null
+  /**
+   * 可见性门槛（任一命中才渲染该卡）。
+   * 用于管理员专属域（如系统设置）：普通用户不展示，避免把不可用能力摆给用户。
+   */
+  visiblePermissions?: readonly string[]
   /** 示例快捷指令（点击回填输入框、不自动发送；null=待后端立项占位） */
   prompt: string | null
 }
+
+/** 系统设置（管理员域）可见门槛：与侧栏「系统设置」入口同一组权限码 */
+export const SYSTEM_SETTINGS_AGENT_VISIBLE_PERMISSIONS = [
+  'user:read',
+  'role:read',
+  'auth:manage_provider',
+  'log:manage',
+] as const
 
 export const CAPABILITY_GROUPS: CapabilityGroup[] = [
   {
@@ -216,6 +229,7 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
     toolCount: null,
     icon: Settings,
     requiredPermission: null,
+    visiblePermissions: SYSTEM_SETTINGS_AGENT_VISIBLE_PERMISSIONS,
     prompt: null,
   },
 ]

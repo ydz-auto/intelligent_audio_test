@@ -5,6 +5,7 @@
 |---|---|---|
 | GET  | /api/v1/agent/providers | 我的供应商（Key 掩码 + 有效窗口/来源）|
 | POST | /api/v1/agent/providers | 新建（Key 加密入库，可带 context_window）|
+| POST | /api/v1/agent/providers/discover-models | 自动发现可用模型（用表单参数或已存 Key）|
 | PUT  | /api/v1/agent/providers/{id} | 修改；Key 留空表示不变；可改 context_window |
 | DELETE | /api/v1/agent/providers/{id} | 逻辑删除并清空密文 |
 | POST | /api/v1/agent/providers/{id}/verify | 轻量连通性验证 |
@@ -22,8 +23,9 @@ from agent_service.interfaces.api.dependencies import (
     Identity, get_container, get_identity,
 )
 from agent_service.interfaces.api.schemas import (
-    CreateProviderRequest, ProviderListResponse, ProviderResponse,
-    UpdateProviderRequest, VerifyProviderResponse,
+    CreateProviderRequest, DiscoverModelsRequest, DiscoverModelsResponse,
+    ProviderListResponse, ProviderResponse, UpdateProviderRequest,
+    VerifyProviderResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,18 @@ def create_provider(payload: CreateProviderRequest, request: Request,
         api_key=payload.api_key, context_window=payload.context_window,
     )
     return _serialize(view)
+
+
+@router.post('/providers/discover-models',
+             response_model=DiscoverModelsResponse)
+def discover_models(payload: DiscoverModelsRequest, request: Request,
+                    identity: Identity = Depends(get_identity)):
+    service = get_container(request).provider_service
+    return DiscoverModelsResponse(**service.discover_models(
+        owner_id=identity.user_id, tenant_id=identity.tenant_id,
+        provider_id=payload.provider_id, protocol=payload.protocol,
+        base_url=payload.base_url, api_key=payload.api_key,
+    ))
 
 
 @router.put('/providers/{provider_id}', response_model=ProviderResponse)

@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import {
   toAgentProvider,
+  toAgentProviderModelDiscovery,
   toAgentProviderVerification,
   toAgentProviders,
   toCreateProviderPayload,
+  toDiscoverModelsPayload,
   toModelCatalog,
   toUpdateProviderPayload,
   type AgentProviderDto,
@@ -166,5 +168,46 @@ describe('toAgentProviderVerification', () => {
       status: 'INVALID',
       lastVerifiedAt: '2026-11-13T05:00:00',
     })
+  })
+})
+
+describe('toDiscoverModelsPayload / toAgentProviderModelDiscovery', () => {
+  it('新建探测：下发协议 / Base URL / Key，空值不下发', () => {
+    expect(
+      toDiscoverModelsPayload({
+        protocol: 'OPENAI_COMPATIBLE',
+        baseUrl: ' https://api.deepseek.com/v1 ',
+        apiKey: ' sk-xxx ',
+      })
+    ).toEqual({
+      protocol: 'OPENAI_COMPATIBLE',
+      base_url: 'https://api.deepseek.com/v1',
+      api_key: 'sk-xxx',
+    })
+    expect(toDiscoverModelsPayload({})).toEqual({})
+  })
+
+  it('编辑探测：无新 Key 时只带 provider_id（服务端复用已存密文）', () => {
+    expect(
+      toDiscoverModelsPayload({ providerId: 'p-1', apiKey: '   ' })
+    ).toEqual({ provider_id: 'p-1' })
+  })
+
+  it('发现结果映射：ok / models / 原因', () => {
+    expect(
+      toAgentProviderModelDiscovery({
+        ok: true,
+        code: 'PROVIDER_MODELS_OK',
+        message: '发现 2 个模型',
+        models: ['deepseek-chat', 'deepseek-reasoner'],
+      })
+    ).toEqual({
+      ok: true,
+      code: 'PROVIDER_MODELS_OK',
+      message: '发现 2 个模型',
+      models: ['deepseek-chat', 'deepseek-reasoner'],
+    })
+    expect(toAgentProviderModelDiscovery({ ok: false, code: 'PROVIDER_AUTH_FAILED' }))
+      .toMatchObject({ ok: false, models: [] })
   })
 })

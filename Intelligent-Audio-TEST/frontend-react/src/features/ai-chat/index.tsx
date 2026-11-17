@@ -6,7 +6,7 @@
  * GET /reports + GET /tasks，绑定后写入会话 config.reportContext*。
  */
 import { Badge } from '@/components/ui/badge'
-import { PanelRight } from 'lucide-react'
+import { PanelLeft, PanelRight } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -40,6 +40,7 @@ import { AiChat } from '@/features/ai-chat/components/chat/ai-chat'
 import { AiChatInput } from '@/features/ai-chat/components/input/ai-chat-input'
 import { ReportContextSelector, type SelectedContext } from '@/features/ai-chat/components/input/report-context-selector'
 import { ConversationHistory } from '@/features/ai-chat/components/history/conversation-history'
+import { AgentProviderManagerDialog } from '@/features/agent-providers/components/agent-provider-manager-dialog'
 import { DocumentPanel } from '@/features/ai-chat/components/studio/document-panel'
 import { DEMO_COPY } from '@/features/ai-chat/constants'
 import { resolveTaskReportErrorMessage } from '@/features/ai-chat/lib/task-report-error'
@@ -203,7 +204,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
   /** 对话通道：只保留平台 Agent（供应商由服务端密钥库托管，页面不再有「自带供应商」） */
   const channel = CHAT_CHANNEL.PLATFORM
 
-  /** 运行模式与 Auto 预算（INT-2474）：随会话 config 持久化，两宿主同一份 */
+  /** 目标模式与预算（INT-2474）：随会话 config 持久化，两宿主同一份 */
   const runMode = normalizeRunMode(config.runMode)
   const handleRunModeChange = (next: AgentRunMode) => {
     updateConfig('runMode', next)
@@ -258,6 +259,10 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
   })
 
   const [workModeOpen, setWorkModeOpen] = useState(false)
+  /** 对话记录目录：默认收起，点顶部图标展开 / 收起 */
+  const [historyOpen, setHistoryOpen] = useState(false)
+  /** 模型供应商管理（输入区入口；新增 / 编辑 / 自动发现模型） */
+  const [providerManagerOpen, setProviderManagerOpen] = useState(false)
 
   const handleClearMessages = () => {
     handleEditOpenChange(false)
@@ -307,17 +312,38 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
 
   return (
     <div className='relative flex size-full min-h-0 overflow-hidden'>
-      <ConversationHistory
-        activeSessionId={agentSessionId}
-        disabled={isGenerating}
-        onNew={handleNewConversation}
-        onSelect={handleSelectSession}
-      />
+      {historyOpen && (
+        <ConversationHistory
+          activeSessionId={agentSessionId}
+          disabled={isGenerating}
+          onNew={handleNewConversation}
+          onSelect={handleSelectSession}
+        />
+      )}
       <div className='flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'>
       {/* 顶部条（shrink-0，§3.1/§3.2）；Demo 徽标 §3.10 落点①；INT-1153 二轮返工：
        * 炫彩「连接你的 agent」入口落右上角（标题区右侧），点击跳转 /agent-connect */}
       <div className='border-border/60 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3 sm:px-6'>
-        <div className='min-w-0'>
+        <div className='flex min-w-0 items-center gap-2'>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  aria-label='对话记录'
+                  className='size-9 shrink-0'
+                  onClick={() => setHistoryOpen((value) => !value)}
+                  type='button'
+                  variant={historyOpen ? 'secondary' : 'ghost'}
+                >
+                  <PanelLeft className='size-4' />
+                </Button>
+              }
+            />
+            <TooltipContent>
+              <p>{historyOpen ? '收起对话记录' : '展开对话记录'}</p>
+            </TooltipContent>
+          </Tooltip>
+          <div className='min-w-0'>
           <div className='flex items-center gap-2'>
             <h1 className='text-sm font-semibold sm:text-base'>灵犀Agent</h1>
             <Tooltip>
@@ -337,6 +363,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
           <p className='text-muted-foreground hidden text-xs sm:block'>
             用自然语言驱动平台全部能力：报告、用例、任务、设备、日志
           </p>
+        </div>
         </div>
         <div className='flex shrink-0 items-center gap-2'>
           <AgentConnectButton />
@@ -396,6 +423,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                   hasMessages={messages.length > 0}
                   isGenerating={isGenerating}
                   onClearMessages={handleClearMessages}
+                  onManageProviders={() => setProviderManagerOpen(true)}
                   onStop={stopGeneration}
                   onSubmit={handleSendMessage}
                   onValueChange={setDraftText}
@@ -471,6 +499,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
               hasMessages={messages.length > 0}
               isGenerating={isGenerating}
               onClearMessages={handleClearMessages}
+              onManageProviders={() => setProviderManagerOpen(true)}
               onStop={stopGeneration}
               onSubmit={handleSendMessage}
               onValueChange={setDraftText}
@@ -482,6 +511,11 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
         </>
       )}
       </div>
+
+      <AgentProviderManagerDialog
+        onOpenChange={setProviderManagerOpen}
+        open={providerManagerOpen}
+      />
     </div>
   )
 }

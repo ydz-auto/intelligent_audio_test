@@ -19,13 +19,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agent_service.app import create_app
+from agent_service.application import provider_service as provider_service_module
 from agent_service.domain.enums import ContextWindowSource, ProviderStatus
 from agent_service.domain.services.context_window_resolver import (
     ContextWindowResolver,
 )
 from agent_service.infrastructure.llm.credential_store import CredentialStore
 from agent_service.infrastructure.llm.verifier import (
-    AUTH_FAILED, HttpProviderVerifier, UNREACHABLE,
+    AUTH_FAILED, MODELS_OK, HttpProviderVerifier, ModelListOutcome, UNREACHABLE,
 )
 from tests.unit.int2451_agent_fakes import (
     FakeLlm, FakeProviderResolver, TEST_MASTER_KEY, make_engine,
@@ -239,6 +240,78 @@ def test_set_default_and_delete_clears_ciphertext(tmp_path):
                              headers=OWNER_A).json()['items']
         assert listing[0]['id'] == first_id
         assert listing[0]['is_default'] is True
+
+
+def _stub_fetch_models(monkeypatch, models, captured=None):
+    def fake_fetch(*, protocol, base_url, api_key, timeout_seconds=10.0,
+                   http_transport=None):
+        if captured is not None:
+            captured.update(protocol=protocol, base_url=base_url,
+                            api_key=api_key)
+        return ModelListOutcome(ok=True, code=MODELS_OK, models=list(models),
+                                message=f'发现 {len(models)} 个模型')
+
+    monkeypatch.setattr(provider_service_module, 'fetch_models', fake_fetch)
+
+
+def test_discover_models_with_submitted_credentials(tmp_path, monkeypatch):
+    captured = {}
+    _stub_fetch_models(
+        monkeypatch, ['deepseek-chat', 'deepseek-reasoner'], captured)
+    client, _container, _engine = _make_client(tmp_path)
+    with client:
+        resp = client.post(
+            '/api/v1/agent/providers/discover-models',
+            json={'protocol': 'OPENAI_COMPATIBLE',
+                  'base_url': 'https://api.deepseek.com/v1',
+                  'api_key': KEY_A},
+            headers=OWNER_A)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()['ok'] is True
+        assert resp.json()['models'] == ['deepseek-chat',
+                                         'deepseek-reasoner']
+        assert captured['base_url'] == 'https://api.deepseek.com/v1'
+        assert captured['api_key'] == KEY_A
+        assert KEY_A not in resp.text
+
+
+def test_discover_models_reuses_stored_key(tmp_path, monkeypatch):
+    captured = {}
+    _stub_fetch_models(monkeypatch, ['deepseek-chat'], captured)
+    client, _container, _engine = _make_client(tmp_path)
+    with client:
+        provider_id = _create(client).json()['id']
+        resp = client.post('/api/v1/agent/providers/discover-models',
+                           json={'provider_id': provider_id},
+                           headers=OWNER_A)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()['models'] == ['deepseek-chat']
+        # 解密后使用库内 Key；响应仍不含明文
+        assert captured['api_key'] == KEY_A
+        assert KEY_A not in resp.text
+
+
+def test_discover_models_missing_key_returns_explicit_code(tmp_path):
+    client, _container, _engine = _make_client(tmp_path)
+    with client:
+        resp = client.post('/api/v1/agent/providers/discover-models',
+                           json={'protocol': 'OPENAI_COMPATIBLE',
+                                 'base_url': 'https://api.deepseek.com/v1'},
+                           headers=OWNER_A)
+        assert resp.status_code == 200
+        assert resp.json()['ok'] is False
+        assert resp.json()['code'] == 'PROVIDER_KEY_MISSING'
+        assert resp.json()['models'] == []
+
+
+def test_discover_models_cannot_read_other_users_provider(tmp_path):
+    client, _container, _engine = _make_client(tmp_path)
+    with client:
+        provider_id = _create(client, headers=OWNER_B, api_key=KEY_B).json()['id']
+        resp = client.post('/api/v1/agent/providers/discover-models',
+                           json={'provider_id': provider_id},
+                           headers=OWNER_A)
+        assert resp.status_code == 404
 
 
 def test_model_catalog_endpoint(tmp_path):

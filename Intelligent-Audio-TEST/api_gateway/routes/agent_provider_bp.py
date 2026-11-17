@@ -63,6 +63,14 @@ async def proxy_create_provider(
     return response
 
 
+@router.post('/providers/discover-models')
+async def proxy_discover_provider_models(
+        request: Request,
+        _: None = Depends(require_auth)) -> Response:
+    """自动发现模型：只做透明转发（请求体含明文 Key，绝不进日志）。"""
+    return await _forward(request, 'POST')
+
+
 @router.put('/providers/{provider_id}')
 async def proxy_update_provider(
         provider_id: str, request: Request,

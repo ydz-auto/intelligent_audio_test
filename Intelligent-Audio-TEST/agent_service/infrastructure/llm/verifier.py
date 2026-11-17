@@ -10,7 +10,8 @@
 或上游响应正文。
 """
 import logging
-from typing import Dict
+from dataclasses import dataclass, field
+from typing import Dict, List
 
 import httpx
 
@@ -25,6 +26,84 @@ UNREACHABLE = 'PROVIDER_UNREACHABLE'
 AUTH_FAILED = 'PROVIDER_AUTH_FAILED'
 HTTP_ERROR = 'PROVIDER_HTTP_ERROR'
 UNSUPPORTED_PROTOCOL = 'PROVIDER_PROTOCOL_UNSUPPORTED'
+MODELS_OK = 'PROVIDER_MODELS_OK'
+
+
+@dataclass(frozen=True)
+class ModelListOutcome:
+    """上游模型清单探测结果（失败时 models 为空，message 不含 Key / 响应正文）。"""
+
+    ok: bool
+    code: str
+    models: List[str] = field(default_factory=list)
+    message: str = ''
+
+
+def fetch_models(*, protocol, base_url: str, api_key: str,
+                 timeout_seconds: float = 10.0,
+                 http_transport=None) -> ModelListOutcome:
+    """按供应商协议拉取可选模型列表（OpenAI 兼容 / Anthropic 均为 GET /models）。"""
+    base = (base_url or '').strip().rstrip('/')
+    if not base:
+        return ModelListOutcome(
+            ok=False, code=UNREACHABLE, message='供应商地址为空')
+    try:
+        normalized = (protocol if isinstance(protocol, LlmProtocol)
+                      else LlmProtocol(str(protocol)))
+    except ValueError:
+        return ModelListOutcome(
+            ok=False, code=UNSUPPORTED_PROTOCOL,
+            message=f'不支持的协议: {protocol}')
+
+    if normalized is LlmProtocol.OPENAI_COMPATIBLE:
+        url = HttpProviderVerifier._openai_models_url(base)
+        headers = HttpProviderVerifier._openai_headers(api_key)
+    else:
+        url = HttpProviderVerifier._openai_models_url(base)
+        headers = {
+            'Accept': 'application/json',
+            'anthropic-version': ANTHROPIC_VERSION,
+        }
+        if api_key:
+            headers['x-api-key'] = api_key
+
+    timeout = httpx.Timeout(float(timeout_seconds or 10.0),
+                            connect=min(5.0, float(timeout_seconds or 10.0)))
+    kwargs = {'timeout': timeout}
+    if http_transport is not None:
+        kwargs['transport'] = http_transport
+    try:
+        with httpx.Client(**kwargs) as client:
+            response = client.get(url, headers=headers)
+    except httpx.HTTPError as exc:
+        logger.info('模型列表探测失败 provider_url=%s: %s', base,
+                    type(exc).__name__)
+        return ModelListOutcome(
+            ok=False, code=UNREACHABLE,
+            message=f'无法连接供应商: {type(exc).__name__}')
+
+    if response.status_code in (401, 403):
+        return ModelListOutcome(
+            ok=False, code=AUTH_FAILED,
+            message=f'鉴权失败（HTTP {response.status_code}）')
+    if response.status_code >= 400:
+        return ModelListOutcome(
+            ok=False, code=HTTP_ERROR,
+            message=f'上游返回 HTTP {response.status_code}')
+    try:
+        payload = response.json()
+    except ValueError:
+        return ModelListOutcome(
+            ok=False, code=HTTP_ERROR, message='上游模型列表不是合法 JSON')
+    items = payload.get('data') if isinstance(payload, dict) else None
+    models: List[str] = []
+    if isinstance(items, list):
+        for item in items:
+            model_id = item.get('id') if isinstance(item, dict) else None
+            if isinstance(model_id, str) and model_id and model_id not in models:
+                models.append(model_id)
+    return ModelListOutcome(ok=True, code=MODELS_OK, models=models,
+                            message=f'发现 {len(models)} 个模型')
 
 
 class HttpProviderVerifier(ProviderVerifier):

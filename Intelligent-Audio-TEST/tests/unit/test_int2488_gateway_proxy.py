@@ -56,18 +56,20 @@ def harness():
         agent_runtime_bp._transport_override = None
 
 
-def test_missing_permission_is_403_and_not_forwarded(harness):
+def test_provider_routes_only_require_login(harness):
+    """供应商按用户隔离：登录即可管理自己的供应商，不再要求
+    agent:provider:manage（该权限码只保留在 Skill 管理等平台级操作上）。"""
     make_app, calls, _audits = harness
 
-    def handler(request):  # pragma: no cover
+    def handler(request):
         calls.append(request)
         return httpx.Response(200, json={'items': []})
 
     client = make_app(handler)
     resp = client.get('/api/v1/agent/providers',
                       headers={'X-Permissions': 'task:read'})
-    assert resp.status_code == 403
-    assert calls == []
+    assert resp.status_code == 200
+    assert len(calls) == 1
 
 
 def test_forwards_identity_headers(harness):
@@ -104,12 +106,16 @@ def test_all_provider_routes_are_proxied(harness):
     client.put('/api/v1/agent/providers/p1', json={'name': 'y'})
     client.post('/api/v1/agent/providers/p1/verify')
     client.post('/api/v1/agent/providers/p1/set-default')
+    client.post('/api/v1/agent/providers/discover-models', json={
+        'provider_id': 'p1'})
     client.delete('/api/v1/agent/providers/p1')
     client.get('/api/v1/agent/model-catalog')
 
     methods = [request.method for request in calls]
-    assert methods == ['GET', 'POST', 'PUT', 'POST', 'POST', 'DELETE', 'GET']
-    assert str(calls[5].url.path) == '/api/v1/agent/providers/p1'
+    assert methods == ['GET', 'POST', 'PUT', 'POST', 'POST', 'POST', 'DELETE',
+                       'GET']
+    assert str(calls[5].url.path) == '/api/v1/agent/providers/discover-models'
+    assert str(calls[6].url.path) == '/api/v1/agent/providers/p1'
 
     # 审计只记 provider_id / 操作类型；请求体（明文 Key）不进审计
     dumped = json.dumps(audits, ensure_ascii=False)

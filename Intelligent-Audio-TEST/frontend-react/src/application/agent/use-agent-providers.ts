@@ -11,12 +11,15 @@ import { toast } from 'sonner'
 import type {
   AgentProvider,
   AgentProviderInput,
+  AgentProviderModelDiscovery,
+  AgentProviderModelDiscoveryInput,
   AgentProviderVerification,
   ModelCatalog,
 } from '@/domain/models/agentProvider'
 import {
   createAgentProvider,
   deleteAgentProvider,
+  discoverAgentProviderModels,
   fetchModelCatalog,
   listAgentProviders,
   setDefaultAgentProvider,
@@ -125,7 +128,25 @@ export function useAgentProviderMutations() {
     },
   })
 
-  return { create, update, remove, setDefault, verify, invalidateProviders }
+  /** 自动发现模型：只做一次上游探测，不写库、不刷新列表 */
+  const discoverModels = useMutation({
+    mutationFn: (
+      input: AgentProviderModelDiscoveryInput
+    ): Promise<AgentProviderModelDiscovery> => discoverAgentProviderModels(input),
+    onError: (error: unknown) => {
+      toast.error(toMessage(error, '自动发现模型失败'))
+    },
+  })
+
+  return {
+    create,
+    update,
+    remove,
+    setDefault,
+    verify,
+    discoverModels,
+    invalidateProviders,
+  }
 }
 
 /** 当前默认供应商（会话页摘要与供应商列表共用同一缓存） */

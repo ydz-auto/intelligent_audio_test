@@ -8,27 +8,33 @@
  *   PUT    /agent/providers/{id}
  *   DELETE /agent/providers/{id}
  *   POST   /agent/providers/{id}/verify
+ *   POST   /agent/providers/discover-models
  *   POST   /agent/providers/{id}/set-default
  *   GET    /agent/model-catalog
  *
  * 传输：普通请求走 client.ts（JWT / 错误码归一）；本文件只产出 camelCase 领域对象，
  * snake_case 转换在 infrastructure/dto/agentProvider.dto.ts。
- * 注意：verify 响应顶层带 `code`（'OK' 等字符串）字段，client 的信封解包会把它
- * 误判成业务信封，故 verify 显式关闭 unwrapResponse。
+ * 注意：verify / discover-models 响应顶层带 `code`（'OK' 等字符串）字段，client 的
+ * 信封解包会把它误判成业务信封，故这两个端点显式关闭 unwrapResponse。
  */
 import type {
   AgentProvider,
   AgentProviderInput,
+  AgentProviderModelDiscovery,
+  AgentProviderModelDiscoveryInput,
   AgentProviderVerification,
   ModelCatalog,
 } from '@/domain/models/agentProvider'
 import {
   toAgentProvider,
+  toAgentProviderModelDiscovery,
   toAgentProviderVerification,
   toAgentProviders,
   toCreateProviderPayload,
+  toDiscoverModelsPayload,
   toModelCatalog,
   toUpdateProviderPayload,
+  type AgentProviderDiscoverModelsDto,
   type AgentProviderDto,
   type AgentProviderListDto,
   type AgentProviderVerifyDto,
@@ -46,6 +52,7 @@ export const AGENT_PROVIDER_API_PATHS = {
     `/agent/providers/${encodeURIComponent(providerId)}/verify`,
   setDefault: (providerId: string) =>
     `/agent/providers/${encodeURIComponent(providerId)}/set-default`,
+  discoverModels: '/agent/providers/discover-models',
   modelCatalog: '/agent/model-catalog',
 } as const
 
@@ -99,6 +106,19 @@ export async function verifyAgentProvider(
     { unwrapResponse: false }
   )
   return toAgentProviderVerification(dto)
+}
+
+/** POST /agent/providers/discover-models —— 自动发现可用模型（不回显 Key） */
+export async function discoverAgentProviderModels(
+  input: AgentProviderModelDiscoveryInput
+): Promise<AgentProviderModelDiscovery> {
+  const dto = await request<AgentProviderDiscoverModelsDto>(
+    'POST',
+    AGENT_PROVIDER_API_PATHS.discoverModels,
+    toDiscoverModelsPayload(input),
+    { unwrapResponse: false }
+  )
+  return toAgentProviderModelDiscovery(dto)
 }
 
 /** POST /agent/providers/{id}/set-default —— 设为默认 */

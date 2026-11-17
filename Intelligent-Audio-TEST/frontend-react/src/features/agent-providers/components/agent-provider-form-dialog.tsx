@@ -6,9 +6,10 @@
  *   恢复默认（回到 null）；超目录默认仅告警不阻断保存。
  */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Eye, EyeOff, RotateCcw } from 'lucide-react'
+import { Eye, EyeOff, RefreshCw, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, type UseFormReturn } from 'react-hook-form'
+import { toast } from 'sonner'
 import { z } from 'zod'
 
 import {
@@ -16,6 +17,8 @@ import {
   formatContextWindowTokens,
   type AgentProvider,
   type AgentProviderInput,
+  type AgentProviderModelDiscovery,
+  type AgentProviderModelDiscoveryInput,
   type AgentProviderProtocol,
   type ContextWindowBounds,
   type ModelCatalog,
@@ -131,6 +134,10 @@ type AgentProviderFormDialogProps = {
   catalog: ModelCatalog | undefined
   pending: boolean
   onSubmit: (input: AgentProviderInput) => Promise<boolean>
+  /** 自动发现模型（编辑时可只传 providerId，Key 用服务端已存密文） */
+  onDiscoverModels: (
+    input: AgentProviderModelDiscoveryInput
+  ) => Promise<AgentProviderModelDiscovery>
 }
 
 export function AgentProviderFormDialog({
@@ -140,10 +147,15 @@ export function AgentProviderFormDialog({
   catalog,
   pending,
   onSubmit,
+  onDiscoverModels,
 }: AgentProviderFormDialogProps) {
   const isEditing = Boolean(provider)
   const bounds = catalog?.bounds ?? DEFAULT_CONTEXT_WINDOW_BOUNDS
   const [showKey, setShowKey] = useState(false)
+  const [discovering, setDiscovering] = useState(false)
+  const [discoveredModels, setDiscoveredModels] = useState<string[]>([])
+  /** 发现到模型后默认切下拉选择；点「手动输入」回到自由输入 */
+  const [manualModel, setManualModel] = useState(true)
 
   const schema = useMemo(() => buildSchema(isEditing, bounds), [isEditing, bounds])
   const form = useForm<FormValues>({
@@ -156,6 +168,8 @@ export function AgentProviderFormDialog({
   useEffect(() => {
     if (!open) return
     setShowKey(false)
+    setDiscoveredModels([])
+    setManualModel(true)
     form.reset(toFormValues(provider))
   }, [open, provider, form])
 
@@ -192,6 +206,48 @@ export function AgentProviderFormDialog({
     })
     if (ok) onOpenChange(false)
   })
+
+  /** 自动发现：用表单当前协议 / Base URL / Key 探测上游 /models */
+  const handleDiscoverModels = async () => {
+    const values = form.getValues()
+    const baseUrl = values.baseUrl.trim()
+    if (!HTTP_URL_PATTERN.test(baseUrl)) {
+      form.setError('baseUrl', { message: AGENT_PROVIDERS_COPY.invalidBaseUrl })
+      return
+    }
+    setDiscovering(true)
+    try {
+      const result = await onDiscoverModels({
+        providerId: provider?.id,
+        protocol: values.protocol,
+        baseUrl,
+        apiKey: values.apiKey.trim() || undefined,
+      })
+      if (!result.ok || result.models.length === 0) {
+        toast.error(result.message || AGENT_PROVIDERS_COPY.discoverModelsEmpty)
+        return
+      }
+      setDiscoveredModels(result.models)
+      // 发现成功即切下拉选择（模型名本身可选择），用户仍可切回手动输入
+      setManualModel(false)
+      if (!values.model.trim()) {
+        form.setValue('model', result.models[0], { shouldValidate: false })
+      }
+      toast.success(AGENT_PROVIDERS_COPY.discoverModelsSuccess(result.models.length))
+    } finally {
+      setDiscovering(false)
+    }
+  }
+
+  const useModelSelect = !manualModel && discoveredModels.length > 0
+  const modelSelectItems = useMemo(() => {
+    const items = discoveredModels.map((item) => ({ value: item, label: item }))
+    // 编辑态当前模型可能不在新发现的清单里：保留为可选项，避免切换后丢失
+    if (model && !discoveredModels.includes(model)) {
+      items.unshift({ value: model, label: `${model}（当前）` })
+    }
+    return items
+  }, [discoveredModels, model])
 
   const apiKeyError = form.formState.errors.apiKey?.message
 
@@ -278,15 +334,78 @@ export function AgentProviderFormDialog({
             <Label htmlFor='agent-provider-model'>
               {AGENT_PROVIDERS_COPY.fieldModel}
             </Label>
-            <Input
-              id='agent-provider-model'
-              placeholder={AGENT_PROVIDERS_COPY.fieldModelPlaceholder}
-              {...form.register('model')}
-            />
+            <div className='flex items-center gap-2'>
+              {useModelSelect ? (
+                <Select
+                  items={modelSelectItems}
+                  value={model || null}
+                  onValueChange={(value) => {
+                    if (value) {
+                      form.setValue('model', value, { shouldValidate: false })
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    aria-label={AGENT_PROVIDERS_COPY.fieldModel}
+                    className='min-w-0 flex-1'
+                    id='agent-provider-model'
+                  >
+                    <SelectValue
+                      placeholder={AGENT_PROVIDERS_COPY.discoveredModelsPlaceholder}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelSelectItems.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  className='min-w-0 flex-1'
+                  id='agent-provider-model'
+                  placeholder={AGENT_PROVIDERS_COPY.fieldModelPlaceholder}
+                  {...form.register('model')}
+                />
+              )}
+              <Button
+                className='shrink-0'
+                disabled={discovering}
+                onClick={() => void handleDiscoverModels()}
+                size='sm'
+                type='button'
+                variant='outline'
+              >
+                <RefreshCw
+                  aria-hidden='true'
+                  className={discovering ? 'size-3.5 animate-spin' : 'size-3.5'}
+                />
+                {discovering
+                  ? AGENT_PROVIDERS_COPY.discoveringModels
+                  : AGENT_PROVIDERS_COPY.discoverModels}
+              </Button>
+            </div>
+            <p className='text-muted-foreground text-xs'>
+              {useModelSelect
+                ? AGENT_PROVIDERS_COPY.modelSelectHint
+                : AGENT_PROVIDERS_COPY.discoverModelsHint}
+            </p>
             {form.formState.errors.model && (
               <p className='text-destructive text-xs'>
                 {form.formState.errors.model.message}
               </p>
+            )}
+            {useModelSelect && (
+              <Button
+                className='text-muted-foreground h-6 w-fit justify-start px-1 text-xs'
+                onClick={() => setManualModel(true)}
+                type='button'
+                variant='ghost'
+              >
+                {AGENT_PROVIDERS_COPY.manualModelInput}
+              </Button>
             )}
           </div>
 

@@ -59,10 +59,10 @@ type AiChatInputProps = {
   compact?: boolean
   /** 工具行左侧扩展槽（INT-2473：报告上下文选择器，只传不拥有数据） */
   contextSlot?: ReactNode
-  /** 运行模式（INT-2474：对话 / Auto；仅平台 Agent 通道提供切换） */
+  /** 目标模式（默认普通对话；开启后按目标多轮推进） */
   runMode?: AgentRunMode
   onRunModeChange?: (mode: AgentRunMode) => void
-  /** Auto 预算（会话 config 里的收紧预算） */
+  /** 目标模式预算（会话 config 里的收紧预算） */
   autoBudget?: AgentRunBudget
   onAutoBudgetChange?: (budget: AgentRunBudget | undefined) => void
 }
@@ -76,6 +76,7 @@ export function AiChatInput({
   providers = [],
   channel = CHAT_CHANNEL.PLATFORM,
   onClearMessages,
+  onManageProviders,
   value,
   onValueChange,
   textareaRef,
@@ -98,9 +99,9 @@ export function AiChatInput({
   const effectiveCanSubmit =
     canSubmit && (!requiresProvider || providers.length > 0)
 
-  /** Auto 只在平台 Agent 通道可用（供应商直连无工具/预算，不能假装 Auto） */
+  /** 目标模式只在平台 Agent 通道可用（供应商直连无工具/预算） */
   const isPlatform = channel === CHAT_CHANNEL.PLATFORM
-  const isAutoMode = isPlatform && runMode === AGENT_RUN_MODE.AUTO
+  const isTargetMode = isPlatform && runMode === AGENT_RUN_MODE.AUTO
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -157,8 +158,8 @@ export function AiChatInput({
         className='border-border/70 bg-background/95 dark:bg-background/80 ring-foreground/5 shadow-[0_18px_60px_-32px_rgba(0,0,0,0.65)] ring-1 rounded-xl overflow-hidden transition-all duration-200 focus-within:border-primary/45 focus-within:ring-primary/15 focus-within:shadow-[0_22px_70px_-34px_rgba(0,0,0,0.75)]'
         onSubmit={handleSubmit}
       >
-        {/* Auto 预算：选 Auto 后启动前即可展示 / 收紧五项上限（§9.4） */}
-        {isAutoMode && onAutoBudgetChange && (
+        {/* 目标模式预算：开启目标模式后、启动前即可展示 / 收紧五项上限（§9.4） */}
+        {isTargetMode && onAutoBudgetChange && (
           <AutoBudgetSettings
             budget={autoBudget}
             disabled={disabled}
@@ -178,7 +179,7 @@ export function AiChatInput({
           onChange={(event) => onValueChange(event.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={
-            isAutoMode
+            isTargetMode
               ? AGENT_AUTO_COPY.goalPlaceholder
               : '描述你的报告需求，例如：帮我把任务 #320 的测试结果生成一份报告'
           }
@@ -195,6 +196,7 @@ export function AiChatInput({
                 disabled={disabled}
                 hasMessages={hasMessages}
                 onClearMessages={onClearMessages}
+                onManageProviders={onManageProviders}
                 onRunModeChange={onRunModeChange}
                 runMode={runMode}
               />

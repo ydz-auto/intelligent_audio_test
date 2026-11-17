@@ -27,6 +27,7 @@ from agent_service.domain.services.context_window_resolver import (
     ContextWindowResolver,
 )
 from agent_service.infrastructure.llm.credential_store import CredentialStore
+from agent_service.infrastructure.llm.verifier import fetch_models
 from shared.utils.time_utils import utcnow
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,34 @@ class ProviderService:
 
     def catalog(self) -> Dict[str, Any]:
         return self._windows.as_catalog_dict()
+
+    def discover_models(self, *, owner_id: int, tenant_id: str,
+                        protocol=None, base_url: Optional[str] = None,
+                        api_key: Optional[str] = None,
+                        provider_id: Optional[str] = None) -> Dict[str, Any]:
+        """自动发现供应商可用模型。
+
+        新增时用表单里的 protocol / base_url / api_key；编辑时允许只传
+        ``provider_id``（Key 用服务端已存密文解密，避免让用户重填）。
+        """
+        stored = (self._require(provider_id, owner_id, tenant_id)
+                  if provider_id else None)
+        normalize_protocol = self._normalize_protocol(
+            protocol or (stored.protocol if stored else ''))
+        normalize_base = self._normalize_base_url(
+            base_url or (stored.base_url if stored else ''))
+        key = self._normalize_key(api_key or '', required=False)
+        if not key and stored and stored.api_key_ciphertext:
+            key = self._credentials.decrypt(
+                stored.api_key_ciphertext, key_version=stored.key_version,
+                owner_id=owner_id, provider_id=provider_id)
+        if not key:
+            return {'ok': False, 'code': 'PROVIDER_KEY_MISSING',
+                    'message': '密钥缺失', 'models': []}
+        outcome = fetch_models(
+            protocol=normalize_protocol, base_url=normalize_base, api_key=key)
+        return {'ok': outcome.ok, 'code': outcome.code,
+                'message': outcome.message, 'models': outcome.models}
 
     # ------------------------------------------------------------ commands
 

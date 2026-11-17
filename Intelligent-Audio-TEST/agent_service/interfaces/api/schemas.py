@@ -340,3 +340,19 @@ class VerifyProviderResponse(BaseModel):
     message: str = ''
     status: str
     last_verified_at: Optional[str] = None
+
+
+class DiscoverModelsRequest(BaseModel):
+    """自动发现模型：新增时传 protocol/base_url/api_key，编辑时只传 provider_id。"""
+
+    provider_id: Optional[str] = None
+    protocol: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+class DiscoverModelsResponse(BaseModel):
+    ok: bool
+    code: str
+    message: str = ''
+    models: list = Field(default_factory=list)
