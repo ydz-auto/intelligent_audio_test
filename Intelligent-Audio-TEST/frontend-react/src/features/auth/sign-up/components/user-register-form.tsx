@@ -100,7 +100,7 @@ export function UserRegisterForm({
     <div className={cn('grid gap-4', className)} {...props}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className='grid gap-4'
+        className='grid gap-6'
         noValidate
       >
         <div className='grid gap-2'>
@@ -180,7 +180,7 @@ export function UserRegisterForm({
         )}
         <Button
           type='submit'
-          className='mt-2 w-full justify-center gap-2'
+          className='w-full justify-center gap-2'
           disabled={form.formState.isSubmitting}
         >
           {form.formState.isSubmitting ? (

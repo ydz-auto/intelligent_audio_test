@@ -37,7 +37,7 @@ export function SignUp({
         </p>
       </div>
       <Card className='ring-border shadow-primary/5 w-full gap-0 py-0 shadow-xl'>
-        <CardContent>
+        <CardContent className='px-6 py-6'>
           <UserRegisterForm />
         </CardContent>
       </Card>
