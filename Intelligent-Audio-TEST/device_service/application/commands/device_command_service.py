@@ -16,7 +16,7 @@ from shared.utils.log_handler import log_not_emit, log_and_emit
 from api_gateway.application.services.stats_cache import refresh_stats_cache
 from device_service.domain.repositories import DeviceRepositoryInterface
 from shared.config.query_constants import QueryConstants
-from shared.models.common_enums import DeviceStatusEventType
+from shared.models.common_enums import DeviceStatusEventType, DeviceType
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +190,10 @@ class DeviceCommandService:
             device['is_registered'] = bool(serial) and serial in registered_serials
             device['id'] = device.get('serial')
             device['name'] = f"{device['system']} {device['model']}"
-            device['type'] = 'phone'
+            # 扫描源只产出实体设备，登记类型固定 physical（三值枚举
+            # physical/http_api/websocket_api 之一，与执行路由口径一致）。
+            # 此前写死 'phone' 与枚举不符，登记后设备只能按「未知」展示（INT-2643）。
+            device['type'] = DeviceType.PHYSICAL.value
             device['system_version'] = 'Unknown'
             device['app_name'] = 'Default App'
             device['app_version'] = '1.0.0'

@@ -54,7 +54,7 @@ class Device(Base):
     name = Column(String(100), nullable=False, index=True, comment='设备名称')
     model = Column(String(100), nullable=False, comment='设备型号')
     description = Column(Text, comment='设备详细描述')
-    type = Column(String(50), nullable=False, comment='设备类型 (phone/tablet)')
+    type = Column(String(50), nullable=False, comment='设备类型 (physical/http_api/websocket_api；设备管理登记恒为 physical)')
     system = Column(String(50), nullable=False, comment='操作系统 (Android/iOS/HarmonyOS)')
     system_version = Column(String(20), nullable=False, comment='操作系统版本')
     app_name = Column(String(100), nullable=False, comment='待测应用名称')
