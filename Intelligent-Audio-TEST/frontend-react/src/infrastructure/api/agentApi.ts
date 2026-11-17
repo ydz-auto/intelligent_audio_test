@@ -195,6 +195,23 @@ export async function createAgentSession(
 }
 
 /**
+ * GET /agent/sessions —— 历史会话目录（服务端按 updated_at 倒序；limit 上限 100）。
+ * 网关透明转发，响应为裸数组。
+ */
+export async function listAgentSessions(
+  limit = 50,
+  options?: ApiRequestOptions
+): Promise<AgentSession[]> {
+  const dtos = await request<AgentSessionDto[]>(
+    'GET',
+    `${AGENT_API_PATHS.sessions}?limit=${limit}`,
+    undefined,
+    options
+  )
+  return (dtos ?? []).map(toAgentSession)
+}
+
+/**
  * GET /agent/sessions/{id} —— 会话与最近消息。
  * 真实响应是 `{session, messages, runs}` 信封（网关透明转发），解信封在此层做。
  */

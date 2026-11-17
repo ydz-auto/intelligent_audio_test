@@ -34,6 +34,11 @@ class SessionRepository(ABC):
                       tenant_id: str) -> Optional[AgentSession]: ...
 
     @abstractmethod
+    def list_for_owner(self, owner_id: int, tenant_id: str,
+                       limit: int, offset: int = 0) -> List[AgentSession]:
+        """按 owner / tenant 列出会话，``updated_at`` 倒序（AI 对话历史目录）。"""
+
+    @abstractmethod
     def touch(self, session_id: str) -> None: ...
 
     @abstractmethod

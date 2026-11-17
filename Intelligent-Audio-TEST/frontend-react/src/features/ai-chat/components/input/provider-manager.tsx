@@ -13,10 +13,6 @@ import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { usePermissions } from '@/application/hooks/use-permissions'
-import {
-  AGENT_PROVIDER_MANAGE_PERMISSION,
-} from '@/features/agent-providers/constants'
 import {
   Dialog,
   DialogContent,
@@ -291,8 +287,6 @@ export function ProviderManager({
   onTestConnection,
   onFetchModels,
 }: ProviderManagerProps) {
-  const { hasPermission } = usePermissions()
-  const canManageServerProvider = hasPermission(AGENT_PROVIDER_MANAGE_PERMISSION)
   const [view, setView] = useState<'list' | 'form'>('list')
   const [editing, setEditing] = useState<LlmProvider | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<LlmProvider | null>(null)
@@ -348,17 +342,15 @@ export function ProviderManager({
             <span className='text-muted-foreground min-w-0 flex-1 text-xs'>
               {PROVIDER_MANAGER_COPY.demoHint}
             </span>
-            {canManageServerProvider && (
-              <Button
-                className='text-primary h-6 shrink-0 px-1.5 text-xs underline underline-offset-2'
-                render={<Link onClick={handleClose} to='/agent-providers' />}
-                size='xs'
-                type='button'
-                variant='ghost'
-              >
-                {PROVIDER_MANAGER_COPY.demoServerLink}
-              </Button>
-            )}
+            <Button
+              className='text-primary h-6 shrink-0 px-1.5 text-xs underline underline-offset-2'
+              render={<Link onClick={handleClose} to='/agent-providers' />}
+              size='xs'
+              type='button'
+              variant='ghost'
+            >
+              {PROVIDER_MANAGER_COPY.demoServerLink}
+            </Button>
           </div>
 
           {view === 'form' ? (

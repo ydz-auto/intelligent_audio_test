@@ -7,7 +7,6 @@
 import { Link } from '@tanstack/react-router'
 import { AlertTriangle, Bot } from 'lucide-react'
 
-import { usePermissions } from '@/application/hooks/use-permissions'
 import {
   hasUsableProvider,
   pickDefaultProvider,
@@ -18,15 +17,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   AGENT_PROVIDERS_COPY,
   AGENT_PROVIDERS_ROUTE,
-  AGENT_PROVIDER_MANAGE_PERMISSION,
 } from '../constants'
 
 export function AgentProviderStatusChip({ compact = false }: { compact?: boolean }) {
-  const { hasPermission } = usePermissions()
-  const allowed = hasPermission(AGENT_PROVIDER_MANAGE_PERMISSION)
-  const query = useAgentProvidersQuery({ enabled: allowed })
-
-  if (!allowed) return null
+  const query = useAgentProvidersQuery({ enabled: true })
 
   if (query.isPending) {
     return <Skeleton className='h-5 w-28 rounded' />
@@ -62,10 +56,9 @@ export function AgentProviderStatusChip({ compact = false }: { compact?: boolean
   return (
     <span
       className='text-muted-foreground inline-flex min-w-0 max-w-full items-center gap-1 text-[11px]'
-      title={`${AGENT_PROVIDERS_COPY.sessionSummaryPrefix}：${provider.name} · ${provider.model}`}
+      title={`${provider.name} · ${provider.model}`}
     >
       <Bot className='size-3.5 shrink-0' aria-hidden='true' />
-      <span className='shrink-0'>{AGENT_PROVIDERS_COPY.sessionSummaryPrefix}</span>
       <span className='text-foreground min-w-0 truncate font-medium'>
         {compact ? provider.model : `${provider.name} · ${provider.model}`}
       </span>

@@ -7,7 +7,6 @@ import { Link } from '@tanstack/react-router'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { usePermissions } from '@/application/hooks/use-permissions'
 import {
   AGENT_PROVIDER_NOT_CONFIGURED_CODE,
 } from '@/domain/models/agentProvider'
@@ -15,7 +14,6 @@ import { ERROR_MESSAGES } from '@/features/ai-chat/constants'
 import {
   AGENT_PROVIDERS_COPY,
   AGENT_PROVIDERS_ROUTE,
-  AGENT_PROVIDER_MANAGE_PERMISSION,
 } from '@/features/agent-providers/constants'
 
 type MessageErrorProps = {
@@ -36,10 +34,8 @@ export function MessageError({
   errorCode,
   detail,
 }: MessageErrorProps) {
-  const { hasPermission } = usePermissions()
   const isInterrupted = errorCode === 'interrupted'
   const providerMissing = errorCode === AGENT_PROVIDER_NOT_CONFIGURED_CODE
-  const canManageProvider = hasPermission(AGENT_PROVIDER_MANAGE_PERMISSION)
 
   return (
     <Alert className='mt-1' variant='destructive'>
@@ -60,7 +56,7 @@ export function MessageError({
         )}
       </AlertDescription>
       <div className='mt-2 flex items-center gap-1.5'>
-        {providerMissing && canManageProvider && (
+        {providerMissing && (
           <Button
             className='h-7 px-2.5 text-xs'
             render={<Link to={AGENT_PROVIDERS_ROUTE} />}

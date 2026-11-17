@@ -7,7 +7,7 @@
  */
 import { Badge } from '@/components/ui/badge'
 import { PanelRight } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -20,8 +20,7 @@ import {
 import { AgentConnectButton } from '@/components/layout/components/agent-connect-button'
 
 import {
-  normalizeChatChannel,
-  type ChatChannel,
+  CHAT_CHANNEL,
   type ChatConfig,
   type ReportContextOption,
 } from '@/domain/models/aiChat'
@@ -32,20 +31,17 @@ import {
 } from '@/domain/models/agent'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
 import { useAgentRunHost } from '@/application/agent/use-agent-run'
+import { useAgentRunStore } from '@/application/agent/agent-run-store'
 import { useTaskReportId } from '@/application/reports/use-report-studio'
 import { useChatConversation } from '@/features/ai-chat/hooks/use-chat-conversation'
 import { useChatState } from '@/features/ai-chat/hooks/use-chat-state'
-import { useLlmProviders } from '@/features/ai-chat/hooks/use-llm-providers'
 import { useReportContextQueries } from '@/features/ai-chat/hooks/use-report-context'
 import { AiChat } from '@/features/ai-chat/components/chat/ai-chat'
 import { AiChatInput } from '@/features/ai-chat/components/input/ai-chat-input'
-import {
-  ReportContextSelector,
-  type SelectedContext,
-} from '@/features/ai-chat/components/input/report-context-selector'
-import { ProviderManager } from '@/features/ai-chat/components/input/provider-manager'
+import { ReportContextSelector, type SelectedContext } from '@/features/ai-chat/components/input/report-context-selector'
+import { ConversationHistory } from '@/features/ai-chat/components/history/conversation-history'
 import { DocumentPanel } from '@/features/ai-chat/components/studio/document-panel'
-import { DEFAULT_CHAT_CHANNEL, DEMO_COPY } from '@/features/ai-chat/constants'
+import { DEMO_COPY } from '@/features/ai-chat/constants'
 import { resolveTaskReportErrorMessage } from '@/features/ai-chat/lib/task-report-error'
 import {
   useAiChatSession,
@@ -194,18 +190,6 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     />
   )
 
-  const {
-    providers,
-    addProvider,
-    updateProvider,
-    removeProvider,
-    setDefaultProvider,
-    defaultProvider,
-    testConnection,
-    fetchModels,
-  } = useLlmProviders()
-  const [providerManagerOpen, setProviderManagerOpen] = useState(false)
-
   /** 输入区受控文本（页面持有：starter 回填 / 任务 URL 预填 / 提交后清空） */
   const [draftText, setDraftText] = useState(initialPrompt ?? '')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -216,29 +200,8 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     textareaRef.current?.focus()
   }
 
-  /** 当前会话供应商（config.providerId 命中或默认；§3.11 Demo 直连驱动对话） */
-  const currentProvider =
-    providers.find((p) => p.id === config.providerId) ??
-    defaultProvider ??
-    null
-
-  /** 配置即用（§3.11/INT-1032 走查）：供应商带模型而会话未选模型/所选模型已不在
-   * 清单时自动落首个模型——添加供应商后无需再手动选模型即可对话；手动切换模型后
-   * 命中校验、效果不再覆写。 */
-  useEffect(() => {
-    if (!currentProvider) return
-    const modelValid = currentProvider.models.includes(config.modelId ?? '')
-    if (currentProvider.models.length > 0 && !modelValid) {
-      updateConfig('providerId', currentProvider.id)
-      updateConfig('modelId', currentProvider.models[0])
-    }
-  }, [currentProvider, config.modelId, updateConfig])
-
-  /** 对话通道（INT-2457）：默认平台 Agent；自带供应商为降级模式 */
-  const channel = normalizeChatChannel(config.chatMode ?? DEFAULT_CHAT_CHANNEL)
-  const handleChannelChange = (next: ChatChannel) => {
-    updateConfig('chatMode', next)
-  }
+  /** 对话通道：只保留平台 Agent（供应商由服务端密钥库托管，页面不再有「自带供应商」） */
+  const channel = CHAT_CHANNEL.PLATFORM
 
   /** 运行模式与 Auto 预算（INT-2474）：随会话 config 持久化，两宿主同一份 */
   const runMode = normalizeRunMode(config.runMode)
@@ -274,7 +237,6 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
   } = useChatHandler({
     channel,
     config,
-    provider: currentProvider,
     messages,
     onMessageUpdate: updateMessages,
   })
@@ -297,18 +259,22 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
 
   const [workModeOpen, setWorkModeOpen] = useState(false)
 
-  /** 模型/供应商切换（§3.5/§3.11：选择写会话 config，不写全局算法 store） */
-  const handleSelectProvider = (providerId: string) => {
-    updateConfig('providerId', providerId)
-  }
-  const handleSelectModel = (providerId: string, modelId: string) => {
-    updateConfig('providerId', providerId)
-    updateConfig('modelId', modelId)
-  }
-
   const handleClearMessages = () => {
     handleEditOpenChange(false)
     // 平台通道同时结束会话上下文（下次发送新建会话，避免服务端残留旧历史）
+    resetChat()
+    clearMessages()
+  }
+
+  /** 历史会话切换：读服务端最近消息回填（生成中不允许切换，避免打断在办 run） */
+  const handleSelectSession = (sessionId: string) => {
+    if (isGenerating || sessionId === agentSessionId) return
+    void useAgentRunStore.getState().openSession(sessionId)
+  }
+
+  /** 新对话：结束当前会话上下文并清空本地消息 */
+  const handleNewConversation = () => {
+    if (isGenerating) return
     resetChat()
     clearMessages()
   }
@@ -340,7 +306,14 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
   } as const
 
   return (
-    <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
+    <div className='relative flex size-full min-h-0 overflow-hidden'>
+      <ConversationHistory
+        activeSessionId={agentSessionId}
+        disabled={isGenerating}
+        onNew={handleNewConversation}
+        onSelect={handleSelectSession}
+      />
+      <div className='flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'>
       {/* 顶部条（shrink-0，§3.1/§3.2）；Demo 徽标 §3.10 落点①；INT-1153 二轮返工：
        * 炫彩「连接你的 agent」入口落右上角（标题区右侧），点击跳转 /agent-connect */}
       <div className='border-border/60 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3 sm:px-6'>
@@ -415,7 +388,6 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
               </div>
               <div className='shrink-0'>
                 <AiChatInput
-                  channel={channel}
                   compact
                   config={config}
                   contextSlot={contextSelector}
@@ -424,14 +396,9 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                   hasMessages={messages.length > 0}
                   isGenerating={isGenerating}
                   onClearMessages={handleClearMessages}
-                  onChannelChange={handleChannelChange}
-                  onManageProviders={() => setProviderManagerOpen(true)}
-                  onSelectModel={handleSelectModel}
-                  onSelectProvider={handleSelectProvider}
                   onStop={stopGeneration}
                   onSubmit={handleSendMessage}
                   onValueChange={setDraftText}
-                  providers={providers}
                   textareaRef={textareaRef}
                   value={draftText}
                   {...autoInputProps}
@@ -497,7 +464,6 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
           {/* 输入区（max-w-4xl 居中钳制，§3.1） */}
           <div className='mx-auto w-full max-w-4xl'>
             <AiChatInput
-              channel={channel}
               config={config}
               contextSlot={contextSelector}
               disabled={isGenerating}
@@ -505,14 +471,9 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
               hasMessages={messages.length > 0}
               isGenerating={isGenerating}
               onClearMessages={handleClearMessages}
-              onChannelChange={handleChannelChange}
-              onManageProviders={() => setProviderManagerOpen(true)}
-              onSelectModel={handleSelectModel}
-              onSelectProvider={handleSelectProvider}
               onStop={stopGeneration}
               onSubmit={handleSendMessage}
               onValueChange={setDraftText}
-              providers={providers}
               textareaRef={textareaRef}
               value={draftText}
               {...autoInputProps}
@@ -520,19 +481,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
           </div>
         </>
       )}
-
-      {/* 供应商管理弹窗（§3.11；整页与全局浮窗共用同一供应商清单） */}
-      <ProviderManager
-        onAdd={addProvider}
-        onFetchModels={fetchModels}
-        onOpenChange={setProviderManagerOpen}
-        onRemove={removeProvider}
-        onSetDefault={setDefaultProvider}
-        onTestConnection={testConnection}
-        onUpdate={updateProvider}
-        open={providerManagerOpen}
-        providers={providers}
-      />
+      </div>
     </div>
   )
 }

@@ -55,11 +55,12 @@ export const ROOT_SIDEBAR_NAV: NavGroup[] = [
         requiredPermission: 'report:read',
       },
       {
-        // INT-2493 模型供应商管理（§6.4 / §11）：权限码与网关 / 路由守卫同集合
+        // INT-2493 模型供应商管理（§6.4 / §11）：供应商按用户隔离，
+        // 登录即可配置自己的 Key（auth:me 是所有登录账号的基线权限）
         title: '模型供应商',
         url: '/agent-providers',
         icon: KeyRound,
-        requiredPermission: 'agent:provider:manage',
+        requiredPermission: 'auth:me',
       },
       {
         // INT-2550 Skill 管理（§4.4 / §11）：与模型供应商同组同规范，

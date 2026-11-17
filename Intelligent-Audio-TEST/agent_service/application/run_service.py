@@ -7,7 +7,7 @@
 """
 import logging
 import uuid
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from agent_service.application.approval_service import ApprovalService
 from agent_service.application.auto_mode import (
@@ -91,6 +91,12 @@ class RunService:
         if session is None:
             raise SessionNotFound(session_id)
         return session
+
+    def list_sessions(self, *, owner_id: int, tenant_id: str,
+                      limit: int = 50, offset: int = 0) -> List[AgentSession]:
+        """AI 对话历史目录：owner / tenant 内按最近活跃倒序。"""
+        return self._sessions.list_for_owner(
+            owner_id, tenant_id, limit=limit, offset=offset)
 
     # ------------------------------------------------------------ runs
 

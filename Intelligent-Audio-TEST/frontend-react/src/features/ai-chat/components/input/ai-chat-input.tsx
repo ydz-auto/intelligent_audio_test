@@ -40,13 +40,13 @@ type AiChatInputProps = {
   disabled?: boolean
   isGenerating?: boolean
   hasMessages?: boolean
-  providers: LlmProvider[]
-  /** 对话通道（平台 Agent / 自带供应商，INT-2457；缺省自带供应商=既有行为） */
+  /** 已废弃：对话只保留平台 Agent 通道（保留可选位以兼容复核弹窗等历史调用方） */
+  providers?: LlmProvider[]
   channel?: ChatChannel
   onChannelChange?: (channel: ChatChannel) => void
-  onSelectProvider: (providerId: string) => void
-  onSelectModel: (providerId: string, modelId: string) => void
-  onManageProviders: () => void
+  onSelectProvider?: (providerId: string) => void
+  onSelectModel?: (providerId: string, modelId: string) => void
+  onManageProviders?: () => void
   onClearMessages?: () => void
   /** 受控文本（页面持有：starter 回填 / 任务 URL 预填 / 提交后清空） */
   value: string
@@ -68,18 +68,13 @@ type AiChatInputProps = {
 }
 
 export function AiChatInput({
-  config,
   onSubmit,
   onStop,
   disabled,
   isGenerating = false,
   hasMessages = false,
-  providers,
-  channel = CHAT_CHANNEL.PROVIDER,
-  onChannelChange,
-  onSelectProvider,
-  onSelectModel,
-  onManageProviders,
+  providers = [],
+  channel = CHAT_CHANNEL.PLATFORM,
   onClearMessages,
   value,
   onValueChange,
@@ -197,17 +192,10 @@ export function AiChatInput({
             <div className='flex items-center justify-between gap-2 md:justify-start'>
               {contextSlot}
               <AiChatInputTools
-                channel={channel}
-                config={config}
                 disabled={disabled}
-                onChannelChange={onChannelChange}
                 hasMessages={hasMessages}
                 onClearMessages={onClearMessages}
-                onManageProviders={onManageProviders}
                 onRunModeChange={onRunModeChange}
-                onSelectModel={onSelectModel}
-                onSelectProvider={onSelectProvider}
-                providers={providers}
                 runMode={runMode}
               />
               <div className='flex items-center gap-1.5 md:hidden'>

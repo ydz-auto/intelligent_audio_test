@@ -27,13 +27,9 @@ import { AgentConnectButton } from '@/components/layout/components/agent-connect
 import {
   AGENT_PROVIDERS_COPY,
   AGENT_PROVIDERS_ROUTE,
-  AGENT_PROVIDER_MANAGE_PERMISSION,
 } from '@/features/agent-providers/constants'
 
-import {
-  normalizeChatChannel,
-  type ChatChannel,
-} from '@/domain/models/aiChat'
+import { CHAT_CHANNEL } from '@/domain/models/aiChat'
 import {
   normalizeRunMode,
   type AgentRunBudget,
@@ -46,7 +42,7 @@ import { useLlmProviders } from '@/features/ai-chat/hooks/use-llm-providers'
 import { AiChat } from '@/features/ai-chat/components/chat/ai-chat'
 import { AiChatInput } from '@/features/ai-chat/components/input/ai-chat-input'
 import { ProviderManager } from '@/features/ai-chat/components/input/provider-manager'
-import { DEFAULT_CHAT_CHANNEL, DEMO_COPY } from '@/features/ai-chat/constants'
+import { DEMO_COPY } from '@/features/ai-chat/constants'
 import { useAgentWorkbench } from '@/infrastructure/stores/agentWorkbenchStore'
 
 import { AgentWorkbenchCapsule } from './agent-workbench-capsule'
@@ -106,11 +102,8 @@ function AgentWorkbenchSession({
     }
   }, [currentProvider, config.modelId, updateConfig])
 
-  /** 对话通道（INT-2457）：与整页同一 config.chatMode，两形态不分裂通道 */
-  const channel = normalizeChatChannel(config.chatMode ?? DEFAULT_CHAT_CHANNEL)
-  const handleChannelChange = (next: ChatChannel) => {
-    updateConfig('chatMode', next)
-  }
+  /** 对话通道：只保留平台 Agent（与整页同口径，不再有「自带供应商」） */
+  const channel = CHAT_CHANNEL.PLATFORM
 
   /** 运行模式与 Auto 预算（INT-2474）：与整页同一份 config，两形态不分裂模式 */
   const runMode = normalizeRunMode(config.runMode)
@@ -275,7 +268,6 @@ function AgentWorkbenchSession({
           hasMessages={messages.length > 0}
           isGenerating={isGenerating}
           onClearMessages={handleClearMessages}
-          onChannelChange={handleChannelChange}
           onManageProviders={() => setProviderManagerOpen(true)}
           onSelectModel={handleSelectModel}
           onSelectProvider={handleSelectProvider}
@@ -358,26 +350,24 @@ export function AgentWorkbench() {
           </TooltipContent>
         </Tooltip>
         <div className='ms-auto flex items-center gap-1'>
-          {hasPermission(AGENT_PROVIDER_MANAGE_PERMISSION) && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    aria-label={AGENT_PROVIDERS_COPY.pageTitle}
-                    className='text-muted-foreground hover:text-foreground size-7'
-                    onClick={handleOpenProviders}
-                    type='button'
-                    variant='ghost'
-                  >
-                    <KeyRound className='size-4' />
-                  </Button>
-                }
-              />
-              <TooltipContent>
-                <p>{AGENT_PROVIDERS_COPY.pageTitle}</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  aria-label={AGENT_PROVIDERS_COPY.pageTitle}
+                  className='text-muted-foreground hover:text-foreground size-7'
+                  onClick={handleOpenProviders}
+                  type='button'
+                  variant='ghost'
+                >
+                  <KeyRound className='size-4' />
+                </Button>
+              }
+            />
+            <TooltipContent>
+              <p>{AGENT_PROVIDERS_COPY.pageTitle}</p>
+            </TooltipContent>
+          </Tooltip>
           <AgentConnectButton compact />
           <Button
             aria-label='最小化'

@@ -17,7 +17,7 @@
 """
 import json
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import (
     APIRouter, Depends, File, Header, HTTPException, Query, Request, Response,
@@ -90,6 +90,18 @@ def _sse_frame(event) -> str:
 
 
 # ---------------------------------------------------------------- routes
+
+@router.get('/sessions', response_model=List[SessionResponse])
+def list_sessions(request: Request, limit: int = 50, offset: int = 0,
+                  identity: Identity = Depends(get_identity)):
+    """AI 对话历史目录：当前用户 / 租户的会话，按最近活跃倒序。"""
+    container = get_container(request)
+    sessions = container.run_service.list_sessions(
+        owner_id=identity.user_id, tenant_id=identity.tenant_id,
+        limit=max(1, min(limit, 100)), offset=max(0, offset),
+    )
+    return [_serialize_session(session) for session in sessions]
+
 
 @router.post('/sessions', response_model=SessionResponse, status_code=201)
 def create_session(payload: CreateSessionRequest, request: Request,

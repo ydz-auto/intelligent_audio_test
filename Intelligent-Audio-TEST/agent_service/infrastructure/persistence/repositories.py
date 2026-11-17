@@ -219,6 +219,18 @@ class SqlSessionRepository(_BaseRepo, SessionRepository):
         finally:
             db.close()
 
+    def list_for_owner(self, owner_id: int, tenant_id: str,
+                       limit: int, offset: int = 0) -> List[AgentSession]:
+        db = self._session()
+        try:
+            rows = db.query(AgentSessionPO).filter(
+                AgentSessionPO.owner_id == owner_id,
+                AgentSessionPO.tenant_id == tenant_id,
+            ).order_by(AgentSessionPO.updated_at.desc()).offset(offset).limit(limit).all()
+            return [_to_session(row) for row in rows]
+        finally:
+            db.close()
+
     def touch(self, session_id: str) -> None:
         db = self._session()
         try:

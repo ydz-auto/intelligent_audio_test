@@ -94,7 +94,6 @@ export const AGENT_PROVIDERS_COPY = {
     '平台 Agent 需要你自己的模型 Key 才能运行（平台不提供默认 Key）。请先添加一个供应商并设为默认。',
   guidanceAction: '去配置模型供应商',
 
-  sessionSummaryPrefix: '平台模型',
   sessionNoProvider: '未配置模型供应商',
   sessionGoConfigure: '去配置',
 } as const

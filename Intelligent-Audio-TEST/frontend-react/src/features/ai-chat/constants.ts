@@ -294,18 +294,6 @@ export const MODEL_PROVIDER_COPY = {
   manageProviders: '管理供应商',
 }
 
-/** 对话通道切换（INT-2457 M0：默认平台 Agent，自带供应商为降级模式） */
-export const CHAT_CHANNEL_COPY = {
-  label: '对话通道',
-  platform: '平台 Agent',
-  provider: '自带供应商',
-  platformHint: '由平台 Agent 托管：会话续传、工具调用、来源可溯',
-  providerHint: '使用你配置的 LLM 供应商直连（降级模式，无工具调用）',
-  platformModelBadge: '平台托管模型',
-  switchToPlatform: '切换到平台 Agent',
-  switchToProvider: '切换到自带供应商',
-} as const
-
 /** Run 生命周期提示（§12.2「SSE 重连不重复渲染」+ 取消态 + 审批等待态） */
 export const AGENT_RUN_PHASE_COPY = {
   preparing: '正在准备会话…',

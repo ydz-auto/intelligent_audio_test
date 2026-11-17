@@ -92,7 +92,7 @@ function buildLoadingMessage(key: string): ChatMessage {
 
 export function useChatHandler({
   config,
-  provider,
+  provider = null,
   messages,
   onMessageUpdate,
   /** 系统提示覆盖（AI 复核等有界会话注入专用上下文；仅供应商通道） */
@@ -101,8 +101,8 @@ export function useChatHandler({
   channel = CHAT_CHANNEL.PROVIDER,
 }: {
   config: ChatConfig
-  /** 当前供应商（调用方从 useLlmProviders 解析：config.providerId 命中或默认） */
-  provider: LlmProvider | null
+  /** 当前供应商（供应商直连通道使用；平台 Agent 通道不依赖） */
+  provider?: LlmProvider | null
   messages: ChatMessage[]
   onMessageUpdate: UpdateMessagesFn
   systemPrompt?: string

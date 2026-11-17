@@ -329,6 +329,8 @@ type AgentRunStoreState = {
    * 收口刷新打断的气泡。会话已失效（404/410）则清掉本地会话 id。
    */
   restore: () => Promise<void>
+  /** 切到某条历史会话（清空本轮状态、换绑 session id、回填服务端消息） */
+  openSession: (sessionId: string) => Promise<void>
   /** 宿主登记（整页 / 浮窗；同 kind 多次挂载按一次计） */
   attachHost: (host: AgentRunHostKind) => void
   /**
@@ -1754,6 +1756,16 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     return promise
   }
 
+  /** 切到历史会话：结束当前本地状态、换绑会话 id 并回填服务端历史消息 */
+  const openSession = async (sessionId: string): Promise<void> => {
+    if (active) return
+    reset({ keepSession: true })
+    session().clearMessages()
+    session().setAgentSession(sessionId)
+    session().setAgentRunId(null)
+    await restore()
+  }
+
   return {
     phase: AGENT_RUN_PHASE.IDLE,
     run: null,
@@ -1776,6 +1788,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     refreshApprovals,
     reset,
     restore,
+    openSession,
     attachHost,
     detachHost,
   }

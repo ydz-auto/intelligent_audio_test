@@ -635,7 +635,7 @@ export const AGENT_ERROR_COPY = {
    * 服务不可达 / 未部署（503 但不是总开关：网关转发不到 agent_service、
    * 凭据主密钥不可用等）。不能报成「未开启」，否则把环境问题误导成配置问题。
    */
-  serviceUnavailable: '平台 Agent 服务暂不可用，请稍后重试或切换到「自带供应商」通道',
+  serviceUnavailable: '平台 Agent 服务暂不可用，请稍后重试',
   /** 会话 / run 不存在（404：run_id / session_id 无效或已被清理） */
   notFound: '会话或运行不存在，请重新开始对话',
   /** 无权限 / 会话失效 */

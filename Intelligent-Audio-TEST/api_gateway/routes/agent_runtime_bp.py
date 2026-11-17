@@ -236,6 +236,11 @@ def _stream_events(request: Request, run_id: str):
 
 # ---------------------------------------------------------------- routes
 
+@router.get('/sessions')
+async def proxy_list_sessions(request: Request):
+    return await _forward(request, 'GET')
+
+
 @router.post('/sessions')
 async def proxy_create_session(request: Request):
     return await _forward(request, 'POST')
