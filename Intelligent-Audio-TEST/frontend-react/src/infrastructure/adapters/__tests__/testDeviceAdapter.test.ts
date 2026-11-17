@@ -75,6 +75,16 @@ describe('testDeviceFromDto', () => {
     expect(device.updatedAt).toBe(BASE_DTO.updated_at)
   })
 
+  it('设备类型走三值白名单；历史 phone 归一为 null 并保留 rawType（INT-2640）', () => {
+    const physical = testDeviceFromDto(BASE_DTO)
+    expect(physical.type).toBe('physical')
+    expect(physical.rawType).toBeNull()
+
+    const legacy = testDeviceFromDto({ ...BASE_DTO, type: 'phone' })
+    expect(legacy.type).toBeNull()
+    expect(legacy.rawType).toBe('phone')
+  })
+
   it('§6.2 高级设置字段（apiLevel/remark/tags/customAttributes/priority）缺省回退', () => {
     const device = testDeviceFromDto(BASE_DTO)
     expect(device.apiLevel).toBeNull()

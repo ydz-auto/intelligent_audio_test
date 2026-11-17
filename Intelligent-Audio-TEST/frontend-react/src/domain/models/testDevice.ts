@@ -5,6 +5,8 @@
  * 「测试中」为占用叠加态（INT-487）：不占五态机枚举/筛选/统计，仅 occupied 承载本地瞬时态兜底。
  * 所属实验室 labId/labName（INT-487）：后端 DTO 待暴露 lab_id，字段落地前 mock 先行。
  */
+import type { DeviceType } from '@/domain/models/device'
+
 export type DeviceConnectionType = 'usb' | 'remote'
 
 export type DeviceFiveState =
@@ -31,8 +33,13 @@ export interface TestDevice {
   name: string
   model: string | null
   description: string | null
-  /** schema type 字段（physical/http_api/websocket_api，本页不展示，留待接线） */
-  type: string | null
+  /** 设备类型归一值（device_type 三值；非三值→null，展示层统一「未知」，INT-2640） */
+  type: DeviceType | null
+  /**
+   * 三值之外的后端原始 type（仅 type 为 null 且后端有值时填充，如历史 `phone`）。
+   * 编辑抽屉回写用：保存时不抹掉未识别的原值，数据不丢（INT-2640）。
+   */
+  rawType?: string | null
   /** DeviceSystem 归一值（iOS/Android/HarmonyOS） */
   system: string | null
   systemVersion: string | null

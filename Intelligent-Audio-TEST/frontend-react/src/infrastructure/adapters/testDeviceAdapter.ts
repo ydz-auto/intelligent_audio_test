@@ -3,6 +3,7 @@
  * 消费 dto/ 原始 snake_case 类型，产出 domain 模型；Presentation 层不感知 snake_case。
  * 五态状态机值直接透传（在线/离线/连接中/断开中/错误），「测试中」占用态走 occupied。
  */
+import { toDeviceType } from '@/domain/models/device'
 import type {
   DeviceFiveState,
   TestDevice,
@@ -23,12 +24,15 @@ export function toDeviceFiveState(status: string | null): DeviceFiveState | null
 }
 
 export function testDeviceFromDto(dto: TestDeviceItemDto): TestDevice {
+  const type = toDeviceType(dto.type)
   return {
     id: dto.id,
     name: dto.name,
     model: dto.model,
     description: dto.description,
-    type: dto.type,
+    // INT-2640：与 deviceAdapter 同口径走三值白名单；三值外原值保留在 rawType（编辑回写不丢数据）
+    type,
+    rawType: type ? null : (dto.type ?? null),
     system: dto.system,
     systemVersion: dto.system_version,
     apiLevel: dto.api_level ?? null,

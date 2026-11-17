@@ -53,6 +53,12 @@ import { useSplMappings } from '@/application/spl/useSplMappings'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { filterAssociableSplMappings } from '@/features/devices/lib/spl-associable-options'
+import {
+  DEVICE_TYPE_META,
+  DEVICE_TYPE_UNKNOWN_LABEL,
+  DEVICE_TYPE_VALUES,
+  toDeviceType,
+} from '@/domain/models/device'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
@@ -88,11 +94,10 @@ const FORMAT_OPTIONS = ['WAV', 'MP3', 'FLAC', 'AAC', 'OGG', 'WMA']
  * 程序设值/编辑回填的 Select 必须补 items，否则显示 physical / usb / offline_duration 等枚举码。
  * INT-1480 P2-1：本抽屉全部 Select 逐个补齐（选项与 SelectContent 子项同源常量）。
  */
-const TEST_DEVICE_TYPE_OPTIONS = [
-  { value: 'physical', label: '真机' },
-  { value: 'http_api', label: 'HTTP API' },
-  { value: 'websocket_api', label: 'Realtime WS' },
-]
+const TEST_DEVICE_TYPE_OPTIONS = DEVICE_TYPE_VALUES.map((value) => ({
+  value,
+  label: DEVICE_TYPE_META[value].label,
+}))
 const PLAYBACK_DEVICE_TYPE_OPTIONS = [
   { value: 'dry', label: '干声设备' },
   { value: 'noise', label: '噪声设备' },
@@ -168,7 +173,11 @@ function buildDefaults(
       description: device?.description ?? '',
       remark: device?.remark ?? '',
       model: device?.model ?? scanPrefill?.model ?? '',
-      deviceType: device?.type ?? scanPrefill?.type ?? 'physical',
+      // INT-2640：编辑态保留三值之外的原始值（如历史 phone），下拉显示「未知」、保存原值回写不丢数据；
+      // 新增态（含扫描预填）一律落三值，未知按「真机」起步（扫描源只产出实体设备）
+      deviceType: device
+        ? (device.type ?? device.rawType ?? 'physical')
+        : (toDeviceType(scanPrefill?.type) ?? 'physical'),
       system: normalizeDeviceSystem(device?.system ?? scanPrefill?.system)?.label ?? 'Android',
       systemVersion: device?.systemVersion ?? scanPrefill?.systemVersion ?? '',
       apiLevel: device?.apiLevel ?? '',
@@ -308,6 +317,22 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
   })
 
   const watchedPlaybackType = (form.watch('deviceType') || null) as PlaybackDevice['deviceType']
+  const watchedDeviceType = form.watch('deviceType')
+  /**
+   * INT-2640：三值之外的存量值（历史 phone / 脏值）补一条「未知」选项。
+   * base-ui Select 关闭态只按 items 解析标签，缺项会原样回显英文枚举；该选项 value 保留原值，
+   * 用户不改类型时保存仍写回原值（数据不丢），下拉也不会外露英文。
+   */
+  const testDeviceTypeOptions = useMemo(() => {
+    if (kind !== 'test' || !watchedDeviceType) return TEST_DEVICE_TYPE_OPTIONS
+    if (TEST_DEVICE_TYPE_OPTIONS.some((option) => option.value === watchedDeviceType)) {
+      return TEST_DEVICE_TYPE_OPTIONS
+    }
+    return [
+      ...TEST_DEVICE_TYPE_OPTIONS,
+      { value: watchedDeviceType, label: DEVICE_TYPE_UNKNOWN_LABEL },
+    ]
+  }, [kind, watchedDeviceType])
   const currentSplMappingId =
     kind === 'playback'
       ? ((editingDevice as PlaybackDevice | null)?.currentSplMappingId ?? null)
@@ -351,13 +376,16 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
     setSaving(true)
     try {
       if (values.kind === 'test') {
+        // INT-2640：表单值经三值白名单归一；三值外的存量值（如历史 phone）编辑保存时不改写 type，
+        // 后端保留原值（下拉显示「未知」但数据不丢）；新增态无此分支，下面兜底 physical。
+        const normalizedType = toDeviceType(values.deviceType)
         const editable = {
           name: values.name.trim(),
           description: values.description?.trim() || null,
           remark: values.remark?.trim() || null,
           keywords: values.keywords?.trim() || null,
           model: values.model.trim(),
-          type: values.deviceType,
+          ...(normalizedType ? { type: normalizedType } : {}),
           system: values.system,
           systemVersion: values.systemVersion.trim(),
           apiLevel: values.apiLevel?.trim() || null,
@@ -385,6 +413,8 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
         } else {
           await createTest.mutateAsync({
             ...editable,
+            // 新增设备必落三值（扫描源只产出实体设备，未知按真机）
+            type: normalizedType ?? 'physical',
             status: 'offline',
             occupied: false,
             labName: null,
@@ -489,14 +519,17 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                   <Field label='设备类型' required error={errors.deviceType?.message}>
                     <Select
                       value={form.watch('deviceType')}
-                      items={TEST_DEVICE_TYPE_OPTIONS}
-                      onValueChange={(value) => form.setValue('deviceType', value ?? '')}
+                      items={testDeviceTypeOptions}
+                      // base-ui 关闭时可能补发一次 null（无 clear 入口），只接受选中值，避免把回填值清空
+                      onValueChange={(value) => {
+                        if (value) form.setValue('deviceType', value)
+                      }}
                     >
                       <SelectTrigger size='sm' className='w-full'>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {TEST_DEVICE_TYPE_OPTIONS.map((option) => (
+                        {testDeviceTypeOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
