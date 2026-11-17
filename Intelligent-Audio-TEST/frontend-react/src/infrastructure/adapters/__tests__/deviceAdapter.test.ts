@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { deviceFromDto, toDeviceStatus, toDeviceType } from '@/infrastructure/adapters/deviceAdapter'
+import { toDeviceType } from '@/domain/models/device'
+import { deviceFromDto, toDeviceStatus } from '@/infrastructure/adapters/deviceAdapter'
 import type { DeviceItemDto } from '@/infrastructure/dto/device.dto'
 
 const BASE_DTO: DeviceItemDto = {
