@@ -54,6 +54,8 @@ const FULL_STATS = {
   q1: 0.5,
   q2: 1,
   q3: 1.5,
+  p90: 1.8,
+  p95: 1.9,
   max: 2,
   positiveRanges: [],
   negativeRanges: [],

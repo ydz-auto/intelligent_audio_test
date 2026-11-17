@@ -374,6 +374,18 @@ class ReportHelpers:
                         q1 = values[0]
                         q3 = values[0]
 
+                    # 尾部分位数 P90/P95（样本不足时退化为极值，与四分位同口径）
+                    ordered = np.sort(values)
+                    if count >= 4:
+                        p90 = np.percentile(ordered, 90)
+                        p95 = np.percentile(ordered, 95)
+                    elif count >= 2:
+                        p90 = ordered[-1]
+                        p95 = ordered[-1]
+                    else:
+                        p90 = ordered[0]
+                        p95 = ordered[0]
+
                     # 计算区间百分比
                     if count > 1 and std > 0:
                         # 正方向区间百分比
@@ -405,6 +417,8 @@ class ReportHelpers:
                     q1 = float(round(float(np.nan_to_num(q1, nan=0.0)), 2))
                     median = float(round(float(np.nan_to_num(median, nan=0.0)), 2))
                     q3 = float(round(float(np.nan_to_num(q3, nan=0.0)), 2))
+                    p90 = float(round(float(np.nan_to_num(p90, nan=0.0)), 2))
+                    p95 = float(round(float(np.nan_to_num(p95, nan=0.0)), 2))
                     max_val = float(round(float(np.nan_to_num(max_val, nan=0.0)), 2))
 
                     normal_distribution_data[resource][dim_name] = {
@@ -417,6 +431,8 @@ class ReportHelpers:
                             "q1": q1,
                             "median": median,
                             "q3": q3,
+                            "p90": p90,
+                            "p95": p95,
                             "max": max_val
                         },
                         "interval_percentages": {
@@ -446,6 +462,8 @@ class ReportHelpers:
                             "q1": 0,
                             "median": 0,
                             "q3": 0,
+                            "p90": 0,
+                            "p95": 0,
                             "max": 0
                         },
                         "interval_percentages": {
