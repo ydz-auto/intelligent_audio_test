@@ -138,6 +138,12 @@ def generate_aligned_clean_audio(user_wav, played_audios, output_path=None):
     search_start_sample = 0
     # 最小 NCC 阈值，低于此值认为对齐不可靠
     MIN_NCC_THRESHOLD = 0.3
+    # 干净语音区间相对源音频的最短占比：RMS 检测（0.2×max）会把句尾轻声/低音量
+    # 内容判成静音，导致检测区间明显短于真实说话内容（实测有仅覆盖 61%~68% 源音频
+    # 的用例，尾巴整段丢失）。低于该占比视为"检测把说话内容裁短了"，
+    # 放弃使用对齐产物（aligned_wav=None），由调用方回退原始 user_wav 做 ASR。
+    # 回退是安全路径：最多损失降噪，但不会丢用户句子尾巴。
+    ALIGN_REGION_MIN_RATIO = 0.85
 
     for i, played_path in enumerate(played_paths):
         if not os.path.isfile(played_path):
@@ -153,6 +159,21 @@ def generate_aligned_clean_audio(user_wav, played_audios, output_path=None):
         speech_start, speech_end = _detect_speech_region(clean_audio, sr_user)
         clean_speech = clean_audio[speech_start:speech_end]
         clean_duration_s = len(clean_speech) / sr_user
+
+        # RMS 检测区间明显短于源音频 → 大概率把句尾轻声裁掉了，对齐产物会丢内容。
+        # 放弃整个对齐（回退原始 user_wav），避免"对齐成功但 ASR 只识别到半句"。
+        src_duration_s = len(clean_audio) / sr_user
+        if src_duration_s > 0 and clean_duration_s < src_duration_s * ALIGN_REGION_MIN_RATIO:
+            logger.warning(
+                f"段{i}: 检测语音区间 {clean_duration_s:.2f}s 仅占源音频 {src_duration_s:.2f}s 的 "
+                f"{clean_duration_s / src_duration_s:.0%}（<{ALIGN_REGION_MIN_RATIO:.0%}），"
+                f"疑似 RMS 检测把说话内容裁短，放弃对齐产物，回退原始 user_wav"
+            )
+            result['message'] = (
+                f'语音区间仅占源音频 {clean_duration_s / src_duration_s:.0%}，'
+                f'疑似被裁短，放弃对齐'
+            )
+            return result
 
         if len(clean_speech) < 1:
             logger.warning(f"段{i}: 干净音源有效语音区间为空，跳过: {played_path}")
