@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 # 邀请码注册选项键（注册门禁与公开策略端点共用，拒绝魔法字符串）
 INVITE_CODE_REGISTRATION_KEY = 'auth.invite_code_registration'
 INVITE_CODE_KEY = 'auth.invite_code'
+# 首页可见性选项键：开启后未登录访问首页跳登录页
+HOME_REQUIRE_REGISTRATION_KEY = 'site.home_require_registration'
 
 
 class SystemOptionService:
@@ -67,6 +69,17 @@ class SystemOptionService:
         """配置的邀请码（仅服务端注册校验使用，禁止经接口下发）。"""
         value = cls._read_option(INVITE_CODE_KEY)
         return value.strip() if isinstance(value, str) else ''
+
+    @classmethod
+    def is_home_require_registration(cls) -> bool:
+        """首页是否仅注册（登录）用户可见。
+
+        邀请码注册开启时强制生效（与产品口径「邀请码注册 → 首页注册后可见」
+        一致），否则按 site.home_require_registration 配置。
+        """
+        if cls.is_invite_code_registration_required():
+            return True
+        return bool(cls._read_option(HOME_REQUIRE_REGISTRATION_KEY))
 
     @classmethod
     def upsert(cls, key: str, value: SystemOptionValue):

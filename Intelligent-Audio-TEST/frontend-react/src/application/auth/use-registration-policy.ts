@@ -1,6 +1,6 @@
 /**
  * 注册策略 query（application 层）：GET /auth/registration-policy 公开端点。
- * 注册页据此决定是否渲染邀请码输入（管理员开关变更后即时生效，故不缓存）。
+ * 注册页据此决定是否渲染邀请码输入；首页据此判断是否注册后可见。
  */
 import { useQuery } from '@tanstack/react-query'
 

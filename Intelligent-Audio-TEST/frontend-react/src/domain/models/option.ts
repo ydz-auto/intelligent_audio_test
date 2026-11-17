@@ -73,6 +73,8 @@ export const SYSTEM_OPTION_DEFAULTS: SystemOptions = {
   // 站点设置 · 导航模块
   'site.navigation.show_breadcrumb': true,
   'site.navigation.show_algorithm_switcher': true,
+  // 站点设置 · 首页可见性：开启后未登录访问首页跳登录页
+  'site.home_require_registration': false,
   // 认证设置 · 认证方式
   'auth.password_login': true,
   'auth.registration': true,
@@ -109,6 +111,8 @@ export type AuthMethodSettings = {
   inviteCodeRegistration: boolean
   /** 注册邀请码（仅开关开启时生效，可重复使用） */
   inviteCode: string
+  /** 首页注册后可见：开启后未登录访问首页跳登录页（邀请码注册开启时强制生效） */
+  homeRequireRegistration: boolean
 }
 
 export type AccessControlSettings = {
@@ -170,6 +174,10 @@ export function resolveAuthMethodSettings(raw?: SystemOptions): AuthMethodSettin
     inviteCode: parseString(
       raw?.['auth.invite_code'],
       SYSTEM_OPTION_DEFAULTS['auth.invite_code'] as string
+    ),
+    homeRequireRegistration: parseBoolean(
+      raw?.['site.home_require_registration'],
+      SYSTEM_OPTION_DEFAULTS['site.home_require_registration'] as boolean
     ),
   }
 }

@@ -80,9 +80,9 @@ def auth_mode():
 
 @router.get('/registration-policy')
 def registration_policy():
-    """注册策略（公开端点，登录前可读）：当前是否需要邀请码注册。
+    """注册策略（公开端点，登录前可读）：是否需要邀请码、首页是否注册后可见。
 
-    仅下发布尔口径，绝不返回邀请码本身（auth.invite_code 只在服务端
+    仅下发策略布尔口径，绝不返回邀请码本身（auth.invite_code 只在服务端
     POST /auth/register 校验时读取）。
     """
     from api_gateway.application.services.system_option_service import (
@@ -91,6 +91,8 @@ def registration_policy():
     return to_response({
         'invite_code_required':
             SystemOptionService.is_invite_code_registration_required(),
+        'home_require_registration':
+            SystemOptionService.is_home_require_registration(),
     })
 
 

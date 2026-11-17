@@ -39,16 +39,20 @@ export interface RegisterResultDto {
   user_id?: number
 }
 
-/** 注册策略（GET /auth/registration-policy；公开端点仅下发布尔口径） */
+/** 注册策略（GET /auth/registration-policy；公开端点仅下发策略布尔口径） */
 export interface RegistrationPolicyDto {
   invite_code_required?: boolean | null
+  home_require_registration?: boolean | null
 }
 
 /** snake_case → camelCase 注册策略 */
 export function toRegistrationPolicy(
   raw: RegistrationPolicyDto
 ): RegistrationPolicy {
-  return { inviteCodeRequired: raw.invite_code_required === true }
+  return {
+    inviteCodeRequired: raw.invite_code_required === true,
+    homeRequireRegistration: raw.home_require_registration === true,
+  }
 }
 
 /** 已启用 OAuth 提供方（GET /auth/oauth/providers，公开端点无凭证字段） */

@@ -1,7 +1,7 @@
 /**
- * 认证方式分区 · 邀请码注册（回归）：
- * 开关关闭时不展开邀请码输入；开启后保存写入正确的 snake_case KV 键
- * （auth.invite_code_registration / auth.invite_code）。
+ * 认证方式分区 · 邀请码注册 / 首页可见性（回归）：
+ * 开关关闭时不展开邀请码输入；开启后保存写入正确的 snake_case KV 键；
+ * 邀请码注册开启时「首页注册后可见」强制勾选并禁用。
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -31,6 +31,7 @@ const baseline: AuthMethodSettings = {
   emailVerification: false,
   inviteCodeRegistration: false,
   inviteCode: '',
+  homeRequireRegistration: false,
 }
 
 function Host({ children }: { children: ReactNode }) {
@@ -88,6 +89,32 @@ describe('认证方式 · 邀请码注册', () => {
     expect(mutateMock).toHaveBeenCalledWith([
       { key: 'auth.invite_code_registration', value: true },
       { key: 'auth.invite_code', value: 'INV-2026' },
+    ])
+  })
+
+  it('邀请码注册开启时，「首页注册后可见」强制勾选且禁用', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+
+    const homeSwitch = screen.getByRole('switch', { name: /首页注册后可见/ })
+    expect(homeSwitch).toHaveAttribute('aria-checked', 'false')
+    expect(homeSwitch).not.toHaveAttribute('aria-disabled', 'true')
+
+    await user.click(screen.getByRole('switch', { name: /邀请码注册/ }))
+
+    expect(homeSwitch).toHaveAttribute('aria-checked', 'true')
+    expect(homeSwitch).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('单独开启「首页注册后可见」时保存 site.home_require_registration', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+
+    await user.click(screen.getByRole('switch', { name: /首页注册后可见/ }))
+    await user.click(screen.getByRole('button', { name: '保存更改' }))
+
+    expect(mutateMock).toHaveBeenCalledWith([
+      { key: 'site.home_require_registration', value: true },
     ])
   })
 })

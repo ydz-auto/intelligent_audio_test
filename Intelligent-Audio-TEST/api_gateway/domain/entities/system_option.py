@@ -27,6 +27,9 @@ SYSTEM_OPTION_DEFAULTS: Dict[str, SystemOptionValue] = {
     # 站点设置 · 导航模块
     'site.navigation.show_breadcrumb': True,
     'site.navigation.show_algorithm_switcher': True,
+    # 站点设置 · 首页可见性：开启后未登录访问首页跳转登录页；
+    # 邀请码注册开启时强制生效（见 SystemOptionService.is_home_require_registration）
+    'site.home_require_registration': False,
     # 认证设置 · 认证方式
     'auth.password_login': True,
     'auth.registration': True,

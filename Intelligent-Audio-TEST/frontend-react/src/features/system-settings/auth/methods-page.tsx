@@ -1,7 +1,7 @@
 /**
  * 认证方式分区（interfaces 层，INT-347 §4.1 母版 A）：
- * 密码登录 / 注册开关 / 邮箱验证 / 邀请码注册 开关行，随 KV 保存链；
- * 邀请码注册开启时展开邀请码输入（可重复使用，注册必须一致）。
+ * 密码登录 / 注册开关 / 邮箱验证 / 邀请码注册 / 首页注册后可见，随 KV 保存链；
+ * 邀请码注册开启时展开邀请码输入，并强制「首页注册后可见」。
  */
 import type { AuthMethodSettings } from '@/domain/models/option'
 import { Input } from '@/components/ui/input'
@@ -24,6 +24,7 @@ const AUTH_METHOD_OPTION_KEYS: Record<keyof AuthMethodSettings, string> = {
   emailVerification: 'auth.email_verification',
   inviteCodeRegistration: 'auth.invite_code_registration',
   inviteCode: 'auth.invite_code',
+  homeRequireRegistration: 'site.home_require_registration',
 }
 
 export function AuthMethodsPage({ defaultValues }: AuthMethodsPageProps) {
@@ -80,6 +81,22 @@ export function AuthMethodsPage({ defaultValues }: AuthMethodsPageProps) {
               </p>
             </SettingsFormGridItem>
           )}
+          <SettingsSwitchField
+            controlId='auth-home-require-registration'
+            label='首页注册后可见'
+            description={
+              draft.inviteCodeRegistration
+                ? '邀请码注册开启时强制生效：未登录访问首页将跳转登录页'
+                : '开启后未登录访问首页将跳转登录页'
+            }
+            checked={
+              draft.inviteCodeRegistration || draft.homeRequireRegistration
+            }
+            onCheckedChange={(checked) =>
+              setField('homeRequireRegistration', checked)
+            }
+            disabled={draft.inviteCodeRegistration}
+          />
         </SettingsFormGrid>
       )}
     </SettingsFormPage>

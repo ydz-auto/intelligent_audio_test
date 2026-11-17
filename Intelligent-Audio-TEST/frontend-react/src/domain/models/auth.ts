@@ -45,4 +45,6 @@ export type OAuthProvider = {
 export type RegistrationPolicy = {
   /** 是否开启邀请码注册（开启后注册必须填写邀请码） */
   inviteCodeRequired: boolean
+  /** 首页是否注册后可见（未登录访问首页跳登录页；邀请码注册开启时恒为 true） */
+  homeRequireRegistration: boolean
 }
