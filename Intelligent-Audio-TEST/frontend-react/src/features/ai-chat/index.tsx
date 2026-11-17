@@ -25,10 +25,12 @@ import {
   type ReportContextOption,
 } from '@/domain/models/aiChat'
 import {
+  AGENT_RUN_MODE,
   normalizeRunMode,
   type AgentRunBudget,
   type AgentRunMode,
 } from '@/domain/models/agent'
+import { useAgentBudgetDefaults } from '@/application/agent/use-agent-budget-defaults'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
 import { useAgentRunHost } from '@/application/agent/use-agent-run'
 import { useAgentRunStore } from '@/application/agent/agent-run-store'
@@ -206,12 +208,31 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
 
   /** 目标模式与预算（INT-2474）：随会话 config 持久化，两宿主同一份 */
   const runMode = normalizeRunMode(config.runMode)
+  /** 预算默认值（仅目标模式拉取；用于展示「留空生效」口径，不作为上限） */
+  const { data: autoBudgetDefaults } = useAgentBudgetDefaults(
+    runMode === AGENT_RUN_MODE.AUTO
+  )
   const handleRunModeChange = (next: AgentRunMode) => {
     updateConfig('runMode', next)
   }
   const handleAutoBudgetChange = (budget: AgentRunBudget | undefined) => {
     updateConfig('autoBudget', budget)
   }
+  /** 模型下拉：写入会话 config，下一次 run 下发（供应商 / Key 不变） */
+  const handleModelChange = (next: string) => {
+    updateConfig('modelId', next)
+  }
+  /** 供应商下拉：只影响本轮 run，同时清掉模型选择（回落到该供应商默认模型） */
+  const handleProviderChange = (next: string) => {
+    updateConfig('providerId', next)
+    updateConfig('modelId', '')
+  }
+
+  /**
+   * 报告工作模式（文档面板）开关：同时决定「绑定的报告上下文是否注入本轮请求」——
+   * 选择器只在该面板内出现，聊天请求也只在工作模式打开时带上它。
+   */
+  const [workModeOpen, setWorkModeOpen] = useState(false)
 
   const {
     sendChat,
@@ -240,6 +261,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     config,
     messages,
     onMessageUpdate: updateMessages,
+    injectReportContext: workModeOpen,
   })
 
   const {
@@ -258,8 +280,6 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     sendChat,
   })
 
-  const [workModeOpen, setWorkModeOpen] = useState(false)
-  /** 对话记录目录：默认收起，点顶部图标展开 / 收起 */
   const [historyOpen, setHistoryOpen] = useState(false)
   /** 模型供应商管理（输入区入口；新增 / 编辑 / 自动发现模型） */
   const [providerManagerOpen, setProviderManagerOpen] = useState(false)
@@ -307,6 +327,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     runMode,
     onRunModeChange: handleRunModeChange,
     autoBudget: config.autoBudget,
+    autoBudgetDefaults,
     onAutoBudgetChange: handleAutoBudgetChange,
   } as const
 
@@ -417,13 +438,16 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                 <AiChatInput
                   compact
                   config={config}
-                  contextSlot={contextSelector}
                   disabled={isGenerating}
                   isStopping={isCancelling}
                   hasMessages={messages.length > 0}
                   isGenerating={isGenerating}
                   onClearMessages={handleClearMessages}
                   onManageProviders={() => setProviderManagerOpen(true)}
+                  model={config.modelId}
+                  onModelChange={handleModelChange}
+                  providerId={config.providerId}
+                  onProviderChange={handleProviderChange}
                   onStop={stopGeneration}
                   onSubmit={handleSendMessage}
                   onValueChange={setDraftText}
@@ -440,6 +464,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
             <div className='bg-background absolute inset-y-0 right-0 z-30 block w-full max-w-[34rem] min-h-0 min-w-0 shadow-xl lg:static lg:z-auto lg:w-auto lg:max-w-none lg:bg-transparent lg:shadow-none'>
               <DocumentPanel
                 agentSessionId={agentSessionId}
+                contextSlot={contextSelector}
                 onClose={() => setWorkModeOpen(false)}
                 onRetryResolve={() => void taskReportQuery.refetch()}
                 reportId={boundReportId}
@@ -493,13 +518,16 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
           <div className='mx-auto w-full max-w-4xl'>
             <AiChatInput
               config={config}
-              contextSlot={contextSelector}
               disabled={isGenerating}
               isStopping={isCancelling}
               hasMessages={messages.length > 0}
               isGenerating={isGenerating}
               onClearMessages={handleClearMessages}
               onManageProviders={() => setProviderManagerOpen(true)}
+              model={config.modelId}
+              onModelChange={handleModelChange}
+              providerId={config.providerId}
+              onProviderChange={handleProviderChange}
               onStop={stopGeneration}
               onSubmit={handleSendMessage}
               onValueChange={setDraftText}

@@ -150,6 +150,61 @@ def test_run_uses_owner_default_provider(tmp_path):
     container.shutdown()
 
 
+def test_run_can_override_model_on_same_provider(tmp_path):
+    """对话页模型下拉：同一供应商（Key / Base URL）下按 run.model 切换模型。"""
+    container, _sf, recorder = _stack(tmp_path, 'model-override.db')
+    _create_provider(container, model='deepseek-chat')
+    session = container.run_service.create_session(
+        owner_id=7, tenant_id='t1', title='测试')
+    run, created = container.run_service.create_run(
+        session.id, owner_id=7, tenant_id='t1', message='你好',
+        model='deepseek-reasoner')
+    assert created
+    container.executor.submit(run.id)
+    stored = container.repositories['runs'].get(run.id)
+    assert stored.status is RunStatus.SUCCEEDED, stored.error
+    assert stored.model == 'deepseek-reasoner'
+    assert recorder.calls[-1]['body']['model'] == 'deepseek-reasoner'
+    # Key 与 Base URL 仍来自默认供应商（只切换模型）
+    assert recorder.calls[-1]['authorization'] == f'Bearer {KEY_A}'
+    assert recorder.calls[-1]['url'] == 'http://a.local/v1/chat/completions'
+    container.shutdown()
+
+
+def test_run_can_select_non_default_provider(tmp_path):
+    """对话页供应商下拉：按 run.provider_id 使用所选供应商的 Key / Base URL。"""
+    container, _sf, recorder = _stack(tmp_path, 'provider-select.db')
+    _create_provider(container, key=KEY_A, base_url='http://a.local/v1', name='A')
+    second = _create_provider(
+        container, key=KEY_B, base_url='http://b.local/v1', name='B',
+        model='deepseek-reasoner')
+    session = container.run_service.create_session(
+        owner_id=7, tenant_id='t1', title='测试')
+    run, created = container.run_service.create_run(
+        session.id, owner_id=7, tenant_id='t1', message='你好',
+        provider_id=second.id, model='deepseek-reasoner')
+    assert created
+    container.executor.submit(run.id)
+    stored = container.repositories['runs'].get(run.id)
+    assert stored.status is RunStatus.SUCCEEDED, stored.error
+    assert stored.provider_id == second.id
+    assert recorder.calls[-1]['authorization'] == f'Bearer {KEY_B}'
+    assert recorder.calls[-1]['url'] == 'http://b.local/v1/chat/completions'
+    assert recorder.calls[-1]['body']['model'] == 'deepseek-reasoner'
+    container.shutdown()
+
+
+def test_run_without_model_override_uses_provider_model(tmp_path):
+    container, _sf, recorder = _stack(tmp_path, 'model-default.db')
+    _create_provider(container, model='deepseek-chat')
+    _session, run = _run(container)
+    assert run.status is RunStatus.SUCCEEDED
+    # 未显式指定 run.model：解析阶段回落到默认供应商配置的模型
+    assert run.model == ''
+    assert recorder.calls[-1]['body']['model'] == 'deepseek-chat'
+    container.shutdown()
+
+
 def test_providers_are_isolated_per_owner(tmp_path):
     container, _sf, recorder = _stack(tmp_path, 'iso.db')
     _create_provider(container, owner_id=7, key=KEY_A,

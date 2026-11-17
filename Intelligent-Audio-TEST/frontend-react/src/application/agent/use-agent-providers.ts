@@ -60,6 +60,22 @@ export function useAgentModelCatalogQuery() {
   })
 }
 
+/** 某供应商的可用模型（上游 /models 探测；对话页模型下拉用，5 分钟内复用） */
+export function useAgentProviderModelsQuery(providerId?: string) {
+  return useQuery<string[]>({
+    queryKey: ['agent', 'provider-models', providerId],
+    queryFn: async () => {
+      const result = await discoverAgentProviderModels({
+        providerId: providerId ?? '',
+      })
+      return result.models
+    },
+    enabled: Boolean(providerId),
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+}
+
 export function useAgentProviderMutations() {
   const queryClient = useQueryClient()
 

@@ -19,7 +19,14 @@ import {
   AGENT_PROVIDERS_ROUTE,
 } from '../constants'
 
-export function AgentProviderStatusChip({ compact = false }: { compact?: boolean }) {
+export function AgentProviderStatusChip({
+  compact = false,
+  showModel = true,
+}: {
+  compact?: boolean
+  /** 有独立模型下拉时只展示供应商名，避免模型重复展示 */
+  showModel?: boolean
+}) {
   const query = useAgentProvidersQuery({ enabled: true })
 
   if (query.isPending) {
@@ -53,6 +60,12 @@ export function AgentProviderStatusChip({ compact = false }: { compact?: boolean
     )
   }
 
+  const display = showModel
+    ? compact
+      ? provider.model
+      : `${provider.name} · ${provider.model}`
+    : provider.name
+
   return (
     <span
       className='text-muted-foreground inline-flex min-w-0 max-w-full items-center gap-1 text-[11px]'
@@ -60,7 +73,7 @@ export function AgentProviderStatusChip({ compact = false }: { compact?: boolean
     >
       <Bot className='size-3.5 shrink-0' aria-hidden='true' />
       <span className='text-foreground min-w-0 truncate font-medium'>
-        {compact ? provider.model : `${provider.name} · ${provider.model}`}
+        {display}
       </span>
     </span>
   )

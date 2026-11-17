@@ -27,6 +27,7 @@ import {
   type LlmProvider,
 } from '@/domain/models/aiChat'
 import { ERROR_MESSAGES, MESSAGE_STATUS } from '@/features/ai-chat/constants'
+import { buildBoundContextPrefix } from '@/features/ai-chat/lib/context-prompt'
 import {
   sendChatCompletion,
   type ChatCompletionMessage,
@@ -99,6 +100,11 @@ export function useChatHandler({
   systemPrompt,
   /** 对话通道（缺省 = 自带供应商，保持既有调用方行为；页面按配置传平台 Agent） */
   channel = CHAT_CHANNEL.PROVIDER,
+  /**
+   * 是否把会话绑定的报告上下文注入本轮请求（仅报告工作模式打开时为 true）。
+   * 浮窗与普通聊天不注入：绑定的报告只作用于报告工作模式。
+   */
+  injectReportContext = false,
 }: {
   config: ChatConfig
   /** 当前供应商（供应商直连通道使用；平台 Agent 通道不依赖） */
@@ -107,6 +113,7 @@ export function useChatHandler({
   onMessageUpdate: UpdateMessagesFn
   systemPrompt?: string
   channel?: ChatChannel
+  injectReportContext?: boolean
 }) {
   /** 供应商通道本地生成态（平台通道的生成态由共享 store 派生，两宿主同口径） */
   const [isProviderGenerating, setIsProviderGenerating] = useState(false)
@@ -125,6 +132,8 @@ export function useChatHandler({
   systemPromptRef.current = systemPrompt
   const channelRef = useRef(channel)
   channelRef.current = channel
+  const injectReportContextRef = useRef(injectReportContext)
+  injectReportContextRef.current = injectReportContext
 
   const schedule = useCallback((fn: () => void, delay: number) => {
     const id = window.setTimeout(fn, delay)
@@ -201,11 +210,18 @@ export function useChatHandler({
       if (isPlatformChannel) {
         // 平台通道：user 气泡 + assistant 占位与后续事件补丁都在共享 store 内完成，
         // 两个宿主看到同一份消息与同一个 run（不再各持一套补丁器）。
-        // Auto 模式与收紧预算来自会话 config（INT-2474；普通对话不带 mode / budget）。
+        // Auto 模式与预算来自会话 config（INT-2474；普通对话不带 mode / budget；Auto 预算可上调）。
+        // 报告工作模式绑定的上下文随请求下发，避免 Agent 自行改选报告（#420 → #426）。
+        const contextPrefix = injectReportContextRef.current
+          ? buildBoundContextPrefix(configRef.current)
+          : null
         void agentRun.send(text, {
           appendUserMessage: options?.appendUserMessage ?? true,
+          providerId: configRef.current.providerId,
+          model: configRef.current.modelId,
           mode: configRef.current.runMode,
           budget: configRef.current.autoBudget,
+          requestMessage: contextPrefix ? `${contextPrefix}\n\n${text}` : undefined,
         })
         return
       }

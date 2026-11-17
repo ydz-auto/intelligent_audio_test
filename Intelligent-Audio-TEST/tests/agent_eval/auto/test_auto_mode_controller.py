@@ -6,7 +6,7 @@
 - Auto 暂停：预算比例恰好 80% 触发、79.9% 不触发；继续后不再因预算暂停；
 - 连续失败：2 次暂停、3 次熔断、继续后同一失败连击不重复暂停；
 - 完成标记 / 空转上限；
-- 请求侧预算只能收紧（§9.4 请求不可放宽）；
+- 请求侧预算：普通对话只能收紧，目标模式允许放宽（§9.4 修订）；
 - 控制状态从事件流重建（重启后不依赖进程内标志）。
 """
 import os
@@ -70,7 +70,7 @@ class TestHardBudgetBoundary:
         assert budget.check_rounds(10 ** 6) is None
         assert budget.check_tokens(10 ** 9) is None
 
-    def test_request_can_only_tighten(self):
+    def test_chat_request_can_only_tighten(self):
         base = RunBudget.from_dict(AUTO_LIMITS)
         tightened = base.tightened({'max_rounds': 10, 'max_tool_calls': 999,
                                     'max_tokens': 0, 'max_output_bytes': None})
@@ -79,13 +79,26 @@ class TestHardBudgetBoundary:
         assert tightened.max_tokens == 400000        # 0 = 不覆盖
         assert tightened.max_output_bytes == 20971520  # None = 不覆盖
 
+    def test_auto_request_can_relax(self):
+        base = RunBudget.from_dict(AUTO_LIMITS)
+        relaxed = base.overridden({'max_rounds': 300, 'max_tool_calls': 600,
+                                   'max_tokens': 0, 'max_output_bytes': None})
+        assert relaxed.max_rounds == 300             # 放宽生效（按所填执行）
+        assert relaxed.max_tool_calls == 600
+        assert relaxed.max_tokens == 400000          # 0 = 不覆盖
+        assert relaxed.max_output_bytes == 20971520  # None = 不覆盖
+
     def test_unknown_budget_key_rejected(self):
         with pytest.raises(ValueError):
             RunBudget.from_dict(AUTO_LIMITS).tightened({'max_everything': 1})
+        with pytest.raises(ValueError):
+            RunBudget.from_dict(AUTO_LIMITS).overridden({'max_everything': 1})
 
     def test_non_integer_budget_rejected(self):
         with pytest.raises(ValueError):
             RunBudget.from_dict(AUTO_LIMITS).tightened({'max_rounds': 'x'})
+        with pytest.raises(ValueError):
+            RunBudget.from_dict(AUTO_LIMITS).overridden({'max_rounds': 'x'})
 
 
 # ---------------------------------------------------------------- 预算暂停

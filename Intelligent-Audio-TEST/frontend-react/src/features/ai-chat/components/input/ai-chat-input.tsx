@@ -2,11 +2,11 @@
  * 输入区（interfaces 层 ai-chat/input；08_AI对话页.md §3.5 照 playground-input 逐值）：
  * PromptInput 卡壳（focus-within 主色描边 + 大阴影）+ Textarea + Footer
  * （工具行=模型/供应商切换器 + 清空对话；右区=发送/停止）。
- * Demo 态：报告上下文选择器整块不渲染（§3.10/§3.5），右区仅发送/停止。
+ * 报告上下文选择器不在输入区：它是报告工作模式的绑定入口（DocumentPanel 头行）。
  * compact：全局 Agent 工作台浮窗紧凑形态（§3.1B，输入区 min-h-14）。
  */
 import { Send, Square } from 'lucide-react'
-import { type KeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { type KeyboardEvent, type RefObject } from 'react'
 
 import {
   PromptInput,
@@ -16,6 +16,8 @@ import {
 } from '@/components/ai-elements/prompt-input'
 
 import { getInputControlState, getSubmittableInputText } from '@/features/ai-chat/lib/input'
+import { AgentModelSelect } from '@/features/agent-providers/components/agent-model-select'
+import { AgentProviderModelPicker } from '@/features/agent-providers/components/agent-provider-model-picker'
 import { AgentProviderStatusChip } from '@/features/agent-providers/components/agent-provider-status-chip'
 import {
   CHAT_CHANNEL,
@@ -26,6 +28,7 @@ import {
 import {
   AGENT_AUTO_COPY,
   AGENT_RUN_MODE,
+  type AgentAutoBudgetDefaults,
   type AgentRunBudget,
   type AgentRunMode,
 } from '@/domain/models/agent'
@@ -47,6 +50,12 @@ type AiChatInputProps = {
   onSelectProvider?: (providerId: string) => void
   onSelectModel?: (providerId: string, modelId: string) => void
   onManageProviders?: () => void
+  /** 本轮模型（对话页模型下拉；留空=默认供应商配置的模型） */
+  model?: string
+  onModelChange?: (model: string) => void
+  /** 本轮供应商（空=默认供应商；传入后展示供应商下拉） */
+  providerId?: string
+  onProviderChange?: (providerId: string) => void
   onClearMessages?: () => void
   /** 受控文本（页面持有：starter 回填 / 任务 URL 预填 / 提交后清空） */
   value: string
@@ -57,13 +66,13 @@ type AiChatInputProps = {
   isStopping?: boolean
   /** 全局 Agent 工作台浮窗紧凑形态（§3.1B） */
   compact?: boolean
-  /** 工具行左侧扩展槽（INT-2473：报告上下文选择器，只传不拥有数据） */
-  contextSlot?: ReactNode
   /** 目标模式（默认普通对话；开启后按目标多轮推进） */
   runMode?: AgentRunMode
   onRunModeChange?: (mode: AgentRunMode) => void
-  /** 目标模式预算（会话 config 里的收紧预算） */
+  /** 目标模式预算（会话 config 里的预算；可上调，留空用服务端默认） */
   autoBudget?: AgentRunBudget
+  /** 服务端预算默认值（展示「留空生效」口径） */
+  autoBudgetDefaults?: AgentAutoBudgetDefaults
   onAutoBudgetChange?: (budget: AgentRunBudget | undefined) => void
 }
 
@@ -77,15 +86,19 @@ export function AiChatInput({
   channel = CHAT_CHANNEL.PLATFORM,
   onClearMessages,
   onManageProviders,
+  model,
+  onModelChange,
+  providerId,
+  onProviderChange,
   value,
   onValueChange,
   textareaRef,
   isStopping = false,
   compact = false,
-  contextSlot,
   runMode = AGENT_RUN_MODE.CHAT,
   onRunModeChange,
   autoBudget,
+  autoBudgetDefaults,
   onAutoBudgetChange,
 }: AiChatInputProps) {
   const { canSubmit, shouldShowStop } = getInputControlState({
@@ -150,18 +163,38 @@ export function AiChatInput({
     <div className={compact ? 'grid shrink-0 gap-2 px-1 md:pb-2' : 'grid shrink-0 gap-4 px-1 md:pb-4'}>
       {/* 平台 Agent 通道：服务端供应商状态摘要（INT-2493，与供应商管理页同一 query key） */}
       {channel === CHAT_CHANNEL.PLATFORM && (
-        <div className='flex min-w-0 items-center px-2'>
-          <AgentProviderStatusChip compact={compact} />
+        <div className='flex min-w-0 items-center gap-2 px-2'>
+          {onProviderChange && onModelChange ? (
+            <AgentProviderModelPicker
+              compact={compact}
+              model={model}
+              onModelChange={onModelChange}
+              onProviderChange={onProviderChange}
+              providerId={providerId}
+            />
+          ) : (
+            <>
+              <AgentProviderStatusChip compact={compact} showModel={!onModelChange} />
+              {onModelChange && (
+                <AgentModelSelect
+                  compact={compact}
+                  model={model}
+                  onModelChange={onModelChange}
+                />
+              )}
+            </>
+          )}
         </div>
       )}
       <PromptInput
         className='border-border/70 bg-background/95 dark:bg-background/80 ring-foreground/5 shadow-[0_18px_60px_-32px_rgba(0,0,0,0.65)] ring-1 rounded-xl overflow-hidden transition-all duration-200 focus-within:border-primary/45 focus-within:ring-primary/15 focus-within:shadow-[0_22px_70px_-34px_rgba(0,0,0,0.75)]'
         onSubmit={handleSubmit}
       >
-        {/* 目标模式预算：开启目标模式后、启动前即可展示 / 收紧五项上限（§9.4） */}
+        {/* 目标模式预算：开启目标模式后、启动前即可展示 / 调整五项预算（§9.4） */}
         {isTargetMode && onAutoBudgetChange && (
           <AutoBudgetSettings
             budget={autoBudget}
+            defaults={autoBudgetDefaults}
             disabled={disabled}
             onBudgetChange={onAutoBudgetChange}
           />
@@ -191,7 +224,6 @@ export function AiChatInput({
         <PromptInputFooter className='border-border/60 bg-muted/20 dark:bg-muted/10 border-t px-3 py-2.5 backdrop-blur'>
           <div className='flex w-full flex-col gap-2.5 md:flex-row md:items-center md:justify-between'>
             <div className='flex items-center justify-between gap-2 md:justify-start'>
-              {contextSlot}
               <AiChatInputTools
                 disabled={disabled}
                 hasMessages={hasMessages}

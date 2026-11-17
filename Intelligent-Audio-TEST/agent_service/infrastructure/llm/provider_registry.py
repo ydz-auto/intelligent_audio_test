@@ -56,24 +56,34 @@ class ProviderRegistry(LlmProviderResolver):
     # ------------------------------------------------------------ resolve
 
     def resolve_for_run(self, run: AgentRun) -> ResolvedProvider:
-        record = self._providers.get_default(run.owner_id, run.tenant_id)
+        # 显式指定供应商优先（对话页供应商下拉，按 owner + tenant 校验归属）；
+        # 未指定时沿用 owner 默认供应商。
+        record = None
+        if run.provider_id:
+            record = self._providers.get_for_owner(
+                run.provider_id, run.owner_id, run.tenant_id)
+        if record is None:
+            record = self._providers.get_default(run.owner_id, run.tenant_id)
         if record is None or not record.api_key_ciphertext:
             # 只报事实，不提示平台 Key（平台 Key 分支未实现）
             raise LlmProviderNotConfigured(
                 f'用户 {run.owner_id} 未配置可用的模型供应商')
-        resolution = self._windows.resolve(
-            record.protocol, record.model, record.context_window)
+        # 对话页可在同一供应商（Key / Base URL）下切换模型：run.model 显式指定时优先；
+        # 上下文窗口覆盖只对供应商原配置模型生效，切换后的模型按目录默认解析。
+        model = (run.model or '').strip() or record.model
+        override = record.context_window if model == record.model else None
+        resolution = self._windows.resolve(record.protocol, model, override)
         output_limit = self._windows.output_token_limit(
             resolution.effective_context_window,
             cap=self._output_cap, ratio=self._output_ratio,
-            protocol=record.protocol, model=record.model)
+            protocol=record.protocol, model=model)
         return ResolvedProvider(
             provider_id=record.id,
             owner_id=record.owner_id,
             tenant_id=record.tenant_id,
             protocol=record.protocol,
             base_url=record.base_url,
-            model=record.model,
+            model=model,
             key_version=record.key_version,
             effective_context_window=resolution.effective_context_window,
             context_window_source=resolution.source,

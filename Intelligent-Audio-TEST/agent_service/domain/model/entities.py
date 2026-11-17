@@ -35,6 +35,8 @@ class AgentRun:
     tenant_id: str
     status: RunStatus
     model: str
+    # 可选：本轮使用的供应商 id（空 = owner 默认供应商）
+    provider_id: Optional[str] = None
     budget: Dict[str, Any] = field(default_factory=dict)
     token_in: int = 0
     token_out: int = 0

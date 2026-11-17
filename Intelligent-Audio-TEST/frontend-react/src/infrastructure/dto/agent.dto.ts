@@ -23,6 +23,7 @@ import {
   type AgentApprovalObjectRef,
   type AgentApprovalProposal,
   type AgentApprovalStatus,
+  type AgentAutoBudgetDefaults,
   type AgentAutoArtifact,
   type AgentAutoPause,
   type AgentAutoProgress,
@@ -70,16 +71,30 @@ export interface AgentSessionDto {
 /** POST /agent/sessions/{id}/runs 请求体（§5.1 输入 user_message；幂等键走 Idempotency-Key 头） */
 export interface AgentRunCreateDto {
   message: string
+  /** 本轮供应商（空=默认供应商） */
+  provider_id?: string
+  /** 本轮模型（同一供应商下切换；留空沿用默认供应商配置） */
+  model?: string
   /**
    * 运行模式（INT-2474）：chat（默认）/ auto。字段缺省即 chat，
    * 普通对话不带此键（Auto 关闭不影响普通对话）。
    */
   mode?: string
   /**
-   * 请求侧收紧预算（键同 RunBudget 蛇形键；只能收紧，0 / 负数视为不覆盖，
-   * 未知键服务端 400 INVALID_BUDGET）。
+   * 请求侧预算（键同 RunBudget 蛇形键）：Auto 可上调（消耗用户自己的 token），
+   * 普通对话只能收紧；0 / 负数视为不覆盖，未知键服务端 400 INVALID_BUDGET。
    */
   budget?: Record<string, number>
+}
+
+/** GET /agent/budget-defaults 响应（BudgetDefaultsResponse：Auto 默认值，不是上限） */
+export interface AgentBudgetDefaultsDto {
+  max_rounds?: number
+  max_tool_calls?: number
+  max_tokens?: number
+  max_duration_seconds?: number
+  max_output_bytes?: number
+  token_budget_multiplier?: number
 }
 
 /**
@@ -234,6 +249,20 @@ export function toAgentBudget(value: unknown): AgentRunBudget | undefined {
   return Object.values(budget).some((item) => item !== undefined)
     ? budget
     : undefined
+}
+
+/**
+ * GET /agent/budget-defaults（snake_case → 领域默认值）；形态不符返回 undefined，
+ * 页面回落「服务端默认留空生效」兜底文案（不硬编码数字）。
+ */
+export function toAgentAutoBudgetDefaults(
+  value: unknown
+): AgentAutoBudgetDefaults | undefined {
+  if (!isObject(value)) return undefined
+  const budget = toAgentBudget(value)
+  const tokenMultiplier = toFiniteNumber(value['token_budget_multiplier'])
+  if (!budget || tokenMultiplier === undefined) return undefined
+  return { budget, tokenMultiplier }
 }
 
 /** 字符串数组（缺失 / 非数组返回空列表；剔除非字符串项） */
@@ -578,6 +607,10 @@ export function toAgentSessionCreateDto(title?: string): AgentSessionCreateDto {
 
 export function toAgentRunCreateDto(input: AgentRunInput): AgentRunCreateDto {
   const dto: AgentRunCreateDto = { message: input.message }
+  const providerId = input.providerId?.trim()
+  if (providerId) dto.provider_id = providerId
+  const model = input.model?.trim()
+  if (model) dto.model = model
   // 只有 Auto 才带 mode / budget：普通对话保持 `{message}` 单口径（Auto 关闭不影响普通对话）
   if (input.mode === 'auto') {
     dto.mode = 'auto'
@@ -682,14 +715,18 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
           : typeof ok === 'boolean' && !ok
             ? AGENT_TOOL_RESULT_STATUS.FAILED
             : AGENT_TOOL_RESULT_STATUS.SUCCEEDED
-      const errorCode = toStringValue(dto['error_code'])
+      // 后端成功结果的 error_code 是状态码（常见 'OK'），不是错误：
+      // 只在失败 / 取消时保留给界面，避免成功卡出现红色「错误码：OK」。
+      const rawErrorCode = toStringValue(dto['error_code'])
+      const errorCode =
+        status === AGENT_TOOL_RESULT_STATUS.SUCCEEDED ? undefined : rawErrorCode
       return {
         ...base,
         type: AGENT_EVENT_TYPE.TOOL_RESULT,
         toolCallId,
         status,
         summary: clampText(
-          toStringValue(dto['content']) ?? errorCode,
+          toStringValue(dto['content']) ?? rawErrorCode,
           TOOL_RESULT_SUMMARY_MAX_CHARS
         ),
         errorCode,

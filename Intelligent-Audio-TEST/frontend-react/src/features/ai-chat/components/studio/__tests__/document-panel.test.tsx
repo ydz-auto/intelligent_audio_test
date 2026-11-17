@@ -147,6 +147,17 @@ describe('DocumentPanel 上下文空态', () => {
     expect(screen.getByText('未绑定报告上下文')).toBeInTheDocument()
   })
 
+  it('报告上下文选择器挂在面板头行（工作模式内唯一的绑定入口）', () => {
+    renderPanel({
+      contextSlot: <button type='button'>豆包-话筒接口测试 #420</button>,
+    })
+    const slot = screen.getByTestId('studio-context-selector')
+    expect(slot).toHaveTextContent('报告上下文')
+    expect(
+      screen.getByRole('button', { name: /豆包-话筒接口测试 #420/ })
+    ).toBeInTheDocument()
+  })
+
   it('不在 Agent run 中 → 审批条说明当前是手动直写，不冒充「无待审批」', () => {
     renderPanel({ runId: null })
     expect(

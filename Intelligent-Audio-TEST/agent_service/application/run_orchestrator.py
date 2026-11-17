@@ -515,7 +515,11 @@ class RunOrchestrator:
                             latest = self._runs.get(run_id)
                             total = ((latest.token_in or 0) + (latest.token_out or 0)
                                      if latest else 0)
-                            if budget.check_tokens(total):
+                            # 用量一般在流尾才下发：本轮正文已产出时再按 token
+                            # 中断，会把「已经给出完整回答」的普通对话标成
+                            # BUDGET_EXCEEDED（红色超预算徽标）。此时不中断本轮，
+                            # 由下一轮开头的预算检查收口（不再发起新模型请求）。
+                            if budget.check_tokens(total) and not text_parts:
                                 budget_reason = 'max_tokens'
                                 break
                         elif isinstance(chunk, LlmFinished):
@@ -787,9 +791,9 @@ class RunOrchestrator:
         """总 token 上限按有效窗口重算（默认 2×W，Auto 4×W）。
 
         - ``max_tokens`` 配置为 0（默认）= 完全按 W 派生；
-        - 显式正数 = 运营方 / 请求侧硬上限，取 ``min(硬上限, 乘数×W)``；
-        - 乘数由模式决定（``token_budget_multiplier`` / ``auto_*``），
-          不会因为请求体给了大值而放宽（§9.4 请求不可放宽）。
+        - Auto 模式显式正数（服务端默认或被用户上调后的请求值）= 直接生效，
+          不再按乘数×W 夹回（§9.4 修订：Auto 允许放宽）；
+        - 普通对话显式正数 = 硬上限，取 ``min(硬上限, 乘数×W)``。
         换供应商后同会话下一次 run 会重新解析 W 并重算，不沿用旧阈值。
         """
         base = RunBudget.from_dict(
@@ -799,7 +803,8 @@ class RunOrchestrator:
                       else self._settings.token_budget_multiplier)
         derived = ContextWindowResolver.token_budget(window, multiplier)
         if base.max_tokens > 0:
-            derived = min(derived, base.max_tokens)
+            derived = (base.max_tokens if mode.is_auto
+                       else min(derived, base.max_tokens))
         return base.with_max_tokens(derived)
 
     def _tool_specs(self, permissions: Sequence[str] = (),

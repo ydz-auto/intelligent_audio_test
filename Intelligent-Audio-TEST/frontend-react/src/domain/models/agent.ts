@@ -294,6 +294,16 @@ export interface AgentRunBudget {
   maxOutputBytes?: number
 }
 
+/**
+ * 目标模式预算的服务端默认值（GET /agent/budget-defaults）：
+ * 输入框留空时生效；用户可在此基础上上调（消耗自己的 token，不设上限）。
+ */
+export interface AgentAutoBudgetDefaults {
+  budget: AgentRunBudget
+  /** token 上限派生倍数（maxTokens 为 0 时 = 倍数 × 有效上下文窗口） */
+  tokenMultiplier: number
+}
+
 /** 预算维度（领域键；creation 请求与进度展示共用，禁止散落字符串） */
 export const AGENT_BUDGET_DIMENSION = {
   ROUNDS: 'maxRounds',
@@ -598,9 +608,19 @@ export type AgentRunEvent =
 export interface AgentRunInput {
   /** 用户本轮消息正文（Auto 模式下即目标描述） */
   message: string
+  /**
+   * 本轮供应商（对话页供应商下拉；空=owner 默认供应商）。
+   * 只影响本轮解析的 Key / Base URL，不改变全局默认。
+   */
+  providerId?: string
+  /**
+   * 本轮使用的模型（同一供应商 Key / Base URL 下切换；留空沿用默认供应商配置）。
+   * 来自对话页模型下拉 config.modelId。
+   */
+  model?: string
   /** 运行模式（缺省 chat；Auto 才带预算） */
   mode?: AgentRunMode
-  /** 请求侧收紧预算（只能收紧，服务端取 min；0 / 负数视为不覆盖） */
+  /** 请求侧预算（Auto 可在此基础上上调，消耗用户自己的 token；chat 仅收紧） */
   budget?: AgentRunBudget
 }
 
@@ -656,7 +676,7 @@ export const AGENT_ERROR_COPY = {
 
 /**
  * Auto 模式文案（§9.4 / INT-2474；interface 层与 application 层共用，归 domain）。
- * 预算默认值只作「服务端默认」的说明文案（实际上限由服务端给定、请求只能收紧）。
+ * 预算默认值只作「留空生效」的说明文案（默认值由服务端下发；Auto 允许上调）。
  */
 export const AGENT_AUTO_COPY = {
   /** 模式切换 */
@@ -669,11 +689,12 @@ export const AGENT_AUTO_COPY = {
     '描述要让目标模式完成的目标，例如：把标签为「回归测试」的用例全部跑一遍，再对比上次结果',
   /** 预算设置 */
   budgetTitle: '目标模式预算',
-  budgetHint: '只能收紧、不能放宽：留空即用服务端默认，超限会导致运行停止',
-  budgetDefaultHint:
-    '服务端默认（§9.4）：轮次 60 · 工具调用 120 · token 4×上下文窗口 · 时长 30 分钟 · 输出 20MB',
-  /** 输入超过服务端默认时的口径提示（请求只能收紧；超限由服务端按上限执行） */
-  budgetOverLimitHint: '超过服务端上限时按服务端上限执行',
+  budgetHint: '留空用服务端默认，可自行上调（消耗你自己的 token）',
+  budgetDefaultHintPrefix: '服务端默认（留空生效）',
+  /** 默认值接口未拿到时的兜底口径（不硬编码具体数字） */
+  budgetDefaultHintFallback: '服务端默认留空生效，可自行上调',
+  /** 上调口径提示：按填写值执行，费用由用户自己的 token 承担 */
+  budgetRelaxHint: '填写更大的值会按所填执行；超出预算会导致运行停止',
   budgetRounds: '最大轮次',
   budgetToolCalls: '最大工具调用',
   budgetTokens: '最大 token（输入+输出）',
@@ -685,9 +706,11 @@ export const AGENT_AUTO_COPY = {
   unitMinutes: '分钟',
   unitMegabytes: 'MB',
   budgetPlaceholderDefault: '默认',
-  budgetInvalid: '请输入正整数，留空表示不收紧该项',
+  budgetInvalid: '请输入正整数，留空表示用服务端默认',
   budgetOpen: '设置预算',
   budgetClose: '收起预算',
+  /** token 默认值按上下文窗口派生时的单位（倍数来自服务端） */
+  budgetTokenWindowUnit: '×上下文窗口',
   /** 暂停策略 */
   pausePolicy:
     '预算消耗到 80% 或连续 2 次工具失败时暂停，等你确认继续；DESTRUCTIVE 操作始终逐条审批',

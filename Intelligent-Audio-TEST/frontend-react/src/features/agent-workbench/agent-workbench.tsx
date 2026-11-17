@@ -23,6 +23,7 @@ import { toast } from 'sonner'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useAgentRunHost } from '@/application/agent/use-agent-run'
 import { useAgentRunStore } from '@/application/agent/agent-run-store'
+import { useAgentBudgetDefaults } from '@/application/agent/use-agent-budget-defaults'
 import { AgentConnectButton } from '@/components/layout/components/agent-connect-button'
 import {
   AGENT_PROVIDERS_COPY,
@@ -31,6 +32,7 @@ import {
 
 import { CHAT_CHANNEL } from '@/domain/models/aiChat'
 import {
+  AGENT_RUN_MODE,
   normalizeRunMode,
   type AgentRunBudget,
   type AgentRunMode,
@@ -107,6 +109,10 @@ function AgentWorkbenchSession({
 
   /** 运行模式与 Auto 预算（INT-2474）：与整页同一份 config，两形态不分裂模式 */
   const runMode = normalizeRunMode(config.runMode)
+  /** 预算默认值（仅目标模式拉取；展示「留空生效」口径，不作为上限） */
+  const { data: autoBudgetDefaults } = useAgentBudgetDefaults(
+    runMode === AGENT_RUN_MODE.AUTO
+  )
   const handleRunModeChange = (next: AgentRunMode) => {
     updateConfig('runMode', next)
   }
@@ -192,6 +198,7 @@ function AgentWorkbenchSession({
     runMode,
     onRunModeChange: handleRunModeChange,
     autoBudget: config.autoBudget,
+    autoBudgetDefaults,
     onAutoBudgetChange: handleAutoBudgetChange,
   } as const
 

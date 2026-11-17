@@ -13,6 +13,7 @@
 | GET  | /api/v1/agent/runs/{id}/approvals | 本 run 的审批单（待审批 + 已决）|
 | POST | /api/v1/agent/approvals/{id}/decision | 批准 / 拒绝写操作提案 |
 | GET  | /api/v1/agent/runs/{id}/context-snapshots | 上下文压缩快照（调试模式可回放）|
+| GET  | /api/v1/agent/budget-defaults | 目标模式预算默认值（前端展示「留空生效」口径）|
 | GET  | /api/v1/agent/skills | 当前用户可见 Skill（§4.2 规则 7）|
 """
 import json
@@ -29,7 +30,7 @@ from agent_service.application.skill_registry import SkillIssue
 from agent_service.application.skill_service import SkillDraftPayload
 from agent_service.config.config import Config
 from agent_service.domain.enums import (
-    ApprovalDecision, SkillErrorCode, SkillIssueCode, SkillIssueSeverity,
+    ApprovalDecision, RunMode, SkillErrorCode, SkillIssueCode, SkillIssueSeverity,
     SkillReviewDecision, SkillScope, SkillStatus,
 )
 from agent_service.domain.exceptions import ApprovalExpired, SkillPackageTooLarge
@@ -39,9 +40,9 @@ from agent_service.interfaces.api.dependencies import (
 )
 from agent_service.interfaces.api.schemas import (
     ApprovalDecisionRequest, ApprovalDecisionResponse, ApprovalResponse,
-    CreateRunRequest, CreateRunResponse, CreateSessionRequest, RunResponse,
-    SessionDetailResponse, SessionResponse, SkillDraftRequest,
-    SkillForkRequest, SkillReviewRequest,
+    BudgetDefaultsResponse, CreateRunRequest, CreateRunResponse,
+    CreateSessionRequest, RunResponse, SessionDetailResponse, SessionResponse,
+    SkillDraftRequest, SkillForkRequest, SkillReviewRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,22 @@ def _sse_frame(event) -> str:
 
 
 # ---------------------------------------------------------------- routes
+
+@router.get('/budget-defaults', response_model=BudgetDefaultsResponse,
+            dependencies=[Depends(get_identity)])
+def get_budget_defaults(request: Request):
+    """目标模式预算的服务端默认值（§9.4 修订）。
+
+    仅下发「留空生效」的默认值，不是上限：Auto 允许用户上调（消耗用户自己的
+    token）；前端据此展示默认口径，输入框不做上限校验。
+    """
+    container = get_container(request)
+    defaults = container.run_service.budget_defaults(RunMode.AUTO)
+    return BudgetDefaultsResponse(
+        **defaults,
+        token_budget_multiplier=Config.TOKEN_BUDGET_MULTIPLIER_AUTO,
+    )
+
 
 @router.get('/sessions', response_model=List[SessionResponse])
 def list_sessions(request: Request, limit: int = 50, offset: int = 0,
@@ -144,6 +161,7 @@ def create_run(session_id: str, payload: CreateRunRequest, request: Request,
         session_id, owner_id=identity.user_id, tenant_id=identity.tenant_id,
         message=payload.message, idempotency_key=idempotency_key,
         permissions=identity.permissions, active_skill=payload.active_skill,
+        model=payload.model, provider_id=payload.provider_id,
         mode=payload.mode, budget_overrides=payload.budget,
     )
     # INT-2453：只读 ToolGateway 以用户身份回源网关 REST。Authorization 只在

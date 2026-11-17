@@ -1,6 +1,7 @@
 /**
  * Auto 预算草稿单测（INT-2474 §9.4）。
- * 关注点：留空 = 不收紧、非法输入不进入请求、分钟/MB 换算、外部预算同步判定。
+ * 关注点：留空 = 服务端默认、非法输入不进入请求、分钟/MB 换算、外部预算同步判定、
+ * 服务端默认值展示（允许上调，不做上限校验）。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -8,6 +9,7 @@ import {
   EMPTY_AUTO_BUDGET_DRAFT,
   budgetsEqual,
   buildAutoBudget,
+  formatAutoBudgetDefaults,
   invalidBudgetFields,
   parseBudgetField,
   toAutoBudgetDraft,
@@ -93,5 +95,33 @@ describe('budgetsEqual', () => {
     expect(budgetsEqual(undefined, {})).toBe(true)
     expect(budgetsEqual({ maxRounds: 5 }, { maxRounds: 6 })).toBe(false)
     expect(budgetsEqual({ maxRounds: 5 }, undefined)).toBe(false)
+  })
+})
+
+describe('formatAutoBudgetDefaults', () => {
+  it('maxTokens=0 按服务端倍数展示；时长 / 输出换算单位', () => {
+    expect(
+      formatAutoBudgetDefaults({
+        budget: {
+          maxRounds: 60,
+          maxToolCalls: 120,
+          maxTokens: 0,
+          maxDurationSeconds: 1800,
+          maxOutputBytes: 20 * 1024 * 1024,
+        },
+        tokenMultiplier: 4,
+      })
+    ).toBe(
+      '服务端默认（留空生效）：轮次 60 · 工具调用 120 · token 4×上下文窗口 · 时长 30分钟 · 最大输出 20MB'
+    )
+  })
+
+  it('显式 token 值按数字展示；缺省维度跳过', () => {
+    const text = formatAutoBudgetDefaults({
+      budget: { maxTokens: 100000 },
+      tokenMultiplier: 4,
+    })
+    expect(text).toContain('token 100,000')
+    expect(text).not.toContain('轮次')
   })
 })

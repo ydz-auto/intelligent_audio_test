@@ -110,3 +110,11 @@ class TestBudget:
         source = {'max_rounds': 5, 'max_tool_calls': 6, 'max_tokens': 7,
                   'max_duration_seconds': 8, 'max_output_bytes': 9}
         assert RunBudget.from_dict(source).to_dict() == source
+
+    def test_overridden_allows_relax_but_ignores_non_positive(self):
+        base = RunBudget.from_dict({'max_rounds': 5, 'max_tool_calls': 6,
+                                    'max_tokens': 7})
+        relaxed = base.overridden({'max_rounds': 50, 'max_tool_calls': 0})
+        assert relaxed.max_rounds == 50          # 放宽生效（Auto 口径）
+        assert relaxed.max_tool_calls == 6       # 0 = 不覆盖
+        assert relaxed.max_tokens == 7           # 缺省 = 不覆盖

@@ -1,8 +1,8 @@
 /**
- * Auto 预算设置（interfaces 层 ai-chat/auto-mode；INT-2474 §9.4 / 拍板增补 2）。
+ * Auto 预算设置（interfaces 层 ai-chat/auto-mode；INT-2474 §9.4）。
  *
  * 「启动 Auto 前必须展示计划与预算」：选 Auto 后输入区上方直接展示五个维度
- * 的收紧输入（留空 = 用服务端默认），并标明默认值口径与「只能收紧」。
+ * 的预算输入（留空 = 用服务端默认，可在此基础上上调），并标明默认值口径。
  *
  * 输入是字符串草稿：非法输入（0 / 负数 / 非数字）只标红、不进入请求；
  * 合法值实时回写会话 config（整页 / 浮窗共用同一份预算）。
@@ -11,10 +11,15 @@ import { ChevronDown, Gauge } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Input } from '@/components/ui/input'
-import { AGENT_AUTO_COPY, type AgentRunBudget } from '@/domain/models/agent'
+import {
+  AGENT_AUTO_COPY,
+  type AgentAutoBudgetDefaults,
+  type AgentRunBudget,
+} from '@/domain/models/agent'
 import {
   buildAutoBudget,
   budgetsEqual,
+  formatAutoBudgetDefaults,
   invalidBudgetFields,
   toAutoBudgetDraft,
   type AutoBudgetDraft,
@@ -49,12 +54,15 @@ const BUDGET_FIELDS: Array<{
 type AutoBudgetSettingsProps = {
   /** 会话 config 里的预算（唯一事实源；外部变化时同步草稿） */
   budget?: AgentRunBudget
+  /** 服务端预算默认值（仅用于展示「留空生效」口径；未加载时回落兜底文案） */
+  defaults?: AgentAutoBudgetDefaults
   onBudgetChange: (budget: AgentRunBudget | undefined) => void
   disabled?: boolean
 }
 
 export function AutoBudgetSettings({
   budget,
+  defaults,
   onBudgetChange,
   disabled = false,
 }: AutoBudgetSettingsProps) {
@@ -136,10 +144,12 @@ export function AutoBudgetSettings({
             })}
           </div>
           <p className='text-muted-foreground mt-1.5 text-[11px] leading-4'>
-            {AGENT_AUTO_COPY.budgetDefaultHint}
+            {defaults
+              ? formatAutoBudgetDefaults(defaults)
+              : AGENT_AUTO_COPY.budgetDefaultHintFallback}
           </p>
           <p className='text-muted-foreground mt-0.5 text-[11px] leading-4'>
-            {AGENT_AUTO_COPY.budgetOverLimitHint}
+            {AGENT_AUTO_COPY.budgetRelaxHint}
           </p>
           {invalid.size > 0 && (
             <p className='text-destructive mt-1 text-[11px]' role='alert'>

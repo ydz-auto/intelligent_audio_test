@@ -13,6 +13,7 @@ import {
   toAgentApprovalDecisionResult,
   toAgentApprovalObjectRef,
   toAgentApprovals,
+  toAgentAutoBudgetDefaults,
   toAgentRun,
   toAgentRunCreateDto,
   toAgentRunEvent,
@@ -67,6 +68,23 @@ describe('agent.dto', () => {
     expect(toAgentRunCreateDto({ message: '你好' })).toEqual({ message: '你好' })
     expect(toAgentSessionCreateDto('会话标题')).toEqual({ title: '会话标题' })
     expect(toAgentSessionCreateDto()).toEqual({})
+  })
+
+  it('请求体：供应商 / 模型下拉随本轮下发（空值不下发）', () => {
+    expect(
+      toAgentRunCreateDto({
+        message: '你好',
+        providerId: ' p-1 ',
+        model: ' deepseek-reasoner ',
+      })
+    ).toEqual({
+      message: '你好',
+      provider_id: 'p-1',
+      model: 'deepseek-reasoner',
+    })
+    expect(
+      toAgentRunCreateDto({ message: '你好', providerId: '  ', model: '  ' })
+    ).toEqual({ message: '你好' })
   })
 
   it('sourceRefs：report_id/metric_id/data_version → camelCase，缺 report_id 丢弃', () => {
@@ -186,12 +204,16 @@ describe('agent.dto', () => {
       tool_call_id: 'tc-1',
       ok: true,
       content: '返回 8 项指标',
+      // 后端成功结果带状态码 'OK'：不是错误码，领域侧必须丢弃
+      error_code: 'OK',
     })
     expect(succeeded).toMatchObject({
       type: 'tool_result',
       status: 'SUCCEEDED',
       summary: '返回 8 项指标',
     })
+    expect(succeeded && 'errorCode' in succeeded ? succeeded.errorCode : undefined)
+      .toBeUndefined()
 
     // sourceRefs 仅在载荷带 source_refs 时映射（M0 后端不产出，不伪造）
     const withRefs = toAgentRunEvent({
@@ -523,6 +545,31 @@ describe('agent.dto 审批与时间线（INT-2472）', () => {
       type: 'run_started',
       budget: { maxRounds: 12, maxToolCalls: 40 },
     })
+  })
+
+  it('budget-defaults：Auto 默认值 snake_case → camelCase（含 token 派生倍数）', () => {
+    expect(
+      toAgentAutoBudgetDefaults({
+        max_rounds: 60,
+        max_tool_calls: 120,
+        max_tokens: 0,
+        max_duration_seconds: 1800,
+        max_output_bytes: 20971520,
+        token_budget_multiplier: 4,
+      })
+    ).toEqual({
+      budget: {
+        maxRounds: 60,
+        maxToolCalls: 120,
+        maxTokens: 0,
+        maxDurationSeconds: 1800,
+        maxOutputBytes: 20971520,
+      },
+      tokenMultiplier: 4,
+    })
+    // 形态不符（缺倍数 / 非对象）→ undefined，页面回落兜底文案
+    expect(toAgentAutoBudgetDefaults({ max_rounds: 60 })).toBeUndefined()
+    expect(toAgentAutoBudgetDefaults(null)).toBeUndefined()
   })
 
   it('approval_required 事件：approval_id / tool / risk / expires_at / proposal', () => {

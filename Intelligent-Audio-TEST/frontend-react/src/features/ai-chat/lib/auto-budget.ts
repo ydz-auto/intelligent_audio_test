@@ -2,16 +2,22 @@
  * Auto 预算草稿（features 层；INT-2474 §9.4）。
  *
  * 界面用字符串草稿（受控输入），提交前转成领域预算对象：
- * - 空串 = 不收紧该维度（服务端默认生效）；
+ * - 空串 = 用服务端默认（不覆盖该维度）；
  * - 只接受正整数：0 / 负数 / 小数 / 非数字都视为非法，**不静默截断**；
  *   非法项在输入框下方标红，且不进入请求体（后端对未知/非法预算直接 400，
  *   前端先把不可能成立的输入拦住）；
  * - 时长按分钟录入 → 秒；输出按 MB 录入 → 字节。
  *
- * 预算只能收紧不能放宽：这里不做上限校验（服务端上限不随会话下发），
- * 由服务端取 min(默认, 请求值) 兜底。
+ * 预算允许放宽（§9.4 修订）：这里不做上限校验（Auto 可在服务端默认之上上调，
+ * 消耗用户自己的 token），只拦非正整数；上限 / 默认值口径由服务端下发。
  */
-import type { AgentRunBudget } from '@/domain/models/agent'
+import {
+  AGENT_AUTO_COPY,
+  AGENT_BUDGET_DIMENSION_LABELS,
+  type AgentAutoBudgetDefaults,
+  type AgentRunBudget,
+} from '@/domain/models/agent'
+import { formatNumber } from '@/lib/format'
 
 /** 五个预算维度的输入草稿（字符串；供受控输入原样回显） */
 export interface AutoBudgetDraft {
@@ -114,4 +120,36 @@ export function budgetsEqual(
     'maxOutputBytes',
   ]
   return keys.every((key) => (left?.[key] ?? undefined) === (right?.[key] ?? undefined))
+}
+
+/**
+ * 服务端默认值 → 展示文案（例：「服务端默认（留空生效）：轮次 60 · 工具调用 120 ·
+ * token 4×上下文窗口 · 时长 30 分钟 · 输出 20MB」）。
+ *
+ * maxTokens 为 0 表示按上下文窗口派生（倍数来自服务端）；缺省 / 0 的维度跳过。
+ */
+export function formatAutoBudgetDefaults(defaults: AgentAutoBudgetDefaults): string {
+  const { budget, tokenMultiplier } = defaults
+  const parts: string[] = []
+  const labels = AGENT_BUDGET_DIMENSION_LABELS
+  if (budget.maxRounds) {
+    parts.push(`${labels.maxRounds} ${formatNumber(budget.maxRounds)}`)
+  }
+  if (budget.maxToolCalls) {
+    parts.push(`${labels.maxToolCalls} ${formatNumber(budget.maxToolCalls)}`)
+  }
+  parts.push(
+    budget.maxTokens && budget.maxTokens > 0
+      ? `${labels.maxTokens} ${formatNumber(budget.maxTokens)}`
+      : `${labels.maxTokens} ${tokenMultiplier}${AGENT_AUTO_COPY.budgetTokenWindowUnit}`
+  )
+  if (budget.maxDurationSeconds) {
+    const minutes = Math.round(budget.maxDurationSeconds / SECONDS_PER_MINUTE)
+    parts.push(`${labels.maxDurationSeconds} ${minutes}${AGENT_AUTO_COPY.unitMinutes}`)
+  }
+  if (budget.maxOutputBytes) {
+    const megabytes = Math.round(budget.maxOutputBytes / BYTES_PER_MEGABYTE)
+    parts.push(`${labels.maxOutputBytes} ${megabytes}${AGENT_AUTO_COPY.unitMegabytes}`)
+  }
+  return `${AGENT_AUTO_COPY.budgetDefaultHintPrefix}：${parts.join(' · ')}`
 }

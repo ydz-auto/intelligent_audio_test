@@ -22,7 +22,7 @@ import {
   Save,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -67,6 +67,8 @@ type DocumentPanelProps = {
   agentSessionId?: string | null
   /** 当前 run id（读待审批写操作数；空表示无在跑 run） */
   runId?: string | null
+  /** 报告上下文选择器（报告工作模式内唯一的绑定入口，由页面装配数据） */
+  contextSlot?: ReactNode
   onClose: () => void
 }
 
@@ -90,6 +92,7 @@ export function DocumentPanel({
   onRetryResolve,
   agentSessionId,
   runId,
+  contextSlot,
   onClose,
 }: DocumentPanelProps) {
   const { hasPermission } = usePermissions()
@@ -287,6 +290,18 @@ export function DocumentPanel({
             </Button>
           </div>
         </div>
+        {/* 报告上下文绑定：报告工作模式内唯一入口（原先在输入区，普通聊天里选了也不生效） */}
+        {contextSlot && (
+          <div
+            className='mt-2 flex min-w-0 items-center gap-1.5'
+            data-testid='studio-context-selector'
+          >
+            <span className='text-muted-foreground shrink-0 text-xs'>
+              报告上下文
+            </span>
+            <div className='min-w-0'>{contextSlot}</div>
+          </div>
+        )}
         {/*
          * 同一报告多份文档时给切换入口（UX 审计 P3-1）：旧实现只取排序后的最新一份，
          * 其余文档在工作台里看不到。用一排页签而不是下拉：目标小、键盘可达、无需浮层。
@@ -347,14 +362,14 @@ export function DocumentPanel({
             ) : (
               <div data-testid='studio-task-no-report'>
                 <EmptyBlock
-                  description='请在输入框左侧改选报告上下文，或先在报告中心为该任务生成报告。'
+                  description='请在上方改选报告上下文，或先在报告中心为该任务生成报告。'
                   title='该任务暂无关联报告'
                 />
               </div>
             )
           ) : (
             <EmptyBlock
-              description='先在输入框左侧绑定报告上下文，再打开报告工作模式。'
+              description='先在上方绑定报告上下文。'
               title='未绑定报告上下文'
             />
           )

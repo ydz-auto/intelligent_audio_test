@@ -1012,13 +1012,16 @@ M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参�
 | 输出字节 | 10 MB | 20 MB |
 | 压缩触发 | 60% / 80% | 60% / 80% |
 
-预算只能由服务端配置收紧，请求不可放宽；超限统一 `BUDGET_EXCEEDED`。
+预算默认值由服务端配置给定，留空即用；**目标模式（Auto）允许用户在默认值之上上调**
+（消耗用户自己的 token，不设硬上限），普通对话请求仍只能收紧；超限统一 `BUDGET_EXCEEDED`。
 
-> **实现口径（INT-2474，2026-11-14）**：Auto 与普通对话共用同一条 Loop，
+> **实现口径（INT-2474，2026-11-14；预算放宽口径 2026-11-17 修订）**：Auto 与普通对话共用同一条 Loop，
 > 入口是 `POST /agent/sessions/{id}/runs` 的 `mode: chat|auto`（默认 chat）；
-> `budget` 可随请求下发但**只收紧**（`min(服务端, 请求值)`，`0`/负数视为不覆盖，
-> 未知键 400 `INVALID_BUDGET`；`mode` 非法 400 `INVALID_RUN_MODE`）。
-> `run_started` 载荷带 `mode` / `budget`（Auto 再带 `pause_policy = {budget_ratio,
+> `budget` 可随请求下发：**Auto 允许放宽**（正数按请求值直接生效，消耗用户自己的
+> token，不设硬上限），**普通对话仍只能收紧**（`min(服务端默认, 请求值)`）；
+> `0`/负数视为不覆盖，未知键 400 `INVALID_BUDGET`（`mode` 非法 400 `INVALID_RUN_MODE`）。
+> `GET /agent/budget-defaults` 下发 Auto 默认值（不是上限），前端据此展示「留空生效」
+> 口径；`run_started` 载荷带 `mode` / `budget`（Auto 再带 `pause_policy = {budget_ratio,
 > consecutive_failures}`），前端在开跑前即可展示预算与暂停规则（`budget.max_tokens`
 > 为 0（默认）表示按有效窗口派生、Auto 取 4×W，实际生效上限见 `auto_step.limits`）；
 > 计划自第 2 轮起随 `auto_step.plan` 下发：首条 `auto_step` 早于模型首轮、尚无计划，
@@ -1070,7 +1073,7 @@ M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参�
 3. **终态口径**：`BUDGET_EXCEEDED` / 熔断（`FAILED` + `CONSECUTIVE_TOOL_FAILURES`）
    **不显示成功**；已生成的正文保留在气泡里，只落一个终态徽标，不把文本清空。
 4. **预算录入单位**：UI 以「分钟 / MB」录入时长与输出字节，请求层换算成秒 / 字节
-   再发给服务端（`budget` 仍只能收紧，见本节实现口径）。
+   再发给服务端（Auto 允许上调；默认值来自 `GET /agent/budget-defaults`，不再前端硬编码）。
 
 ## 10. 数据模型
 
@@ -1108,6 +1111,7 @@ M2 现行可拆参数登记（定稿；注册期枚举全部写工具数组参�
 | GET | `/api/v1/agent/runs/{id}/events?cursor=` | SSE，支持 `Last-Event-ID` 续传 |
 | POST | `/api/v1/agent/runs/{id}/cancel` | 取消 |
 | POST | `/api/v1/agent/runs/{id}/resume` | Auto 暂停后继续（INT-2474）|
+| GET | `/api/v1/agent/budget-defaults` | 目标模式预算默认值（不是上限；Auto 可上调）|
 | GET | `/api/v1/agent/runs/{id}/approvals` | 待审批提案 |
 | POST | `/api/v1/agent/approvals/{id}/decision` | 批准/拒绝 |
 | GET | `/api/v1/agent/skills` | 当前用户可见 Skill 列表 |

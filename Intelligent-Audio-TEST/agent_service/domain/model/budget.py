@@ -54,16 +54,35 @@ class RunBudget:
         )
 
     def tightened(self, overrides: Optional[Dict[str, Any]]) -> 'RunBudget':
-        """按请求侧给定的上限**收紧**预算（§9.4：请求不可放宽）。
+        """按请求侧给定的上限**收紧**预算（普通对话口径：请求不可放宽）。
 
         只接受已知预算键；``0`` / 负数 / 缺省视为「不覆盖」（不能让调用方把
         某一维度关掉），正数取 ``min(服务端默认, 请求值)``。未知键抛
         ``ValueError``，由接口层转 400（不静默忽略，避免调用方以为生效）。
         """
-        if not overrides:
-            return self
         data = self.to_dict()
-        for key, raw in overrides.items():
+        for key, value in self._positive_overrides(overrides).items():
+            current = data[key]
+            data[key] = value if current <= 0 else min(current, value)
+        return RunBudget.from_dict(data)
+
+    def overridden(self, overrides: Optional[Dict[str, Any]]) -> 'RunBudget':
+        """按请求侧给定值**直接覆盖**预算（目标模式口径：允许放宽）。
+
+        §9.4 修订：Auto 预算消耗的是用户自己的 token，允许用户在服务端默认值
+        之上上调。校验口径与 ``tightened`` 一致——只接受已知预算键，``0`` /
+        负数 / 缺省视为「不覆盖」，未知键 / 非整数抛 ``ValueError``（接口层
+        转 400），正数按请求值生效，不再与服务端默认取 min。
+        """
+        data = self.to_dict()
+        data.update(self._positive_overrides(overrides))
+        return RunBudget.from_dict(data)
+
+    @staticmethod
+    def _positive_overrides(overrides: Optional[Dict[str, Any]]) -> Dict[str, int]:
+        """校验请求侧预算键并返回「正整数值」（0 / 负数 / None 视为不覆盖）。"""
+        values: Dict[str, int] = {}
+        for key, raw in (overrides or {}).items():
             if key not in _BUDGET_KEYS:
                 raise ValueError(f'未知预算项：{key}')
             if raw is None:
@@ -74,9 +93,8 @@ class RunBudget:
                 raise ValueError(f'预算项 {key} 必须为整数')
             if value <= 0:
                 continue
-            current = data[key]
-            data[key] = value if current <= 0 else min(current, value)
-        return RunBudget.from_dict(data)
+            values[key] = value
+        return values
 
     @staticmethod
     def _exceeded(value: int, limit: int) -> bool:

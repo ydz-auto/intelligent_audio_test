@@ -104,6 +104,8 @@ class RunService:
                    message: str, idempotency_key: Optional[str] = None,
                    permissions: Iterable[str] = (),
                    active_skill: Optional[str] = None,
+                   model: Optional[str] = None,
+                   provider_id: Optional[str] = None,
                    mode: str = RunMode.CHAT.value,
                    budget_overrides: Optional[Dict[str, int]] = None
                    ) -> Tuple[AgentRun, bool]:
@@ -141,11 +143,14 @@ class RunService:
                 effective_skill = None
 
         budget = self._build_budget(run_mode, budget_overrides)
+        # 本轮模型：显式传入优先（对话页模型下拉），否则沿用会话 / 服务端默认。
+        run_model = ((model or '').strip() or session.model
+                     or self._default_model or '')[:100]
         now = utcnow()
         run = AgentRun(
             id=str(uuid.uuid4()), session_id=session.id, owner_id=owner_id,
             tenant_id=tenant_id, status=RunStatus.QUEUED,
-            model=session.model or self._default_model or '',
+            model=run_model, provider_id=(provider_id or None),
             budget=budget.to_dict(), idempotency_key=normalized_key,
             created_at=now, updated_at=now,
         )
@@ -324,13 +329,24 @@ class RunService:
 
     def _build_budget(self, mode: RunMode,
                       overrides: Optional[Dict[str, int]]) -> RunBudget:
-        """按模式取服务端预算，再按请求侧值**收紧**（§9.4 不可放宽）。"""
+        """按模式取服务端预算默认值，再按请求侧值覆盖（§9.4 修订）。
+
+        目标模式（auto）允许放宽：正数按请求值直接生效（消耗用户自己的 token）；
+        普通对话仍只能收紧（取 ``min(服务端默认, 请求值)``）。
+        """
         defaults = (self._auto_budget_defaults if mode.is_auto
                     else self._budget_defaults)
+        budget = RunBudget.from_dict(defaults)
         try:
-            return RunBudget.from_dict(defaults).tightened(overrides)
+            return (budget.overridden(overrides) if mode.is_auto
+                    else budget.tightened(overrides))
         except ValueError as exc:
             raise InvalidBudgetOverride(str(exc))
+
+    def budget_defaults(self, mode: RunMode) -> Dict[str, int]:
+        """该模式的服务端预算默认值（仅作「留空生效」口径，留给前端展示）。"""
+        return dict(self._auto_budget_defaults if mode.is_auto
+                    else self._budget_defaults)
 
     def _record_skill_snapshot(self, run_id: str, skill) -> None:
         """一次激活 / 切换追加一行快照（失败不阻断 run 发起）。"""

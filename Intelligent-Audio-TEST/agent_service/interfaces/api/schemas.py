@@ -16,18 +16,35 @@ class CreateSessionRequest(BaseModel):
 
 
 class CreateRunRequest(BaseModel):
-    # 预算上限只由服务端配置（agent_defaults.json + AGENT_MAX_*）给定：
-    # 请求体里的 ``budget`` 只能**收紧**（取与服务端默认值的最小值，0 / 负
-    # 数视为不覆盖），任何调用方都不能把 token / 时长 / 轮次 / 输出字节的
-    # 上限放宽或关掉（§9.4「请求不可放宽」）。
+    # 预算默认值由服务端配置（agent_defaults.json + AGENT_MAX_*）给定：
+    # 普通对话的 ``budget`` 只能**收紧**（与服务端默认值取最小，0 / 负数视为
+    # 不覆盖）；目标模式（auto）允许**放宽**——正数按请求值直接生效（消耗用户
+    # 自己的 token），未知键 / 非整数 400 INVALID_BUDGET（§9.4 修订）。
     message: str = Field(min_length=1)
+    # 可选：本轮使用的模型（同一供应商 Key / Base URL 下切换模型）；
+    # 留空沿用默认供应商配置的模型。
+    model: Optional[str] = None
+    # 可选：本轮使用的供应商（对话页供应商下拉）；留空用 owner 默认供应商。
+    provider_id: Optional[str] = None
     # 可选：发起本轮时切换会话激活的 Skill（落库 agent_session.active_skill）
     active_skill: Optional[str] = None
     # 运行模式：chat（默认，单轮问答）/ auto（目标驱动长任务，§9.3 / §9.4）
     mode: str = 'chat'
-    # 可选：请求侧收紧预算（键同 RunBudget：max_rounds / max_tool_calls /
+    # 可选：请求侧预算（键同 RunBudget：max_rounds / max_tool_calls /
     # max_tokens / max_duration_seconds / max_output_bytes）
     budget: Optional[Dict[str, int]] = None
+
+
+class BudgetDefaultsResponse(BaseModel):
+    """目标模式预算的服务端默认值（键同 RunBudget；留空时生效）。"""
+
+    max_rounds: int
+    max_tool_calls: int
+    max_tokens: int
+    max_duration_seconds: int
+    max_output_bytes: int
+    # token 上限派生倍数（max_tokens = 0 时按「倍数 × 有效上下文窗口」计算）
+    token_budget_multiplier: int
 
 
 class SessionResponse(BaseModel):

@@ -86,7 +86,7 @@ class Config(BaseConfig):
     MAX_TOOL_CALLS = _get_int(
         'AGENT_MAX_TOOL_CALLS', int(_BUDGET_DEFAULTS.get('max_tool_calls', 40)))
     # 0 = 按有效上下文窗口派生（默认 2×W，见 TOKEN_BUDGET_MULTIPLIER_*）；
-    # 显式正数作为运营方的硬上限（取 min）。
+    # 显式正数作为运营方硬上限（普通对话取 min；Auto 见下方「可上调」口径）。
     MAX_TOKENS = _get_int('AGENT_MAX_TOKENS', int(_BUDGET_DEFAULTS.get('max_tokens', 0)))
     MAX_DURATION_SECONDS = _get_int(
         'AGENT_MAX_DURATION_SECONDS', int(_BUDGET_DEFAULTS.get('max_duration_seconds', 600)))
@@ -96,15 +96,15 @@ class Config(BaseConfig):
         'AGENT_MAX_CONSECUTIVE_TOOL_FAILURES',
         int(_DEFAULTS.get('max_consecutive_tool_failures', 3)))
 
-    # ===== Auto 模式预算 / 熔断（INT-2474，§9.3 / §9.4 拍板口径）=====
-    # Auto 预算（默认 60 轮 / 120 工具 / 4×W token / 30min / 20MB）；
-    # 请求侧同样只能收紧，不能放宽（见 RunBudget.tightened）。
+    # ===== Auto 模式预算 / 熔断（INT-2474，§9.3 / §9.4 修订口径）=====
+    # Auto 预算默认值（60 轮 / 120 工具 / 4×W token / 30min / 20MB）；
+    # 留空时使用这里的值；请求侧可上调（Auto 允许放宽，消耗用户自己的 token）。
     AUTO_MAX_ROUNDS = _get_int(
         'AGENT_AUTO_MAX_ROUNDS', int(_AUTO_BUDGET_DEFAULTS.get('max_rounds', 60)))
     AUTO_MAX_TOOL_CALLS = _get_int(
         'AGENT_AUTO_MAX_TOOL_CALLS',
         int(_AUTO_BUDGET_DEFAULTS.get('max_tool_calls', 120)))
-    # 0 = 按有效上下文窗口派生（Auto 4×W）；正数作为运营侧硬上限（取 min）
+    # 0 = 按有效上下文窗口派生（Auto 4×W）；正数作为 Auto 默认值（可被请求上调）
     AUTO_MAX_TOKENS = _get_int(
         'AGENT_AUTO_MAX_TOKENS', int(_AUTO_BUDGET_DEFAULTS.get('max_tokens', 0)))
     AUTO_MAX_DURATION_SECONDS = _get_int(
@@ -518,7 +518,10 @@ class Config(BaseConfig):
 
     @classmethod
     def auto_budget_defaults(cls) -> dict:
-        """Auto 模式的预算默认值（§9.4 拍板：60 / 120 / 4×W / 30min / 20MB）。"""
+        """Auto 模式的预算默认值（§9.4：60 / 120 / 4×W / 30min / 20MB）。
+
+        仅作「留空生效」的默认值；请求侧可上调（Auto 允许放宽）。
+        """
         return {
             'max_rounds': cls.AUTO_MAX_ROUNDS,
             'max_tool_calls': cls.AUTO_MAX_TOOL_CALLS,

@@ -236,6 +236,15 @@ def _stream_events(request: Request, run_id: str):
 
 # ---------------------------------------------------------------- routes
 
+@router.get('/budget-defaults')
+async def proxy_budget_defaults(request: Request):
+    """目标模式预算默认值（§9.4 修订）：鉴权后透明转发 agent_service。
+
+    只下发默认值（不是上限）：Auto 允许用户上调预算，前端据此展示留空口径。
+    """
+    return await _forward(request, 'GET')
+
+
 @router.get('/sessions')
 async def proxy_list_sessions(request: Request):
     return await _forward(request, 'GET')

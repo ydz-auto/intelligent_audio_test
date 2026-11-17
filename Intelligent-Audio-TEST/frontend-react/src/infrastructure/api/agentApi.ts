@@ -23,6 +23,7 @@ import {
   type AgentApproval,
   type AgentApprovalDecision,
   type AgentApprovalDecisionResult,
+  type AgentAutoBudgetDefaults,
   type AgentRun,
   type AgentRunEvent,
   type AgentRunInput,
@@ -33,6 +34,7 @@ import {
   toAgentApprovals,
   toAgentApprovalDecisionDto,
   toAgentApprovalDecisionResult,
+  toAgentAutoBudgetDefaults,
   toAgentRun,
   toAgentRunCreateDto,
   toAgentRunEvent,
@@ -42,6 +44,7 @@ import {
   toAgentSessionDetail,
   type AgentApprovalDecisionResponseDto,
   type AgentApprovalsResponseDto,
+  type AgentBudgetDefaultsDto,
   type AgentEventDto,
   type AgentRunCreateResponseDto,
   type AgentRunDto,
@@ -70,6 +73,8 @@ export const AGENT_API_PATHS = {
   /** 审批决策（§9.4；批准/拒绝一条写操作提案，决策本身不执行业务写） */
   approvalDecision: (approvalId: string) =>
     `/agent/approvals/${encodeURIComponent(approvalId)}/decision`,
+  /** 目标模式预算的服务端默认值（§9.4 修订；只下发默认值，不是上限） */
+  budgetDefaults: '/agent/budget-defaults',
 } as const
 
 // ===== 事件流参数（禁止魔法数字；§5.3「预算、阈值、超时写入配置」） =====
@@ -209,6 +214,23 @@ export async function listAgentSessions(
     options
   )
   return (dtos ?? []).map(toAgentSession)
+}
+
+/**
+ * GET /agent/budget-defaults —— 目标模式预算的服务端默认值（§9.4 修订）。
+ * 仅用于展示「留空生效」的口径，不是上限：用户可在此基础上上调预算。
+ * 网关透明转发；形态不符返回 undefined，页面回落兜底文案。
+ */
+export async function fetchAgentBudgetDefaults(
+  options?: ApiRequestOptions
+): Promise<AgentAutoBudgetDefaults | undefined> {
+  const dto = await request<AgentBudgetDefaultsDto>(
+    'GET',
+    AGENT_API_PATHS.budgetDefaults,
+    undefined,
+    options
+  )
+  return toAgentAutoBudgetDefaults(dto)
 }
 
 /**

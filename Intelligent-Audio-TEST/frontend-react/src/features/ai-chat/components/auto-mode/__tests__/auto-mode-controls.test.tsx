@@ -49,8 +49,33 @@ describe('AutoBudgetSettings', () => {
     )
     expect(container.querySelector('[data-auto-budget-settings]')).toBeTruthy()
     expect(screen.getByText(AGENT_AUTO_COPY.budgetTitle)).toBeTruthy()
-    expect(screen.getByText(AGENT_AUTO_COPY.budgetDefaultHint)).toBeTruthy()
+    expect(screen.getByText(AGENT_AUTO_COPY.budgetDefaultHintFallback)).toBeTruthy()
+    expect(screen.getByText(AGENT_AUTO_COPY.budgetRelaxHint)).toBeTruthy()
     expect(container.querySelectorAll('input')).toHaveLength(5)
+  })
+
+  it('拿到服务端默认值后展示具体维度（允许上调）', () => {
+    render(
+      <AutoBudgetSettings
+        budget={undefined}
+        defaults={{
+          budget: {
+            maxRounds: 60,
+            maxToolCalls: 120,
+            maxTokens: 0,
+            maxDurationSeconds: 1800,
+            maxOutputBytes: 20 * 1024 * 1024,
+          },
+          tokenMultiplier: 4,
+        }}
+        onBudgetChange={() => undefined}
+      />
+    )
+    expect(
+      screen.getByText(
+        '服务端默认（留空生效）：轮次 60 · 工具调用 120 · token 4×上下文窗口 · 时长 30分钟 · 最大输出 20MB'
+      )
+    ).toBeTruthy()
   })
 
   it('输入轮次 20 → 回写预算（分钟 / MB 由草稿层换算）', () => {
@@ -62,6 +87,22 @@ describe('AutoBudgetSettings', () => {
 
     fireEvent.change(roundsInput, { target: { value: '20' } })
     expect(onBudgetChange).toHaveBeenLastCalledWith({ maxRounds: 20 })
+  })
+
+  it('高于服务端默认的值仍按所填回写（不做上限校验）', () => {
+    const onBudgetChange = vi.fn()
+    const { container } = render(
+      <AutoBudgetSettings
+        budget={undefined}
+        defaults={{ budget: { maxRounds: 60 }, tokenMultiplier: 4 }}
+        onBudgetChange={onBudgetChange}
+      />
+    )
+    const roundsInput = container.querySelector('input') as HTMLInputElement
+
+    fireEvent.change(roundsInput, { target: { value: '999' } })
+    expect(onBudgetChange).toHaveBeenLastCalledWith({ maxRounds: 999 })
+    expect(roundsInput.getAttribute('aria-invalid')).toBeNull()
   })
 
   it('非法输入（0）标红且不提交非法预算', () => {

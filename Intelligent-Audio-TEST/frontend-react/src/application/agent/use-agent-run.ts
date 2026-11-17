@@ -24,6 +24,7 @@ import {
   type AgentRunHostDetachReason,
   type AgentRunHostKind,
   type AgentRunPhase,
+  type SendAgentRunOptions,
 } from '@/application/agent/agent-run-store'
 import type { AgentTimelineEntry } from '@/application/agent/agent-timeline'
 import type {
@@ -32,8 +33,6 @@ import type {
   AgentAutoPause,
   AgentAutoProgress,
   AgentRun,
-  AgentRunBudget,
-  AgentRunMode,
   AgentRunPausePolicy,
 } from '@/domain/models/agent'
 import type { AgentStreamStatus } from '@/infrastructure/api/agentApi'
@@ -67,14 +66,7 @@ export interface UseAgentRunResult {
   /** 刷新恢复后继续：本页无事件流，正在轮询服务端终态（面板给「等待结果」口径） */
   autoTracking: boolean
   /** 发起一轮对话（内部保证会话 + run + 订阅；失败落 error 态，不抛出） */
-  send: (
-    text: string,
-    options?: {
-      appendUserMessage?: boolean
-      mode?: AgentRunMode
-      budget?: AgentRunBudget
-    }
-  ) => Promise<void>
+  send: (text: string, options?: SendAgentRunOptions) => Promise<void>
   /** 取消当前 run；成功返回 null，失败返回中文文案（同一 run 只发一次请求） */
   cancel: () => Promise<string | null>
   /** Auto 暂停后继续；成功返回 null，失败返回中文文案 */

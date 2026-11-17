@@ -13,7 +13,8 @@ os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 from agent_service.application.auto_mode import AutoSettings
-from agent_service.domain.enums import RunStatus, ToolCallStatus
+from agent_service.config.config import Config
+from agent_service.domain.enums import RunMode, RunStatus, ToolCallStatus
 from agent_service.domain.model.entities import (
     AgentArtifact, ToolCallRequest, ToolResult,
 )
@@ -91,6 +92,21 @@ def test_rounds_budget_exceeded_keeps_events_and_artifacts(tmp_path):
     records = container.repositories['tool_calls'].list_by_run(run.id)
     assert len(records) == 3
     assert all(record.status is ToolCallStatus.COMPLETED for record in records)
+    container.shutdown()
+
+
+def test_auto_token_budget_can_relax_beyond_window_multiplier(tmp_path):
+    """Auto 上调 token 预算后按所填值生效（不再被 4×W 夹回）。"""
+    llm = FakeLlm([text_turn(f'完成 {MARKER}')])
+    container, _engine, _sf = make_auto_stack(
+        tmp_path, llm, auto_budget_defaults=auto_budget(),
+        auto_settings=AutoSettings(pause_budget_ratio=0))
+    requested_tokens = 10 ** 9
+    run = start_run(container, budget={'max_tokens': requested_tokens})
+
+    progress = events_by_type(container, run.id, 'auto_step')
+    assert progress
+    assert progress[0].payload['limits']['max_tokens'] == requested_tokens
     container.shutdown()
 
 
@@ -174,7 +190,7 @@ OWNER = {'X-User-Id': '7', 'X-Tenant-Id': 't1',
          'X-User-Permissions': 'agent:chat'}
 
 
-def test_api_auto_mode_budget_tighten_and_mode_roundtrip(tmp_path):
+def test_api_auto_mode_budget_relax_and_mode_roundtrip(tmp_path):
     llm = FakeLlm([text_turn(f'完成 {MARKER}')])
     container, _engine, _sf = make_auto_stack(
         tmp_path, llm, auto_budget_defaults=auto_budget())
@@ -189,8 +205,8 @@ def test_api_auto_mode_budget_tighten_and_mode_roundtrip(tmp_path):
         assert created.status_code == 201, created.text
         run = created.json()['run']
         assert run['mode'] == 'auto'
-        assert run['budget']['max_rounds'] == 5        # 请求收紧生效
-        assert run['budget']['max_tool_calls'] == 120  # 放宽被夹回 Auto 上限
+        assert run['budget']['max_rounds'] == 5        # 收紧生效
+        assert run['budget']['max_tool_calls'] == 999  # Auto 允许放宽（按所填执行）
 
         snapshot = client.get(f"/api/v1/agent/runs/{run['id']}",
                               headers=OWNER).json()
@@ -202,6 +218,42 @@ def test_api_auto_mode_budget_tighten_and_mode_roundtrip(tmp_path):
         # 「启动前展示计划与预算」：暂停规则随 run_started 下发
         assert started.payload['pause_policy'] == {
             'budget_ratio': 0.8, 'consecutive_failures': 2}
+    container.shutdown()
+
+
+def test_api_chat_mode_budget_still_tightens(tmp_path):
+    """普通对话仍只能收紧：请求值大于服务端默认时按默认执行（§9.4）。"""
+    llm = FakeLlm([text_turn('ok')])
+    container, _engine, _sf = make_auto_stack(
+        tmp_path, llm, auto_budget_defaults=auto_budget())
+    chat_defaults = container.run_service.budget_defaults(RunMode.CHAT)
+    with _client(container) as client:
+        session = client.post('/api/v1/agent/sessions', json={},
+                              headers=OWNER).json()
+        created = client.post(
+            f"/api/v1/agent/sessions/{session['id']}/runs",
+            json={'message': '普通对话', 'budget': {'max_rounds': 999}},
+            headers=OWNER)
+        assert created.status_code == 201, created.text
+        run = created.json()['run']
+        assert run['mode'] == 'chat'
+        assert run['budget']['max_rounds'] == chat_defaults['max_rounds']
+    container.shutdown()
+
+
+def test_api_budget_defaults_returns_auto_defaults(tmp_path):
+    """GET /agent/budget-defaults：下发 Auto 默认值（不是上限），供前端展示。"""
+    llm = FakeLlm([text_turn('ok')])
+    expected = auto_budget(max_rounds=77, max_tool_calls=155)
+    container, _engine, _sf = make_auto_stack(
+        tmp_path, llm, auto_budget_defaults=expected)
+    with _client(container) as client:
+        response = client.get('/api/v1/agent/budget-defaults', headers=OWNER)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    for key, value in expected.items():
+        assert body[key] == value
+    assert body['token_budget_multiplier'] == Config.TOKEN_BUDGET_MULTIPLIER_AUTO
     container.shutdown()
 
 

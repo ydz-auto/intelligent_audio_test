@@ -65,6 +65,8 @@ class AgentRun(Base):
     tenant_id = Column(String(64), nullable=False)
     status = Column(String(20), nullable=False, comment='RunStatus')
     model = Column(String(100), nullable=False, default='')
+    # 对话页可选供应商：空=用 owner 默认供应商；有值=本轮用该供应商的 Key/Base URL
+    provider_id = Column(String(64), nullable=True, comment='本轮供应商 id（空=默认）')
     budget = Column(JSON, nullable=True, comment='本次 run 的预算快照')
     token_in = Column(Integer, nullable=False, default=0, server_default='0')
     token_out = Column(Integer, nullable=False, default=0, server_default='0')

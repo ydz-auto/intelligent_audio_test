@@ -77,7 +77,8 @@ def _to_run(row: AgentRunPO) -> AgentRun:
     return AgentRun(
         id=row.id, session_id=row.session_id, owner_id=row.owner_id,
         tenant_id=row.tenant_id, status=RunStatus(row.status),
-        model=row.model or '', budget=row.budget or {},
+        model=row.model or '', provider_id=row.provider_id,
+        budget=row.budget or {},
         token_in=row.token_in or 0, token_out=row.token_out or 0,
         idempotency_key=row.idempotency_key,
         cancel_requested=bool(row.cancel_requested),
@@ -267,7 +268,8 @@ class SqlRunRepository(_BaseRepo, RunRepository):
             row = AgentRunPO(
                 id=run.id, session_id=run.session_id, owner_id=run.owner_id,
                 tenant_id=run.tenant_id, status=run.status.value,
-                model=run.model or '', budget=run.budget or {},
+                model=run.model or '', provider_id=run.provider_id,
+                budget=run.budget or {},
                 token_in=run.token_in, token_out=run.token_out,
                 idempotency_key=run.idempotency_key,
                 cancel_requested=run.cancel_requested, error=run.error,
@@ -292,7 +294,8 @@ class SqlRunRepository(_BaseRepo, RunRepository):
             row = AgentRunPO(
                 id=run.id, session_id=run.session_id, owner_id=run.owner_id,
                 tenant_id=run.tenant_id, status=run.status.value,
-                model=run.model or '', budget=run.budget or {},
+                model=run.model or '', provider_id=run.provider_id,
+                budget=run.budget or {},
                 token_in=run.token_in, token_out=run.token_out,
                 idempotency_key=run.idempotency_key,
                 cancel_requested=run.cancel_requested, error=run.error,

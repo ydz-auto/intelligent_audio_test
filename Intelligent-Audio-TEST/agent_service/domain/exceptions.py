@@ -40,7 +40,7 @@ class InvalidRunMode(AgentDomainError):
 
 
 class InvalidBudgetOverride(AgentDomainError):
-    """请求侧预算非法（未知项 / 非整数，§9.4 请求不可放宽）。"""
+    """请求侧预算非法（未知项 / 非整数；§9.4 预算覆盖口径，Auto 可放宽）。"""
 
     code = 'INVALID_BUDGET'
 

@@ -57,6 +57,27 @@ def test_resume_is_forwarded_with_identity_headers(harness):
     assert forwarded.headers['X-Tenant-Id'] == 'default'
 
 
+def test_budget_defaults_is_forwarded(harness):
+    """GET /agent/budget-defaults：鉴权后透明转发 Auto 默认值（不是上限）。"""
+    make_app, calls = harness
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={
+            'max_rounds': 60, 'max_tool_calls': 120, 'max_tokens': 0,
+            'max_duration_seconds': 1800, 'max_output_bytes': 20971520,
+            'token_budget_multiplier': 4})
+
+    client = make_app(mode='off', handler=handler)
+    resp = client.get('/api/v1/agent/budget-defaults',
+                      headers={'Authorization': 'Bearer token-1'})
+    assert resp.status_code == 200
+    assert resp.json()['max_rounds'] == 60
+    assert resp.json()['token_budget_multiplier'] == 4
+    assert calls[0].method == 'GET'
+    assert calls[0].url.path == '/api/v1/agent/budget-defaults'
+
+
 def test_resume_conflict_passes_through(harness):
     make_app, calls = harness
 
