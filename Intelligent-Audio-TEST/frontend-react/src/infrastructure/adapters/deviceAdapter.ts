@@ -27,5 +27,7 @@ export function deviceFromDto(dto: DeviceItemDto): Device {
     lastOnlineAt: dto.last_online_at,
     supportedAlgorithms: dto.supported_algorithms,
     connectionType: dto.connection_type,
+    labId: dto.lab_id,
+    labName: dto.lab_name,
   }
 }

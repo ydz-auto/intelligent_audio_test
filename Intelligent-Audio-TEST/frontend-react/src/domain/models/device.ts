@@ -2,8 +2,10 @@
  * 设备域领域模型（domain 层；10_测试执行.md §9 落位）。
  * 形态对照 api_gateway/schemas/device.py DeviceItem 实测：
  * id/name/model/description/type/system/system_version/serial_number/ip/status/
- * last_online_at/supported_algorithms/connection_type。
+ * last_online_at/supported_algorithms/connection_type/lab_id/lab_name。
  * 混跑口径（§3.6.1）：device_type 三值 physical/http_api/websocket_api 同任务可选。
+ * INT-2641：所属实验室走真实 /test-devices 返回的 lab_id/lab_name（网关装饰名称），
+ * 开始测试第二步实验室 facet 按此真实绑定过滤，不再用前端硬编码 mock。
  */
 
 /** 设备类型（device_type 三值，混跑徽章依据） */
@@ -27,6 +29,10 @@ export interface Device {
   /** 算法过滤依据（supported_algorithms 实测） */
   supportedAlgorithms: string[] | null
   connectionType: string | null
+  /** 所属实验室（INT-2641：/test-devices 实测 lab_id；null = 未挂实验室） */
+  labId: number | null
+  /** 所属实验室名称（网关按 lab_id 装饰的 lab_name） */
+  labName: string | null
 }
 
 /** 设备类型徽章元数据（§3.6.1 混跑：图标 + 中文文案） */
