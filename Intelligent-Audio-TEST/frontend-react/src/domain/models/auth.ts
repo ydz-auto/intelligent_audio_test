@@ -40,3 +40,9 @@ export type OAuthProvider = {
   /** URL 或类名字符串；mock 态用 key 选取内联图标 */
   icon: string
 }
+
+/** 注册策略（对照 GET /auth/registration-policy 公开端点；不含邀请码本身） */
+export type RegistrationPolicy = {
+  /** 是否开启邀请码注册（开启后注册必须填写邀请码） */
+  inviteCodeRequired: boolean
+}

@@ -78,6 +78,22 @@ def auth_mode():
     return to_response({'auth_mode': AuthService.get_auth_mode()})
 
 
+@router.get('/registration-policy')
+def registration_policy():
+    """注册策略（公开端点，登录前可读）：当前是否需要邀请码注册。
+
+    仅下发布尔口径，绝不返回邀请码本身（auth.invite_code 只在服务端
+    POST /auth/register 校验时读取）。
+    """
+    from api_gateway.application.services.system_option_service import (
+        SystemOptionService,
+    )
+    return to_response({
+        'invite_code_required':
+            SystemOptionService.is_invite_code_registration_required(),
+    })
+
+
 @router.get('/login')
 def login_page():
     """登录入口：dev 重定向到前端登录页，prod 重定向到华为云"""

@@ -22,6 +22,10 @@ from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
 
 logger = logging.getLogger(__name__)
 
+# 邀请码注册选项键（注册门禁与公开策略端点共用，拒绝魔法字符串）
+INVITE_CODE_REGISTRATION_KEY = 'auth.invite_code_registration'
+INVITE_CODE_KEY = 'auth.invite_code'
+
 
 class SystemOptionService:
     """系统选项应用服务（读侧 Query / 写侧 Command）。"""
@@ -38,6 +42,31 @@ class SystemOptionService:
         except Exception as e:
             logger.warning("读取系统选项失败", exc_info=True)
             return error_response(message=f"读取系统选项失败: {e}")
+
+    @classmethod
+    def _read_option(cls, key: str) -> SystemOptionValue:
+        """单键读侧（注册门禁等非设置页消费方）：库异常回退领域默认。
+
+        回退默认而非抛错：邀请码门禁是附加约束，KV 读失败不应连带打死
+        注册主流程（注册本身仍由 auth_service 落库）。
+        """
+        try:
+            stored = cls._repo.get_all()
+            return stored.get(key, SYSTEM_OPTION_DEFAULTS.get(key))
+        except Exception:
+            logger.warning("读取系统选项失败 key=%s，回退默认", key, exc_info=True)
+            return SYSTEM_OPTION_DEFAULTS.get(key)
+
+    @classmethod
+    def is_invite_code_registration_required(cls) -> bool:
+        """是否开启邀请码注册（公开策略端点 / 注册门禁共用）。"""
+        return bool(cls._read_option(INVITE_CODE_REGISTRATION_KEY))
+
+    @classmethod
+    def get_invite_code(cls) -> str:
+        """配置的邀请码（仅服务端注册校验使用，禁止经接口下发）。"""
+        value = cls._read_option(INVITE_CODE_KEY)
+        return value.strip() if isinstance(value, str) else ''
 
     @classmethod
     def upsert(cls, key: str, value: SystemOptionValue):

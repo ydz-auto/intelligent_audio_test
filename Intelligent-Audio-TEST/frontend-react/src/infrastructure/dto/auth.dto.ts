@@ -7,7 +7,7 @@
  */
 import { ROLE_META, type RoleCode } from '@/domain/models/role'
 import type { AuthUser } from '@/domain/models/user'
-import type { OAuthProvider } from '@/domain/models/auth'
+import type { OAuthProvider, RegistrationPolicy } from '@/domain/models/auth'
 
 export interface AuthUserDto {
   id: number
@@ -37,6 +37,18 @@ export interface AuthModeResultDto {
 /** 自助注册响应（POST /auth/register；成功回包 user_id） */
 export interface RegisterResultDto {
   user_id?: number
+}
+
+/** 注册策略（GET /auth/registration-policy；公开端点仅下发布尔口径） */
+export interface RegistrationPolicyDto {
+  invite_code_required?: boolean | null
+}
+
+/** snake_case → camelCase 注册策略 */
+export function toRegistrationPolicy(
+  raw: RegistrationPolicyDto
+): RegistrationPolicy {
+  return { inviteCodeRequired: raw.invite_code_required === true }
 }
 
 /** 已启用 OAuth 提供方（GET /auth/oauth/providers，公开端点无凭证字段） */

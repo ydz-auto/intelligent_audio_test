@@ -7,7 +7,7 @@
  * password-encryption.ts（INT-1990：非安全上下文走降级 kid，安全上下文恒走
  * WebCrypto OAEP 主路径，均不回退明文）。
  */
-import type { OAuthProvider } from '@/domain/models/auth'
+import type { OAuthProvider, RegistrationPolicy } from '@/domain/models/auth'
 import type { AuthUser } from '@/domain/models/user'
 import { request, type ApiRequestOptions } from '@/infrastructure/api/client'
 import type {
@@ -17,11 +17,13 @@ import type {
   PasswordEncryptionKeyDto,
   PublicOAuthProvidersResultDto,
   RegisterResultDto,
+  RegistrationPolicyDto,
 } from '@/infrastructure/dto/auth.dto'
 import {
   toAuthLoginResult,
   toAuthUserFromMe,
   toOAuthProviderPublicList,
+  toRegistrationPolicy,
 } from '@/infrastructure/dto/auth.dto'
 import {
   PasswordEncryptionDisabledError,
@@ -126,15 +128,24 @@ export const authApi = {
    * 自助注册（POST /auth/register；JSON body，与 login 同链 RSA 加密；
    * 注册开关关闭时后端回 403，由表单层切引导态）。成功后调用方引导登录。
    * INT-285 口径②：email 必填（后端 400 兜底）。
+   * 邀请码注册：站点开启时后端要求 body.invite_code 与配置一致。
    */
   async register(
-    payload: { username: string; password: string; email: string },
+    payload: {
+      username: string
+      password: string
+      email: string
+      inviteCode?: string
+    },
     options: ApiRequestOptions = {}
   ): Promise<{ userId: number }> {
     const enc = await encryptCredentials(payload.password, options)
     const body: Record<string, unknown> = {
       username: payload.username,
       email: payload.email.trim(),
+    }
+    if (payload.inviteCode) {
+      body.invite_code = payload.inviteCode
     }
     if (enc.mode === 'encrypted') {
       body.password_encrypted = enc.passwordEncrypted
@@ -183,6 +194,22 @@ export const authApi = {
       { ...options, skipAuthRedirect: true }
     )
     return dto.auth_mode ?? ''
+  },
+
+  /**
+   * 注册策略（GET /auth/registration-policy；公开端点，登录前可读）。
+   * 仅返回 invite_code_required，邀请码本身不下发前端。
+   */
+  async getRegistrationPolicy(
+    options: ApiRequestOptions = {}
+  ): Promise<RegistrationPolicy> {
+    const dto = await request<RegistrationPolicyDto>(
+      'GET',
+      '/auth/registration-policy',
+      undefined,
+      { ...options, skipAuthRedirect: true }
+    )
+    return toRegistrationPolicy(dto ?? {})
   },
 
   /**

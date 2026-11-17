@@ -55,6 +55,8 @@ SYSTEM_OPTION_SEED = [
     ('auth.password_login', True),
     ('auth.registration', True),
     ('auth.email_verification', False),
+    ('auth.invite_code_registration', False),
+    ('auth.invite_code', ''),
     ('security.rate_limit', True),
     ('operations.log_retention_days', 30),
 ]

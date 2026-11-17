@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 from api_gateway.application.services.auth.management_common import (
     call_auth_rpc,
@@ -50,6 +50,13 @@ AUTH_PASSWORD_MIN_LENGTH = int(os.environ.get('AUTH_PASSWORD_MIN_LENGTH', '6'))
 REGISTER_ERR_PASSWORD_TOO_SHORT = (
     f'密码长度不能少于 {AUTH_PASSWORD_MIN_LENGTH} 位')
 
+# 邀请码注册（auth.invite_code_registration 开启时生效）：注册必须携带
+# invite_code 且与 auth.invite_code 完全一致；邀请码可重复使用。
+REGISTER_ERR_INVITE_CODE_REQUIRED = '请输入邀请码'
+REGISTER_ERR_INVITE_CODE_INVALID = '邀请码无效'
+REGISTER_ERR_INVITE_CODE_NOT_CONFIGURED = (
+    '站点已开启邀请码注册但未配置邀请码，请联系管理员')
+
 # 用户管理入口（admin 建号 / admin 改资料带密码）密码长度契约（INT-1590）：
 # 非空密码须 8–128 位，边界由 Config 配置化（.env 可覆盖）。与自助注册 /
 # 自助改密的 6 位下限是两个产品面，共用常量才是错的口径。
@@ -85,6 +92,31 @@ def _reject_invalid_admin_password(password: str):
         code=ErrorCode.OPERATION_FAILED, http_code=400)
 
 
+def _check_invite_code(body: Dict) -> Optional[Tuple[Dict, int]]:
+    """邀请码注册门禁：开启时校验 invite_code，未开启直接放行。
+
+    邀请码取系统选项 auth.invite_code（仅服务端读取，不下发前端）；
+    开启但未配置邀请码时拒绝注册并提示联系管理员。
+    """
+    from api_gateway.application.services.system_option_service import (
+        SystemOptionService,
+    )
+    if not SystemOptionService.is_invite_code_registration_required():
+        return None
+    configured = SystemOptionService.get_invite_code()
+    if not configured:
+        return error_response(REGISTER_ERR_INVITE_CODE_NOT_CONFIGURED,
+                              code=ErrorCode.OPERATION_FAILED, http_code=400)
+    submitted = (body.get('invite_code') or '').strip()
+    if not submitted:
+        return error_response(REGISTER_ERR_INVITE_CODE_REQUIRED,
+                              code=ErrorCode.INVALID_PARAMS, http_code=400)
+    if submitted != configured:
+        return error_response(REGISTER_ERR_INVITE_CODE_INVALID,
+                              code=ErrorCode.INVALID_PARAMS, http_code=400)
+    return None
+
+
 class UserManagementService:
     """用户管理服务：注册 / 查询 / 建改删 / 角色分配 / 附加权限授予撤销"""
 
@@ -102,6 +134,8 @@ class UserManagementService:
         缺失，不再误导 username/email/password）；密文缺失逐字段点名。
         INT-285：邮箱必填 + 密码最短长度（AUTH_PASSWORD_MIN_LENGTH，
         默认 6 位与前端一致）在网关统一校验。
+        INT-邀请码：系统选项 auth.invite_code_registration 开启时，
+        body.invite_code 必须与 auth.invite_code 一致（可重复使用）。
         """
         from api_gateway.config.config import Config
         if not Config.AUTH_REGISTRATION_ENABLED:
@@ -146,6 +180,9 @@ class UserManagementService:
             # INT-285 口径①：密码最短长度（默认 6 位，与前端 minlength 一致）
             return error_response(REGISTER_ERR_PASSWORD_TOO_SHORT,
                                   code=ErrorCode.INVALID_PARAMS, http_code=400)
+        invite_fail = _check_invite_code(body)
+        if invite_fail:
+            return invite_fail
         data, fail = call_auth_rpc('CreateUser', auth_pb.CreateUserRequest(
             username=username,
             email=email,

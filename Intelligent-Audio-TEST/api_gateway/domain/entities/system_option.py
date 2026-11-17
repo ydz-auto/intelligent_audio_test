@@ -31,6 +31,10 @@ SYSTEM_OPTION_DEFAULTS: Dict[str, SystemOptionValue] = {
     'auth.password_login': True,
     'auth.registration': True,
     'auth.email_verification': False,
+    # 邀请码注册：开启后自助注册必须填写与 auth.invite_code 一致的邀请码
+    # （可重复使用，注册成功后不失效）
+    'auth.invite_code_registration': False,
+    'auth.invite_code': '',
     # 安全设置 · 访问控制
     'security.rate_limit': True,
     # 运维设置 · 日志维护

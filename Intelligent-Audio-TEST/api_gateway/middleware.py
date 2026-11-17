@@ -107,6 +107,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         '/api/v1/auth/login',
         '/api/v1/auth/callback',
         '/api/v1/auth/register',
+        # 注册策略（是否需要邀请码）——注册页在登录前就要按策略渲染邀请码输入
+        '/api/v1/auth/registration-policy',
         # INT-179：登录前 RSA 公钥下发（旧库路径别名，与 /login/encryption-key
         # 同源）——公钥用于加密登录密码，拿公钥本身不得先登录
         '/api/v1/auth/encryption-key',

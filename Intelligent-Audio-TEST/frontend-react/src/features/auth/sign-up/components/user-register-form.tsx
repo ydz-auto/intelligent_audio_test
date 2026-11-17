@@ -9,6 +9,7 @@ import { PasswordInput } from '@/components/password-input'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useRegistrationPolicy } from '@/application/auth/use-registration-policy'
 import { ApiError } from '@/infrastructure/api/api-error'
 import { authApi } from '@/infrastructure/api/authApi'
 import {
@@ -21,6 +22,7 @@ import { cn } from '@/lib/utils'
  * 注册表单（对位 newAPI sign-up-form，12_登录与错误页.md §3.6）：
  * 四字段 RHF+zod；成功 toast + 切回 /login 预填用户名；
  * 403（注册开关关闭）切引导态；密码与登录同链（RSA 加密）。
+ * 邀请码注册开启时追加邀请码必填字段（公开策略端点驱动）。
  * 认证接线 INT-606：提交走 authApi.register（真实接口）。
  */
 export function UserRegisterForm({
@@ -29,6 +31,9 @@ export function UserRegisterForm({
 }: React.HTMLAttributes<HTMLDivElement>) {
   const navigate = useNavigate()
   const [closed, setClosed] = useState(false)
+  // 邀请码注册策略（公开端点）：开启时表单展示邀请码输入并强制必填
+  const policy = useRegistrationPolicy()
+  const inviteCodeRequired = policy.data?.inviteCodeRequired ?? false
   const form = useForm<RegisterForm>({
     resolver: zodResolver(registerFormSchema),
     defaultValues: {
@@ -36,16 +41,23 @@ export function UserRegisterForm({
       email: '',
       password: '',
       confirmPassword: '',
+      inviteCode: '',
     },
   })
 
   async function onSubmit(values: RegisterForm) {
+    const inviteCode = (values.inviteCode ?? '').trim()
+    if (inviteCodeRequired && !inviteCode) {
+      form.setError('inviteCode', { message: '请输入邀请码' })
+      return
+    }
     try {
       // 真实注册：密码 RSA 加密同登录链；POST /auth/register（JSON）
       await authApi.register({
         username: values.username,
         email: values.email,
         password: values.password,
+        ...(inviteCode ? { inviteCode } : {}),
       })
       toast.success('注册成功，请登录')
       await navigate({ to: '/login', search: { username: values.username } })
@@ -148,6 +160,24 @@ export function UserRegisterForm({
             </p>
           )}
         </div>
+        {inviteCodeRequired && (
+          <div className='grid gap-2'>
+            <Label htmlFor='register-invite-code'>邀请码</Label>
+            <Input
+              id='register-invite-code'
+              placeholder='请输入邀请码'
+              autoComplete='off'
+              {...form.register('inviteCode', {
+                onChange: () => form.clearErrors('inviteCode'),
+              })}
+            />
+            {form.formState.errors.inviteCode && (
+              <p className='text-destructive text-sm'>
+                {form.formState.errors.inviteCode.message}
+              </p>
+            )}
+          </div>
+        )}
         <Button
           type='submit'
           className='mt-2 w-full justify-center gap-2'
