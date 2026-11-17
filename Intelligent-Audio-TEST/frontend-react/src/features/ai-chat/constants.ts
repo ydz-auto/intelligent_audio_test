@@ -22,7 +22,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
-import type { ChatConfig } from '@/domain/models/aiChat'
+import type { ChatConfig, ReportContextType } from '@/domain/models/aiChat'
 import {
   AGENT_CAPABILITY_PERMISSIONS,
   AI_CHAT_STORAGE_KEYS,
@@ -241,6 +241,22 @@ export const AGENT_TOOL_STATUS_LABELS = {
   error: '失败',
 } as const
 
+/**
+ * 「思考过程」折叠摘要（参照 Trae / Codex 的单行过程摘要）：
+ * 思考正文与工具调用统一收进一条灰字摘要行，展开才看细节，
+ * 不再为每次工具调用铺一张整宽边框卡。
+ */
+export const THINKING_PROCESS_COPY = {
+  /** 思考 / 工具执行进行中 */
+  thinking: '正在思考',
+  /** 有思考正文、已完成（{seconds} 为耗时秒数） */
+  thought: '思考了 {seconds} 秒',
+  /** 只有工具调用、已完成 */
+  toolOnly: '过程已完成',
+  /** 工具调用次数（{count} 为次数） */
+  toolCount: '调用 {count} 个工具',
+} as const
+
 /** 消息操作文案（§6） */
 export const MESSAGE_ACTION_LABELS = {
   copy: '复制',
@@ -298,6 +314,23 @@ export const DEMO_COPY = {
   pageCapabilityBadge: 'Demo 待接入',
   pageCapabilityTooltip:
     '演示版：此处仅展示本页 Agent 可做的事与快捷指令，能力接入后开放执行',
+} as const
+
+/**
+ * 绑定上下文注入文案（报告工作模式选中的报告/任务）。
+ * 选择器只写会话 config，若不随请求下发，Agent 会按任务名/最近报告自行改选
+ * （选 #420 却分析 #426），因此发送时把上下文拼进本轮 user message 前缀。
+ */
+export const BOUND_CONTEXT_COPY = {
+  kindLabels: {
+    task: '测试报告',
+    comparison: '对比报告',
+    secondary_comparison: '二次对比',
+    task_context: '任务',
+  } satisfies Record<ReportContextType, string>,
+  /** {kind} / {id} / {name} 占位由 buildBoundContextPrefix 填充（name 可能为空） */
+  prefaceTemplate:
+    '【已绑定上下文】{kind} #{id}{name}。请只基于该{kind}作答，不要改用其他{kind}。',
 } as const
 
 /** 模型/供应商切换器文案（§3.5/§6） */

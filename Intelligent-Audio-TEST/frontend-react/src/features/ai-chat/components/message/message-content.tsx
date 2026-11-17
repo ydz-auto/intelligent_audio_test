@@ -1,7 +1,7 @@
 /**
  * 消息内容编排（interfaces 层 ai-chat/message；08_AI对话页.md §3.4 照 newAPI
- * playground-message-content）：思考过程 → 工具卡 → 文档变更卡 → 正文（流式）→
- * 数据来源 → 元数据 → 操作组；源码视图用 CodeBlock 替换正文。
+ * playground-message-content）：数据来源 → 思考/工具过程（折叠成一行）→ 文档变更卡 →
+ * 正文（流式）→ 元数据 → 操作组；源码视图用 CodeBlock 替换正文。
  */
 import type { ReactNode } from 'react'
 
@@ -9,11 +9,6 @@ import { CodeBlock } from '@/components/ai-elements/code-block'
 import { Badge } from '@/components/ui/badge'
 import { Loader } from '@/components/ai-elements/loader'
 import { MessageContent } from '@/components/ai-elements/message'
-import {
-  Reasoning,
-  ReasoningContent,
-  ReasoningTrigger,
-} from '@/components/ai-elements/reasoning'
 import { Response } from '@/components/ai-elements/response'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { cn } from '@/lib/utils'
@@ -32,7 +27,7 @@ import { DocumentChangeCard } from './document-change-card'
 import { MessageError } from './message-error'
 import { MessageMetadata } from './message-metadata'
 import { SkillSuggestionCard } from './skill-suggestion-card'
-import { ToolCallCard } from './tool-call-card'
+import { ThinkingProcess } from './thinking-process'
 
 type AiChatMessageContentProps = {
   actions?: ReactNode
@@ -74,6 +69,8 @@ export function AiChatMessageContent({
   const reasoningContent = message.reasoning?.content ?? ''
   const hasSources = (message.sourceRefs?.length ?? 0) > 0
   const hasToolCalls = (message.toolCalls?.length ?? 0) > 0
+  /** 思考正文与工具调用共用一条折叠摘要行（有其一就渲染） */
+  const hasReasoningOrToolCalls = hasReasoning || hasToolCalls
   const hasDocumentChanges = (message.documentChanges?.length ?? 0) > 0
   /** 平台 Agent 终态徽标（INT-2457）：只标取消/失败/超预算，成功完成不占位 */
   const runStatus = message.runStatus
@@ -113,24 +110,14 @@ export function AiChatMessageContent({
         <DataSources refs={message.sourceRefs ?? []} />
       )}
 
-      {hasReasoning && (
-        <Reasoning
-          defaultOpen={message.isReasoningStreaming}
-          duration={message.reasoning?.duration ?? 0}
-          isStreaming={message.isReasoningStreaming}
-        >
-          <ReasoningTrigger
-            duration={message.reasoning?.duration ?? 0}
-            isStreaming={message.isReasoningStreaming}
-          />
-          <ReasoningContent>{reasoningContent}</ReasoningContent>
-        </Reasoning>
+      {hasReasoningOrToolCalls && (
+        <ThinkingProcess
+          durationSeconds={message.reasoning?.duration ?? 0}
+          isReasoningStreaming={message.isReasoningStreaming === true}
+          reasoning={reasoningContent}
+          toolCalls={message.toolCalls ?? []}
+        />
       )}
-
-      {hasToolCalls &&
-        message.toolCalls?.map((call) => (
-          <ToolCallCard call={call} key={call.id} />
-        ))}
 
       {hasDocumentChanges &&
         message.documentChanges?.map((change) => (
@@ -185,7 +172,7 @@ export function AiChatMessageContent({
               title='原始回复'
             />
           ) : (
-            <MessageContent variant='flat'>
+            <MessageContent className='whitespace-normal' variant='flat'>
               <Response final={isMessageFinal}>{versionContent}</Response>
             </MessageContent>
           )}

@@ -30,7 +30,7 @@ import {
   AGENT_RUN_PHASE,
   AGENT_RUN_UNMOUNT_CANCEL_COPY,
 } from '@/application/agent/use-agent-run'
-import { useAgentRunStore } from '@/application/agent/agent-run-store'
+import { useAgentRunStore, AGENT_STREAM_RENDER_INTERVAL_MS } from '@/application/agent/agent-run-store'
 import {
   cancelAgentRun,
   createAgentRun,
@@ -76,6 +76,18 @@ const toastInfoMock = vi.mocked(toast.info)
 function flushDetachGrace() {
   return new Promise<void>((resolve) => {
     setTimeout(resolve, 0)
+  })
+}
+
+/**
+ * 走完流式打字机的合帧窗口：正文先累积、按固定帧率逐字上屏，
+ * 事件推完后要等一帧才能读到落库的正文（真实界面观感即逐字显示）。
+ */
+async function flushTypewriter() {
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, AGENT_STREAM_RENDER_INTERVAL_MS * 3)
+    })
   })
 }
 
@@ -256,6 +268,24 @@ describe('useAgentRun（共享单一实例）', () => {
     expect(useAiChatSession.getState().agentRunId).toBeNull()
   })
 
+  it('供应商 / 模型下拉：send 指定时随本轮 run 请求下发', async () => {
+    const { result } = renderHook(() => useAgentRun())
+
+    await act(async () => {
+      await result.current.send('换个模型回答', {
+        providerId: 'p-1',
+        model: 'deepseek-reasoner',
+      })
+    })
+
+    expect(createRunMock).toHaveBeenCalledTimes(1)
+    expect(createRunMock.mock.calls[0][1]).toEqual({
+      message: '换个模型回答',
+      providerId: 'p-1',
+      model: 'deepseek-reasoner',
+    })
+  })
+
   it('skill_draft_suggested：建议留在 assistant 气泡上，run_finished 收口不清掉', async () => {
     const { result } = renderHook(() => useAgentRun())
 
@@ -306,6 +336,7 @@ describe('useAgentRun（共享单一实例）', () => {
       streamOptions?.onEvent(messageDelta(1, 'm-1', '一份'))
       streamOptions?.onEvent(messageDelta(2, 'm-1', '正文'))
     })
+    await flushTypewriter()
     expect(useAiChatSession.getState().messages).toHaveLength(2)
     expect(useAiChatSession.getState().messages[1].versions[0].content).toBe('一份正文')
 
@@ -391,8 +422,31 @@ describe('useAgentRun（共享单一实例）', () => {
       streamOptions?.onEvent(messageDelta(2, 'm-1', 'B'))
       streamOptions?.onEvent(messageDelta(2, 'm-1', 'B')) // 同一 sequence 重复
     })
+    await flushTypewriter()
 
     expect(useAiChatSession.getState().messages[1].versions[0].content).toBe('AB')
+  })
+
+  it('打字机合帧：同一帧内的多个 message_delta 合并成一次正在流式，终态前补齐全部正文', async () => {
+    const { result } = renderHook(() => useAgentRun())
+    await act(async () => {
+      await result.current.send('你好')
+    })
+
+    act(() => {
+      streamOptions?.onEvent(messageDelta(1, 'm-1', '第一段'))
+      streamOptions?.onEvent(messageDelta(2, 'm-1', '第二段'))
+    })
+    // 合帧窗口内还没上屏（不逐片重渲染）
+    expect(useAiChatSession.getState().messages[1].versions[0].content).toBe('')
+
+    // run_finished 前必须补齐已收正文，终态气泡不能丢尾字
+    act(() => {
+      streamOptions?.onEvent(runFinished(3))
+    })
+    const message = useAiChatSession.getState().messages[1]
+    expect(message.versions[0].content).toBe('第一段第二段')
+    expect(message.status).toBe('complete')
   })
 
   it('重连状态：reconnecting → 提示；open → 回到运行态', async () => {

@@ -158,6 +158,20 @@ export function isAgentRunActive(phase: AgentRunPhase): boolean {
 const CANCEL_RECONCILE_DELAY_MS = 2_000
 
 /**
+ * 流式正文合帧节奏（ms）。SSE 的 message_delta 是网络分片：可能一次几十字，也可能
+ * 停 0.3s 再来一串。逐片落 React 状态会让整棵消息树按网络节奏重渲染——观感就是一卡一卡。
+ * 这里按固定帧率把「已收到」的正文逐字揭示上屏（积压越多每帧揭示越多，几帧内追平），
+ * 时间线聚合条按更低频率（DELTA_TIMELINE_INTERVAL_MS）落一次。
+ */
+export const AGENT_STREAM_RENDER_INTERVAL_MS = 32
+/** 每帧最少揭示字数（30fps 下保证可读的打字速度） */
+const STREAM_MIN_CHARS_PER_FRAME = 8
+/** 追平系数：每帧揭示「积压字数 / 该值」（积压越多追得越快） */
+const STREAM_CATCH_UP_DIVISOR = 6
+/** 时间线「回复生成」聚合条的刷新间隔（ms；正文本身按帧上屏，时间线无需同频） */
+const DELTA_TIMELINE_INTERVAL_MS = 500
+
+/**
  * 刷新恢复后「继续」：本页没有事件流（游标未持久化、不重接 SSE），改为按快照轮询
  * 服务端终态（INT-2477 UX 审计 P2）。首次 1.5s、之后 5s 一次，终态即停。
  */
@@ -260,12 +274,24 @@ export interface SendAgentRunOptions {
   /** 是否追加本轮 user 消息（重新生成=原指令已在截断数组内，只补 assistant 占位） */
   appendUserMessage?: boolean
   /**
+   * 本轮模型（对话页下拉；同一供应商 Key / Base URL 下切换）。
+   * 留空沿用默认供应商配置的模型。
+   */
+  model?: string
+  /** 本轮供应商（对话页供应商下拉；空=默认供应商，只影响本轮 Key / Base URL） */
+  providerId?: string
+  /**
    * 运行模式（INT-2474）：缺省 chat。Auto 打开只影响本轮发起，
    * 关掉后普通对话照常（请求体不带 mode / budget）。
    */
   mode?: AgentRunMode
-  /** Auto 预算（只能收紧；仅 Auto 模式下发） */
+  /** Auto 预算（可上调；仅 Auto 模式下发，留空用服务端默认） */
   budget?: AgentRunBudget
+  /**
+   * 实际下发给 Agent 的本轮文本（缺省=输入文本）：
+   * 带报告上下文时由调用方拼好前缀，user 气泡仍显示用户原输入。
+   */
+  requestMessage?: string
 }
 
 type AgentRunStoreState = {
@@ -357,7 +383,16 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
   const lastDeltaSequences = new Map<string, number>()
   /** 当前 assistant 气泡 key 与已累积正文（事件补丁的唯一写入点） */
   let assistantKey: string | null = null
+  /** 网络已收到的完整正文 */
   let assistantContent = ''
+  /** 已上屏字数（打字机逐字揭示；与 assistantContent 的差值即积压） */
+  let assistantRevealedChars = 0
+  /** 流式合帧定时器（一帧最多一次消息补丁） */
+  let streamRenderTimer: ReturnType<typeof setTimeout> | null = null
+  /** 本帧待落时间线的 message_delta（连续增量由 appendTimelineEntry 聚合） */
+  let pendingDeltaEvents: AgentRunEvent[] = []
+  /** 上一次把 message_delta 落进时间线的时间（低频刷新，避免同频重渲染） */
+  let lastDeltaTimelineAt = 0
   /** 已恢复校验过的会话 id（同会话只查一次 getAgentSession） */
   let restoredSessionId: string | null = null
   let restoreInFlight: Promise<void> | null = null
@@ -464,6 +499,93 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     )
   }
 
+  /** 上屏边界不切断 UTF-16 代理对（emoji 半个码点会显示成乱码） */
+  const safeRevealEnd = (content: string, end: number): number => {
+    if (end >= content.length) return content.length
+    if (end <= 0) return 0
+    const code = content.charCodeAt(end)
+    return code >= 0xdc00 && code <= 0xdfff ? end - 1 : end
+  }
+
+  /** message_delta 落时间线（低频；force=true 时与正文同帧落，保证事件顺序） */
+  const flushDeltaTimeline = (force: boolean) => {
+    if (pendingDeltaEvents.length === 0) return
+    const now = Date.now()
+    if (!force && now - lastDeltaTimelineAt < DELTA_TIMELINE_INTERVAL_MS) return
+    lastDeltaTimelineAt = now
+    const pending = pendingDeltaEvents
+    pendingDeltaEvents = []
+    set((state) => {
+      let timeline = state.timeline
+      for (const event of pending) {
+        timeline = appendTimelineEntry(timeline, event)
+      }
+      return { timeline }
+    })
+  }
+
+  /**
+   * 落一帧正文：按固定节奏揭示已收到的正文（打字机），一帧最多一次消息补丁。
+   * force=true 时（工具事件 / 终态 / 错误前）立即补齐，保证正文与后续事件同序。
+   */
+  const renderStreamFrame = (force: boolean) => {
+    if (streamRenderTimer !== null) {
+      clearTimeout(streamRenderTimer)
+      streamRenderTimer = null
+    }
+    const key = assistantKey
+    if (!key) return
+    const total = assistantContent.length
+    const backlog = total - assistantRevealedChars
+    if (backlog > 0) {
+      const step = force
+        ? backlog
+        : Math.max(
+            STREAM_MIN_CHARS_PER_FRAME,
+            Math.ceil(backlog / STREAM_CATCH_UP_DIVISOR)
+          )
+      assistantRevealedChars = safeRevealEnd(
+        assistantContent,
+        assistantRevealedChars + step
+      )
+      const content = assistantContent.slice(0, assistantRevealedChars)
+      patchAssistant((message) => ({
+        ...message,
+        status: CHAT_MESSAGE_STATUS.STREAMING,
+        startedAt: message.startedAt ?? Date.now(),
+        versions: [
+          { id: message.versions[0]?.id ?? `${message.key}-v1`, content },
+        ],
+      }))
+    }
+    flushDeltaTimeline(force)
+    if (assistantRevealedChars < total) scheduleStreamFrame()
+  }
+
+  const scheduleStreamFrame = () => {
+    if (assistantKey === null || streamRenderTimer !== null) return
+    streamRenderTimer = setTimeout(() => {
+      streamRenderTimer = null
+      renderStreamFrame(false)
+    }, AGENT_STREAM_RENDER_INTERVAL_MS)
+  }
+
+  /** 任何非正文事件前先补齐正文（工具卡 / 终态 / 错误都按后端事件顺序落） */
+  const flushStreamDelta = () => {
+    renderStreamFrame(true)
+  }
+
+  /** 新一轮 / 复位：停掉在途合帧并清空打字机游标 */
+  const resetStreamDelta = () => {
+    if (streamRenderTimer !== null) {
+      clearTimeout(streamRenderTimer)
+      streamRenderTimer = null
+    }
+    assistantRevealedChars = 0
+    pendingDeltaEvents = []
+    lastDeltaTimelineAt = 0
+  }
+
   const currentRunId = (): string | null =>
     get().run?.id ?? session().agentRunId
 
@@ -556,6 +678,8 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
   }
 
   const finishRun = (status: AgentRunStatus, message?: string) => {
+    // 终态前补齐最后一批正文（取消 / 快照收口等不经过 handleEvent 的路径）
+    flushStreamDelta()
     const current = get().run
     set({
       run: current
@@ -685,6 +809,8 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
   }
 
   const failRun = (message: string, code?: string) => {
+    // 错误态覆盖正文前的最后一帧：先把已收到的正文补齐（用户能看到已产出的部分）
+    flushStreamDelta()
     patchAssistant((current) => ({
       ...current,
       status: CHAT_MESSAGE_STATUS.ERROR,
@@ -705,22 +831,14 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     closeStream()
   }
 
-  /** 事件 → 消息 / 状态补丁（去重后调用） */
+  /** 事件 → 消息 / 状态补丁（去重后调用；message_delta 由 handleEvent 合帧处理） */
   const applyEvent = (event: AgentRunEvent) => {
+    // 不走 handleEvent 的补发终态（取消快照等）同样要先把已收正文补齐再落终态
+    if (event.type !== AGENT_EVENT_TYPE.MESSAGE_DELTA) flushStreamDelta()
     switch (event.type) {
-      case AGENT_EVENT_TYPE.MESSAGE_DELTA: {
-        assistantContent += event.delta
-        const content = assistantContent
-        patchAssistant((message) => ({
-          ...message,
-          status: CHAT_MESSAGE_STATUS.STREAMING,
-          startedAt: message.startedAt ?? Date.now(),
-          versions: [
-            { id: message.versions[0]?.id ?? `${message.key}-v1`, content },
-          ],
-        }))
+      case AGENT_EVENT_TYPE.MESSAGE_DELTA:
+        // 正文增量不进同步补丁：见 handleEvent 的合帧 / 打字机揭示
         return
-      }
       case AGENT_EVENT_TYPE.TOOL_CALL: {
         patchAssistant((message) => {
           const existing = message.toolCalls ?? []
@@ -1041,6 +1159,15 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
       lastSequence = event.sequence
       lastEventId = String(event.sequence)
     }
+    // 正文增量只累积、按帧揭示（时间线聚合条也同帧落）；不逐片重渲染整棵消息树
+    if (event.type === AGENT_EVENT_TYPE.MESSAGE_DELTA) {
+      assistantContent += event.delta
+      pendingDeltaEvents.push(event)
+      scheduleStreamFrame()
+      return
+    }
+    // 非正文事件：先把已收正文补齐，时间线与消息补丁仍按后端事件顺序落
+    flushStreamDelta()
     // 时间线与消息补丁同源：先入时间线（保留后端 sequence），再落状态 / 正文
     set((state) => ({
       timeline: appendTimelineEntry(state.timeline, event),
@@ -1123,6 +1250,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     lastSequence = -1
     lastDeltaSequences.clear()
     assistantContent = ''
+    resetStreamDelta()
     approvalRefreshToken += 1
     runSnapshotToken += 1
     decidingApprovals.clear()
@@ -1174,8 +1302,14 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
         restoredSessionId = sessionId
       }
 
-      // 只有 Auto 才带 mode / budget（普通对话请求体保持 {message} 单口径）
-      const runInput: AgentRunInput = { message: text }
+      // 只有 Auto 才带 mode / budget（普通对话请求体保持 {message, model?}）
+      const runInput: AgentRunInput = {
+        message: options?.requestMessage?.trim() || text,
+      }
+      const providerId = options?.providerId?.trim()
+      if (providerId) runInput.providerId = providerId
+      const model = options?.model?.trim()
+      if (model) runInput.model = model
       if (options?.mode === AGENT_RUN_MODE.AUTO) {
         runInput.mode = 'auto'
         if (options.budget) runInput.budget = options.budget
@@ -1517,6 +1651,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     closeStream()
     assistantKey = null
     assistantContent = ''
+    resetStreamDelta()
     restoredSessionId = null
     set({
       run: null,

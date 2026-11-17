@@ -13,10 +13,11 @@ import { MESSAGE_STATUS } from '@/features/ai-chat/constants'
 import { AGENT_ERROR_COPY, AGENT_RUN_STATUS } from '@/domain/models/agent'
 import {
   CHAT_CHANNEL,
+  type ChatConfig,
   type ChatMessage,
   type LlmProvider,
 } from '@/domain/models/aiChat'
-import { AGENT_RUN_PHASE, useAgentRunStore } from '@/application/agent/agent-run-store'
+import { AGENT_RUN_PHASE, AGENT_STREAM_RENDER_INTERVAL_MS, useAgentRunStore } from '@/application/agent/agent-run-store'
 import { useAiChatSession } from '@/infrastructure/stores/aiChatSessionStore'
 import {
   cancelAgentRun,
@@ -61,15 +62,32 @@ const REVIEW_PROVIDER: LlmProvider = {
 /** 共享消息列表（平台通道由 agent-run-store 直接写入 store，不再经调用方 onMessageUpdate） */
 const messages = () => useAiChatSession.getState().messages
 
-function renderPlatformChat(extra?: { systemPrompt?: string }) {
+/**
+ * 走完流式打字机的合帧窗口：message_delta 先累积、按固定帧率逐字上屏
+ * （终态 / 工具事件会立即补齐，无需等待）。
+ */
+async function flushTypewriter() {
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, AGENT_STREAM_RENDER_INTERVAL_MS * 3)
+    })
+  })
+}
+
+function renderPlatformChat(extra?: {
+  systemPrompt?: string
+  config?: ChatConfig
+  injectReportContext?: boolean
+}) {
   return renderHook(() =>
     useChatHandler({
       channel: CHAT_CHANNEL.PLATFORM,
-      config: { chatMode: CHAT_CHANNEL.PLATFORM },
+      config: extra?.config ?? { chatMode: CHAT_CHANNEL.PLATFORM },
       provider: null,
       messages: messages(),
       onMessageUpdate: useAiChatSession.getState().updateMessages,
       systemPrompt: extra?.systemPrompt,
+      injectReportContext: extra?.injectReportContext,
     })
   )
 }
@@ -139,6 +157,7 @@ describe('useChatHandler 平台 Agent 通道', () => {
       })
     })
 
+    await flushTypewriter()
     expect(messages()[1].status).toBe(MESSAGE_STATUS.STREAMING)
     expect(messages()[1].versions[0].content).toBe('正在分析')
 
@@ -155,6 +174,44 @@ describe('useChatHandler 平台 Agent 通道', () => {
     expect(messages()[1].status).toBe(MESSAGE_STATUS.COMPLETE)
     expect(messages()[1].versions[0].content).toBe('正在分析')
     expect(result.current.isGenerating).toBe(false)
+  })
+
+  it('报告工作模式下绑定报告 → 请求带报告 id（#420），user 气泡仍只显示原输入', async () => {
+    const { result } = renderPlatformChat({
+      injectReportContext: true,
+      config: {
+        chatMode: CHAT_CHANNEL.PLATFORM,
+        reportContextId: '420',
+        reportContextLabel: '豆包-话筒接口测试',
+        reportContextType: 'task',
+      },
+    })
+
+    await act(async () => {
+      result.current.sendChat('帮我总结下')
+    })
+
+    const runInput = createRunMock.mock.calls[0][1]
+    expect(runInput.message).toContain('测试报告 #420')
+    expect(runInput.message).toContain('「豆包-话筒接口测试」')
+    expect(runInput.message).toContain('帮我总结下')
+    expect(messages()[0].versions[0].content).toBe('帮我总结下')
+  })
+
+  it('非报告工作模式 → 绑定的上下文不注入，请求保持原样', async () => {
+    const { result } = renderPlatformChat({
+      config: {
+        chatMode: CHAT_CHANNEL.PLATFORM,
+        reportContextId: '420',
+        reportContextType: 'task',
+      },
+    })
+
+    await act(async () => {
+      result.current.sendChat('帮我对比报告')
+    })
+
+    expect(createRunMock.mock.calls[0][1].message).toBe('帮我对比报告')
   })
 
   it('tool_call / tool_result → 工具卡状态与来源', async () => {
@@ -366,6 +423,7 @@ describe('useChatHandler 平台 Agent 通道', () => {
         delta: '唯一',
       })
     })
+    await flushTypewriter()
     expect(messages()).toHaveLength(2)
     expect(messages()[1].versions[0].content).toBe('唯一')
 
