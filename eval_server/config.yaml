@@ -28,7 +28,7 @@ concurrency_limits:
   high_freq_turn_taking: 100
   high_freq_llm_judge: 100
   reject_judge: 5
-  turn_eval: 100
+  turn_eval: 10
 default_max_concurrency: 100
 # LLM 调用共享并发（按「中转站 × 品牌」两级分池）：文本池 / 音频池
 llm_text_max_concurrency: 100
