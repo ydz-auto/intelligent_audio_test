@@ -111,7 +111,7 @@ class Config:
             dim: _env(f'LLM_JUDGE_MODEL_{dim.upper()}', (_lj.get('dimension_models') or {}).get(dim, ''))
             for dim in (
                 # 话轮
-                'high_freq_llm_judge', 'false_takeover', 'reply_quality',
+                'turn_eval', 'high_freq_llm_judge', 'false_takeover', 'reply_quality',
                 # 打断
                 'interruption_judge',
                 # 拒识 / 环境理解
