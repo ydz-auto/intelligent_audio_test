@@ -168,6 +168,18 @@ def validate_and_derive(packet, parsed):
             used[speaker].update(ids)
             return ws, a, b
 
+        # false_takeover_start/end_word_id 是冗余汇总字段（与第一个触发段起止词重复），
+        # 模型常漏填，校验却强制要求且必须与 triggers[0] 一致。漏填时直接用第一个
+        # 触发段的起止词补齐，避免因冗余字段缺失而废掉本可用的判定。
+        if label in FALSE_TAKEOVER_LABELS:
+            _ft_triggers = row.get('false_takeover_triggers')
+            if not isinstance(_ft_triggers, list) or not _ft_triggers or not isinstance(_ft_triggers[0], dict):
+                raise ValueError('False takeover requires trigger events')
+            for _key, _sub in (('false_takeover_start_word_id', 'start_word_id'),
+                               ('false_takeover_end_word_id', 'end_word_id')):
+                if not isinstance(row.get(_key), str) or not row[_key].strip():
+                    row[_key] = _ft_triggers[0].get(_sub)
+
         uw, ua, ub = span('user', row.get('user_start_word_id'), row.get('user_end_word_id'))
         if ua <= last_user:
             raise ValueError('User rounds must be ordered and disjoint')
