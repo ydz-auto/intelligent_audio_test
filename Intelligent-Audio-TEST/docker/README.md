@@ -86,7 +86,7 @@ python docker/build_stack.py --project int1820-verify api_gateway
 `APT_MIRROR`（缺省 `mirrors.tuna.tsinghua.edu.cn`）、`PIP_INDEX_URL`（缺省
 `https://pypi.org/simple`），并由 `docker-compose.yml` 的 `x-backend-build-args` 统一透传。
 `mock_dut` / `mock_eval` 是纯标准库替身镜像，不跑 apt/pip，无需接；
-`frontend` 是 node/nginx 多阶段构建，不走 Debian 源。
+`frontend` 是 frontend-react（pnpm + rsbuild）→ nginx 多阶段构建，不走 Debian 源。
 
 1. **apt 源换可达镜像**：`sed -i "s|deb.debian.org|${APT_MIRROR}|g"`，缺省
    `mirrors.tuna.tsinghua.edu.cn`。构建不再依赖 `deb.debian.org` 的可用性。
@@ -393,7 +393,8 @@ compose 新增 `agent_service`（`docker/Dockerfile.agent_service`），依赖
 
 ## 9. 演示前端部署（15173 / 16173）的三道护栏（INT-2012）
 
-`docker/deploy_demo_frontends.ps1` 把 build 产物打进 nginx 镜像托管两个演示地址。2026-10-26 起
+`docker/deploy_demo_frontends.ps1` 把 build 产物打进 nginx 镜像托管演示地址（React 15173；
+旧 Vue `frontend/` 已下线，16173 仅在显式传 `-VueDist` 时部署）。2026-10-26 起
 **15173 的产物来源唯一 = 接线分支的产品演示**（此前脚本默认指向 `design/ux-redesign` 的 dist，
 按默认执行会把只有占位实现的设计稿刷上去，任务域导入导出等功能在演示上「消失」）。护栏：
 
@@ -407,21 +408,20 @@ compose 新增 `agent_service`（`docker/Dockerfile.agent_service`），依赖
    容器内 `static/js/async` 数量 == dist 内数量；任一失败自动回滚旧镜像（并把 `latest` 指回旧镜像）
    后退出非 0。
 
-**默认产物来源（INT-2426，2026-11-09）**：不带 `-ReactDist` / `-VueDist` 时，默认 dist =
-**当前仓库自己 build 出来的产物**（脚本在 `docker/` 下，取 `$PSScriptRoot\..\frontend-react\dist`
-与 `$PSScriptRoot\..\frontend\dist`），不再指向已冻结的 `V9.7.31-WIRING-REACT` /
-`V9.7.31-WIRING-UXVUE` 旧 clone。默认目录不存在时**直接拒绝并退出非 0**（预检在部署锁与任何
-docker 操作之前，容器与 `latest` tag 不变），提示先在当前仓库 build 或显式传
-`-ReactDist` / `-VueDist`。部署日志会打印实际 dist 的**绝对路径与构建时间**。
+**默认产物来源（INT-2426，2026-11-09）**：不带 `-ReactDist` 时，默认 dist =
+**当前仓库自己 build 出来的产物**（脚本在 `docker/` 下，取 `$PSScriptRoot\..\frontend-react\dist`），
+不再指向已冻结的 `V9.7.31-WIRING-REACT` / `V9.7.31-WIRING-UXVUE` 旧 clone。默认目录不存在时
+**直接拒绝并退出非 0**（预检在部署锁与任何 docker 操作之前，容器与 `latest` tag 不变），
+提示先在当前仓库 build 或显式传 `-ReactDist`。部署日志会打印实际 dist 的**绝对路径与构建时间**。
 
-两侧产物**先都校验通过再一起部署**：任一边校验失败，两边都不动。演练自检失败路径用
+产物**先全部校验通过再部署**：任一边校验失败，两边都不动。演练自检失败路径用
 `-FaultInject missing-chunk`（从构建上下文删一个 async chunk，预期自检失败 → 回滚 → 退出非 0）。
 
 ```powershell
-# 常规发版（只刷 React 15173，用当前仓库 frontend-react 的最新 dist）
-pwsh -File deploy_demo_frontends.ps1 -SkipVue
-# 故意传设计稿 dist：应被拒绝，容器与 latest tag 前后 ID 一致
-pwsh -File deploy_demo_frontends.ps1 -SkipVue -ReactDist D:\00_code\V10.11.2\Intelligent-Audio-TEST\frontend-react\dist
+# 常规发版（用当前仓库 frontend-react 的最新 dist）
+pwsh -File deploy_demo_frontends.ps1
+# 显式指定 dist：会做同样的来源校验
+pwsh -File deploy_demo_frontends.ps1 -ReactDist D:\00_code\V10.11.2\Intelligent-Audio-TEST\frontend-react\dist
 ```
 
 > 一次发版只做一次部署（环境铁律）：不要为了「再确认一下」重复执行；自检失败会自己回滚，

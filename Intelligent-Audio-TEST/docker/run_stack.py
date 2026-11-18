@@ -17,7 +17,7 @@ agent 运行时只做 `docker compose up/down` 与健康探测；禁止宿主机
     python docker/run_stack.py logs [服务名] [-f]   # 跟踪日志
 
 环境变量（读仓库根 .env，缺省值与宿主历史口径一致）：
-    AUTH_MODE / VITE_AUTH_MODE  必填（off|dev|prod），compose 强制校验
+    AUTH_MODE  必填（off|dev|prod），前后端同源；前端运行时经 GET /auth/mode 读取
     OSS_ACCESS_KEY / OSS_SECRET_KEY / JWT_SECRET / DEV_DEFAULT_*  可选
     POSTGRES_PORT / REDIS_PORT / RUSTFS_PORT / *_HTTP_PORT / *_GRPC_PORT  可选端口覆盖
 
@@ -76,7 +76,7 @@ HTTP_PROBES = [
     # INT-2456：agent_service 只经网关访问（不发布宿主端口，身份头不可伪造）。
     ('agent_service', 5011, None),
 ]
-FRONTEND_PORT = int(os.environ.get('FRONTEND_PORT', '5173'))
+FRONTEND_PORT = int(os.environ.get('FRONTEND_PORT', '8080'))
 POSTGRES_PORT = int(os.environ.get('POSTGRES_PORT', '5432'))
 REDIS_PORT = int(os.environ.get('REDIS_PORT', '6379'))
 RUSTFS_PORT = int(os.environ.get('RUSTFS_PORT', '9000'))
@@ -123,22 +123,16 @@ def _compose(*args):
 
 
 def _require_auth_mode():
-    """AUTH_MODE / VITE_AUTH_MODE 必填校验（INT-181 口径，失败立即退出）。"""
+    """AUTH_MODE 必填校验（认证模式由前端运行时 GET /auth/mode 读取，失败立即退出）。"""
     auth_mode = os.environ.get('AUTH_MODE', '').strip()
-    vite_auth_mode = os.environ.get('VITE_AUTH_MODE', '').strip()
-    if not auth_mode and not vite_auth_mode:
+    if not auth_mode:
         print(
-            "[STACK] ERROR: AUTH_MODE / VITE_AUTH_MODE 均未设置。\n"
+            "[STACK] ERROR: AUTH_MODE 未设置。\n"
             "        认证模式必须显式注入（off|dev|prod），禁止静默默认 off（INT-181）。\n"
-            "        示例：AUTH_MODE=dev VITE_AUTH_MODE=dev python docker/run_stack.py up\n"
+            "        示例：AUTH_MODE=dev python docker/run_stack.py up\n"
             "        取值含义见 docs/oauth.md。",
             flush=True)
         sys.exit(2)
-    # AUTH_MODE 侧有值而 VITE_AUTH_MODE 缺失时以前者补齐（同一认证态，避免双变量错位）
-    if auth_mode and not vite_auth_mode:
-        os.environ['VITE_AUTH_MODE'] = auth_mode
-    if vite_auth_mode and not auth_mode:
-        os.environ['AUTH_MODE'] = vite_auth_mode
 
 
 def cmd_up(args):
@@ -283,8 +277,7 @@ def _compose_exec_tcp(service, port, timeout=5.0):
          'python', '-c',
          f"import socket; s=socket.create_connection(('127.0.0.1',{port}),{timeout}); s.close()"],
         capture_output=True, timeout=timeout + 10,
-        env={**os.environ, 'AUTH_MODE': os.environ.get('AUTH_MODE', 'off'),
-             'VITE_AUTH_MODE': os.environ.get('VITE_AUTH_MODE', 'off')})
+        env={**os.environ, 'AUTH_MODE': os.environ.get('AUTH_MODE', 'off')})
     return result.returncode == 0
 
 

@@ -11,9 +11,9 @@ run_all 启动清场也不会击穿栈（清场模式已废除）。
 ## 快速开始
 
 ```bash
-# 1. 环境变量（仓库根 .env 或 export；AUTH_MODE/VITE_AUTH_MODE 必填且一致）
+# 1. 环境变量（仓库根 .env 或 export；AUTH_MODE 必填，前端运行时经 GET /auth/mode 读取）
 #    完整清单见 docker/.env.compose.example
-export AUTH_MODE=dev VITE_AUTH_MODE=dev
+export AUTH_MODE=dev
 
 # 2. 拉起全栈（构建 + 分离模式启动；容器归 daemon 托管）
 python docker/run_stack.py up --build
@@ -52,7 +52,7 @@ python docker/run_stack.py down -v --yes
 | transfer_agent | 5010 / 51101 | 同左 |
 | audio_service (gRPC-only) | 50052 | 50052 |
 | device_service (gRPC-only) | 50053 | 50053 |
-| frontend (nginx) | **5173** | 80 |
+| frontend (nginx) | **8080** | 80 |
 | postgres | 5432 | 5432 |
 | redis | 6379 | 6379 |
 | rustfs | 9000 (S3) / 9001 (Console) | 同左 |
@@ -78,8 +78,9 @@ python docker/run_stack.py down -v --yes
   shared 以源码随镜像打包。audio_service / device_service 依赖宿主声卡与 USB/ADB，
   按宿主形态运行，无容器镜像。
 - `docker/Dockerfile.db_bootstrap`：一次性引导 job 镜像（同 requirements）。
-- `docker/Dockerfile.frontend`：前端生产构建（VITE_AUTH_MODE 必须显式注入，
-  INT-181 构建期守卫）+ nginx 反代（/api、/socket.io、/ws 契约与 vite dev 一致）。
+- `docker/Dockerfile.frontend`：前端生产构建（frontend-react：pnpm + rsbuild → nginx 反代
+  `/api`、`/socket.io`、`/ws`，契约与 `frontend-react/rsbuild.config.ts` 的 dev proxy 一致）。
+  认证模式不进构建产物，由前端运行时 `GET /auth/mode` 读取。
 
 镜像/网络加速：`PY_IMAGE` / `APT_MIRROR` / `NODE_IMAGE` / `POSTGRES_IMAGE` / `REDIS_IMAGE` /
 `RUSTFS_IMAGE` / `PIP_INDEX_URL` 环境变量按需覆盖（`docker-compose.yml` 顶部的
@@ -100,11 +101,10 @@ python docker/run_stack.py down -v --yes
 
 ## 已知边界
 
-- **frontend 构建需前端专用 dockerignore（2026-10-16 修复）**：根 `.dockerignore`
-  为后端镜像瘦身排除 `frontend/`（后端 `COPY . .` 不需要），但 `Dockerfile.frontend`
-  依赖 `frontend/` 进构建上下文。已新增 `docker/Dockerfile.frontend.dockerignore`
-  （= 根忽略移除 `frontend/` 行，BuildKit 对命名 Dockerfile 取同目录
-  `<名>.dockerignore` 替代根忽略）——前端构建恢复，后端镜像瘦身不受影响。
+- **frontend 构建需前端专用 dockerignore**：根 `.dockerignore` 面向后端镜像瘦身
+  （排除 `tests/`、`docs/` 等），`Dockerfile.frontend` 另用同目录
+  `docker/Dockerfile.frontend.dockerignore` 接管前端构建上下文（BuildKit 对命名
+  Dockerfile 取同目录 `<名>.dockerignore` 替代根忽略），只保留 `frontend-react/` 所需内容。
 - **OSS presign 直传 URL 宿主侧需可达 `rustfs`**：容器内 `OSS_ENDPOINT=http://rustfs:9000`，
   presign 直传 URL 宿主为容器网络名 `rustfs`，宿主侧脚本/浏览器无法解析。冒烟脚本
   把 netloc 改写为 `127.0.0.1:9000` 并保留原 `Host: rustfs:9000` 头（S3 SigV4 签名

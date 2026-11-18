@@ -596,6 +596,10 @@ def require_permission(request: Request, perm: str):
 
 ### 6. 前端构建期注入（VITE_AUTH_MODE，INT-181）
 
+> **现状（2026-11-18）**：本节是已下线的旧 Vue 前端（`frontend/`）口径。现役 `frontend-react`
+> 不在构建期读 `VITE_AUTH_MODE`，认证模式由运行时 `GET /auth/mode` 获取，`Dockerfile.frontend`
+> 也不再接收该 build-arg。以下内容仅作旧前端迁移留档。
+
 前端登录跳转行为压在构建期变量 `VITE_AUTH_MODE` 上（Vite 构建时把 `import.meta.env.VITE_AUTH_MODE` 静态替换进产物，运行期不可改）。生产构建**必须显式注入**，未注入时构建期守卫（`frontend/vite.config.ts`）显式报错退出——不存在静默默认 `off`。
 
 取值（与后端 `AUTH_MODE` 保持一致，合法值单一来源：`frontend/src/domain/enums.ts` 的 `AuthMode`）：
@@ -612,9 +616,8 @@ def require_permission(request: Request, perm: str):
 # 宿主机 / CI 直构（dist 由外部 nginx 托管）
 VITE_AUTH_MODE=prod npm run build
 
-# Docker 镜像构建（docker/Dockerfile.frontend，compose 服务 frontend 已强制校验）
-docker compose build frontend                     # 须先 export VITE_AUTH_MODE=prod
-docker build -f docker/Dockerfile.frontend --build-arg VITE_AUTH_MODE=prod ..
+# Docker 镜像构建（frontend-react：pnpm + rsbuild，无构建期认证变量）
+docker compose build frontend
 ```
 
 注意：

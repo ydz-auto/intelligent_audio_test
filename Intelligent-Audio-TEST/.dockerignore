@@ -67,6 +67,7 @@ CLAUDE.md
 # ===== Node / Frontend build =====
 node_modules/
 **/node_modules/
+**/node_modules_trash_*/
 *.tsbuildinfo
 
 # ===== Test / coverage =====
@@ -96,7 +97,7 @@ static/case_result/
 static/case_pcm/
 report_service/logs/
 archives/
-frontend/dist/
+frontend-react/dist/
 
 # ===== Large media (use volumes instead) =====
 *.mp4

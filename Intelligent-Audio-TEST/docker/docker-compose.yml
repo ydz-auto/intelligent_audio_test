@@ -763,10 +763,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.frontend
-      args:
-        # INT-181：必填——认证模式（off|dev|prod），须与 api_gateway 的 AUTH_MODE 一致；
-        # 未显式设置时 compose 直接报错退出，禁止静默默认 off
-        VITE_AUTH_MODE: ${VITE_AUTH_MODE:?VITE_AUTH_MODE must be set explicitly (off|dev|prod), see docs/oauth.md}
+      # 认证模式由前端运行时 GET /auth/mode 读取（INT-180），不再有构建期 VITE_AUTH_MODE 入参。
     ports:
       - "${FRONTEND_PORT:-8080}:80"
     depends_on:

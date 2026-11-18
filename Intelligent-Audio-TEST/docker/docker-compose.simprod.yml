@@ -13,7 +13,7 @@
 #     superuser in the restored cluster). command ["true"] exits 0 so
 #     depends_on condition service_completed_successfully still passes.
 #   - frontend: disabled in compose. React is deployed separately at 15173 via
-#     docker/deploy_demo_frontends.ps1 (compose build context has no frontend/).
+#     docker/deploy_demo_frontends.ps1 (sim-prod uses that static bundle, not a compose build).
 services:
   postgres:
     volumes:

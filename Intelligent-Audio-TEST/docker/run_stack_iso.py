@@ -166,7 +166,6 @@ def _stack_env(project: str, offset: int, auth_mode: str, db: str) -> dict:
     env = dict(os.environ)
     env['PYTHONUTF8'] = '1'
     env['AUTH_MODE'] = auth_mode
-    env['VITE_AUTH_MODE'] = auth_mode
     env['ISO_STACK_NAME'] = project
     env['POSTGRES_DB'] = db
     env['POSTGRES_USER'] = POSTGRES_USER
@@ -357,7 +356,7 @@ def _print_acceptance_env(project: str, env: dict):
     print(f'  DATABASE_URL={db_url}', flush=True)
     print(f'  UI_API_BASE=http://127.0.0.1:{gw}', flush=True)
     print(f'  UI_FRONTEND_BASE=http://127.0.0.1:{env["FRONTEND_PORT"]}', flush=True)
-    print(f'  AUTH_MODE={env["AUTH_MODE"]}  VITE_AUTH_MODE={env["VITE_AUTH_MODE"]}', flush=True)
+    print(f'  AUTH_MODE={env["AUTH_MODE"]}', flush=True)
 
 
 def cmd_env(args):
