@@ -1316,7 +1316,9 @@ INTENT_TOOLS: List[IntentTool] = [
                      '副作用）：按任务生成标准报告、重生成任务报告（旧报告软删进'
                      '回收站后重建）、用已取数的报告创建 Studio 草稿、编辑 Studio '
                      '文档生成新版本（乐观锁 expected_version）、把历史版本恢复为'
-                     '新版本。任务已有报告时 generate 复用原报告（status=exists），'
+                     '新版本。studio_draft / studio_edit 成功后前端会自动打开右侧'
+                     '文档面板并渲染该文档，需要交付时再用 report_export 导出。'
+                     '任务已有报告时 generate 复用原报告（status=exists），'
                      '正在生成时返回 generating，不产生第二份报告；起草必须基于 '
                      'report_query 的真实数值，正文里每个数字都要能对上返回字段。'),
         parameters=_schema({
@@ -1363,7 +1365,10 @@ INTENT_TOOLS: List[IntentTool] = [
         name='report_export',
         description=('导出 Report Studio 文档（提案 → 审批 → 执行）：按固定文档'
                      '版本异步渲染 PDF / PPTX / HTML / MD，返回导出作业与鉴权'
-                     '下载引用。doc_id 优先，也可给 report_id 自动定位该报告最近'
+                     '下载引用。完成后前端会话会渲染产物卡（PDF/PPTX 直接下载、'
+                     'MD/HTML 在线预览）并自动展开文档面板；download_ref 需要登录'
+                     '鉴权，不要把它当作可直接粘贴打开的链接。doc_id 优先，也可给 '
+                     'report_id 自动定位该报告最近'
                      '更新的 Studio 文档；version 缺省为当前版本。作业复用只在'
                      '**当前操作人本人**的同参数作业里找（他人作业下载会被拒），'
                      '不重复产文件；作业超时未推进会判失效并重建；作业未完成时'
