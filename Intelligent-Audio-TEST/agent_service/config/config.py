@@ -85,8 +85,9 @@ class Config(BaseConfig):
     MAX_ROUNDS = _get_int('AGENT_MAX_ROUNDS', int(_BUDGET_DEFAULTS.get('max_rounds', 12)))
     MAX_TOOL_CALLS = _get_int(
         'AGENT_MAX_TOOL_CALLS', int(_BUDGET_DEFAULTS.get('max_tool_calls', 40)))
-    # 0 = 按有效上下文窗口派生（默认 2×W，见 TOKEN_BUDGET_MULTIPLIER_*）；
-    # 显式正数作为运营方硬上限（普通对话取 min；Auto 见下方「可上调」口径）。
+    # 0 = 普通对话不设累计 token 上限（默认靠上下文压缩 + 轮数 / 工具数 /
+    # 时长 / 输出字节兜底；累计 token 只作计费统计，不用于终止）；
+    # 显式正数作为运营方硬上限（普通对话直接生效）。
     MAX_TOKENS = _get_int('AGENT_MAX_TOKENS', int(_BUDGET_DEFAULTS.get('max_tokens', 0)))
     MAX_DURATION_SECONDS = _get_int(
         'AGENT_MAX_DURATION_SECONDS', int(_BUDGET_DEFAULTS.get('max_duration_seconds', 600)))

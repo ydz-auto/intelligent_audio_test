@@ -199,6 +199,7 @@ class OrchestratorSettings:
     cancel_db_check_every: int = 16
     event_scan_limit: int = 10000
     # 有效窗口 → 预算 / 压缩阈值（§8.3）
+    # 普通对话默认不设累计 token 上限；Auto 用 auto_token_budget_multiplier 派生 4×W
     token_budget_multiplier: int = 2
     auto_token_budget_multiplier: int = 4
     compaction_soft_ratio: float = 0.60
@@ -788,23 +789,25 @@ class RunOrchestrator:
 
     def _effective_budget(self, run: AgentRun, window: int,
                           mode: RunMode = RunMode.CHAT) -> RunBudget:
-        """总 token 上限按有效窗口重算（默认 2×W，Auto 4×W）。
+        """总 token 上限按有效窗口重算（Auto 4×W；普通对话默认不设累计上限）。
 
-        - ``max_tokens`` 配置为 0（默认）= 完全按 W 派生；
-        - Auto 模式显式正数（服务端默认或被用户上调后的请求值）= 直接生效，
-          不再按乘数×W 夹回（§9.4 修订：Auto 允许放宽）；
-        - 普通对话显式正数 = 硬上限，取 ``min(硬上限, 乘数×W)``。
+        - 普通对话（chat）：``max_tokens`` 缺省 0 = **不做累计 token 终止**。
+          单次请求的上下文由 L1–L4 无感压缩收敛在窗口内，跑飞由轮数 /
+          工具数 / 时长 / 输出字节兜底；累计 token 只是计费统计，压缩不会
+          让已消耗计数器回落，拿它终止只会把正常长对话误判成「超出预算」。
+          显式正数（运营配置 / 请求侧收紧）仍作为硬上限生效。
+        - Auto 模式：仍按 4×W 派生；显式正数（服务端默认或被用户上调后的
+          请求值）直接生效，不再按乘数×W 夹回（§9.4 修订：Auto 允许放宽）。
         换供应商后同会话下一次 run 会重新解析 W 并重算，不沿用旧阈值。
         """
         base = RunBudget.from_dict(
             run.budget or self._settings.budget_defaults)
-        multiplier = (self._settings.auto_token_budget_multiplier
-                      if mode.is_auto
-                      else self._settings.token_budget_multiplier)
-        derived = ContextWindowResolver.token_budget(window, multiplier)
+        if not mode.is_auto:
+            return base.with_max_tokens(base.max_tokens)
+        derived = ContextWindowResolver.token_budget(
+            window, self._settings.auto_token_budget_multiplier)
         if base.max_tokens > 0:
-            derived = (base.max_tokens if mode.is_auto
-                       else min(derived, base.max_tokens))
+            derived = base.max_tokens
         return base.with_max_tokens(derived)
 
     def _tool_specs(self, permissions: Sequence[str] = (),

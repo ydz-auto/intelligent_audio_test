@@ -162,17 +162,50 @@ def test_round_budget_exceeded(tmp_path):
 
 
 def test_token_budget_exceeded(tmp_path):
-    from agent_service.domain.ports.llm import LlmFinished, LlmTextDelta
-    llm = FakeLlm([[LlmTextDelta('a'),
-                    LlmUsage(prompt_tokens=100, completion_tokens=1),
-                    LlmFinished()]])
+    """显式配置的硬上限仍生效（普通对话默认 0 = 不限制）。"""
+    call = ToolCallRequest(tool_call_id='c1', name='task_query', arguments={})
+    llm = FakeLlm([
+        tool_turn([call], usage=LlmUsage(prompt_tokens=100,
+                                         completion_tokens=1)),
+        text_turn('never'),
+    ])
+    gateway = FakeToolGateway(tools=[read_tool('task_query')])
     container, _engine, _sf = build_stack(
-        tmp_path / 'e.db', llm, executor_factory=_inline,
+        tmp_path / 'e.db', llm, gateway=gateway, executor_factory=_inline,
         budget_defaults=server_budget(max_tokens=10))
     session = new_session(container)
     run = _submit(container, session)
     stored = container.repositories['runs'].get(run.id)
     assert stored.status is RunStatus.BUDGET_EXCEEDED
+    finished = [e for e in events_of(container, run.id)
+                if e.type.value == 'run_finished'][0]
+    assert finished.payload['reason'] == 'max_tokens'
+    assert gateway.executed == []  # 超限后不再执行工具
+    container.shutdown()
+
+
+def test_normal_chat_has_no_cumulative_token_cap(tmp_path):
+    """普通对话不再因累计 token 终止（无感压缩负责单次请求上下文）。
+
+    默认窗口 128k → 旧口径 2×W = 262144；本用例单轮就用掉 30 万输入 token，
+    旧实现会在下一轮开头判 BUDGET_EXCEEDED。压缩不会让累计计数器回落，
+    拿它终止只会把正常多工具对话误判成「超出预算」。
+    """
+    call = ToolCallRequest(tool_call_id='c1', name='task_query', arguments={})
+    llm = FakeLlm([
+        tool_turn([call], usage=LlmUsage(prompt_tokens=300_000,
+                                         completion_tokens=1)),
+        text_turn('继续完成'),
+    ])
+    gateway = FakeToolGateway(tools=[read_tool('task_query')])
+    container, _engine, _sf = build_stack(
+        tmp_path / 'q.db', llm, gateway=gateway, executor_factory=_inline)
+    session = new_session(container)
+    run = _submit(container, session)
+
+    stored = container.repositories['runs'].get(run.id)
+    assert stored.status is RunStatus.SUCCEEDED
+    assert len(llm.requests) == 2  # 第二轮照常发起，没有被预算提前掐断
     container.shutdown()
 
 
