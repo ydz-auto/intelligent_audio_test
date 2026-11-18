@@ -125,6 +125,11 @@ export interface ChatMessage {
   reasoning?: ChatReasoning
   isReasoningStreaming?: boolean
   toolCalls?: AgentToolCall[]
+  /**
+   * 服务端历史回填时的产物卡：toolCalls 不落服务端，只能从本地产物索引补挂到
+   * 最后一条 assistant 消息；与 toolCalls[].exportArtifact 按 exportId 去重。
+   */
+  exportArtifacts?: StudioExportArtifact[]
   documentChanges?: ChatDocumentChange[]
   sourceRefs?: ChatSourceRef[]
   /**
@@ -218,4 +223,10 @@ export const AI_CHAT_STORAGE_KEYS = {
   providers: 'iatp:ai-chat:v1:providers',
   /** 平台 Agent 服务端会话 id / 最近 run id（INT-2507：刷新后续用同一会话，不丢上下文） */
   agentSession: 'iatp:ai-chat:v1:agent-session',
+  /**
+   * 会话导出产物索引（按服务端 session id 分组）。
+   * 消息正文可由服务端历史恢复，但 toolCalls / 产物是前端投影：
+   * 单独存一份小索引，刷新或服务端回填后仍能渲染产物卡。
+   */
+  artifacts: 'iatp:ai-chat:v1:artifacts',
 } as const

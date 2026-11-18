@@ -15,11 +15,15 @@
 import { create } from 'zustand'
 
 import type { ChatConfig, ChatMessage, ReportContextType } from '@/domain/models/aiChat'
-import type { StudioDocumentFocus } from '@/domain/models/report-studio'
+import type {
+  StudioDocumentFocus,
+  StudioExportArtifact,
+} from '@/domain/models/report-studio'
 import { DEFAULT_CONFIG } from '@/features/ai-chat/constants'
 import { fetchReportDetail } from '@/infrastructure/api/reports-api'
 import { fetchTaskDetail } from '@/infrastructure/api/tasks-list-api'
 import {
+  MAX_STORED_ARTIFACTS,
   aiChatPrefs,
   createEphemeralAiChatPrefs,
   type AiChatPrefs,
@@ -145,6 +149,12 @@ type AiChatSessionState = {
    */
   studioFocus: StudioDocumentFocus | null
   openStudioDocument: (focus: StudioDocumentFocus) => void
+  /**
+   * 当前会话的导出产物索引：消息里的 toolCalls 不落服务端，
+   * 刷新 / 服务端历史回填后靠这份索引补产物卡。
+   */
+  sessionArtifacts: StudioExportArtifact[]
+  rememberArtifact: (artifact: StudioExportArtifact) => void
   updateMessages: UpdateMessagesFn
   updateConfig: <K extends keyof ChatConfig>(key: K, value: ChatConfig[K]) => void
   clearMessages: () => void
@@ -207,6 +217,21 @@ export function createAiChatSessionStore(prefs: AiChatPrefs) {
     contextStatus: 'idle',
     studioFocus: null,
     openStudioDocument: (focus) => set({ studioFocus: { ...focus } }),
+    sessionArtifacts: aiChatPrefs.loadArtifacts(storedAgentSession?.sessionId ?? null),
+    rememberArtifact: (artifact) => {
+      const current = get().sessionArtifacts
+      const exists = current.some((item) => item.exportId === artifact.exportId)
+      const next = exists
+        ? current.map((item) =>
+            item.exportId === artifact.exportId ? artifact : item
+          )
+        : [...current, artifact].slice(-MAX_STORED_ARTIFACTS)
+      set({ sessionArtifacts: next })
+      const sessionId = get().agentSessionId
+      // 产物是交付物：即使浮窗会话本身是内存态（关窗即弃），产物索引也落本地，
+      // 刷新 / 重开宿主后仍能按 session id 找回下载与预览入口。
+      if (sessionId) aiChatPrefs.saveArtifacts(sessionId, next)
+    },
     updateMessages: (updater) =>
       set((state) => ({ messages: updater(state.messages) })),
     updateConfig: (key, value) =>
@@ -227,7 +252,11 @@ export function createAiChatSessionStore(prefs: AiChatPrefs) {
       }))
     },
     setAgentSession: (sessionId) =>
-      set({ agentSessionId: sessionId, agentRunId: sessionId ? get().agentRunId : null }),
+      set({
+        agentSessionId: sessionId,
+        agentRunId: sessionId ? get().agentRunId : null,
+        sessionArtifacts: aiChatPrefs.loadArtifacts(sessionId),
+      }),
     setAgentRunId: (runId) => set({ agentRunId: runId }),
     applyInitialContext: (context) => {
       if (!context?.report && !context?.task && !context?.reviewTask) return

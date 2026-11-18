@@ -1024,6 +1024,43 @@ describe('useAgentRun 刷新恢复（getAgentSession）', () => {
     expect(useAiChatSession.getState().agentSessionId).toBe('s-9')
   })
 
+  it('服务端历史回填时补挂本地产物索引：刷新后产物卡仍在', async () => {
+    getSessionMock.mockResolvedValue({
+      session: { id: 's-9', title: '历史会话' },
+      messages: [
+        { role: 'user', content: '帮我导出报告' },
+        { role: 'assistant', content: '已导出 PPTX' },
+      ],
+      runs: [],
+    })
+    const artifact = {
+      exportId: 'e-1',
+      docId: 'doc-1',
+      reportId: 420,
+      version: 2,
+      format: 'pptx' as const,
+      theme: 'default',
+      status: 'done' as const,
+      progress: 100,
+      error: null,
+      downloadRef: '/api/v1/report-studio/exports/e-1/download',
+    }
+    useAiChatSession.setState({
+      messages: [],
+      agentSessionId: 's-9',
+      sessionArtifacts: [artifact],
+    })
+
+    renderHook(() => useAgentRun())
+
+    await waitFor(() => {
+      expect(useAiChatSession.getState().messages).toHaveLength(2)
+    })
+    expect(
+      useAiChatSession.getState().messages[1]?.exportArtifacts
+    ).toEqual([artifact])
+  })
+
   it('刷新打断的悬挂气泡按服务端最新 run 终态收口', async () => {
     getSessionMock.mockResolvedValue({
       session: { id: 's-9', title: '历史会话' },

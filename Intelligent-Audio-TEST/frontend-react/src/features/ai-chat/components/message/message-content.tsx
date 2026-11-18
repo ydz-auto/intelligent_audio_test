@@ -31,16 +31,18 @@ import { MessageMetadata } from './message-metadata'
 import { SkillSuggestionCard } from './skill-suggestion-card'
 import { ThinkingProcess } from './thinking-process'
 
-/** 工具结果里的导出产物（按 exportId 去重；同一作业重复调用只渲染一张卡） */
+/** 工具结果 / 服务端历史回填里的导出产物（按 exportId 去重） */
 function collectExportArtifacts(message: ChatMessage): StudioExportArtifact[] {
   const seen = new Set<string>()
   const artifacts: StudioExportArtifact[] = []
-  for (const call of message.toolCalls ?? []) {
-    const artifact = call.exportArtifact
-    if (!artifact || seen.has(artifact.exportId)) continue
+  const push = (artifact: StudioExportArtifact | undefined) => {
+    if (!artifact || seen.has(artifact.exportId)) return
     seen.add(artifact.exportId)
     artifacts.push(artifact)
   }
+  // 服务端历史恢复的产物挂在消息上；本地消息仍以 toolCalls 为准
+  for (const artifact of message.exportArtifacts ?? []) push(artifact)
+  for (const call of message.toolCalls ?? []) push(call.exportArtifact)
   return artifacts
 }
 
@@ -130,6 +132,7 @@ export function AiChatMessageContent({
         <ThinkingProcess
           durationSeconds={message.reasoning?.duration ?? 0}
           isReasoningStreaming={message.isReasoningStreaming === true}
+          isRunActive={!isMessageFinal}
           reasoning={reasoningContent}
           toolCalls={message.toolCalls ?? []}
         />

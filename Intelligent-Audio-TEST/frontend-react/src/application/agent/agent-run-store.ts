@@ -58,6 +58,7 @@ import {
   type ChatMessage,
   type ChatMessageStatus,
 } from '@/domain/models/aiChat'
+import type { StudioExportArtifact } from '@/domain/models/report-studio'
 import {
   AGENT_PROVIDER_NOT_CONFIGURED_CODE,
   isProviderNotConfiguredError,
@@ -257,8 +258,11 @@ function toTerminalPatch(
 }
 
 /** 服务端会话历史 → 对话消息（仅在本地消息为空时回填；role 只认 user / assistant） */
-function toRestoredMessages(messages: AgentSessionMessage[]): ChatMessage[] {
-  return messages
+function toRestoredMessages(
+  messages: AgentSessionMessage[],
+  artifacts: StudioExportArtifact[] = []
+): ChatMessage[] {
+  const restored: ChatMessage[] = messages
     .filter(
       (message) =>
         (message.role === 'user' || message.role === 'assistant') &&
@@ -272,6 +276,17 @@ function toRestoredMessages(messages: AgentSessionMessage[]): ChatMessage[] {
       ],
       status: CHAT_MESSAGE_STATUS.COMPLETE,
     }))
+  // 服务端历史不含 toolCalls / 导出产物：把本地产物索引补到最后一条回答上，
+  // 否则刷新后对话文字还在、产物卡消失（用户无法再下载/预览）。
+  if (artifacts.length > 0) {
+    for (let index = restored.length - 1; index >= 0; index -= 1) {
+      if (restored[index].from === 'assistant') {
+        restored[index] = { ...restored[index], exportArtifacts: artifacts }
+        break
+      }
+    }
+  }
+  return restored
 }
 
 export interface SendAgentRunOptions {
@@ -890,6 +905,8 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
               : call
           ),
         }))
+        // 产物单独落本地索引：消息正文/工具卡可由服务端历史恢复，产物不能
+        if (event.exportArtifact) session().rememberArtifact(event.exportArtifact)
         return
       }
       case AGENT_EVENT_TYPE.RUN_FINISHED: {
@@ -1690,9 +1707,39 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
 
   /** 本地消息为空时用服务端历史回填（并发发送过则不再覆盖） */
   const hydrateRestoredMessages = (messages: AgentSessionMessage[]) => {
-    const restored = toRestoredMessages(messages)
+    const restored = toRestoredMessages(messages, session().sessionArtifacts)
     if (restored.length === 0) return
     session().updateMessages((prev) => (prev.length > 0 ? prev : restored))
+  }
+
+  /**
+   * 本地产物索引兜底：消息字节裁剪可能把含产物卡的那条消息裁掉，
+   * 只要索引里还有产物、当前消息里一张都没渲染，就补挂到最后一条回答上。
+   */
+  const ensureSessionArtifacts = () => {
+    const artifacts = session().sessionArtifacts
+    if (artifacts.length === 0) return
+    session().updateMessages((prev) => {
+      const rendered = new Set<string>()
+      for (const message of prev) {
+        for (const item of message.exportArtifacts ?? []) rendered.add(item.exportId)
+        for (const call of message.toolCalls ?? []) {
+          if (call.exportArtifact) rendered.add(call.exportArtifact.exportId)
+        }
+      }
+      const missing = artifacts.filter((item) => !rendered.has(item.exportId))
+      if (missing.length === 0) return prev
+      for (let index = prev.length - 1; index >= 0; index -= 1) {
+        if (prev[index].from !== 'assistant') continue
+        const next = [...prev]
+        next[index] = {
+          ...prev[index],
+          exportArtifacts: [...(prev[index].exportArtifacts ?? []), ...missing],
+        }
+        return next
+      }
+      return prev
+    })
   }
 
   /**
@@ -1841,6 +1888,7 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
         if (session().agentSessionId !== sessionId) return
         restoredSessionId = sessionId
         hydrateRestoredMessages(detail.messages)
+        ensureSessionArtifacts()
         // 先恢复待审批卡，再收口悬挂气泡：run 仍在等审批时气泡落「等待审批」中性态（P2-1）
         const approvalWaiting = await restorePendingApprovals(detail.runs)
         if (runToken !== token) return

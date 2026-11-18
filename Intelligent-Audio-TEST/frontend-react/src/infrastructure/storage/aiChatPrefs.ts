@@ -10,16 +10,23 @@ import type {
   LlmProvider,
 } from '@/domain/models/aiChat'
 import { AI_CHAT_STORAGE_KEYS } from '@/domain/models/aiChat'
+import type { StudioExportArtifact } from '@/domain/models/report-studio'
 
 const STORAGE_VERSION = 1
 export const MAX_STORED_MESSAGES = 100
 export const MAX_STORED_MESSAGES_BYTES = 1024 * 1024 // 1MB
 export const MAX_LOADED_MESSAGES_CHARS = 120_000
 export const MAX_LOADED_MESSAGE_CHARS = 40_000
+/** 每个会话保留的产物卡数量 / 保留的会话数（产物索引很小，但不能无限长） */
+export const MAX_STORED_ARTIFACTS = 20
+const MAX_ARTIFACT_SESSIONS = 10
 /** sanitize 截断后缀（照 newAPI） */
 const TRUNCATION_SUFFIX = '\n\n[...]'
 
 type StorageEnvelope<T> = { version: number; data: T }
+
+/** 产物索引：服务端 session id → 最近导出产物（按时间追加，去重由上层负责） */
+type StoredArtifacts = Record<string, StudioExportArtifact[]>
 
 /** 平台 Agent 会话存档（INT-2507）：服务端会话 id 与最近 run id，随会话一起持久化 */
 export type StoredAgentSession = {
@@ -81,6 +88,30 @@ export function sanitizeMessages(messages: ChatMessage[]): ChatMessage[] {
   })
 }
 
+/** 单条消息的 UTF-8 字节数（localStorage 配额按字节算） */
+function messageByteSize(message: ChatMessage): number {
+  return new TextEncoder().encode(JSON.stringify(message)).length
+}
+
+/**
+ * 按字节预算保留最近的完整消息。
+ * 只按条数裁剪不够：长报告一轮就能撑爆 1MB 预算，写失败会把整份消息
+ * （含产物卡）一起丢掉，刷新后只剩服务端纯文本历史。
+ */
+function clampMessagesByBytes(messages: ChatMessage[]): ChatMessage[] {
+  const kept: ChatMessage[] = []
+  let total = 0
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    const size = messageByteSize(message)
+    // 至少保留最新一条，避免超大单条消息导致「一条都不存」
+    if (kept.length > 0 && total + size > MAX_STORED_MESSAGES_BYTES) break
+    total += size
+    kept.unshift(message)
+  }
+  return kept
+}
+
 export const aiChatPrefs = {
   loadConfig(): ChatConfig | null {
     return readEnvelope<ChatConfig>(AI_CHAT_STORAGE_KEYS.config)
@@ -93,9 +124,28 @@ export const aiChatPrefs = {
     return data ? sanitizeMessages(data) : null
   },
   saveMessages(messages: ChatMessage[]): void {
-    // 超限裁剪：仅保留最近 MAX_STORED_MESSAGES 条 / 1MB 内
-    const clipped = messages.slice(-MAX_STORED_MESSAGES)
+    // 超限裁剪：最近 MAX_STORED_MESSAGES 条，并按 1MB 字节预算再裁一次
+    const clipped = clampMessagesByBytes(messages.slice(-MAX_STORED_MESSAGES))
     writeEnvelope(AI_CHAT_STORAGE_KEYS.messages, clipped)
+  },
+  /** 该会话的导出产物索引（服务端历史不含 toolCalls，刷新后靠它补产物卡） */
+  loadArtifacts(sessionId: string | null): StudioExportArtifact[] {
+    if (!sessionId) return []
+    const data = readEnvelope<StoredArtifacts>(AI_CHAT_STORAGE_KEYS.artifacts)
+    const items = data?.[sessionId]
+    return Array.isArray(items) ? items : []
+  },
+  saveArtifacts(sessionId: string, artifacts: StudioExportArtifact[]): void {
+    if (!sessionId) return
+    const data =
+      readEnvelope<StoredArtifacts>(AI_CHAT_STORAGE_KEYS.artifacts) ?? {}
+    data[sessionId] = artifacts.slice(-MAX_STORED_ARTIFACTS)
+    const sessionIds = Object.keys(data)
+    if (sessionIds.length > MAX_ARTIFACT_SESSIONS) {
+      // 对象键按插入顺序：丢掉最老的会话索引
+      delete data[sessionIds[0]]
+    }
+    writeEnvelope(AI_CHAT_STORAGE_KEYS.artifacts, data)
   },
   loadProviders(): LlmProvider[] | null {
     return readEnvelope<LlmProvider[]>(AI_CHAT_STORAGE_KEYS.providers)
@@ -134,6 +184,8 @@ export function createEphemeralAiChatPrefs(): AiChatPrefs {
     saveConfig: () => {},
     loadMessages: () => null,
     saveMessages: () => {},
+    loadArtifacts: () => [],
+    saveArtifacts: () => {},
     loadProviders: () => null,
     saveProviders: () => {},
     loadAgentSession: () => null,
