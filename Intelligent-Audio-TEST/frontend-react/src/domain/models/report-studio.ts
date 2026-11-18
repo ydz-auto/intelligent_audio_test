@@ -177,8 +177,19 @@ export interface StudioDocumentCreateInput {
 }
 
 /** 导出格式（后端 StudioExportFormat；PDF/PPTX 依赖渲染器，未部署时返回失败态） */
-export const STUDIO_EXPORT_FORMATS = ['pdf', 'pptx', 'html', 'md'] as const
-export type StudioExportFormat = (typeof STUDIO_EXPORT_FORMATS)[number]
+export const StudioExportFormatKind = {
+  PDF: 'pdf',
+  PPTX: 'pptx',
+  HTML: 'html',
+  MD: 'md',
+} as const
+
+export type StudioExportFormat =
+  (typeof StudioExportFormatKind)[keyof typeof StudioExportFormatKind]
+
+export const STUDIO_EXPORT_FORMATS: readonly StudioExportFormat[] = Object.values(
+  StudioExportFormatKind
+)
 
 export const STUDIO_EXPORT_FORMAT_LABEL: Record<StudioExportFormat, string> = {
   pdf: 'PDF',
@@ -213,6 +224,39 @@ export interface StudioExportJob {
   updatedAt: string | null
   /** 网关鉴权下载引用（完成后可下载） */
   downloadRef: string | null
+}
+
+/**
+ * 会话内导出产物（Agent 工具结果 report_export / studio_request_export 的领域投影）。
+ * 与 StudioExportJob 同源，但允许字段缺省：工具结果是模型上下文里的 JSON，
+ * 前端只渲染可确认的字段，不补造文档标题 / 版本。
+ */
+export interface StudioExportArtifact {
+  exportId: string
+  docId: string | null
+  reportId: number | null
+  version: number | null
+  format: StudioExportFormat | null
+  theme: string | null
+  status: StudioExportStatusValue
+  progress: number | null
+  error: string | null
+  /** 后端鉴权下载引用（裸路径不能直接点：前端必须走 Bearer token 下载） */
+  downloadRef: string | null
+}
+
+/** 文档预览焦点（Agent 工具结果 / 产物卡 → 右侧文档面板） */
+export interface StudioDocumentFocus {
+  docId: string
+  reportId: number | null
+}
+
+/** 可直接在会话内渲染的导出格式（PDF / PPTX 只提供下载） */
+export function isStudioExportRenderable(format: StudioExportFormat | null): boolean {
+  return (
+    format === StudioExportFormatKind.MD ||
+    format === StudioExportFormatKind.HTML
+  )
 }
 
 /** 导出是否处于在途状态（按钮防重复 + 轮询区间） */

@@ -167,6 +167,32 @@ describe('DocumentPanel 上下文空态', () => {
   })
 })
 
+describe('DocumentPanel Agent 指定文档（focusDocId）', () => {
+  beforeEach(() => {
+    studioState.docs = [
+      {
+        createdAt: '2026-11-17T06:00:00',
+        currentVersion: 2,
+        docId: 'd-9',
+        markdownContent: '# Agent 生成的正文',
+        reportId: 420,
+        sourceFormat: null,
+        title: '豆包-话轮接管 测试报告',
+        updatedAt: '2026-11-17T06:00:00',
+      },
+    ]
+  })
+
+  it('未绑定报告上下文时也能按 docId 直接预览，不落「未绑定报告上下文」', () => {
+    renderPanel({ focusDocId: 'd-9', reportId: null })
+
+    expect(screen.getByText('# Agent 生成的正文')).toBeInTheDocument()
+    expect(screen.queryByText('未绑定报告上下文')).not.toBeInTheDocument()
+    // 文档自身带 report_id：来源卡据此回填，证明产物仍挂在原报告上
+    expect(screen.getByText('报告 #420')).toBeInTheDocument()
+  })
+})
+
 describe('DocumentPanel 多文档切换（P3-1）', () => {
   beforeEach(() => {
     studioState.docs = [

@@ -15,6 +15,7 @@
 import { create } from 'zustand'
 
 import type { ChatConfig, ChatMessage, ReportContextType } from '@/domain/models/aiChat'
+import type { StudioDocumentFocus } from '@/domain/models/report-studio'
 import { DEFAULT_CONFIG } from '@/features/ai-chat/constants'
 import { fetchReportDetail } from '@/infrastructure/api/reports-api'
 import { fetchTaskDetail } from '@/infrastructure/api/tasks-list-api'
@@ -131,6 +132,12 @@ type AiChatSessionState = {
   appliedContextKey?: string
   /** URL 上下文名称解析状态（INT-1936；页面据此标失败态） */
   contextStatus: AiChatContextStatus
+  /**
+   * 文档预览焦点：产物卡「查看文档」或 Agent 导出结果写入，
+   * 页面据此展开右侧文档面板并定位到该文档（不持久化）。
+   */
+  studioFocus: StudioDocumentFocus | null
+  openStudioDocument: (focus: StudioDocumentFocus) => void
   updateMessages: UpdateMessagesFn
   updateConfig: <K extends keyof ChatConfig>(key: K, value: ChatConfig[K]) => void
   clearMessages: () => void
@@ -184,6 +191,8 @@ export const useAiChatSession = create<AiChatSessionState>()((set, get) => {
     agentRunId: storedAgentSession?.runId ?? null,
     appliedContextKey: undefined,
     contextStatus: 'idle',
+    studioFocus: null,
+    openStudioDocument: (focus) => set({ studioFocus: { ...focus } }),
     updateMessages: (updater) =>
       set((state) => ({ messages: updater(state.messages) })),
     updateConfig: (key, value) =>

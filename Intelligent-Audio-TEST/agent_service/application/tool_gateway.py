@@ -1138,7 +1138,8 @@ class SharedToolGateway(ToolGateway):
 
         status = str(job.get('status') or '')
         note = {
-            'done': '导出完成，产物通过鉴权下载引用获取。',
+            'done': '导出完成；会话中已生成产物卡：PPT/PDF 可直接下载，'
+                    'MD/HTML 可在线预览。下载链接需登录鉴权，不能直接粘贴打开。',
             'failed': f'导出失败：{job.get("error") or "未知原因"}',
         }.get(status, '导出作业已提交（异步渲染中）；稍后用同一入参再次调用即可'
                       '复用/查询该作业。')

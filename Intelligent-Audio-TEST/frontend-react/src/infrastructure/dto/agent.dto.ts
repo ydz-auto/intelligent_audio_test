@@ -40,6 +40,14 @@ import {
   type AgentSessionDetail,
   type AgentToolRisk,
 } from '@/domain/models/agent'
+import {
+  STUDIO_EXPORT_FORMATS,
+  StudioExportStatus,
+  type StudioDocumentFocus,
+  type StudioExportArtifact,
+  type StudioExportFormat,
+  type StudioExportStatusValue,
+} from '@/domain/models/report-studio'
 
 /**
  * 后端契约不符（信封/字段形态漂移）。
@@ -424,6 +432,132 @@ export function toAgentSourceRefs(value: unknown): AgentEventSourceRef[] | undef
   return refs.length > 0 ? refs : undefined
 }
 
+/**
+ * 会产生「需要打开文档面板」信号的写 / 导出类工具。
+ * 只读查询（report_studio_get_document 等）不算：模型排查时会多次读文档，
+ * 每次都弹面板会打扰用户。
+ */
+const STUDIO_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'report_export',
+  'report_generate',
+  'studio_create_draft',
+  'studio_apply_edit',
+  'studio_restore_version',
+  'studio_request_export',
+  'report_studio_create_document',
+  'report_studio_update_document',
+  'report_studio_export_document',
+])
+
+/**
+ * 工具结果 content 是 JSON 字符串：
+ * - Agent 专用编排（report_export / report_generate）返回平铺载荷；
+ * - MCP 目标回源返回网关信封 `{success, message, data}`。
+ * 非 JSON（错误文本 / 摘要）返回 null，不猜语义。
+ */
+function parseToolResultPayload(
+  content: string | undefined
+): Record<string, unknown> | null {
+  if (!content) return null
+  try {
+    const parsed: unknown = JSON.parse(content)
+    if (!isObject(parsed)) return null
+    const data = parsed['data']
+    return isObject(data) ? data : parsed
+  } catch {
+    return null
+  }
+}
+
+function toStudioExportFormat(value: unknown): StudioExportFormat | null {
+  const text = toStringValue(value)
+  if (!text) return null
+  return (STUDIO_EXPORT_FORMATS as readonly string[]).includes(text)
+    ? (text as StudioExportFormat)
+    : null
+}
+
+const STUDIO_EXPORT_STATUS_VALUES: ReadonlySet<string> = new Set([
+  StudioExportStatus.PENDING,
+  StudioExportStatus.RUNNING,
+  StudioExportStatus.DONE,
+  StudioExportStatus.FAILED,
+])
+
+function toStudioExportStatus(value: unknown): StudioExportStatusValue | null {
+  const text = toStringValue(value)
+  return text && STUDIO_EXPORT_STATUS_VALUES.has(text)
+    ? (text as StudioExportStatusValue)
+    : null
+}
+
+/** 报告 id 兼容数字 / 数字字符串（工具入参可能是字符串） */
+function toStudioReportId(value: unknown): number | null {
+  const direct = toFiniteNumber(value)
+  if (direct !== undefined) return direct
+  const text = toStringValue(value)
+  if (!text) return null
+  const parsed = Number(text)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+/**
+ * 导出工具结果 → 会话内产物。只有 export_id 可解析时才建卡：
+ * 其它导出形态（如 /reports/export 文件流）没有异步作业，不伪造产物。
+ */
+function toStudioExportArtifact(
+  payload: Record<string, unknown>
+): StudioExportArtifact | undefined {
+  const exportId = toStringValue(payload['export_id'])
+  if (!exportId) return undefined
+  const progress = toFiniteNumber(payload['progress'])
+  return {
+    exportId,
+    docId: toStringValue(payload['doc_id']) ?? null,
+    reportId: toStudioReportId(payload['report_id']),
+    version: toFiniteNumber(payload['version']) ?? null,
+    format: toStudioExportFormat(payload['format']),
+    theme: toStringValue(payload['theme']) ?? null,
+    // 约定：拿到 export_id 但无状态时按已完成处理（MCP 创建作业接口的返回）
+    status: toStudioExportStatus(payload['status']) ?? StudioExportStatus.DONE,
+    progress: progress ?? null,
+    error: toStringValue(payload['error']) ?? null,
+    downloadRef: toStringValue(payload['download_ref']) ?? null,
+  }
+}
+
+function toStudioDocumentFocus(
+  tool: string,
+  payload: Record<string, unknown>
+): StudioDocumentFocus | undefined {
+  if (!STUDIO_TOOL_NAMES.has(tool)) return undefined
+  const docId = toStringValue(payload['doc_id'])
+  if (!docId) return undefined
+  return { docId, reportId: toStudioReportId(payload['report_id']) }
+}
+
+/**
+ * 从工具结果提取「可渲染产物 + 文档焦点」（INT 治理：原始 content 只做摘要截断，
+ * 结构化字段在这里一次解析，界面不再重复 JSON.parse）。
+ */
+function toToolResultArtifacts(
+  tool: string,
+  content: string | undefined
+): {
+  exportArtifact?: StudioExportArtifact
+  studioFocus?: StudioDocumentFocus
+} {
+  const payload = parseToolResultPayload(content)
+  if (!payload) return {}
+  const exportArtifact = toStudioExportArtifact(payload)
+  const studioFocus =
+    toStudioDocumentFocus(tool, payload) ??
+    (exportArtifact?.docId
+      ? { docId: exportArtifact.docId, reportId: exportArtifact.reportId }
+      : undefined)
+  return { exportArtifact, studioFocus }
+}
+
 export function toAgentSession(dto: AgentSessionDto): AgentSession {
   return {
     id: dto.id,
@@ -720,17 +854,23 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
       const rawErrorCode = toStringValue(dto['error_code'])
       const errorCode =
         status === AGENT_TOOL_RESULT_STATUS.SUCCEEDED ? undefined : rawErrorCode
+      const content = toStringValue(dto['content'])
+      // 导出产物 / Studio 文档焦点：原始 content 在这里一次解析成结构化字段，
+      // 界面不再把裸下载路径当正文链接（Bearer token 下载必须在 app 内发起）。
+      const { exportArtifact, studioFocus } = toToolResultArtifacts(
+        toStringValue(dto['tool']) ?? '',
+        content
+      )
       return {
         ...base,
         type: AGENT_EVENT_TYPE.TOOL_RESULT,
         toolCallId,
         status,
-        summary: clampText(
-          toStringValue(dto['content']) ?? rawErrorCode,
-          TOOL_RESULT_SUMMARY_MAX_CHARS
-        ),
+        summary: clampText(content ?? rawErrorCode, TOOL_RESULT_SUMMARY_MAX_CHARS),
         errorCode,
         sourceRefs: toAgentSourceRefs(dto['source_refs']),
+        exportArtifact,
+        studioFocus,
       }
     }
     case AGENT_EVENT_TYPE.APPROVAL_REQUIRED: {

@@ -69,6 +69,12 @@ type DocumentPanelProps = {
   runId?: string | null
   /** 报告上下文选择器（报告工作模式内唯一的绑定入口，由页面装配数据） */
   contextSlot?: ReactNode
+  /**
+   * 指定要展开的文档（Agent 导出 / 编辑结果自动定位）。
+   * 未绑定报告上下文时也能直接按 docId 拉取正文预览：文档本身带 report_id，
+   * 不需要用户先手工选上下文。
+   */
+  focusDocId?: string | null
   onClose: () => void
 }
 
@@ -93,6 +99,7 @@ export function DocumentPanel({
   agentSessionId,
   runId,
   contextSlot,
+  focusDocId = null,
   onClose,
 }: DocumentPanelProps) {
   const { hasPermission } = usePermissions()
@@ -128,9 +135,16 @@ export function DocumentPanel({
     })
   }, [docsQuery.data])
 
-  const activeSummary = documents.find((doc) => doc.docId === activeDocId) ?? documents[0]
-  const docQuery = useStudioDocument(activeSummary?.docId ?? null)
-  const doc = docQuery.data ?? null
+  // Agent 指定的文档：即使没绑定报告上下文也直接按 docId 拉正文
+  const focusDocQuery = useStudioDocument(focusDocId)
+  const focusDoc = focusDocQuery.data ?? null
+
+  const activeSummary =
+    documents.find((docItem) => docItem.docId === activeDocId) ??
+    (focusDocId === null ? documents[0] : undefined)
+  const docQuery = useStudioDocument(activeSummary?.docId ?? focusDocId)
+  const doc =
+    docQuery.data ?? (focusDoc?.docId === focusDocId ? focusDoc : null)
 
   const createDraft = useCreateStudioDocument()
   const updateDoc = useUpdateStudioDocument()
@@ -140,11 +154,20 @@ export function DocumentPanel({
     setActiveDocId(null)
   }, [reportId])
 
+  // Agent 产物 / 工具结果指定文档：切到该文档
+  useEffect(() => {
+    if (focusDocId) setActiveDocId(focusDocId)
+  }, [focusDocId])
+
   // 上下文切换 / 文档被删后回到最新文档
   useEffect(() => {
     setEditing(false)
     setSaveError(null)
   }, [reportId, activeSummary?.docId])
+
+  /** 空上下文时也能从文档自身回填报告 id（Agent 产物卡直接打开文档） */
+  const effectiveReportId = reportId ?? doc?.reportId ?? null
+  const hasFocusTarget = focusDocId !== null
 
   /**
    * 无上下文时不能拼「报告 #null」（P3-2）：直接开工作模式、或任务上下文还没解析出
@@ -156,8 +179,8 @@ export function DocumentPanel({
       ? sourceId
         ? `任务 #${sourceId}`
         : '报告工作模式'
-      : reportId !== null
-        ? `报告 #${reportId}`
+      : effectiveReportId !== null
+        ? `报告 #${effectiveReportId}`
         : '报告工作模式')
 
   const handleCreateDraft = async () => {
@@ -342,7 +365,7 @@ export function DocumentPanel({
 
       {/* 正文区：加载 / 错误 / 空 / 预览 / 编辑 */}
       <div className='min-h-0 flex-1 overflow-y-auto px-5 py-4'>
-        {reportId === null ? (
+        {reportId === null && !hasFocusTarget ? (
           sourceKind === 'task' ? (
             resolvePending ? (
               <div data-testid='studio-task-resolving'>
@@ -373,14 +396,21 @@ export function DocumentPanel({
               title='未绑定报告上下文'
             />
           )
-        ) : docsQuery.isLoading ? (
+        ) : hasFocusTarget && focusDocQuery.isLoading && focusDoc === null ? (
+          <LoadingBlock label='正在加载文档正文…' />
+        ) : hasFocusTarget && focusDocQuery.isError && focusDoc === null ? (
+          <ErrorBlock
+            message='文档正文加载失败或文档不存在'
+            onRetry={() => void focusDocQuery.refetch()}
+          />
+        ) : !focusDoc && docsQuery.isLoading ? (
           <LoadingBlock label='正在加载报告文档…' />
-        ) : docsQuery.isError ? (
+        ) : !focusDoc && docsQuery.isError ? (
           <ErrorBlock
             message='文档列表加载失败'
             onRetry={() => void docsQuery.refetch()}
           />
-        ) : documents.length === 0 ? (
+        ) : documents.length === 0 && focusDoc === null ? (
           <div
             className='grid place-items-center gap-3 px-4 py-10 text-center'
             data-testid='studio-document-empty'
@@ -416,9 +446,9 @@ export function DocumentPanel({
               <p className='text-destructive text-xs'>{createError}</p>
             )}
           </div>
-        ) : docQuery.isLoading ? (
+        ) : docQuery.isLoading && doc === null ? (
           <LoadingBlock label='正在加载文档正文…' />
-        ) : docQuery.isError || !doc ? (
+        ) : !doc ? (
           <ErrorBlock
             message='文档正文加载失败或文档不存在'
             onRetry={() => void docQuery.refetch()}
@@ -491,10 +521,10 @@ export function DocumentPanel({
           <Badge className='font-normal' variant='secondary'>
             {sourceKind === 'task'
               ? `任务 #${sourceId ?? '—'}`
-              : `报告 #${reportId ?? '—'}`}
+              : `报告 #${effectiveReportId ?? '—'}`}
           </Badge>
-          {sourceKind === 'task' && reportId !== null && (
-            <span className='text-[11px]'>→ 报告 #{reportId}</span>
+          {sourceKind === 'task' && effectiveReportId !== null && (
+            <span className='text-[11px]'>→ 报告 #{effectiveReportId}</span>
           )}
           <span className='text-[11px]'>AI 只起草不算数：数值以报告七表为准</span>
         </div>

@@ -227,6 +227,96 @@ describe('agent.dto', () => {
     expect(withRefs).toMatchObject({ sourceRefs: [{ reportId: 5 }] })
   })
 
+  it('事件：report_export 工具结果 → 导出产物卡 + 文档焦点', () => {
+    const event = toAgentRunEvent({
+      run_id: 'r-4',
+      sequence: 7,
+      type: 'tool_result',
+      tool_call_id: 'tc-export',
+      tool: 'report_export',
+      ok: true,
+      error_code: 'OK',
+      content: JSON.stringify({
+        doc_id: 'doc-1',
+        report_id: 420,
+        version: 3,
+        format: 'pptx',
+        theme: 'default',
+        export_id: 'e-1',
+        status: 'done',
+        progress: 100,
+        error: null,
+        download_ref: '/api/v1/report-studio/exports/e-1/download',
+      }),
+    })
+    expect(event).toMatchObject({
+      type: 'tool_result',
+      exportArtifact: {
+        exportId: 'e-1',
+        docId: 'doc-1',
+        reportId: 420,
+        version: 3,
+        format: 'pptx',
+        theme: 'default',
+        status: 'done',
+        progress: 100,
+        error: null,
+        downloadRef: '/api/v1/report-studio/exports/e-1/download',
+      },
+      studioFocus: { docId: 'doc-1', reportId: 420 },
+    })
+  })
+
+  it('事件：MCP 网关信封里的导出作业同样解析；非导出工具不伪造产物', () => {
+    const enveloped = toAgentRunEvent({
+      run_id: 'r-4',
+      sequence: 8,
+      type: 'tool_result',
+      tool_call_id: 'tc-export-2',
+      tool: 'report_studio_export_document',
+      ok: true,
+      content: JSON.stringify({
+        success: true,
+        message: 'ok',
+        data: {
+          doc_id: 'doc-2',
+          report_id: '421',
+          version: 1,
+          format: 'md',
+          export_id: 'e-2',
+          status: 'pending',
+          progress: 10,
+        },
+      }),
+    })
+    expect(enveloped).toMatchObject({
+      exportArtifact: {
+        exportId: 'e-2',
+        docId: 'doc-2',
+        reportId: 421,
+        format: 'md',
+        status: 'pending',
+      },
+      studioFocus: { docId: 'doc-2', reportId: 421 },
+    })
+
+    // 报告事实工具即使 JSON 里有 report_id，也不应产生导出产物 / 文档焦点
+    const facts = toAgentRunEvent({
+      run_id: 'r-4',
+      sequence: 9,
+      type: 'tool_result',
+      tool_call_id: 'tc-facts',
+      tool: 'report_get_facts',
+      ok: true,
+      content: JSON.stringify({ report_id: 420, doc_id: 'doc-x' }),
+    })
+    expect(facts).toMatchObject({ type: 'tool_result' })
+    expect(
+      facts && 'exportArtifact' in facts ? facts.exportArtifact : undefined
+    ).toBeUndefined()
+    expect(facts && 'studioFocus' in facts ? facts.studioFocus : undefined).toBeUndefined()
+  })
+
   it('事件：run_finished 保留真实状态；异常状态有 error 判失败', () => {
     const cancelled = toAgentRunEvent({
       run_id: 'r-3',

@@ -7,7 +7,7 @@
  */
 import { Badge } from '@/components/ui/badge'
 import { PanelLeft, PanelRight } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -180,6 +180,8 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     updateConfig('reportContextId', option.id)
     updateConfig('reportContextLabel', option.label)
     updateConfig('reportContextType', option.type)
+    // 换上下文后旧的产物文档不再属于当前报告，清掉焦点让面板回到该报告的最新文档
+    setFocusDocId(null)
   }
 
   const contextSelector = (
@@ -196,6 +198,9 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
   /** 输入区受控文本（页面持有：starter 回填 / 任务 URL 预填 / 提交后清空） */
   const [draftText, setDraftText] = useState(initialPrompt ?? '')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  /** Agent 产物 / 工具结果指定的文档（面板按 docId 直接预览，不要求先绑上下文） */
+  const [focusDocId, setFocusDocId] = useState<string | null>(null)
+  const studioFocus = useAiChatSession((state) => state.studioFocus)
 
   /** 空态 starter：回填输入框并聚焦，不自动发送（§3.3） */
   const handleFillPrompt = (prompt: string) => {
@@ -233,6 +238,50 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
    * 选择器只在该面板内出现，聊天请求也只在工作模式打开时带上它。
    */
   const [workModeOpen, setWorkModeOpen] = useState(false)
+
+  // 产物卡「查看文档」/ Agent 工具结果写入焦点 → 展开右侧面板并定位文档
+  useEffect(() => {
+    if (!studioFocus) return
+    setFocusDocId(studioFocus.docId)
+    setWorkModeOpen(true)
+  }, [studioFocus])
+
+  /**
+   * 最近一次「需要打开文档」的信号：导出产物优先，其次 Studio 工具结果
+   * （起草 / 编辑 / 恢复）。key 用工具调用 id，保证同一文档每次编辑后都能重新展开。
+   */
+  const latestStudioFocus = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const calls = messages[index].toolCalls ?? []
+      for (let callIndex = calls.length - 1; callIndex >= 0; callIndex -= 1) {
+        const call = calls[callIndex]
+        if (call.exportArtifact?.docId) {
+          return {
+            key: call.id,
+            docId: call.exportArtifact.docId,
+            reportId: call.exportArtifact.reportId,
+          }
+        }
+        if (call.studioFocus) {
+          return { key: call.id, ...call.studioFocus }
+        }
+      }
+    }
+    return null
+  }, [messages])
+  /**
+   * 只对「本次页面生命周期内新出现」的信号自动展开：
+   * 初始值取首帧最新信号，避免刷新后把历史会话的文档重新弹出来。
+   */
+  const autoOpenedFocusRef = useRef<string | null>(latestStudioFocus?.key ?? null)
+  useEffect(() => {
+    const focus = latestStudioFocus
+    if (!focus) return
+    if (autoOpenedFocusRef.current === focus.key) return
+    autoOpenedFocusRef.current = focus.key
+    setFocusDocId(focus.docId)
+    setWorkModeOpen(true)
+  }, [latestStudioFocus])
 
   const {
     sendChat,
@@ -465,6 +514,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
               <DocumentPanel
                 agentSessionId={agentSessionId}
                 contextSlot={contextSelector}
+                focusDocId={focusDocId}
                 onClose={() => setWorkModeOpen(false)}
                 onRetryResolve={() => void taskReportQuery.refetch()}
                 reportId={boundReportId}

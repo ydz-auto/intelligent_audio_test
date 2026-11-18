@@ -873,6 +873,8 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
                   summary: event.summary ?? call.summary,
                   errorCode: event.errorCode,
                   sourceRefs: event.sourceRefs ?? call.sourceRefs,
+                  exportArtifact: event.exportArtifact ?? call.exportArtifact,
+                  studioFocus: event.studioFocus ?? call.studioFocus,
                 }
               : call
           ),

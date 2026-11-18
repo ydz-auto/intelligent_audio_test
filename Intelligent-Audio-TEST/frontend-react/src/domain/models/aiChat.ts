@@ -10,6 +10,7 @@ import type {
   AgentRunStatus,
   AgentToolRisk,
 } from './agent'
+import type { StudioDocumentFocus, StudioExportArtifact } from './report-studio'
 
 /**
  * run 结束后的「沉淀为 Skill」草案建议（agent_service 的 skill_draft_suggested
@@ -89,6 +90,13 @@ export interface AgentToolCall {
   approvalId?: string
   /** 审批状态（与审批卡同一份数据源，计数不重复） */
   approvalStatus?: AgentApprovalStatus
+  /**
+   * 导出产物（report_export / studio_request_export 结果）：
+   * 消息内渲染产物卡，PPT/PDF 走鉴权下载，MD/HTML 可直接预览。
+   */
+  exportArtifact?: StudioExportArtifact
+  /** 工具结果指向的 Studio 文档（起草 / 编辑 / 恢复后定位右侧文档面板） */
+  studioFocus?: StudioDocumentFocus
 }
 
 /** 文档变更卡（studio_apply_edit / studio_restore_version 成功后嵌入，§3.4） */

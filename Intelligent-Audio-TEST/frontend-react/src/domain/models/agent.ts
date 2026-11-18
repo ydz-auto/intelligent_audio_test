@@ -11,9 +11,13 @@
  * 归 domain：application 层的 run 事件 → 工具卡补丁（agent-run-store）与界面工具卡
  * 共用同一份文案，避免 application 反向依赖 features（INT-2507 收敛单实例时迁移）。
  */
+import type { StudioDocumentFocus, StudioExportArtifact } from './report-studio'
+
 export const AGENT_TOOL_LABELS: Record<string, string> = {
   report_get_facts: '读取报告数据',
   report_query_metrics: '查询报告指标',
+  report_generate: '生成报告',
+  report_export: '导出报告',
   studio_create_draft: '创建报告草稿',
   studio_apply_edit: '修改文档',
   studio_insert_chart: '插入图表',
@@ -517,6 +521,10 @@ export interface AgentToolResultEvent extends AgentRunEventBase {
   /** 工具失败时的后端错误码（error_code；成功为空） */
   errorCode?: string
   sourceRefs?: AgentEventSourceRef[]
+  /** 导出工具结果里的产物快照（仅 export_id 可解析时存在） */
+  exportArtifact?: StudioExportArtifact
+  /** Studio 工具结果指向的文档（起草 / 编辑 / 恢复 / 导出） */
+  studioFocus?: StudioDocumentFocus
 }
 
 export interface AgentApprovalRequiredEvent extends AgentRunEventBase {

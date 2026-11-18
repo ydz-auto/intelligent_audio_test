@@ -14,6 +14,7 @@ import { Shimmer } from '@/components/ai-elements/shimmer'
 import { cn } from '@/lib/utils'
 
 import { AGENT_RUN_STATUS } from '@/domain/models/agent'
+import type { StudioExportArtifact } from '@/domain/models/report-studio'
 import { AGENT_RUN_STATUS_LABELS, MESSAGE_STATUS } from '@/features/ai-chat/constants'
 import {
   getMessageAlignmentClass,
@@ -24,10 +25,24 @@ import { useAiChatSession } from '@/infrastructure/stores/aiChatSessionStore'
 
 import { DataSources } from './data-sources'
 import { DocumentChangeCard } from './document-change-card'
+import { ExportArtifactCard } from './export-artifact-card'
 import { MessageError } from './message-error'
 import { MessageMetadata } from './message-metadata'
 import { SkillSuggestionCard } from './skill-suggestion-card'
 import { ThinkingProcess } from './thinking-process'
+
+/** 工具结果里的导出产物（按 exportId 去重；同一作业重复调用只渲染一张卡） */
+function collectExportArtifacts(message: ChatMessage): StudioExportArtifact[] {
+  const seen = new Set<string>()
+  const artifacts: StudioExportArtifact[] = []
+  for (const call of message.toolCalls ?? []) {
+    const artifact = call.exportArtifact
+    if (!artifact || seen.has(artifact.exportId)) continue
+    seen.add(artifact.exportId)
+    artifacts.push(artifact)
+  }
+  return artifacts
+}
 
 type AiChatMessageContentProps = {
   actions?: ReactNode
@@ -72,6 +87,7 @@ export function AiChatMessageContent({
   /** 思考正文与工具调用共用一条折叠摘要行（有其一就渲染） */
   const hasReasoningOrToolCalls = hasReasoning || hasToolCalls
   const hasDocumentChanges = (message.documentChanges?.length ?? 0) > 0
+  const exportArtifacts = collectExportArtifacts(message)
   /** 平台 Agent 终态徽标（INT-2457）：只标取消/失败/超预算，成功完成不占位 */
   const runStatus = message.runStatus
   /** 刷新恢复时 run 仍在等审批：中性徽标「等待审批」，不落错误态（INT-2472 P2-1） */
@@ -175,6 +191,13 @@ export function AiChatMessageContent({
             <MessageContent className='whitespace-normal' variant='flat'>
               <Response final={isMessageFinal}>{versionContent}</Response>
             </MessageContent>
+          )}
+          {exportArtifacts.length > 0 && (
+            <div className='mt-1'>
+              {exportArtifacts.map((artifact) => (
+                <ExportArtifactCard artifact={artifact} key={artifact.exportId} />
+              ))}
+            </div>
           )}
           <MessageMetadata
             durationMs={message.durationMs}
