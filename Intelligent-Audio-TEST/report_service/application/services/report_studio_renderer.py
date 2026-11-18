@@ -163,12 +163,36 @@ def _inline_html(text: str) -> str:
 
 
 _HTML_CSS = (
-    '.report-studio-export{font-family:-apple-system,Segoe UI,Roboto,sans-serif;'
-    'max-width:860px;margin:0 auto;padding:24px;line-height:1.6;}'
-    'table{border-collapse:collapse;width:100%;margin:8px 0;}'
-    'th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;}'
-    'pre{background:#f5f5f5;padding:10px;border-radius:4px;overflow-x:auto;}'
-    'code{background:#f5f5f5;padding:1px 4px;border-radius:3px;}')
+    '*,*::before,*::after{box-sizing:border-box;}'
+    'html,body{margin:0;padding:0;}'
+    'body{background:#fff;color:#1f2329;}'
+    '.report-studio-export{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",'
+    '"PingFang SC","Microsoft YaHei",Roboto,sans-serif;max-width:920px;'
+    'margin:0 auto;padding:32px 40px 64px;font-size:14px;line-height:1.7;'
+    'word-break:break-word;overflow-wrap:anywhere;}'
+    '.report-studio-export h1{font-size:24px;line-height:1.35;font-weight:600;'
+    'margin:0 0 8px;}'
+    '.report-studio-export h2{font-size:18px;line-height:1.4;font-weight:600;'
+    'margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid #eceff3;}'
+    '.report-studio-export h3{font-size:16px;line-height:1.45;font-weight:600;'
+    'margin:20px 0 8px;}'
+    '.report-studio-export h4,.report-studio-export h5,.report-studio-export h6'
+    '{font-size:14px;font-weight:600;margin:16px 0 6px;}'
+    '.report-studio-export p{margin:8px 0;}'
+    '.report-studio-export ul{margin:8px 0;padding-left:22px;}'
+    '.report-studio-export li{margin:4px 0;}'
+    '.report-studio-export hr{border:0;border-top:1px solid #e5e7eb;margin:18px 0;}'
+    '.report-studio-export .export-theme{color:#8a8f99;font-size:12px;'
+    'margin:0 0 16px;}'
+    '.report-studio-export table{width:100%;max-width:100%;border-collapse:collapse;'
+    'table-layout:fixed;margin:12px 0;font-size:13px;}'
+    '.report-studio-export th,.report-studio-export td{border:1px solid #e5e7eb;'
+    'padding:8px 10px;text-align:left;vertical-align:top;}'
+    '.report-studio-export th{background:#f7f8fa;font-weight:600;}'
+    '.report-studio-export pre{background:#f6f7f9;padding:12px;border-radius:6px;'
+    'overflow-x:auto;font-size:12px;line-height:1.55;}'
+    '.report-studio-export code{font-family:SFMono-Regular,Consolas,monospace;'
+    'background:#f6f7f9;padding:1px 4px;border-radius:3px;font-size:12px;}')
 
 
 def render_html(markdown: str, theme: str, title: str) -> bytes:
@@ -207,6 +231,7 @@ def render_html(markdown: str, theme: str, title: str) -> bytes:
         out.append('</ul>')
     return (
         '<!DOCTYPE html><html><head><meta charset="utf-8"/>'
+        '<meta name="viewport" content="width=device-width, initial-scale=1"/>'
         f'<title>{html.escape(title or "")}</title><style>{_HTML_CSS}</style>'
         '</head><body class="report-studio-export">'
         f'<h1>{html.escape(title or "")}</h1>'

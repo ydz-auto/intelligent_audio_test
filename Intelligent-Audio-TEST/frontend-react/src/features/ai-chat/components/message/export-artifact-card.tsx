@@ -23,12 +23,12 @@ import { Response } from '@/components/ai-elements/response'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { useStudioExportJob } from '@/application/reports/use-report-studio'
 import {
   STUDIO_EXPORT_FORMAT_LABEL,
@@ -245,37 +245,42 @@ export function ExportArtifactCard(props: ExportArtifactCardProps) {
         )}
       </div>
 
-      <Dialog onOpenChange={setPreviewOpen} open={previewOpen}>
-        <DialogContent className='max-w-4xl'>
-          <DialogHeader>
-            <DialogTitle>预览 {formatLabel}</DialogTitle>
-            <DialogDescription>
+      <Sheet onOpenChange={setPreviewOpen} open={previewOpen}>
+        <SheetContent
+          className='w-full gap-0 p-0 sm:max-w-[min(1100px,62vw)]'
+          side='right'
+        >
+          <SheetHeader className='border-b pr-12'>
+            <SheetTitle>预览 {formatLabel}</SheetTitle>
+            <SheetDescription>
               {artifact.reportId !== null ? `报告 #${artifact.reportId}` : '报告产物'}
               {version !== null ? ` · v${version}` : ''}
-            </DialogDescription>
-          </DialogHeader>
-          {previewLoading ? (
-            <p className='text-muted-foreground flex items-center gap-2 py-8 text-sm'>
-              <Loader2 className='size-4 animate-spin' />
-              正在加载预览…
-            </p>
-          ) : previewError ? (
-            <p className='text-destructive py-4 text-sm'>{previewError}</p>
-          ) : previewUrl ? (
-            <iframe
-              className='border-border h-[70vh] w-full rounded-md border'
-              referrerPolicy='no-referrer'
-              sandbox='allow-scripts'
-              src={previewUrl}
-              title={`${formatLabel} 预览`}
-            />
-          ) : (
-            <div className='max-h-[70vh] overflow-y-auto rounded-md border px-4 py-3'>
-              <Response>{previewText}</Response>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            </SheetDescription>
+          </SheetHeader>
+          <div className='min-h-0 flex-1'>
+            {previewLoading ? (
+              <p className='text-muted-foreground flex items-center gap-2 px-6 py-8 text-sm'>
+                <Loader2 className='size-4 animate-spin' />
+                正在加载预览…
+              </p>
+            ) : previewError ? (
+              <p className='text-destructive px-6 py-4 text-sm'>{previewError}</p>
+            ) : previewUrl ? (
+              <iframe
+                className='bg-background h-full w-full border-0'
+                referrerPolicy='no-referrer'
+                sandbox='allow-scripts'
+                src={previewUrl}
+                title={`${formatLabel} 预览`}
+              />
+            ) : (
+              <div className='h-full overflow-y-auto px-8 py-6'>
+                <Response>{previewText}</Response>
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

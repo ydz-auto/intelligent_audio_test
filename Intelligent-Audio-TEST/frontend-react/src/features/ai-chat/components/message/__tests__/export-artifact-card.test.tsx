@@ -110,7 +110,7 @@ describe('ExportArtifactCard', () => {
     expect(screen.queryByTestId('studio-export-artifact-preview')).not.toBeInTheDocument()
   })
 
-  it('Markdown 完成态 → 预览在弹窗内渲染正文', async () => {
+  it('Markdown 完成态 → 侧边预览面板内渲染正文', async () => {
     state.downloadBlobImpl = async () => new Blob(['# 报告正文'])
     render(<ExportArtifactCard artifact={makeArtifact({ format: 'md' })} />)
 
