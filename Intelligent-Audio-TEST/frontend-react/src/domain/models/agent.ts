@@ -683,6 +683,25 @@ export const AGENT_ERROR_COPY = {
 } as const
 
 /**
+ * run 失败错误码 → 可操作的中文说明。
+ * 后端 run_finished.error 常是裸 code（如 EMPTY_MODEL_RESPONSE），
+ * 直接把 code 当正文展示会让用户看不懂、也不知道下一步做什么。
+ */
+export const AGENT_RUN_ERROR_COPY: Record<string, string> = {
+  EMPTY_MODEL_RESPONSE:
+    '模型没有返回任何内容：当前会话上下文可能已超出该模型的上下文窗口，请新建会话或换用更大窗口的模型后重试',
+  CONTEXT_OVERFLOW:
+    '当前会话上下文已超出该模型的上下文窗口，请新建会话或换用更大窗口的模型后重试',
+}
+
+/** 失败原因归一：已知错误码给中文指引，未知码原样保留（便于排查） */
+export function agentFailureText(error: string | null | undefined): string {
+  const code = (error ?? '').trim()
+  if (!code) return AGENT_ERROR_COPY.runFailed
+  return AGENT_RUN_ERROR_COPY[code] ?? code
+}
+
+/**
  * Auto 模式文案（§9.4 / INT-2474；interface 层与 application 层共用，归 domain）。
  * 预算默认值只作「留空生效」的说明文案（默认值由服务端下发；Auto 允许上调）。
  */

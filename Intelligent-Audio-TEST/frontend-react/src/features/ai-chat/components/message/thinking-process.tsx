@@ -27,6 +27,8 @@ type ThinkingProcessProps = {
   reasoning: string
   /** 思考正文仍在流式输出 */
   isReasoningStreaming: boolean
+  /** 本轮 run 仍在进行（工具间隙也保持「正在思考」，避免中途收起） */
+  isRunActive?: boolean
   /** 思考耗时（秒；无思考正文时不展示） */
   durationSeconds: number
   toolCalls: readonly AgentToolCall[]
@@ -48,7 +50,8 @@ export function ThinkingProcess(props: ThinkingProcessProps) {
   const isToolActive = props.toolCalls.some((call) =>
     ACTIVE_TOOL_STATUSES.has(call.status)
   )
-  const isActive = props.isReasoningStreaming || isToolActive
+  const isActive =
+    props.isRunActive === true || props.isReasoningStreaming || isToolActive
 
   // 进行中自动展开、结束自动收起；用户手动展开的意图在结束后让位于「收成一行」
   const [isOpen, setIsOpen] = useState(isActive)

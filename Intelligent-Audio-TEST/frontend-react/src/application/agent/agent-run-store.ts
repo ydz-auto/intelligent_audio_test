@@ -38,6 +38,7 @@ import {
   AGENT_RUN_MODE,
   AGENT_RUN_STATUS,
   AGENT_TOOL_LABELS,
+  agentFailureText,
   isPendingApprovalStatus,
   isTerminalRunStatus,
   type AgentApproval,
@@ -947,7 +948,7 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
                   autoTerminalText ??
                   (event.status === AGENT_RUN_STATUS.CANCELLED
                     ? AGENT_ERROR_COPY.cancelled
-                    : event.error || AGENT_ERROR_COPY.runFailed),
+                    : agentFailureText(event.error)),
               },
             ],
           }
@@ -1023,7 +1024,7 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
           )
           return
         }
-        failRun(event.errorMessage || AGENT_ERROR_COPY.runFailed, event.errorCode)
+        failRun(agentFailureText(event.errorMessage), event.errorCode)
         return
       }
       case AGENT_EVENT_TYPE.APPROVAL_REQUIRED: {
@@ -1824,7 +1825,7 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
                     content:
                       latestRun.status === AGENT_RUN_STATUS.CANCELLED
                         ? AGENT_ERROR_COPY.cancelled
-                        : latestRun.error || AGENT_ERROR_COPY.runFailed,
+                        : agentFailureText(latestRun.error),
                   },
                 ],
         }
