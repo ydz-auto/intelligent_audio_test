@@ -235,13 +235,15 @@ def test_unsupported_param_rejected_before_rest():
     assert rest.calls == []
 
 
-def test_list_report_id_error_points_to_detail_action():
-    """list 不接受 report_id：报错要指向正确动作，模型才能自纠。"""
+def test_unsupported_report_id_error_points_to_owner_actions():
+    """list / tab_counts 不接受 report_id：报错要给出该参数真正归属的动作。"""
     rest = FakeReportRest()
-    result = make_gateway(rest).execute(
-        call({'action': 'list', 'report_id': 426}), ctx())
-    assert result.error_code == INVALID_ARGUMENTS
-    assert 'report_id' in result.content and 'detail' in result.content
+    gateway = make_gateway(rest)
+    for action in ('list', 'tab_counts'):
+        result = gateway.execute(
+            call({'action': action, 'report_id': 426}), ctx())
+        assert result.error_code == INVALID_ARGUMENTS, action
+        assert 'report_id' in result.content and 'detail' in result.content, action
     assert rest.calls == []
 
 

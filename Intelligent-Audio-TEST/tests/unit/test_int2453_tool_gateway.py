@@ -227,6 +227,25 @@ def test_rest_network_error_is_plain_text():
     assert '不可用' in result.content
 
 
+def test_rest_timeout_reports_single_unavailable_prefix(monkeypatch):
+    """回源层只给超时原因，上层统一加「目标服务不可用：」，不出现重复前缀。"""
+    import httpx
+
+    from agent_service.infrastructure.tools import registry_bridge
+
+    def _timeout(*args, **kwargs):
+        raise httpx.ConnectTimeout('timed out')
+
+    monkeypatch.setattr(registry_bridge.httpx, 'request', _timeout)
+    client = registry_bridge.RestToolClient('http://127.0.0.1:1',
+                                            timeout_seconds=30)
+    result = make_gateway(client).execute(
+        call('report_query', {'action': 'list'}), ctx())
+    assert result.error_code == UPSTREAM_UNAVAILABLE
+    assert result.content.count('目标服务不可用') == 1
+    assert '响应超时（30s）' in result.content
+
+
 # ------------------------------------------------ 上游内部实现细节脱敏（INT-2548）
 
 _PSYCOPG2_ERROR = (

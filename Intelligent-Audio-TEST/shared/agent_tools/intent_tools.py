@@ -338,16 +338,6 @@ REPORT_QUERY_PARAMS: Dict[str, Tuple[str, ...]] = {
                       'include_untagged'),
 }
 
-# 动作不支持某参数时的纠偏提示：模型常把 detail 的参数错挂到 list 上，
-# 只报「不支持」会让它换个动作名重试同一参数。仅在报错文案里追加，
-# 不改变拒绝行为（网关仍会静默忽略未知参数）。
-REPORT_QUERY_PARAM_HINTS: Dict[str, Dict[str, str]] = {
-    'list': {
-        'report_id': '查单份报告请用 action=detail，查报告内用例请用 '
-                     'action=cases，按任务过滤列表请用 task_id',
-    },
-}
-
 # 分页边界：网关对 page=0 与超大 per_page **不报错**（实测 page=0 返回首页、
 # per_page=1000 一次返回全量），放过去会让模型用一次调用拉全表。
 # 常量集中在 ``shared.agent_tools.pagination``（INT-2552 起全部查询类意图工具
@@ -2120,12 +2110,20 @@ def _normalize_log_diagnose_arguments(action: str,
     return _normalize_action_arguments('log_diagnose', action, merged)
 
 
+def _report_query_param_owners(name: str) -> Tuple[str, ...]:
+    """参数在 report_query 里被哪些动作使用（含动作必填参数）。"""
+    required = ACTION_REQUIRED.get('report_query', {})
+    return tuple(action for action in REPORT_QUERY_ACTIONS
+                 if name in REPORT_QUERY_PARAMS.get(action, ())
+                 or name in required.get(action, ()))
+
+
 def _normalize_report_query_arguments(action: str,
                                      merged: Dict[str, Any]) -> Optional[str]:
     """按动作校验 / 归一 report_query 参数，返回错误文本或 None。
 
     - 动作不支持的参数直接拒绝（网关查询 Schema ``extra='ignore'``，传错参数
-      会被静默丢弃并返回全量）；
+      会被静默丢弃并返回全量）；报错追加该参数真正归属的动作，供模型自纠；
     - ``page`` / ``per_page`` 边界由 ``pagination.check_page_bounds`` 统一校验；
     - ``case_averages`` 的 ``report_id`` / ``task_id`` 二选一。
     """
@@ -2134,10 +2132,12 @@ def _normalize_report_query_arguments(action: str,
     unknown = sorted(name for name in merged
                      if name not in allowed and merged[name] is not None)
     if unknown:
-        hints = [REPORT_QUERY_PARAM_HINTS.get(action, {}).get(name)
-                 for name in unknown]
-        hint = '；'.join(item for item in hints if item)
-        suffix = f'（{hint}）' if hint else ''
+        hints = []
+        for name in unknown:
+            owners = _report_query_param_owners(name)
+            if owners:
+                hints.append(f'参数 {name} 只用于 {" / ".join(owners)}')
+        suffix = f'（{"；".join(hints)}）' if hints else ''
         return f'action={action} 不支持参数：{"、".join(unknown)}{suffix}'
 
     if action == 'case_averages':

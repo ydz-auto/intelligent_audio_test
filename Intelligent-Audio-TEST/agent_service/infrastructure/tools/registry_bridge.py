@@ -92,10 +92,16 @@ class RestToolClient(ToolTransportPort):
         try:
             response = httpx.request(tool['method'], url, json=body,
                                      headers=headers, timeout=self._timeout)
+        except httpx.TimeoutException as exc:
+            logger.warning('ToolGateway 回源超时 tool=%s url=%s: %s',
+                           tool['name'], url, exc)
+            # 只给原因：上层统一加「目标服务不可用：」前缀，避免重复。
+            return ToolTransportResult(
+                status=0, error=f'响应超时（{self._timeout:g}s）')
         except httpx.HTTPError as exc:
             logger.warning('ToolGateway 回源失败 tool=%s url=%s: %s',
                            tool['name'], url, exc)
-            return ToolTransportResult(status=0, error=f'目标服务不可用: {exc}')
+            return ToolTransportResult(status=0, error=str(exc))
         try:
             payload = response.json()
             text = _json_dumps(payload)
