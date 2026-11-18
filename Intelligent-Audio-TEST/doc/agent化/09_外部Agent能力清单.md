@@ -358,7 +358,7 @@ MCP 端点未单独设按用户配额，沿用网关通用鉴权与系统选项 
 
 归属关系的逐项理由见 `shared/agent_tools/COVERAGE.md`（由 `coverage.py` 生成，禁止手改）。
 
-## 7. 平台内置 Skill（14 个）
+## 7. 平台内置 Skill（15 个）
 
 | Skill | 版本 | 触发 / 用途（description） | allowed-tools |
 |---|---|---|---|
@@ -372,6 +372,7 @@ MCP 端点未单独设按用户配额，沿用网关通用鉴权与系统选项 
 | `platform-reference` | 1.0.0 | 智能语音测试平台的接口、字段别名、枚举、权限码与工具检索口径速查。 触发词：平台有哪些接口、这个字段叫什么、状态枚举取值、权限码是什么、 某个工具的 Schema、tool_search 怎么用、接口返回的是什么类型。 不适用：具体业务操作（导入音频、创建任务、生成报告等）各自有专门 Skill； 本 Skill 只回答「平台怎么描述自己」，不代替业务 Skill 执行流程。 | `platform_contract`, `tool_search` |
 | `report-compare` | 1.0.0 | 报告对比口径：多报告并排取数（指标矩阵 / 设备与 API 统计 / 用例分类统计）、 二次对比（对已有对比报告再做一次对比）、统计趋势序列，以及异常报告下钻。 触发词：报告对比、对比报告、二次对比、多报告对比、并排对比、报告差异、 指标差异、通过率对比、报告趋势、指标趋势、趋势序列、异常报告、通过率异常、 环比、同比。 不适用：单份报告的取数与指标解释、报告起草（report-studio 负责）；生成对比 报告 / 二次对比报告（写操作，M2 走提案 + 审批）；任务执行（task-operations 负责）。 | `report_compare`, `report_query`, `tool_search` |
 | `report-studio` | 1.1.0 | 报告取数、指标解释与报告交付口径：三类报告（任务 / 对比 / 二次对比）列表与详情、 指标矩阵、设备与 API 统计、用例明细与用例搜索、维度统计、生成进度、页签计数、 报告文本（描述 / 分析 / 结论）的起草与版本口径，以及生成 / 重生成报告、 Studio 草稿与版本恢复、导出 PDF / PPTX / HTML / MD（写操作走提案 + 审批）。 触发词：报告详情、报告指标、报告列表、报告用例、报告统计、报告进度、页签计数、 通过率、平均分、指标单位、用例平均值、报告起草、报告版本、导出报告、报告结论、 生成报告、重生成报告、Studio 草稿、导出 PDF、导出 PPTX、导出 HTML。 不适用：多报告对比 / 二次对比 / 趋势（report-compare 负责）；任务执行本身 （task-operations 负责）；评估维度评分口径（evaluation-config 负责）。 | `report_query`, `report_generate`, `report_export`, `tool_search` |
+| `work-report-ppt` | 1.0.0 | 把报告做成可交付 PPT 的工作流：先取真实数据并在对话里确认「每页标题 + 3~5 条要点 + 数据」大纲，再把演示型 Markdown 写入 Studio 文档（studio_draft / studio_edit）， 最后用 report_export 的 pptx 格式导出 16:9 幻灯片；写操作走提案 + 审批。 触发词：做PPT、做份汇报、技术汇报、工作汇报、演示文稿、汇报材料、方案评审、 把报告做成PPT、导出PPT、生成幻灯片、报告转PPT。 不适用：像素级品牌模板、图片 / 图表 / 动画（平台 PPT 渲染器只支持标题、段落、 列表、表格与代码块）；纯 HTML 报告；多报告对比结论（report-compare 负责）。 | `report_query`, `report_generate`, `report_export`, `tool_search` |
 | `spl-calibration` | 1.1.0 | SPL 声压级校准口径速查：物理域 SPL 映射（播放设备 / 距离 / 测试频率 / 目标 SPL / 校准状态 / 校准点集）与数字域 RMS→SPL 映射（被测 API / 参考 SPL / 增益限幅 / 校准点集），以及校准历史、最新校准数据，和映射增删改 / 校准 / 测试音写操作 （写操作走审批）。 触发词：SPL 映射、声压级、SPL 校准、校准状态、校准历史、校准点集、校准数据、 测试音、增益偏移、增益限幅、目标声压级、数字域映射、RMS 映射、播放设备校准、 已校准、未校准。 不适用：被测设备连接 / 重启 / 告警（device-operations 负责）；驱动代码提案 （driver-proposal 负责）；报告里的 SPL 指标解读（report-studio 负责）。 | `device_query`, `spl_calibrate`, `tool_search` |
 | `tag-group` | 1.1.0 | 标签与用例分组口径速查：标签列表与分类归属、标签 / 分组可见性、用例分组列表 与用例数，以及经提案 + 审批执行的标签 / 分组写操作（新增、修改、删除、批量 打标与标签改名）。 触发词：标签、标签列表、标签分类、标签归属、标签可见性、批量打标、打标策略、 重命名标签、新建标签、删除标签、用例分组、分组、分组列表、分组下、分组里、 分组可见性、分组用例数、新建分组、修改分组、删除分组。 不适用：用例本身的编制与轮次配置（testcase-authoring）；音频标签的素材元数据 （audio-import）。 | `tool_search`, `platform_contract`, `tag_group_manage` |
 | `task-operations` | 1.1.0 | 任务域的查询、失败诊断与写操作：任务列表与过滤、任务详情与用例清单、实时执行 进度、用例统计与通过率、用例执行详情 / 结果、关联实验室，失败用例 + 真实错误 日志的归因和重测建议；创建 / 启动 / 停止 / 重试 / 合并 / 重提取经提案 + 审批 后执行。 触发词：任务列表、任务详情、执行进度、任务进度、任务统计、通过率、失败用例、 失败原因、任务诊断、任务诊断报告、重测建议、用例结果、任务实验室、重试任务、 合并任务、创建任务、启动任务、停止任务、重新提取、重新执行。 不适用：日志全文检索 / 日志级别统计 / 日志来源归因（log-diagnostics）、 报告与指标取数（report-studio）、音频导入与标注（audio-import）、评估维度配置 （evaluation-config）、算法参数与表单（algorithm-config）。 | `task_query`, `task_diagnose`, `task_run`, `log_diagnose`, `tool_search` |
