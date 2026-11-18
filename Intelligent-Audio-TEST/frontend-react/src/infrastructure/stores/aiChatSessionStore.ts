@@ -1,9 +1,9 @@
 /**
- * AI 对话会话全局 store（infrastructure/stores 层；08_AI对话页.md §3.1B/§3.7）。
- * 整页（/ai-chat）与全局浮窗（AgentWorkbench）两形态共享同一会话——§3.1B「两形态同 store
- * 不分裂会话」：浮窗在登录壳全局驻留（含 /ai-chat 页），若两形态各持一套 useChatState，
- * 会分别以 500ms 防抖写同一组 iatp:ai-chat:v1:* 键、先后互覆写丢消息。收敛为 zustand
- * 全局实例 + 单写入点（订阅持久化），保证同键单实例写、切换形态不丢会话。
+ * AI 对话会话 store（infrastructure/stores 层；08_AI对话页.md §3.1B/§3.7）：主对话 + 侧边会话两个实例。
+ * 主对话 useAiChatSession 走 localStorage（iatp:ai-chat:v1:*），刷新 / 换宿主不丢会话；
+ * 浮窗侧边会话 useWorkbenchAiChatSession 照 Codex 侧边对话语义：独立旁路线程、只在内存里，
+ * 关窗即弃、不写主对话；上下文由浮窗宿主把主对话最近若干条注入请求前缀。
+ * 每个实例只有单写入点（订阅持久化）；侧边会话的 prefs 是内存空实现（写入即丢弃）。
  * URL 契约（§3.7）：/ai-chat?report={id} / /ai-chat?task={id} 首访无存档时绑定一次上下文
  * （同上下文沿用已存 config 保持会话；换上下文按 URL 重建）。
  *
@@ -19,7 +19,11 @@ import type { StudioDocumentFocus } from '@/domain/models/report-studio'
 import { DEFAULT_CONFIG } from '@/features/ai-chat/constants'
 import { fetchReportDetail } from '@/infrastructure/api/reports-api'
 import { fetchTaskDetail } from '@/infrastructure/api/tasks-list-api'
-import { aiChatPrefs } from '@/infrastructure/storage/aiChatPrefs'
+import {
+  aiChatPrefs,
+  createEphemeralAiChatPrefs,
+  type AiChatPrefs,
+} from '@/infrastructure/storage/aiChatPrefs'
 
 /** URL 契约上下文（§3.7：/ai-chat?report={id} / /ai-chat?task={id} / /ai-chat?reviewTask={id}&reviewCase={caseId}） */
 export type AiChatInitialContext = {
@@ -82,8 +86,11 @@ function isSameContext(saved: ChatConfig, requested: RequestedContext): boolean 
  * 同步初始 config（§3.7）：无 URL 上下文用存档，同上下文沿用存档；
  * 换上下文时保留用户的模型/供应商选择，上下文名先落降级名，真实名称随后异步补。
  */
-function buildInitialConfig(context?: AiChatInitialContext): ChatConfig {
-  const saved = aiChatPrefs.loadConfig()
+function buildInitialConfig(
+  prefs: AiChatPrefs,
+  context?: AiChatInitialContext
+): ChatConfig {
+  const saved = prefs.loadConfig()
   const requested = parseRequestedContext(context)
   if (!requested) return saved ?? { ...DEFAULT_CONFIG }
   if (saved && isSameContext(saved, requested)) return saved
@@ -154,10 +161,17 @@ type AiChatSessionState = {
   applyInitialContext: (context?: AiChatInitialContext) => void
 }
 
-/** 启动时还原平台 Agent 会话（INT-2507：刷新后续用同一服务端会话） */
-const storedAgentSession = aiChatPrefs.loadAgentSession()
+export type AiChatSessionStore = ReturnType<typeof createAiChatSessionStore>
 
-export const useAiChatSession = create<AiChatSessionState>()((set, get) => {
+/**
+ * 创建一份会话 store。prefs 决定会话 id / 消息 / config 的落地方式：
+ * 主对话用 localStorage，侧边会话用内存空实现（关窗即弃）。
+ */
+export function createAiChatSessionStore(prefs: AiChatPrefs) {
+  /** 启动时还原平台 Agent 会话（INT-2507：刷新后续用同一服务端会话） */
+  const storedAgentSession = prefs.loadAgentSession()
+
+  const store = create<AiChatSessionState>()((set, get) => {
   /**
    * 真实名称解析（INT-1936）：响应回来时若上下文已切换（appliedContextKey 变化）则丢弃，
    * 避免慢请求把上一份报告名写到当前会话上。
@@ -185,8 +199,8 @@ export const useAiChatSession = create<AiChatSessionState>()((set, get) => {
   }
 
   return {
-    config: aiChatPrefs.loadConfig() ?? { ...DEFAULT_CONFIG },
-    messages: aiChatPrefs.loadMessages() ?? [],
+    config: prefs.loadConfig() ?? { ...DEFAULT_CONFIG },
+    messages: prefs.loadMessages() ?? [],
     agentSessionId: storedAgentSession?.sessionId ?? null,
     agentRunId: storedAgentSession?.runId ?? null,
     appliedContextKey: undefined,
@@ -221,36 +235,46 @@ export const useAiChatSession = create<AiChatSessionState>()((set, get) => {
       if (get().appliedContextKey === requestedId) return
       const requested = parseRequestedContext(context)
       set({
-        config: buildInitialConfig(context),
+        config: buildInitialConfig(prefs, context),
         appliedContextKey: requestedId,
         contextStatus: requested ? 'loading' : 'idle',
       })
       if (requested) void resolveContext(requested, requestedId ?? String(requested.id))
     },
   }
-})
+  })
 
-// 单写入点持久化（§3.7）：messages 500ms 防抖、config 即时；两形态共享同一实例，无互覆写。
-let messageSaveTimer: number | null = null
-useAiChatSession.subscribe((state, prev) => {
-  if (state.messages !== prev.messages) {
-    if (messageSaveTimer !== null) window.clearTimeout(messageSaveTimer)
-    messageSaveTimer = window.setTimeout(() => {
-      aiChatPrefs.saveMessages(state.messages)
-    }, 500)
-  }
-  if (state.config !== prev.config) {
-    aiChatPrefs.saveConfig(state.config)
-  }
-  // 平台 Agent 会话 id 随会话持久化（INT-2507）：刷新 / 换宿主后仍续用同一服务端会话
-  if (
-    state.agentSessionId !== prev.agentSessionId ||
-    state.agentRunId !== prev.agentRunId
-  ) {
-    aiChatPrefs.saveAgentSession(
-      state.agentSessionId
-        ? { sessionId: state.agentSessionId, runId: state.agentRunId }
-        : null
-    )
-  }
-})
+  // 单写入点持久化（§3.7）：messages 500ms 防抖、config 即时；每个实例独立一份存档。
+  let messageSaveTimer: number | null = null
+  store.subscribe((state, prev) => {
+    if (state.messages !== prev.messages) {
+      if (messageSaveTimer !== null) window.clearTimeout(messageSaveTimer)
+      messageSaveTimer = window.setTimeout(() => {
+        prefs.saveMessages(state.messages)
+      }, 500)
+    }
+    if (state.config !== prev.config) {
+      prefs.saveConfig(state.config)
+    }
+    // 平台 Agent 会话 id 随会话持久化（INT-2507）：刷新 / 换宿主后仍续用同一服务端会话
+    if (
+      state.agentSessionId !== prev.agentSessionId ||
+      state.agentRunId !== prev.agentRunId
+    ) {
+      prefs.saveAgentSession(
+        state.agentSessionId
+          ? { sessionId: state.agentSessionId, runId: state.agentRunId }
+          : null
+      )
+    }
+  })
+
+  return store
+}
+
+/** 整页 `/ai-chat` 主对话（localStorage 持久化） */
+export const useAiChatSession = createAiChatSessionStore(aiChatPrefs)
+/** 浮窗侧边会话（内存态，关窗即弃；独立于主对话的旁路线程） */
+export const useWorkbenchAiChatSession = createAiChatSessionStore(
+  createEphemeralAiChatPrefs()
+)

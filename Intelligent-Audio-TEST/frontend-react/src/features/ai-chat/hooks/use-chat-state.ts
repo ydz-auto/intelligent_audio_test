@@ -1,8 +1,8 @@
 /**
  * AI 对话会话状态（interfaces 层 hooks；08_AI对话页.md §3.1B/§3.7）。
- * 整页（/ai-chat）与全局浮窗两形态共用 infrastructure/stores/aiChatSessionStore 单一会话
- * 实例——§3.1B「两形态同 store 不分裂会话」（浮窗全局驻留含 /ai-chat，各持独立实例会以
- * 500ms 防抖互覆写 iatp:ai-chat:v1:* 键、丢消息）。config/messages 由 store 持有并订阅持久化。
+ * 缺省绑定整页主对话（useAiChatSession，localStorage 持久化）；浮窗侧边会话传
+ * useWorkbenchAiChatSession（内存态旁路线程，关窗即弃），两者独立、互不覆写。
+ * config/messages 由 store 持有并订阅持久化；URL 上下文只作用于主对话。
  * URL 契约：/ai-chat?report={id} / /ai-chat?task={id} 绑定上下文并预填指令（§3.7）。
  */
 import { useEffect, useState } from 'react'
@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import {
   useAiChatSession,
   type AiChatInitialContext,
+  type AiChatSessionStore,
 } from '@/infrastructure/stores/aiChatSessionStore'
 import { buildReviewExpandPrompt } from '@/features/ai-review/constants'
 
@@ -41,14 +42,17 @@ function buildInitialPrompt(context?: InitialContext): string | undefined {
   return undefined
 }
 
-export function useChatState(context?: InitialContext) {
-  const config = useAiChatSession((s) => s.config)
-  const messages = useAiChatSession((s) => s.messages)
-  const contextStatus = useAiChatSession((s) => s.contextStatus)
-  const updateMessages = useAiChatSession((s) => s.updateMessages)
-  const updateConfig = useAiChatSession((s) => s.updateConfig)
-  const clearMessages = useAiChatSession((s) => s.clearMessages)
-  const applyInitialContext = useAiChatSession((s) => s.applyInitialContext)
+export function useChatState(
+  context?: InitialContext,
+  store: AiChatSessionStore = useAiChatSession
+) {
+  const config = store((s) => s.config)
+  const messages = store((s) => s.messages)
+  const contextStatus = store((s) => s.contextStatus)
+  const updateMessages = store((s) => s.updateMessages)
+  const updateConfig = store((s) => s.updateConfig)
+  const clearMessages = store((s) => s.clearMessages)
+  const applyInitialContext = store((s) => s.applyInitialContext)
 
   // URL 契约（§3.7）：挂载时绑定 report/task 上下文（store 内做已存 config 优先/同上下文保持）
   useEffect(() => {

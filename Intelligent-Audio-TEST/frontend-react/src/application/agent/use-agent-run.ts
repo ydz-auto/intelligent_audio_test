@@ -24,6 +24,7 @@ import {
   type AgentRunHostDetachReason,
   type AgentRunHostKind,
   type AgentRunPhase,
+  type AgentRunStore,
   type SendAgentRunOptions,
 } from '@/application/agent/agent-run-store'
 import type { AgentTimelineEntry } from '@/application/agent/agent-timeline'
@@ -87,34 +88,34 @@ export interface UseAgentRunResult {
   reset: (options?: { keepSession?: boolean }) => void
 }
 
-export function useAgentRun(): UseAgentRunResult {
-  const phase = useAgentRunStore((state) => state.phase)
-  const run = useAgentRunStore((state) => state.run)
-  const streamStatus = useAgentRunStore((state) => state.streamStatus)
-  const error = useAgentRunStore((state) => state.error)
-  const approvals = useAgentRunStore((state) => state.approvals)
-  const approvalsLoading = useAgentRunStore((state) => state.approvalsLoading)
-  const approvalsError = useAgentRunStore((state) => state.approvalsError)
-  const decidingApprovalIds = useAgentRunStore(
-    (state) => state.decidingApprovalIds
-  )
-  const timeline = useAgentRunStore((state) => state.timeline)
-  const autoProgress = useAgentRunStore((state) => state.autoProgress)
-  const autoPause = useAgentRunStore((state) => state.autoPause)
-  const autoPausePolicy = useAgentRunStore((state) => state.autoPausePolicy)
-  const resumingAuto = useAgentRunStore((state) => state.resumingAuto)
-  const autoTracking = useAgentRunStore((state) => state.autoTracking)
-  const send = useAgentRunStore((state) => state.send)
-  const cancel = useAgentRunStore((state) => state.cancel)
-  const resumeAuto = useAgentRunStore((state) => state.resumeAuto)
-  const decideApproval = useAgentRunStore((state) => state.decideApproval)
-  const refreshApprovals = useAgentRunStore((state) => state.refreshApprovals)
-  const reset = useAgentRunStore((state) => state.reset)
+export function useAgentRun(
+  store: AgentRunStore = useAgentRunStore
+): UseAgentRunResult {
+  const phase = store((state) => state.phase)
+  const run = store((state) => state.run)
+  const streamStatus = store((state) => state.streamStatus)
+  const error = store((state) => state.error)
+  const approvals = store((state) => state.approvals)
+  const approvalsLoading = store((state) => state.approvalsLoading)
+  const approvalsError = store((state) => state.approvalsError)
+  const decidingApprovalIds = store((state) => state.decidingApprovalIds)
+  const timeline = store((state) => state.timeline)
+  const autoProgress = store((state) => state.autoProgress)
+  const autoPause = store((state) => state.autoPause)
+  const autoPausePolicy = store((state) => state.autoPausePolicy)
+  const resumingAuto = store((state) => state.resumingAuto)
+  const autoTracking = store((state) => state.autoTracking)
+  const send = store((state) => state.send)
+  const cancel = store((state) => state.cancel)
+  const resumeAuto = store((state) => state.resumeAuto)
+  const decideApproval = store((state) => state.decideApproval)
+  const refreshApprovals = store((state) => state.refreshApprovals)
+  const reset = store((state) => state.reset)
 
   // 宿主挂载恢复（幂等；浮窗展开整页 / 刷新都会走到这里，不打断进行中的 run）
   useEffect(() => {
-    void useAgentRunStore.getState().restore()
-  }, [])
+    void store.getState().restore()
+  }, [store])
 
   return {
     phase,
@@ -153,16 +154,17 @@ export function useAgentRun(): UseAgentRunResult {
  */
 export function useAgentRunHost(
   host: AgentRunHostKind,
-  onUnmount: AgentRunHostDetachReason = 'keep'
+  onUnmount: AgentRunHostDetachReason = 'keep',
+  store: AgentRunStore = useAgentRunStore
 ): void {
   // 卸载时读最新语义（父组件可能按「关闭 / 最小化」切换传值）
   const reasonRef = useRef(onUnmount)
   reasonRef.current = onUnmount
 
   useEffect(() => {
-    useAgentRunStore.getState().attachHost(host)
+    store.getState().attachHost(host)
     return () => {
-      useAgentRunStore.getState().detachHost(host, reasonRef.current)
+      store.getState().detachHost(host, reasonRef.current)
     }
-  }, [host])
+  }, [host, store])
 }

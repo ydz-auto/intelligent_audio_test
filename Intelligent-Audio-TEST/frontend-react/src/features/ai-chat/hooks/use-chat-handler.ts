@@ -20,6 +20,10 @@ import {
   AGENT_RUN_PHASE,
 } from '@/application/agent/use-agent-run'
 import {
+  useAgentRunStore,
+  type AgentRunStore,
+} from '@/application/agent/agent-run-store'
+import {
   CHAT_CHANNEL,
   type ChatChannel,
   type ChatConfig,
@@ -105,6 +109,10 @@ export function useChatHandler({
    * 浮窗与普通聊天不注入：绑定的报告只作用于报告工作模式。
    */
   injectReportContext = false,
+  /** 侧边会话：把主对话最近若干条作为上下文前缀随本轮请求下发（留空不注入） */
+  requestPrefix = null,
+  /** run store（主对话 / 浮窗侧边会话各自一份；缺省=主对话） */
+  runStore = useAgentRunStore,
 }: {
   config: ChatConfig
   /** 当前供应商（供应商直连通道使用；平台 Agent 通道不依赖） */
@@ -114,6 +122,8 @@ export function useChatHandler({
   systemPrompt?: string
   channel?: ChatChannel
   injectReportContext?: boolean
+  requestPrefix?: string | null
+  runStore?: AgentRunStore
 }) {
   /** 供应商通道本地生成态（平台通道的生成态由共享 store 派生，两宿主同口径） */
   const [isProviderGenerating, setIsProviderGenerating] = useState(false)
@@ -134,6 +144,8 @@ export function useChatHandler({
   channelRef.current = channel
   const injectReportContextRef = useRef(injectReportContext)
   injectReportContextRef.current = injectReportContext
+  const requestPrefixRef = useRef(requestPrefix)
+  requestPrefixRef.current = requestPrefix
 
   const schedule = useCallback((fn: () => void, delay: number) => {
     const id = window.setTimeout(fn, delay)
@@ -146,8 +158,8 @@ export function useChatHandler({
     timersRef.current = []
   }, [])
 
-  /** 平台 Agent run（共享单一实例：两宿主读同一 phase / run / 取消闸） */
-  const agentRun = useAgentRun()
+  /** 平台 Agent run（主对话 / 侧边会话各一份，宿主按 runStore 注入） */
+  const agentRun = useAgentRun(runStore)
   const platformActive = isAgentRunActive(agentRun.phase)
   /**
    * 通道分流（INT-2507 返工）：平台 run 是平台通道宿主的全局态，只作用于平台通道。
@@ -212,9 +224,11 @@ export function useChatHandler({
         // 两个宿主看到同一份消息与同一个 run（不再各持一套补丁器）。
         // Auto 模式与预算来自会话 config（INT-2474；普通对话不带 mode / budget；Auto 预算可上调）。
         // 报告工作模式绑定的上下文随请求下发，避免 Agent 自行改选报告（#420 → #426）。
-        const contextPrefix = injectReportContextRef.current
-          ? buildBoundContextPrefix(configRef.current)
-          : null
+        const contextPrefix =
+          requestPrefixRef.current ??
+          (injectReportContextRef.current
+            ? buildBoundContextPrefix(configRef.current)
+            : null)
         void agentRun.send(text, {
           appendUserMessage: options?.appendUserMessage ?? true,
           providerId: configRef.current.providerId,

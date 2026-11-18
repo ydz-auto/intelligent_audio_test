@@ -120,3 +120,23 @@ export const aiChatPrefs = {
     writeEnvelope(AI_CHAT_STORAGE_KEYS.agentSession, session)
   },
 }
+
+/**
+ * 会话存档读写契约：整页对话走 localStorage（aiChatPrefs），
+ * 浮窗侧边会话走内存（createEphemeralAiChatPrefs，关窗即弃）。
+ */
+export type AiChatPrefs = typeof aiChatPrefs
+
+/** 侧边会话存档：只在内存里，不读写 localStorage（关窗 / 刷新即丢弃） */
+export function createEphemeralAiChatPrefs(): AiChatPrefs {
+  return {
+    loadConfig: () => null,
+    saveConfig: () => {},
+    loadMessages: () => null,
+    saveMessages: () => {},
+    loadProviders: () => null,
+    saveProviders: () => {},
+    loadAgentSession: () => null,
+    saveAgentSession: () => {},
+  }
+}

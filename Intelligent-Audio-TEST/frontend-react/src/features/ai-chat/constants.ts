@@ -333,6 +333,9 @@ export const BOUND_CONTEXT_COPY = {
     '【已绑定上下文】{kind} #{id}{name}。请只基于该{kind}作答，不要改用其他{kind}。',
 } as const
 
+/** 灵犀Agent 整页路由（浮窗侧边会话判定：只有在该页浮窗才是旁路线程） */
+export const AI_CHAT_ROUTE = '/ai-chat' as const
+
 /** 模型/供应商切换器文案（§3.5/§6） */
 export const MODEL_PROVIDER_COPY = {
   selectModel: '选择模型',
@@ -340,6 +343,23 @@ export const MODEL_PROVIDER_COPY = {
   noProvider: '未配置 LLM 供应商 → 点击配置',
   manageProviders: '管理供应商',
 }
+
+/**
+ * 浮窗侧边会话（照 Codex 侧边对话）：可读主对话上下文、不写主线程。
+ * 请求前缀里的条数 / 单条字符上限在这里配置，避免魔法数字散落。
+ */
+export const SIDE_CONTEXT_COPY = {
+  roleLabels: {
+    user: '用户',
+    assistant: '助手',
+  } satisfies Record<'user' | 'assistant', string>,
+  /** 取主对话最近多少条（只算 user / assistant 且已有内容的消息） */
+  maxMessages: 12,
+  /** 单条上下文最多带多少字符，超出截断 */
+  maxCharsPerMessage: 1_200,
+  preface:
+    '【侧边会话】以下是主对话的最近上下文，仅用于理解用户背景与诉求；回答时不要复述本段，也不要假设用户看到了未出现在主对话里的信息。',
+} as const
 
 /** Run 生命周期提示（§12.2「SSE 重连不重复渲染」+ 取消态 + 审批等待态） */
 export const AGENT_RUN_PHASE_COPY = {

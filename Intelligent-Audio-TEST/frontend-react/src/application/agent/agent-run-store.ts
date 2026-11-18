@@ -77,7 +77,11 @@ import {
   type AgentStreamStatus,
 } from '@/infrastructure/api/agentApi'
 import { ApiError } from '@/infrastructure/api/api-error'
-import { useAiChatSession } from '@/infrastructure/stores/aiChatSessionStore'
+import {
+  useAiChatSession,
+  useWorkbenchAiChatSession,
+  type AiChatSessionStore,
+} from '@/infrastructure/stores/aiChatSessionStore'
 
 import {
   appendTimelineEntry,
@@ -366,7 +370,14 @@ type AgentRunStoreState = {
   detachHost: (host: AgentRunHostKind, reason?: AgentRunHostDetachReason) => void
 }
 
-export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
+export type AgentRunStore = ReturnType<typeof createAgentRunStore>
+
+/**
+ * 创建一份 run store。chatSession 决定 run 事件补丁落到哪份会话：
+ * 主对话落 useAiChatSession，浮窗侧边会话落 useWorkbenchAiChatSession（内存态）。
+ */
+export function createAgentRunStore(chatSession: AiChatSessionStore) {
+  return create<AgentRunStoreState>()((set, get) => {
   // ===== 非渲染态控制器字段（模块单一实例；两宿主共享） =====
   /** 轮次令牌：新发送 / 复位后旧异步结果一律丢弃 */
   let token = 0
@@ -417,7 +428,7 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
   /** Auto「继续」请求在途（同一暂停点防连点） */
   let resumeRequested = false
 
-  const session = () => useAiChatSession.getState()
+  const session = () => chatSession.getState()
 
   const setPhase = (phase: AgentRunPhase) => set({ phase })
 
@@ -1929,4 +1940,13 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     attachHost,
     detachHost,
   }
-})
+  })
+}
+
+/** 整页 `/ai-chat` 主对话的 run */
+export const useAgentRunStore = createAgentRunStore(useAiChatSession)
+/** 浮窗侧边会话的 run（独立旁路线程，事件补丁只落侧边会话） */
+export const useWorkbenchAgentRunStore = createAgentRunStore(
+  useWorkbenchAiChatSession
+)
+
