@@ -294,7 +294,7 @@ EXPOSE 80
   if ($LASTEXITCODE -ne 0) { throw "[$Name] docker build 失败" }
 
   docker rm -f $Name 2>$null | Out-Null
-  docker run -d --name $Name --network $Network -p "${Port}:80" $image | Out-Null
+  docker run -d --restart unless-stopped --name $Name --network $Network -p "${Port}:80" $image | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "[$Name] docker run 失败" }
 
   $ready = $false
@@ -330,7 +330,7 @@ function Restore-Previous {
   }
   $image = "${ImageName}:latest"
   docker tag $RollbackTag $image | Out-Null
-  docker run -d --name $Name --network $Network -p "${Port}:80" $image | Out-Null
+  docker run -d --restart unless-stopped --name $Name --network $Network -p "${Port}:80" $image | Out-Null
   if ($LASTEXITCODE -ne 0) { Write-Warning "[$Name] 回滚启动失败: $image（tag $RollbackTag 仍可手工恢复）"; return }
 
   for ($i = 0; $i -lt 30; $i++) {
