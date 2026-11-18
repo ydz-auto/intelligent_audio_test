@@ -53,6 +53,7 @@ import { VOICE_LLM_ALGORITHM_TYPE } from '@/features/test-execution/constants'
 import type { ResourceSelectOption } from '@/features/test-execution/constants'
 import { ParamCard } from '@/features/test-execution/components/param-card'
 import { SelectionSummary } from '@/features/test-execution/components/selection-summary'
+import { matchesSystemFilter } from '@/features/test-execution/lib/system-filter'
 import { ExecutionDiagram } from '@/features/test-execution/components/execution-diagram'
 import {
   NETWORK_OPTIONS,
@@ -133,8 +134,9 @@ export function StepResources({
     return resources.devices.filter((d) => {
       if (statusFilter !== 'all' && (d.status ?? 'offline') !== statusFilter) return false
       if (selectedLabId !== null && d.labId !== selectedLabId) return false
+      // INT-2650：筛选与展示同口径——system 原始值经归一器比较（harmony/HarmonyOS 都命中「鸿蒙」）
       if (systemFilter === 'android' || systemFilter === 'harmony') {
-        if ((d.system ?? '').toLowerCase() !== systemFilter) return false
+        if (!matchesSystemFilter(d.system, systemFilter)) return false
       } else if (systemFilter === 'api') {
         if (d.type !== 'http_api' && d.type !== 'websocket_api') return false
       }
