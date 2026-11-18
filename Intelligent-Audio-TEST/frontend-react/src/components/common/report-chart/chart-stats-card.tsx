@@ -18,7 +18,7 @@ const STAT_ROWS: { key: keyof DistributionStats; label: string; format: (v: numb
   { key: 'stdDev', label: '标准差 (σ)', format: (v) => v.toFixed(4) },
   { key: 'min', label: '最小值', format: (v) => v.toFixed(4) },
   { key: 'q1', label: '下四分位数 (Q1)', format: (v) => v.toFixed(4) },
-  { key: 'q2', label: '中位数 (Q2)', format: (v) => v.toFixed(4) },
+  { key: 'q2', label: '中位数 (Q2 / P50)', format: (v) => v.toFixed(4) },
   { key: 'q3', label: '上四分位数 (Q3)', format: (v) => v.toFixed(4) },
   { key: 'p90', label: 'P90', format: (v) => v.toFixed(4) },
   { key: 'p95', label: 'P95', format: (v) => v.toFixed(4) },
