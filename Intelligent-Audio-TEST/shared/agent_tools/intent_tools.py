@@ -338,6 +338,16 @@ REPORT_QUERY_PARAMS: Dict[str, Tuple[str, ...]] = {
                       'include_untagged'),
 }
 
+# 动作不支持某参数时的纠偏提示：模型常把 detail 的参数错挂到 list 上，
+# 只报「不支持」会让它换个动作名重试同一参数。仅在报错文案里追加，
+# 不改变拒绝行为（网关仍会静默忽略未知参数）。
+REPORT_QUERY_PARAM_HINTS: Dict[str, Dict[str, str]] = {
+    'list': {
+        'report_id': '查单份报告请用 action=detail，查报告内用例请用 '
+                     'action=cases，按任务过滤列表请用 task_id',
+    },
+}
+
 # 分页边界：网关对 page=0 与超大 per_page **不报错**（实测 page=0 返回首页、
 # per_page=1000 一次返回全量），放过去会让模型用一次调用拉全表。
 # 常量集中在 ``shared.agent_tools.pagination``（INT-2552 起全部查询类意图工具
@@ -688,7 +698,8 @@ INTENT_TOOLS: List[IntentTool] = [
                             enum=list(REPORT_QUERY_ACTIONS)),
             'report_id': _prop('integer', '报告 ID（detail / progress / cases / '
                                           'cases_search 必填；case_averages 需与 '
-                                          'task_id 二选一）'),
+                                          'task_id 二选一）；list 不接受，查单份'
+                                          '报告请用 detail'),
             'task_id': _prop('integer', '任务 ID（by_task 必填；case_averages 需与 '
                                         'report_id 二选一；list 可按任务过滤）'),
             'keyword': _prop('string', '关键词过滤（list / tab_counts / cases / '
@@ -2118,7 +2129,11 @@ def _normalize_report_query_arguments(action: str,
     unknown = sorted(name for name in merged
                      if name not in allowed and merged[name] is not None)
     if unknown:
-        return f'action={action} 不支持参数：{"、".join(unknown)}'
+        hints = [REPORT_QUERY_PARAM_HINTS.get(action, {}).get(name)
+                 for name in unknown]
+        hint = '；'.join(item for item in hints if item)
+        suffix = f'（{hint}）' if hint else ''
+        return f'action={action} 不支持参数：{"、".join(unknown)}{suffix}'
 
     if action == 'case_averages':
         if merged.get('report_id') is None and merged.get('task_id') is None:

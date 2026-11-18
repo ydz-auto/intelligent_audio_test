@@ -235,6 +235,16 @@ def test_unsupported_param_rejected_before_rest():
     assert rest.calls == []
 
 
+def test_list_report_id_error_points_to_detail_action():
+    """list 不接受 report_id：报错要指向正确动作，模型才能自纠。"""
+    rest = FakeReportRest()
+    result = make_gateway(rest).execute(
+        call({'action': 'list', 'report_id': 426}), ctx())
+    assert result.error_code == INVALID_ARGUMENTS
+    assert 'report_id' in result.content and 'detail' in result.content
+    assert rest.calls == []
+
+
 def test_tags_rejected_on_get_cases():
     """GET cases 的 tags 在网关恒 400（查询串是字符串，pydantic 要 List[str]）。"""
     rest = FakeReportRest()
