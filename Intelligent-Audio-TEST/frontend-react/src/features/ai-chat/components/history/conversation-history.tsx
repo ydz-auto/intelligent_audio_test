@@ -14,6 +14,8 @@ type ConversationHistoryProps = {
   disabled?: boolean
   onSelect: (sessionId: string) => void
   onNew: () => void
+  /** 浮窗侧边会话：占满窗口宽度（整页左栏保持固定 60） */
+  className?: string
 }
 
 function formatUpdatedAt(value: string | undefined): string {
@@ -35,12 +37,18 @@ export function ConversationHistory({
   disabled = false,
   onSelect,
   onNew,
+  className,
 }: ConversationHistoryProps) {
   const { data, isLoading } = useAgentSessions()
   const sessions = data ?? []
 
   return (
-    <aside className='border-border/60 bg-muted/20 flex w-60 min-w-0 shrink-0 flex-col border-r'>
+    <aside
+      className={cn(
+        'border-border/60 bg-muted/20 flex w-60 min-w-0 shrink-0 flex-col border-r',
+        className
+      )}
+    >
       <div className='flex shrink-0 items-center justify-between gap-2 px-3 py-3'>
         <span className='text-sm font-medium'>对话记录</span>
         <Button

@@ -16,9 +16,7 @@ import {
 } from '@/components/ai-elements/prompt-input'
 
 import { getInputControlState, getSubmittableInputText } from '@/features/ai-chat/lib/input'
-import { AgentModelSelect } from '@/features/agent-providers/components/agent-model-select'
 import { AgentProviderModelPicker } from '@/features/agent-providers/components/agent-provider-model-picker'
-import { AgentProviderStatusChip } from '@/features/agent-providers/components/agent-provider-status-chip'
 import {
   CHAT_CHANNEL,
   type ChatChannel,
@@ -57,6 +55,11 @@ type AiChatInputProps = {
   providerId?: string
   onProviderChange?: (providerId: string) => void
   onClearMessages?: () => void
+  /** 对话记录面板（浮窗侧边会话：同一窗口内切换历史会话） */
+  historyOpen?: boolean
+  onToggleHistory?: () => void
+  /** 新建会话（结束当前会话上下文，下一次发送新建） */
+  onNewConversation?: () => void
   /** 受控文本（页面持有：starter 回填 / 任务 URL 预填 / 提交后清空） */
   value: string
   onValueChange: (text: string) => void
@@ -86,6 +89,9 @@ export function AiChatInput({
   channel = CHAT_CHANNEL.PLATFORM,
   onClearMessages,
   onManageProviders,
+  historyOpen = false,
+  onToggleHistory,
+  onNewConversation,
   model,
   onModelChange,
   providerId,
@@ -161,29 +167,16 @@ export function AiChatInput({
 
   return (
     <div className={compact ? 'grid shrink-0 gap-2 px-1 md:pb-2' : 'grid shrink-0 gap-4 px-1 md:pb-4'}>
-      {/* 平台 Agent 通道：服务端供应商状态摘要（INT-2493，与供应商管理页同一 query key） */}
-      {channel === CHAT_CHANNEL.PLATFORM && (
+      {/* 平台 Agent 通道：服务端供应商 + 模型选择（与供应商管理页同一 query key） */}
+      {channel === CHAT_CHANNEL.PLATFORM && onProviderChange && onModelChange && (
         <div className='flex min-w-0 items-center gap-2 px-2'>
-          {onProviderChange && onModelChange ? (
-            <AgentProviderModelPicker
-              compact={compact}
-              model={model}
-              onModelChange={onModelChange}
-              onProviderChange={onProviderChange}
-              providerId={providerId}
-            />
-          ) : (
-            <>
-              <AgentProviderStatusChip compact={compact} showModel={!onModelChange} />
-              {onModelChange && (
-                <AgentModelSelect
-                  compact={compact}
-                  model={model}
-                  onModelChange={onModelChange}
-                />
-              )}
-            </>
-          )}
+          <AgentProviderModelPicker
+            compact={compact}
+            model={model}
+            onModelChange={onModelChange}
+            onProviderChange={onProviderChange}
+            providerId={providerId}
+          />
         </div>
       )}
       <PromptInput
@@ -227,9 +220,12 @@ export function AiChatInput({
               <AiChatInputTools
                 disabled={disabled}
                 hasMessages={hasMessages}
+                historyOpen={historyOpen}
                 onClearMessages={onClearMessages}
                 onManageProviders={onManageProviders}
+                onNewConversation={onNewConversation}
                 onRunModeChange={onRunModeChange}
+                onToggleHistory={onToggleHistory}
                 runMode={runMode}
               />
               <div className='flex items-center gap-1.5 md:hidden'>

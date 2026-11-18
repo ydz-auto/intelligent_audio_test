@@ -2,7 +2,7 @@
  * 输入区工具行（interfaces 层 ai-chat/input）：模型供应商入口 + 目标模式开关 + 清空对话。
  * 默认普通对话；「目标模式」开启后按目标多轮推进（含预算 / 暂停继续）。
  */
-import { KeyRound, Trash2 } from 'lucide-react'
+import { KeyRound, PanelLeft, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -28,6 +28,11 @@ type AiChatInputToolsProps = {
   onRunModeChange?: (mode: AgentRunMode) => void
   /** 打开模型供应商管理（新增 / 编辑 / 自动发现模型） */
   onManageProviders?: () => void
+  /** 对话记录面板是否展开（浮窗侧边会话：在同一窗口内切换历史会话） */
+  historyOpen?: boolean
+  onToggleHistory?: () => void
+  /** 新建会话（结束当前会话上下文，下一次发送新建） */
+  onNewConversation?: () => void
 }
 
 export function AiChatInputTools({
@@ -37,6 +42,9 @@ export function AiChatInputTools({
   runMode = AGENT_RUN_MODE.CHAT,
   onRunModeChange,
   onManageProviders,
+  historyOpen = false,
+  onToggleHistory,
+  onNewConversation,
 }: AiChatInputToolsProps) {
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
 
@@ -49,6 +57,48 @@ export function AiChatInputTools({
   return (
     <>
       <PromptInputTools className='bg-background/70 border-border/60 rounded-lg border p-1 shadow-xs'>
+        {onToggleHistory && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <PromptInputButton
+                  aria-label='对话记录'
+                  aria-pressed={historyOpen}
+                  className='text-muted-foreground hover:text-foreground font-medium'
+                  onClick={onToggleHistory}
+                  variant={historyOpen ? 'secondary' : 'ghost'}
+                >
+                  <PanelLeft className='size-4' />
+                </PromptInputButton>
+              }
+            />
+            <TooltipContent>
+              <p>{historyOpen ? '收起对话记录' : '展开对话记录'}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
+        {onNewConversation && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <PromptInputButton
+                  aria-label='新建会话'
+                  className='text-muted-foreground hover:text-foreground font-medium'
+                  disabled={disabled}
+                  onClick={onNewConversation}
+                  variant='ghost'
+                >
+                  <Plus className='size-4' />
+                </PromptInputButton>
+              }
+            />
+            <TooltipContent>
+              <p>新建会话</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
         {onManageProviders && (
           <Tooltip>
             <TooltipTrigger
