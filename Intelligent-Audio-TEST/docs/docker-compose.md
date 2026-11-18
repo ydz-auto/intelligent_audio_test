@@ -1,6 +1,7 @@
 # Docker Compose 部署（INT-272）
 
-全栈（3 infra + 12 后端微服务 + 前端）纳入 Docker Compose 编排。服务生命周期归
+全栈（3 infra + 容器化后端 + 前端）纳入 Docker Compose 编排；e2e/audio/device
+由宿主机进程提供（`python stack.py up`）。服务生命周期归
 Docker daemon，与一切 agent run 树彻底解耦——run 退出收割不带走任何服务，
 run_all 启动清场也不会击穿栈（清场模式已废除）。
 
@@ -42,7 +43,7 @@ python docker/run_stack.py down -v --yes
 |---|---|---|
 | api_gateway | 5000 | 5000 |
 | task_service | 5001 / 51061 | 同左 |
-| e2e_test_service | 5002 / 50051 | 同左 |
+| e2e_test_service | 5002 / 50051（**宿主默认**） | 5002 / 50051（仅 `--profile container-e2e`） |
 | api_test_service | **不发布**（UC-1001，容器网络内互访，多副本 DNS 轮询） | 5003 / 51071 |
 | evaluation_service | 5004 / 51091 | 同左 |
 | report_service | 5006 / 51068 | 同左 |
@@ -149,16 +150,16 @@ python docker/run_stack.py down -v --yes
   渲染链可用，物理放音不可用，CI 由 `tests/fixtures/pyaudio_shim` 兜底）。
   与 device_service 同理，物理放音验收时该服务保留宿主形态例外；容器化
   需 Linux 宿主 + ALSA/PulseAudio 直通才成立。
-- **混合部署形态（2026-10-23 全仓排查）**：物理世界依赖只有两个——
-  device_service（adb/hdc/USB/串口/hypium）与 audio_service（声卡/
-  WASAPI）必须宿主；其余业务服务（api_gateway/task/evaluation/report/
-  algorithm/auth/api_test/frontend）与基础设施（postgres/redis/rustfs）
-  全容器化已闭环。e2e_test_service 零硬件调用（设备操作 gRPC 委托
-  device_service），纯容器可跑，真机 E2E 时经 `DEVICE_SERVICE_HOST`/
-  `AUDIO_SERVICE_HOST` 指向宿主实例（host.docker.internal）；compose 里
-  给 e2e 挂 `/dev/bus/usb` 属冗余防御。transfer_agent 未纳入 compose
-  编排（B 区实例需跨区网络部署），属编排缺口而非技术不可行。mock
-  四件套（mock_dut/mock_realtime/mock_eval/mock_third_party_eval）本就是
-  真硬件替身，iso 栈已示范容器化。
-- 宿主 audio_service / device_service 由 `python stack.py up` 拉起；生产/验收形态
-  一律 compose。
+- **混合部署形态（2026-11-18 更新）**：物理世界依赖的 e2e/device/audio 默认全部
+  跑宿主机——e2e 需与本机 USB/ADB/声卡同宿主排障，device_service（adb/hdc/USB/
+  串口/hypium）与 audio_service（声卡/WASAPI）必须宿主。其余业务服务
+  （api_gateway/task/evaluation/report/algorithm/auth/api_test/agent/frontend）
+  与基础设施（postgres/redis/rustfs）全容器化。容器内 api_gateway/task_service
+  经 `host.docker.internal:50051` 调宿主 e2e；compose 的 e2e 服务已改为
+  `profiles: ["container-e2e"]`，仅供隔离测试栈显式启用（`run_stack_iso.py`
+  会自动带该 profile 并覆盖 `E2E_TEST_SERVICE_HOST=e2e_test_service`）。
+  transfer_agent 未纳入 compose 编排（B 区实例需跨区网络部署），属编排缺口
+  而非技术不可行。mock 四件套（mock_dut/mock_realtime/mock_eval/
+  mock_third_party_eval）本就是真硬件替身，iso 栈已示范容器化。
+- 宿主 e2e/audio/device 由 `python stack.py up` 拉起（`status`/`health`/`down`
+  同口径）；生产/验收形态一律 compose。

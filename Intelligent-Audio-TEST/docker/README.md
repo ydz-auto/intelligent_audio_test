@@ -209,6 +209,10 @@ docker ps --format "table {{.Names}}\t{{.Status}}"
 
 ## 6. 为什么不给 e2e 挂 `/dev/bus/usb`
 
+> 2026-11-18 起 e2e_test_service 默认由宿主机进程提供（`python stack.py up`，
+> `:5002/:50051`）；容器形态仅在隔离测试栈用 `--profile container-e2e` 启用。
+> 本节保留容器形态的 USB 结论。
+
 e2e_test_service 曾映射 `devices: /dev/bus/usb:/dev/bus/usb`。WSL VM 重启后该路径在 VM 内
 不存在，容器直接起不来（`error gathering device information while adding custom device`），
 建空目录也不行（`not a device node`），历史上只能手敲 `mknod c 189 0` 造假节点兜底，

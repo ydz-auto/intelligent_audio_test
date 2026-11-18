@@ -166,6 +166,10 @@ def _stack_env(project: str, offset: int, auth_mode: str, db: str) -> dict:
     env = dict(os.environ)
     env['PYTHONUTF8'] = '1'
     env['AUTH_MODE'] = auth_mode
+    # 隔离栈启用容器 e2e（--profile container-e2e）：api_gateway/task_service
+    # 必须指向同栈容器，不能落回 compose 默认的 host.docker.internal（宿主 e2e）
+    env['E2E_TEST_SERVICE_HOST'] = 'e2e_test_service'
+    env['E2E_TEST_SERVICE_GRPC_PORT'] = '50051'
     env['ISO_STACK_NAME'] = project
     env['POSTGRES_DB'] = db
     env['POSTGRES_USER'] = POSTGRES_USER
@@ -282,7 +286,7 @@ def cmd_up(args):
           f'postgres=:{5432 + offset} db={ISOLATED_TEST_DB_NAME} auth={args.auth_mode}',
           flush=True)
     build_args = [] if args.no_build else ['--build']
-    rc = _compose(project, ['up', '-d'] + build_args, env)
+    rc = _compose(project, ['up', '-d', '--profile', 'container-e2e'] + build_args, env)
     if rc != 0:
         sys.exit('[ISO-STACK] compose up 失败（见上；端口冲突不清理、交执行者处置）')
     _save_plan(project, offset, args.auth_mode, ISOLATED_TEST_DB_NAME,

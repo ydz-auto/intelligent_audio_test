@@ -176,8 +176,10 @@ services:
       - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=51061
-      - E2E_TEST_SERVICE_HOST=e2e_test_service
-      - E2E_TEST_SERVICE_GRPC_PORT=50051
+      # e2e 默认跑宿主机 :50051（stack.py 拉起）；隔离栈用容器形态时经
+      # E2E_TEST_SERVICE_HOST/GRPC_PORT 覆盖为 e2e_test_service:50051
+      - E2E_TEST_SERVICE_HOST=${E2E_TEST_SERVICE_HOST:-host.docker.internal}
+      - E2E_TEST_SERVICE_GRPC_PORT=${E2E_TEST_SERVICE_GRPC_PORT:-50051}
       - API_TEST_SERVICE_HOST=api_test_service
       - API_TEST_SERVICE_GRPC_PORT=51071
       - EVALUATION_SERVICE_HOST=evaluation_service
@@ -272,8 +274,8 @@ services:
       # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
       - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - GRPC_PORT=51061
-      - E2E_TEST_SERVICE_HOST=e2e_test_service
-      - E2E_TEST_SERVICE_GRPC_PORT=50051
+      - E2E_TEST_SERVICE_HOST=${E2E_TEST_SERVICE_HOST:-host.docker.internal}
+      - E2E_TEST_SERVICE_GRPC_PORT=${E2E_TEST_SERVICE_GRPC_PORT:-50051}
       - API_TEST_SERVICE_HOST=api_test_service
       - API_TEST_SERVICE_PORT=5003
       - API_TEST_SERVICE_GRPC_PORT=51071
@@ -369,6 +371,10 @@ services:
       start_period: 20s
 
   e2e_test_service:
+    # 默认由宿主机进程提供（stack.py → scripts/host_services，:5002/:50051）：
+    # e2e 执行要触达本机 USB/ADB/声卡，且与 device_service 同宿主便于排障。
+    # 容器形态仅供隔离测试栈显式启用：docker compose --profile container-e2e up -d
+    profiles: ["container-e2e"]
     restart: unless-stopped
     build:
       context: ..

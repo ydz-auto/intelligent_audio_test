@@ -18,6 +18,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 
 LOG_NAMES = {
+    ('e2e', 'real'): 'e2e_test_service.log',
     ('audio', 'real'): 'audio_service.log',
     ('audio', 'shim'): 'audio_service_shim.log',
     ('device', 'real'): 'device_service.log',
@@ -37,13 +38,42 @@ def _load_env(path: str) -> None:
 def _redirect_log(name: str) -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     handle = open(LOG_DIR / name, 'a', encoding='utf-8', errors='replace')
+    # pythonw 启动时 sys.stdout/sys.stderr 为 None：dup2 只改 OS fd，
+    # 还要把 Python 侧流对象指到同一文件，否则 logging/uvicorn 日志会丢
+    sys.stdout = handle
+    sys.stderr = handle
     os.dup2(handle.fileno(), 1)
     os.dup2(handle.fileno(), 2)
 
 
+def _patch_subprocess_no_window() -> None:
+    """Windows：宿主服务子进程统一禁开控制台窗口。
+
+    pythonw 没有可继承的控制台，device_service 拉起 adb/hdc 等控制台程序时
+    会各自弹一个黑色窗口；这里在服务模块 import 前替换 subprocess.Popen，
+    默认叠加 CREATE_NO_WINDOW（adb track-devices、hdc、ffmpeg 都覆盖）。
+    """
+    if sys.platform != 'win32':
+        return
+    import subprocess
+
+    if getattr(subprocess, '_iat_no_window_patched', False):
+        return
+    create_no_window = 0x08000000
+    original_popen = subprocess.Popen
+
+    class _NoWindowPopen(original_popen):
+        def __init__(self, *args, **kwargs):
+            kwargs['creationflags'] = kwargs.get('creationflags', 0) | create_no_window
+            super().__init__(*args, **kwargs)
+
+    subprocess.Popen = _NoWindowPopen
+    subprocess._iat_no_window_patched = True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description='宿主服务进程入口（WMI 拉起）')
-    parser.add_argument('--service', choices=('audio', 'device'), required=True)
+    parser.add_argument('--service', choices=('e2e', 'audio', 'device'), required=True)
     parser.add_argument('--mode', choices=('real', 'shim'), default='real')
     parser.add_argument('--env-file', required=True)
     args = parser.parse_args()
@@ -54,6 +84,12 @@ def main() -> None:
         sys.path.insert(0, str(REPO))
 
     _redirect_log(LOG_NAMES[(args.service, args.mode)])
+    _patch_subprocess_no_window()
+
+    if args.service == 'e2e':
+        # e2e_test_service.app 的 __main__ 分支自起 uvicorn + gRPC（PORT/GRPC_PORT 由 env 注入）
+        runpy.run_module('e2e_test_service.app', run_name='__main__', alter_sys=True)
+        return
 
     if args.service == 'device':
         runpy.run_module('device_service.interfaces.grpc.server',

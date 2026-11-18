@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """INT-272：全栈 Docker Compose 薄封装 —— docker-only 启停/探测。
 
-全栈唯一入口是仓库根 ``stack.py``（compose + 宿主机 audio/device 服务）；
+全栈唯一入口是仓库根 ``stack.py``（compose + 宿主机 e2e/audio/device 服务）；
 本脚本只负责 compose 侧操作，被 ``stack.py`` 委托调用。
 
 根治口径（成员裁定）：服务生命周期归 Docker daemon，与一切 run 树解耦。
@@ -9,11 +9,11 @@ agent 运行时只做 `docker compose up/down` 与健康探测；禁止宿主机
 禁止启动期整树清场（遇宿主端口被占用，compose 报错退出，交执行者处置）。
 
 用法（仓库根目录）：
-    python docker/run_stack.py up        # 拉起全栈（infra + 引导 + 11 后端 + 前端）
+    python docker/run_stack.py up        # 拉起全栈（infra + 引导 + 10 后端 + 前端；e2e 由宿主进程提供）
     python docker/run_stack.py down      # 停止全栈（保留数据卷）
     python docker/run_stack.py down -v   # 停止全栈并删除数据卷（危险：清库）
     python docker/run_stack.py ps        # 容器状态
-    python docker/run_stack.py health    # 13 端点健康探测（scripts/health_smoke.py 口径）
+    python docker/run_stack.py health    # 全端点健康探测（scripts/health_smoke.py 口径）
     python docker/run_stack.py logs [服务名] [-f]   # 跟踪日志
 
 环境变量（读仓库根 .env，缺省值与宿主历史口径一致）：
@@ -52,7 +52,6 @@ def _project():
 GRPC_PROBES = [
     # (服务名, 容器内端口)。宿主映射端口经 *_GRPC_PORT 环境变量覆盖（cmd_health 读取）；
     # api_test_service 宿主不发布端口（UC-1001），探测走 compose exec 容器内 TCP。
-    ('e2e_test_service', 50051, 'E2E_TEST_GRPC_PORT'),
     ('audio_service', 50052, 'AUDIO_SERVICE_GRPC_PORT'),
     ('device_service', 50053, 'DEVICE_SERVICE_GRPC_PORT'),
     ('task_service', 51061, 'TASK_SERVICE_GRPC_PORT'),
@@ -67,7 +66,6 @@ HTTP_PROBES = [
     # (服务名, 容器内端口, 宿主端口环境变量)；None = 宿主不发布端口，容器内探测
     ('api_gateway', 5000, 'API_GATEWAY_PORT'),
     ('task_service', 5001, 'TASK_SERVICE_HTTP_PORT'),
-    ('e2e_test_service', 5002, 'E2E_TEST_HTTP_PORT'),
     ('evaluation_service', 5004, 'EVALUATION_SERVICE_HTTP_PORT'),
     ('report_service', 5006, 'REPORT_SERVICE_HTTP_PORT'),
     ('algorithm_service', 5007, 'ALGORITHM_SERVICE_HTTP_PORT'),
@@ -76,6 +74,9 @@ HTTP_PROBES = [
     # INT-2456：agent_service 只经网关访问（不发布宿主端口，身份头不可伪造）。
     ('agent_service', 5011, None),
 ]
+# e2e_test_service 默认跑宿主机（stack.py 拉起），固定原生端口；容器形态仅隔离栈使用
+HOST_E2E_HTTP_PORT = 5002
+HOST_E2E_GRPC_PORT = 50051
 FRONTEND_PORT = int(os.environ.get('FRONTEND_PORT', '8080'))
 POSTGRES_PORT = int(os.environ.get('POSTGRES_PORT', '5432'))
 REDIS_PORT = int(os.environ.get('REDIS_PORT', '6379'))
@@ -199,6 +200,8 @@ def cmd_health(args):
             continue
         host_p = host_port(host_env, container_port)
         checks.append((f"{name} :{host_p}", lambda p=host_p: _http_health(p)))
+    checks.append((f"e2e_test_service :{HOST_E2E_HTTP_PORT}(宿主)",
+                   lambda: _http_health(HOST_E2E_HTTP_PORT)))
     checks.append((f"frontend :{host_port('FRONTEND_PORT', FRONTEND_PORT)}",
                    lambda: _http_ok(host_port('FRONTEND_PORT', FRONTEND_PORT), '/')))
     for name, container_port, host_env in GRPC_PROBES:
@@ -210,6 +213,8 @@ def cmd_health(args):
             host_p = host_port(host_env, container_port)
             checks.append((f"{name} gRPC :{host_p}",
                            lambda p=host_p: _tcp_open('127.0.0.1', p)))
+    checks.append((f"e2e_test_service gRPC :{HOST_E2E_GRPC_PORT}(宿主)",
+                   lambda: _tcp_open('127.0.0.1', HOST_E2E_GRPC_PORT)))
     checks.append((f"postgres :{host_port('POSTGRES_PORT', POSTGRES_PORT)}",
                    lambda: _tcp_open('127.0.0.1', host_port('POSTGRES_PORT', POSTGRES_PORT))))
     checks.append((f"redis :{host_port('REDIS_PORT', REDIS_PORT)}",
