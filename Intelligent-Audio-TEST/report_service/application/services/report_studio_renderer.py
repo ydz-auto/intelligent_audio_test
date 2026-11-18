@@ -42,15 +42,7 @@ PDF_FALLBACK_FONT = 'Helvetica'
 PDF_PAGE_MARGIN_MM = 18
 PDF_TABLE_MAX_ROWS = 400
 
-# PPTX 版式口径（16:9）
-PPTX_SLIDE_WIDTH_EMU = 12192000   # 13.333 in
-PPTX_SLIDE_HEIGHT_EMU = 6858000   # 7.5 in
-PPTX_FONT_NAME = 'Microsoft YaHei'
-PPTX_MAX_TABLE_ROWS = 12
-PPTX_BODY_TOP_EMU = 1500000
-PPTX_BODY_LEFT_EMU = 600000
-PPTX_BODY_WIDTH_EMU = 10992000
-PPTX_BODY_HEIGHT_EMU = 4600000
+# PPTX 版式实现独立在 report_studio_pptx（汇报版式，便于单测与迭代）
 
 
 class ExportRenderError(ValueError):
@@ -366,119 +358,20 @@ def render_pdf(markdown: str, theme: str, title: str) -> bytes:
 # ---------------------------------------------------------------- PPTX
 
 
-def _pptx_sections(blocks: List[dict]) -> List[Tuple[str, List[dict]]]:
-    """按 H1 / H2 切分成幻灯片段落；没有标题时只有一节（标题=文档标题）。"""
-    sections: List[Tuple[str, List[dict]]] = []
-    current_title: str = ''
-    current: List[dict] = []
-    for block in blocks:
-        if block['kind'] == 'heading' and int(block['level']) <= 2:
-            if current_title or current:
-                sections.append((current_title, current))
-            current_title = block['text']
-            current = []
-            continue
-        current.append(block)
-    if current_title or current:
-        sections.append((current_title, current))
-    return sections
-
-
 def render_pptx(markdown: str, theme: str, title: str) -> bytes:
-    """受控 Markdown → PPTX（python-pptx；标题页 + 按 H1/H2 分节）。
-
-    不嵌入外部图片 / 脚本；表格超过 ``PPTX_MAX_TABLE_ROWS`` 行时截断并注明。
-    """
+    """受控 Markdown → PPTX（汇报版式；实现见 report_studio_pptx）。"""
     try:
-        from pptx import Presentation
-        from pptx.util import Emu, Pt
+        from report_service.application.services.report_studio_pptx import (
+            render_pptx as _render_pptx,
+        )
     except ImportError as exc:  # pragma: no cover - 容器缺依赖
         raise ExportRenderError(
             'PPTX 渲染依赖缺失（python-pptx 未安装）；'
             f'请确认 requirements.txt 已安装后重试：{exc}') from exc
-
-    blocks = parse_markdown(markdown)
-    presentation = Presentation()
-    presentation.slide_width = Emu(PPTX_SLIDE_WIDTH_EMU)
-    presentation.slide_height = Emu(PPTX_SLIDE_HEIGHT_EMU)
-    title_layout = presentation.slide_layouts[0]
-    content_layout = presentation.slide_layouts[5]  # 仅标题
-
-    cover = presentation.slides.add_slide(title_layout)
-    cover.shapes.title.text = title or '报告'
-    subtitle = cover.placeholders[1]
-    subtitle.text = f'主题：{theme or DEFAULT_EXPORT_THEME}'
-
-    def _add_text_frame(slide, blocks_for_slide: List[dict]) -> None:
-        box = slide.shapes.add_textbox(
-            Emu(PPTX_BODY_LEFT_EMU), Emu(PPTX_BODY_TOP_EMU),
-            Emu(PPTX_BODY_WIDTH_EMU), Emu(PPTX_BODY_HEIGHT_EMU))
-        frame = box.text_frame
-        frame.word_wrap = True
-        first = True
-        for block in blocks_for_slide:
-            kind = block['kind']
-            if kind in ('heading', 'paragraph', 'bullet'):
-                paragraph = frame.paragraphs[0] if first else frame.add_paragraph()
-                first = False
-                paragraph.text = _plain(block['text'])
-                paragraph.font.size = Pt(14)
-                paragraph.font.name = PPTX_FONT_NAME
-                if kind == 'heading':
-                    paragraph.font.bold = True
-                    paragraph.font.size = Pt(16)
-                elif kind == 'bullet':
-                    paragraph.level = 1
-            elif kind == 'code':
-                paragraph = frame.paragraphs[0] if first else frame.add_paragraph()
-                first = False
-                paragraph.text = block['text']
-                paragraph.font.size = Pt(10)
-                paragraph.font.name = 'Consolas'
-            elif kind == 'table':
-                rows = [block['headers']] + block['rows']
-                truncated = len(rows) - 1 > PPTX_MAX_TABLE_ROWS
-                rows = rows[:PPTX_MAX_TABLE_ROWS + 1]
-                row_count = max(len(rows), 1)
-                col_count = max(len(rows[0]), 1)
-                height = Emu(300000 * row_count)
-                table_shape = slide.shapes.add_table(
-                    row_count, col_count, Emu(PPTX_BODY_LEFT_EMU),
-                    Emu(PPTX_BODY_TOP_EMU + 300000),
-                    Emu(PPTX_BODY_WIDTH_EMU), height)
-                table = table_shape.table
-                for r, row in enumerate(rows):
-                    for c in range(col_count):
-                        value = row[c] if c < len(row) else ''
-                        cell = table.cell(r, c)
-                        cell.text = _plain(value)
-                        for paragraph in cell.text_frame.paragraphs:
-                            paragraph.font.size = Pt(10)
-                            paragraph.font.name = PPTX_FONT_NAME
-                if truncated:
-                    paragraph = frame.add_paragraph()
-                    paragraph.text = (
-                        f'（表格超过 {PPTX_MAX_TABLE_ROWS} 行已截断，完整数据见 HTML/PDF 产物）')
-                    paragraph.font.size = Pt(10)
-
-    sections = _pptx_sections(blocks)
-    if not sections:
-        sections = [('', [])]
-    for section_title, section_blocks in sections:
-        slide = presentation.slides.add_slide(content_layout)
-        if section_title:
-            slide.shapes.title.text = section_title
-            slide.shapes.title.text_frame.paragraphs[0].font.name = PPTX_FONT_NAME
-        else:
-            slide.shapes.title.text = title or '报告'
-        _add_text_frame(slide, section_blocks)
-
-    output = io.BytesIO()
     try:
-        presentation.save(output)
-    except Exception as exc:  # pragma: no cover - 保存异常按作业失败
-        raise ExportRenderError(f'PPTX 生成失败：{exc}') from exc
-    return output.getvalue()
+        return _render_pptx(parse_markdown(markdown), theme, title)
+    except RuntimeError as exc:
+        raise ExportRenderError(str(exc)) from exc
 
 
 # ---------------------------------------------------------------- 入口

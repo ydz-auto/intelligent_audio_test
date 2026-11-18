@@ -49,6 +49,9 @@ logger = logging.getLogger(__name__)
 # 拿不到。10 分钟远大于正常渲染时长（毫秒~秒级），不会误伤进行中的作业。
 EXPORT_JOB_STALE_SECONDS = 600
 EXPORT_STALE_ERROR = '渲染超时：作业长时间未推进，已判失效'
+# 已完成作业的复用窗口：只做「防重复点击」的短时幂等；超过窗口再导出会重新渲染，
+# 避免渲染器升级后用户永远拿到旧产物（同版本 + 同格式 + 同主题）。
+EXPORT_DONE_REUSE_SECONDS = 600
 
 # Studio 时间列的落库口径（INT-2283）：PO 默认值 ``utc8now`` 写进
 # ``timestamp without time zone`` 后是东八区墙钟，读回来是无偏移的 naive 值。
@@ -823,20 +826,24 @@ class ReportStudioService:
                            exc_info=True)
         return True
 
-    @staticmethod
-    def _reusable_export(job) -> bool:
+    def _reusable_export(self, job) -> bool:
         """导出作业可否复用（INT-2471 幂等口径）。
 
         - 进行中（pending / running）：复用，避免同一产物并发重复渲染
           （陈旧行由 ``_expire_stale_export`` 先判失效，不在此处放行）；
-        - 已完成（done）：产物文件仍在才复用；文件被清理时按重试处理；
+        - 已完成（done）：产物文件仍在且未超过 ``EXPORT_DONE_REUSE_SECONDS``
+          才复用——短窗口防重复点击，长期保留会让渲染器升级后的旧产物永远
+          无法被重新生成（同参数导出永远命中旧文件）；
         - 失败（failed）：不复用，允许重新渲染。
         """
         if job.status in (StudioExportStatus.PENDING.value,
                           StudioExportStatus.RUNNING.value):
             return True
         if job.status == StudioExportStatus.DONE.value:
-            return bool(job.file_path) and os.path.exists(job.file_path)
+            if not job.file_path or not os.path.exists(job.file_path):
+                return False
+            age = self._export_age_seconds(job)
+            return age is not None and age <= EXPORT_DONE_REUSE_SECONDS
         return False
 
     @staticmethod

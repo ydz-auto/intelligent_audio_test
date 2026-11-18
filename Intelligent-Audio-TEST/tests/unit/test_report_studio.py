@@ -361,6 +361,28 @@ class TestExportJob:
         dl = svc.download_export({'export_id': r2['data']['export_id']})
         assert dl['success'] is True
 
+    def test_export_done_job_outside_reuse_window_rerenders(self, sqlite_db,
+                                                            monkeypatch):
+        """完成的旧作业超过复用窗口后重新渲染（渲染器升级能生效）。"""
+        import report_service.application.services.report_studio_service as svc_mod
+        session = database.get_db_session()
+        report_id = _seed_report(session)
+        session.close()
+        svc = report_studio_service
+        doc_id = svc.create_document({'report_id': report_id,
+                                      'markdown_content': '# 窗口'})['data']['doc_id']
+        r1 = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': 'md'})
+        first_id = r1['data']['export_id']
+        job = _wait_status(svc.repo, first_id, target={'done', 'failed'})
+        assert job.status == 'done', job.error
+
+        # 复用窗口置负：完成作业一律视为过期，必须新建作业重新渲染
+        monkeypatch.setattr(svc_mod, 'EXPORT_DONE_REUSE_SECONDS', -1)
+        r2 = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': 'md'})
+        assert r2['success'] is True, r2
+        assert r2['data']['export_id'] != first_id
+        assert r2['data']['reused'] is False
+
     def test_export_job_not_reused_across_operators(self, sqlite_db):
         """复审 P2-1：他人作业不复用——否则拿到一个下载被判 403 的引用。"""
         session = database.get_db_session()
