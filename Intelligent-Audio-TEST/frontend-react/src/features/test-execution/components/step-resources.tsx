@@ -174,6 +174,12 @@ export function StepResources({
     [resources.apis, resources.apiIds]
   )
 
+  /** 当前筛选可见设备里的在线数（INT-2649：标题计数与真实在线状态一致，不再把离线算作「在线可执行」） */
+  const visibleOnlineDeviceCount = useMemo(
+    () => visibleDevices.filter((d) => d.status === 'online').length,
+    [visibleDevices]
+  )
+
   /** 卡片网格「全选在线 API」控制（当前筛选可见在线集；离线不可选） */
   const visibleOnlineApis = useMemo(
     () => visibleApis.filter((a) => a.status === 'online'),
@@ -414,7 +420,7 @@ export function StepResources({
             <h3 className='text-sm font-semibold'>
               设备
               <span className='text-muted-foreground ms-2 text-xs font-normal'>
-                {visibleDevices.length} 台在线可执行设备
+                {visibleDevices.length} 台设备 · 在线 {visibleOnlineDeviceCount}
               </span>
             </h3>
             <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
