@@ -340,6 +340,29 @@ class TestMixinDownloadCaseLogs:
         assert save_records and save_records[0][0] == 'temp'
         assert save_records[0][1].startswith(f'report_logs/1/{CASE_ID}/')
 
+    def test_download_gateway_mode_returns_object_path(self, monkeypatch):
+        """FILE_DOWNLOAD_VIA_GATEWAY：不预签名，只回对象路径供网关流式转发。"""
+        from shared.infrastructure.config import BaseConfig
+        save_records = []
+        m = _make_mixin(monkeypatch)
+        _install_storage(monkeypatch, case_metas=[
+            {'key': f'{TASK_ID}/{CASE_ID}/out.wav', 'sizeBytes': 4,
+             'lastModified': None},
+        ], get_url='http://oss.example/presigned/case_logs.zip',
+           save_records=save_records)
+        _install_business_logs(monkeypatch, contents=[
+            ('device_7/shared/run.log', b'BIZ'),
+        ])
+        monkeypatch.setattr(BaseConfig, 'FILE_DOWNLOAD_VIA_GATEWAY', True)
+
+        result = m.handle_download_case_logs(1, CASE_ID)
+
+        assert result['mode'] == 'gateway'
+        assert 'download_url' not in result
+        assert result['path'].startswith('oss://temp/report_logs/1/')
+        assert result['filename'] == f'case_{CASE_ID}_logs.zip'
+        assert result['mime_type'] == 'application/zip'
+
     def test_download_presigned_large_package_stays_small_over_grpc(self, monkeypatch):
         """>4MB 日志包（INT-1116）：OSS 模式响应只带预签名 URL，不整包 base64。"""
         big = os.urandom(4 * 1024 * 1024 + 10)  # 随机字节不可压缩 → zip >4MB

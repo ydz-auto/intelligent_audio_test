@@ -487,6 +487,15 @@ class ReportQueryService:
                                       http_code=resp.code or 400,
                                       detail=_loads(resp.data, {}) or None)
             data = _loads(resp.data, {}) or {}
+            # 网关直出模式（FILE_DOWNLOAD_VIA_GATEWAY）：report_service 只回对象路径，
+            # 网关从桶内网读取后流式转发（计服务器出流量，不经桶公网下行）
+            if data.get('path'):
+                from shared.infrastructure.storage import storage
+                return {
+                    'stream': storage.load_stream(data['path']),
+                    'mime_type': data.get('mime_type', 'application/zip'),
+                    'filename': data.get('filename', 'logs.zip'),
+                }
             # INT-1116：传输层改造 —— OSS 预签名 URL 优先（整包不过 gRPC）；
             # 本地降级（无 OSS）回退 base64 字节流
             if data.get('download_url'):

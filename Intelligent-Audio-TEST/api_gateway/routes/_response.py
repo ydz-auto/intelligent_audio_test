@@ -10,7 +10,10 @@ from decimal import Decimal
 from enum import Enum
 from urllib.parse import quote
 
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+
+# 流式下载分块大小（1MB：不把文件对象直接交给 Starlette，它会按行迭代）
+DOWNLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
 
 
 def _default_encoder(obj):
@@ -71,3 +74,26 @@ def content_disposition(filename, fallback='export'):
     ascii_name = name.replace('\\', '_').replace('"', '_') if name.isascii() \
         else f'{fallback}{ascii_ext}'
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name, safe='')}"
+
+
+def stream_download_response(stream, filename, media_type='application/octet-stream'):
+    """把存储流按固定块流式回传（结束关闭句柄）。
+
+    用于导出产物、日志 ZIP 等大文件：网关从桶内网读、按块转发给浏览器，
+    不整包驻留内存，也不下发预签名直链（FILE_DOWNLOAD_VIA_GATEWAY）。
+    """
+    def _iter():
+        try:
+            while True:
+                chunk = stream.read(DOWNLOAD_STREAM_CHUNK_BYTES)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            stream.close()
+
+    return StreamingResponse(
+        _iter(),
+        media_type=media_type,
+        headers={'Content-Disposition': content_disposition(filename)},
+    )

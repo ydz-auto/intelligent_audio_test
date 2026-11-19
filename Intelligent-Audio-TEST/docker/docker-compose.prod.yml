@@ -22,6 +22,8 @@ x-backend-env: &backend-env
   STORAGE_FALLBACK_ENABLED: "false"
   # 浏览器播放取流：true = 网关代理（服务器出流量），false = COS 预签名直连桶
   AUDIO_STREAM_VIA_GATEWAY: ${AUDIO_STREAM_VIA_GATEWAY:-false}
+  # 文件下载（导出 ZIP / 用例日志）：true = 网关流式直出，false = 预签名直连桶
+  FILE_DOWNLOAD_VIA_GATEWAY: ${FILE_DOWNLOAD_VIA_GATEWAY:-false}
   # COS 的 S3 兼容接口只接受 virtual-hosted style；配置从该文件读取
   AWS_CONFIG_FILE: /app/.aws/config
   LOCAL_STORAGE_ROOT: /app/storage/static

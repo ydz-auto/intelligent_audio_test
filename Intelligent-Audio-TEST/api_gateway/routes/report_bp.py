@@ -7,7 +7,9 @@
 from fastapi import APIRouter
 from fastapi.responses import Response
 from typing import Optional
-from api_gateway.routes._response import to_response, content_disposition
+from api_gateway.routes._response import (
+    to_response, content_disposition, stream_download_response,
+)
 from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.application.services.report.report_query_sevice import ReportQueryService
 from api_gateway.application.services.report.report_command_sevice import ReportCommandService
@@ -18,12 +20,17 @@ router = APIRouter()
 
 
 def _handle(result):
-    """统一响应处理：支持普通 JSON / 二进制下载 / error_response"""
+    """统一响应处理：支持普通 JSON / 二进制下载 / 存储流下载 / error_response"""
     if isinstance(result, dict) and result.get('binary'):
         return Response(
             content=result['content'],
             media_type=result.get('mime_type', 'application/octet-stream'),
             headers={'Content-Disposition': content_disposition(result.get('filename'))})
+    if isinstance(result, dict) and result.get('stream'):
+        return stream_download_response(
+            result['stream'],
+            result.get('filename'),
+            result.get('mime_type', 'application/octet-stream'))
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)
     return result

@@ -394,6 +394,18 @@ def test_download_url_present_only_when_storage_can_presign(manager, monkeypatch
     assert status_body['result']['download_url'] == 'https://oss.example/signed'
 
 
+def test_download_url_omitted_in_gateway_mode(manager, monkeypatch):
+    """FILE_DOWNLOAD_VIA_GATEWAY=true：不下发预签名直链，前端走鉴权下载端点。"""
+    _patch_batch(monkeypatch, ['c1'])
+    task_id = _run(manager, {'ids': ['c1']})
+    manager._storage.url = 'https://oss.example/signed'
+    monkeypatch.setattr(BaseConfig, 'FILE_DOWNLOAD_VIA_GATEWAY', True)
+
+    status_body, _ = manager.get_status(task_id, (USER_ID, False))
+    assert status_body['status'] == 'done'
+    assert 'download_url' not in status_body['result']
+
+
 # ----------------------------------------------------------------------
 # 5. 部分失败
 # ----------------------------------------------------------------------
