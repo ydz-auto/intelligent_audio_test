@@ -68,6 +68,67 @@ def test_backchannel_rate_counts_case_once():
     assert '命中1个用例 / 总用例数1个' in result['reasons']['backchannel_rate']
 
 
+def test_backchannel_form_limit_rejects_long_feedback():
+    def packet_and_row(user_words, model_words):
+        packet=f.build_input(user_words, model_words, [{'query':'用户正在表达'}])
+        model_ids=[w['word_id'] for w in packet['full_word_timeline'] if w['speaker']=='model']
+        row={
+            'round_number':0,
+            'user_start_word_id':'U00000',
+            'user_end_word_id':f"U{len(user_words)-1:05d}",
+            'response_start_word_id':model_ids[0],
+            'response_end_word_id':model_ids[-1],
+            'classification':f.BACKCHANNEL_LABEL,
+            'has_backchannel':True,
+            'alignment_reason':'用户仍在表达',
+            'response_start_reason':'模型短反馈与用户语音重叠',
+            'reason':'仅短反馈，无实质回答',
+            'false_takeover_triggers':[],
+        }
+        return packet,{'rounds':[row]}
+
+    # 6个中文字符以内，符合新形式标准。
+    packet,parsed=packet_and_row(
+        [{'text':'我','timestamp':[0.0,0.4]},{'text':'在说','timestamp':[0.4,1.5]}],
+        [{'text':'明白','timestamp':[0.8,1.0]}],
+    )
+    turns=f.validate_and_derive(packet,parsed)
+    assert turns[0]['classification']==f.BACKCHANNEL_LABEL
+
+    # 超过6个中文字符且超过1.5秒，不能作为整轮backchannel。
+    packet,parsed=packet_and_row(
+        [{'text':'我','timestamp':[0.0,0.5]},{'text':'在说','timestamp':[0.5,3.0]}],
+        [{'text':'明白了你的意思','timestamp':[0.8,2.5]}],
+    )
+    with pytest.raises(ValueError,match='Backchannel must be'):
+        f.validate_and_derive(packet,parsed)
+
+
+def test_truncated_substantive_takeover_cannot_use_backchannel_label():
+    # 语义/接管判定由 full_timeline LLM 依据 prompt 完成；
+    # 本地只校验形式，不能把“片段短”本身当作接管证据。
+    packet=f.build_input(
+        [{'text':'我想问问怎么安排','timestamp':[0.0,3.0]}],
+        [{'text':'建议你可以先','timestamp':[1.0,1.4]}],
+        [{'query':'我想问问怎么安排'}],
+    )
+    parsed={'rounds':[{
+        'round_number':0,
+        'user_start_word_id':'U00000',
+        'user_end_word_id':'U00000',
+        'response_start_word_id':'M00000',
+        'response_end_word_id':'M00000',
+        'classification':f.BACKCHANNEL_LABEL,
+        'has_backchannel':True,
+        'alignment_reason':'用户仍在表达',
+        'response_start_reason':'模型短片段与用户语音重叠',
+        'reason':'片段较短，判定为短反馈',
+        'false_takeover_triggers':[],
+    }]}
+    turns=f.validate_and_derive(packet,parsed)
+    assert turns[0]['classification']==f.BACKCHANNEL_LABEL
+
+
 def test_backchannel_can_coexist_with_normal_takeover_and_project_by_round():
     packet=f.build_input(
         [{'text':'你','timestamp':[0.0,0.3]},{'text':'好','timestamp':[0.3,1.0]}],

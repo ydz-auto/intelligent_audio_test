@@ -8,6 +8,8 @@ from pathlib import Path
 LABELS = ('接管', '误接管', '未接管', '误接管-正常接管', '误接管-未接管', '主动反馈-backchannel')
 FALSE_TAKEOVER_LABELS = ('误接管', '误接管-正常接管', '误接管-未接管')
 BACKCHANNEL_LABEL = '主动反馈-backchannel'
+BACKCHANNEL_MAX_CHARS = 6
+BACKCHANNEL_MAX_DURATION_S = 1.5
 
 
 def collect_backchannel_feedback(packet, turns):
@@ -90,6 +92,22 @@ def apply_backchannel_case_metrics(result, turns, feedback):
         f"对应轮次：{where}。"
     )
     return feedback
+
+
+def _validate_backchannel_form(words):
+    """Local form gate for the whole backchannel response span."""
+    # Chinese rule counts CJK chars; non-CJK/empty text falls back to duration.
+    text = ''.join(word.get('text') or '' for word in words).strip()
+    chinese_chars = sum('\u4e00' <= char <= '\u9fff' for char in text)
+    duration = words[-1]['end'] - words[0]['start']
+    form_ok = (
+        len(text) <= BACKCHANNEL_MAX_CHARS
+        if chinese_chars
+        else duration <= BACKCHANNEL_MAX_DURATION_S
+    )
+    if form_ok:
+        return
+    raise ValueError('Backchannel must be <=6 Chinese chars or <=1.5s')
 
 
 def build_input(user_chunks, model_chunks, rounds):
@@ -196,6 +214,8 @@ def validate_and_derive(packet, parsed):
                 raise ValueError('Reply predates this user turn')
             if label == BACKCHANNEL_LABEL and not mw[0]['start'] < uw[-1]['end']:
                 raise ValueError('Backchannel feedback must start during user speech')
+            if label == BACKCHANNEL_LABEL:
+                _validate_backchannel_form(mw)
             if label == '误接管-正常接管':
                 span('model', row.get('false_takeover_start_word_id'), row.get('false_takeover_end_word_id'))
         substantive_start_word = None
@@ -208,6 +228,8 @@ def validate_and_derive(packet, parsed):
             )
             if substantive_start_word is None:
                 raise ValueError('Substantive reply start must be inside the response span')
+            if substantive_start_word['start'] < uw[-1]['end']:
+                raise ValueError('Normal takeover substantive reply must start after user speech ends')
         quick_start_word = None
         if quick_start_id is not None:
             if label not in ('接管', '误接管-正常接管'):
