@@ -147,7 +147,7 @@ export function useAgentRun(
  * - 浮窗「最小化」「展开整页」、整页 ↔ 浮窗切换都是暂时卸载：传 `'keep'`（默认），
  *   不取消在办 run —— 单实例下另一宿主仍会展示同一轮流式输出；
  * - 浮窗「关闭」由关闭按钮先 `detachAgentRunHost('workbench', 'cancel')` 声明意图；
- * - 整页卸载 = 离开 `/ai-chat` 路由：传 `'cancel'`。
+ * - 整页卸载 = 离开 `/ai-chat` 路由：传 `'keep'`，run 继续由服务端执行，回到页面可看结果。
  *
  * 只有「最后一个宿主按取消语义离场」才真正中止在办 run（两宿主同开时卸载一侧不误伤另一侧）。
  * 离场判定带一个宽限窗口，StrictMode `mount → cleanup → mount` 与切换形态时的瞬时全卸不会误取消。

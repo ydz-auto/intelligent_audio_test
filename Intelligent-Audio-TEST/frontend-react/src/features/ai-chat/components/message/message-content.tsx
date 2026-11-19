@@ -101,7 +101,7 @@ export function AiChatMessageContent({
       runStatus === AGENT_RUN_STATUS.FAILED ||
       runStatus === AGENT_RUN_STATUS.BUDGET_EXCEEDED)
 
-  // user 消息：气泡内纯文本
+  // user 消息：气泡内纯文本 + 操作组（复制 / 编辑 / 删除；用户输入必须可改可删）
   if (isUser) {
     return (
       <div
@@ -113,6 +113,7 @@ export function AiChatMessageContent({
         <div className='whitespace-pre-wrap text-left'>
           {versionContent}
         </div>
+        {actions}
       </div>
     )
   }

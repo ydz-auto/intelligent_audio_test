@@ -15,6 +15,7 @@ import {
   createAgentRun,
   decideAgentApproval,
   getAgentSession,
+  hideAgentSessionMessage,
   listAgentApprovals,
   subscribeAgentRunEvents,
   toAgentErrorMessage,
@@ -111,15 +112,42 @@ describe('agentApi', () => {
       vi.fn().mockResolvedValue(
         jsonResponse({
           session: { id: 's-1', title: '会话' },
-          messages: [{ role: 'user', content: '你好', tool_call_id: null }],
+          messages: [
+            {
+              id: 'user:r-1',
+              role: 'user',
+              content: '你好',
+              tool_call_id: null,
+            },
+          ],
           runs: [{ id: 'r-1', session_id: 's-1', status: 'SUCCEEDED' }],
         })
       )
     )
     const detail = await getAgentSession('s-1')
     expect(detail.session.id).toBe('s-1')
-    expect(detail.messages).toEqual([{ role: 'user', content: '你好', toolCallId: undefined }])
+    expect(detail.messages).toEqual([
+      {
+        id: 'user:r-1',
+        role: 'user',
+        content: '你好',
+        toolCallId: undefined,
+      },
+    ])
     expect(detail.runs[0]).toMatchObject({ id: 'r-1', status: AGENT_RUN_STATUS.SUCCEEDED })
+  })
+
+  it('hideAgentSessionMessage：DELETE 会话消息路径（ID 按 URL 编码）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ hidden: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await hideAgentSessionMessage('s-1', 'user:r-1')
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(
+      `/api/v1${AGENT_API_PATHS.sessionMessage('s-1', 'user:r-1')}`
+    )
+    expect(init.method).toBe('DELETE')
   })
 
   it('listAgentApprovals：拆 {"items": [...]} 信封（M0 空列表）', async () => {

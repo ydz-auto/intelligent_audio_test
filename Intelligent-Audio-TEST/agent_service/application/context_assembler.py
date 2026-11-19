@@ -54,7 +54,7 @@ from agent_service.domain.ports.artifact_store import (
 )
 from agent_service.domain.repositories import (
     ArtifactRepository, ContextSnapshotRepository, EventRepository,
-    RunRepository, StepRepository, ToolCallRepository,
+    HiddenMessageRepository, RunRepository, StepRepository, ToolCallRepository,
 )
 from agent_service.domain.services.token_estimator import estimate_message_tokens
 from shared.agent_tools.intent_tools import ALWAYS_AVAILABLE_TOOLS
@@ -192,6 +192,7 @@ class ContextAssembler:
                  settings: Optional[CompactionSettings] = None,
                  steps: Optional[StepRepository] = None,
                  tool_calls: Optional[ToolCallRepository] = None,
+                 hidden_messages: Optional[HiddenMessageRepository] = None,
                  memory: Optional['MemoryService'] = None):
         self._events = events
         self._runs = runs
@@ -206,6 +207,8 @@ class ContextAssembler:
         # 上下文；未装配时只退化为事件回放（老部署 / 单测替身）。
         self._steps = steps
         self._tool_calls = tool_calls
+        # 用户删除的消息（INT-2601）：展示与模型上下文都按同一份隐藏集合过滤
+        self._hidden_messages = hidden_messages
         self._artifact_store = artifact_store or NullArtifactStore()
         self._settings = settings or CompactionSettings()
         # 长期记忆注入（INT-2490）：只注入用户偏好与项目规则摘要，细节由
@@ -285,6 +288,13 @@ class ContextAssembler:
             skill_obj=active_skill_obj,
             extra_sections=(item for item in (auto_prompt, resume_context)
                             if item))
+        # 用户删除的消息不再进入模型上下文（事件仍完整保留）
+        hidden = self._hidden_ids(run.session_id)
+        if hidden:
+            messages = [m for m in messages if m.message_id not in hidden]
+            # 删掉带 tool_calls 的 assistant 后，对应 tool 消息不能单独留下
+            # （上游会因「tool 消息找不到所属 assistant」直接 400）
+            messages = _drop_orphan_tool_messages(messages)
         # 快照回放：L3 已把旧对话压成备忘，重建上下文时直接复用它，
         # 不再每次重新摘要（否则每轮都要调一次摘要模型）。
         replay = self._latest_memo_snapshot(history_runs)
@@ -343,15 +353,33 @@ class ContextAssembler:
         return self.recent_session_messages(runs, limit)
 
     def recent_session_messages(self, runs, limit: int) -> List[dict]:
-        """跨 run 汇总最近消息（会话历史由 DB 保证完整，§8.1）。"""
-        messages: List[LlmMessage] = []
+        """跨 run 汇总最近消息（会话历史由 DB 保证完整，§8.1）。
+
+        ``id`` 是消息的稳定标识（user 消息 ``user:<run_id>``、assistant 为
+        事件 message_id），前端删除会话消息时回传该值；已删除的不再返回。
+        """
+        runs = list(runs)
+        hidden = self._hidden_ids(runs[0].session_id) if runs else set()
+        messages: List[ContextMessage] = []
         for item in runs[-self._max_runs:]:
             messages.extend(self._messages_for_run(item, 0)[0])
         return [
-            {'role': m.role, 'content': m.content,
+            {'id': m.message_id, 'role': m.role, 'content': m.content,
              'tool_call_id': m.tool_call_id}
-            for m in (item.to_llm() for item in messages[-max(1, limit):])
+            for m in messages[-max(1, limit):]
+            if m.message_id not in hidden
         ]
+
+    def _hidden_ids(self, session_id: str) -> set:
+        """本会话被用户删除的消息 ID（仓储未装配 / 读取失败按空集合）。"""
+        if self._hidden_messages is None or not session_id:
+            return set()
+        try:
+            return set(self._hidden_messages.list_ids(session_id))
+        except Exception:  # noqa: BLE001 - 过滤失败不影响主流程
+            logger.warning('读取隐藏消息失败 session=%s', session_id,
+                           exc_info=True)
+            return set()
 
     # ------------------------------------------------------------ assemble
 
@@ -1239,6 +1267,22 @@ def _dedupe_ids(ids: Iterable[str]) -> List[str]:
             seen.add(item)
             ordered.append(item)
     return ordered
+
+
+def _drop_orphan_tool_messages(
+        messages: Sequence[ContextMessage]) -> List[ContextMessage]:
+    """丢弃没有所属 assistant tool_calls 的 tool 消息（隐藏消息后的收尾）。"""
+    call_ids = {
+        call.get('id')
+        for message in messages
+        if message.role == LlmMessageRole.ASSISTANT.value
+        for call in message.tool_calls
+    }
+    return [
+        message for message in messages
+        if message.role != LlmMessageRole.TOOL.value
+        or not message.tool_call_id or message.tool_call_id in call_ids
+    ]
 
 
 def _clip_text(text: str, max_tokens: int) -> str:

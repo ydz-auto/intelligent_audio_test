@@ -114,6 +114,8 @@ export interface ChatReasoning {
 
 export interface ChatMessage {
   key: string
+  /** 服务端消息 ID（删除会话消息时回传；本地新消息 / 供应商通道为空） */
+  messageId?: string
   from: ChatMessageRole
   versions: ChatMessageVersion[]
   createdAt?: number

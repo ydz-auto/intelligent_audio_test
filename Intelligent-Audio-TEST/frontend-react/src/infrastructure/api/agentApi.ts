@@ -63,6 +63,9 @@ export const AGENT_API_PATHS = {
   session: (sessionId: string) => `/agent/sessions/${encodeURIComponent(sessionId)}`,
   sessionRuns: (sessionId: string) =>
     `/agent/sessions/${encodeURIComponent(sessionId)}/runs`,
+  /** 删除（隐藏）会话消息（messageId 取自 GET session 的 messages[].id） */
+  sessionMessage: (sessionId: string, messageId: string) =>
+    `/agent/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}`,
   run: (runId: string) => `/agent/runs/${encodeURIComponent(runId)}`,
   runEvents: (runId: string) => `/agent/runs/${encodeURIComponent(runId)}/events`,
   runCancel: (runId: string) => `/agent/runs/${encodeURIComponent(runId)}/cancel`,
@@ -248,6 +251,23 @@ export async function getAgentSession(
     options
   )
   return toAgentSessionDetail(dto)
+}
+
+/**
+ * DELETE /agent/sessions/{id}/messages/{messageId} —— 删除（隐藏）一条会话消息。
+ * 服务端只落隐藏集合（事件仍是唯一事实源），GET session 与模型上下文都会过滤。
+ */
+export async function hideAgentSessionMessage(
+  sessionId: string,
+  messageId: string,
+  options?: ApiRequestOptions
+): Promise<void> {
+  await request<{ hidden?: boolean }>(
+    'DELETE',
+    AGENT_API_PATHS.sessionMessage(sessionId, messageId),
+    undefined,
+    options
+  )
 }
 
 /**

@@ -8,7 +8,7 @@
 """
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from agent_service.domain.enums import (
     ApprovalStatus, RunStatus, SkillScope, SkillStatus,
@@ -412,3 +412,19 @@ class SkillReviewRepository(ABC):
         仓储按 ``tenant_id`` + ``skill.status`` join 过滤，再按
         ``created_at`` 降序返回；同一条 Skill 的多条历史记录由调用方去重。
         """
+
+
+class HiddenMessageRepository(ABC):
+    """会话内被删除消息的仓储（GET session 展示与模型上下文共用同一份集合）。
+
+    事件表仍是唯一事实源：删除只把 ``message_id`` 记进隐藏集合，不改 / 不删
+    事件；两条读取路径都按本集合过滤，保证「删了就不会再回来」。
+    """
+
+    @abstractmethod
+    def hide(self, session_id: str, message_id: str) -> None:
+        """幂等隐藏一条消息（重复删除不报错）。"""
+
+    @abstractmethod
+    def list_ids(self, session_id: str) -> Set[str]:
+        """本会话已隐藏的消息 ID 集合。"""

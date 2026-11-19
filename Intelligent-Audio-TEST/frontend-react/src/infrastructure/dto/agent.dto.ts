@@ -124,6 +124,8 @@ export interface AgentSessionDetailDto {
 
 /** 会话历史消息（context_assembler.recent_session_messages 原样字段） */
 export interface AgentSessionMessageDto {
+  /** 消息稳定 ID（user 消息 `user:<run_id>`、assistant 为事件 message_id） */
+  id?: string
   role?: string
   content?: string
   tool_call_id?: string
@@ -610,6 +612,7 @@ export function toAgentSessionDetail(
   return {
     session: toAgentSession(dto.session),
     messages: (dto.messages ?? []).map((message) => ({
+      id: toStringValue(message.id),
       role: toStringValue(message.role) ?? 'assistant',
       content: toStringValue(message.content) ?? '',
       toolCallId: toStringValue(message.tool_call_id),

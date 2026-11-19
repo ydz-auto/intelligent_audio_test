@@ -131,7 +131,8 @@ def test_model_registered_in_create_all_tables():
     module = _load(os.path.join(PROJECT_ROOT, 'scripts',
                                 'create_all_tables.py'),
                    'int2551_create_all')
-    assert module.EXPECTED_TABLE_COUNT == 114
+    # INT-2601 新增 agent_hidden_message 后 114 → 115
+    assert module.EXPECTED_TABLE_COUNT == 115
     text = open(os.path.join(PROJECT_ROOT, 'scripts',
                              'create_all_tables.py'), encoding='utf-8').read()
     assert 'AgentSkillReview' in text

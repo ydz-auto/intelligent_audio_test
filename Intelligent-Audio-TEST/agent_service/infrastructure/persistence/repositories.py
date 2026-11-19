@@ -5,12 +5,13 @@
 Session，close 不影响调用链），测试注入 ``sessionmaker(bind=test_engine)``。
 每个方法自开自关事务；跨线程写入靠 DB 唯一约束 + 进程内 run 级锁兜底。
 """
+import hashlib
 import logging
 import threading
 import uuid
 import weakref
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -25,13 +26,14 @@ from agent_service.domain.model.entities import (
 )
 from agent_service.domain.repositories import (
     ApprovalRepository, ArtifactRepository, ContextSnapshotRepository,
-    EventRepository, LlmProviderRepository, RunRepository, SessionRepository,
-    StepRepository, ToolCallRepository,
+    EventRepository, HiddenMessageRepository, LlmProviderRepository,
+    RunRepository, SessionRepository, StepRepository, ToolCallRepository,
 )
 from agent_service.infrastructure.persistence.models.agent_models import (
     AgentApproval as AgentApprovalPO,
     AgentArtifact as AgentArtifactPO,
     AgentContextSnapshot as AgentContextSnapshotPO,
+    AgentHiddenMessage as AgentHiddenMessagePO,
     AgentLlmProvider as AgentLlmProviderPO,
     AgentRun as AgentRunPO,
     AgentRunEvent as AgentRunEventPO,
@@ -999,6 +1001,45 @@ class SqlContextSnapshotRepository(_BaseRepo, ContextSnapshotRepository):
                 AgentContextSnapshotPO.run_id == run_id
             ).order_by(AgentContextSnapshotPO.version.asc()).all()
             return [_to_snapshot(r) for r in rows]
+        finally:
+            db.close()
+
+
+# ---------------------------------------------------------------- hidden messages
+
+_HIDDEN_ID_PREFIX = 'hmsg-'
+
+
+def _hidden_message_id(session_id: str, message_id: str) -> str:
+    """隐藏行主键：同一 ``(session, message)`` 恒等（重复删除幂等），≤36。"""
+    digest = hashlib.sha1(
+        f'{session_id}:{message_id}'.encode('utf-8')).hexdigest()
+    return _HIDDEN_ID_PREFIX + digest[:36 - len(_HIDDEN_ID_PREFIX)]
+
+
+class SqlHiddenMessageRepository(_BaseRepo, HiddenMessageRepository):
+    def hide(self, session_id: str, message_id: str) -> None:
+        if not session_id or not message_id:
+            return
+        db = self._session()
+        try:
+            db.add(AgentHiddenMessagePO(
+                id=_hidden_message_id(session_id, message_id),
+                session_id=session_id, message_id=message_id,
+                created_at=utcnow()))
+            db.commit()
+        except IntegrityError:
+            # 已隐藏（重复删除 / 并发删除）：幂等成功
+            db.rollback()
+        finally:
+            db.close()
+
+    def list_ids(self, session_id: str) -> Set[str]:
+        db = self._session()
+        try:
+            rows = db.query(AgentHiddenMessagePO.message_id).filter(
+                AgentHiddenMessagePO.session_id == session_id).all()
+            return {row[0] for row in rows}
         finally:
             db.close()
 

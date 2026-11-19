@@ -7,7 +7,7 @@
  */
 import { Badge } from '@/components/ui/badge'
 import { PanelLeft, PanelRight } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,7 @@ import { AgentConnectButton } from '@/components/layout/components/agent-connect
 import {
   CHAT_CHANNEL,
   type ChatConfig,
+  type ChatMessage,
   type ReportContextOption,
 } from '@/domain/models/aiChat'
 import {
@@ -46,6 +47,7 @@ import { AgentProviderManagerDialog } from '@/features/agent-providers/component
 import { DocumentPanel } from '@/features/ai-chat/components/studio/document-panel'
 import { DEMO_COPY } from '@/features/ai-chat/constants'
 import { resolveTaskReportErrorMessage } from '@/features/ai-chat/lib/task-report-error'
+import { hideAgentSessionMessage } from '@/infrastructure/api/agentApi'
 import {
   useAiChatSession,
   type AiChatContextStatus,
@@ -110,9 +112,9 @@ type AiChatPageProps = {
 const REPORT_WORK_MODE_ENABLED = true
 
 export function AiChatPage({ initialContext }: AiChatPageProps) {
-  // 宿主登记（INT-2521 收窄）：离开 /ai-chat 路由是明确的取消语义；浮窗若仍开着，
-  // 由 store 判断「最后一个宿主才取消」，不误伤另一宿主。
-  useAgentRunHost('page', 'cancel')
+  // 宿主登记：离开 /ai-chat 路由只是暂时卸载（keep），在办 run 继续由服务端执行，
+  // 回到本页即可看到已完成的回答；只有关闭浮窗才是明确的取消语义。
+  useAgentRunHost('page', 'keep')
 
   const {
     config,
@@ -313,6 +315,15 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     injectReportContext: workModeOpen,
   })
 
+  /** 平台通道删除持久化：无 messageId 的本地消息（或未建会话）只删本地 */
+  const persistDeleteMessage = useCallback(
+    async (message: ChatMessage) => {
+      if (!message.messageId || !agentSessionId) return
+      await hideAgentSessionMessage(agentSessionId, message.messageId)
+    },
+    [agentSessionId]
+  )
+
   const {
     editingMessageKey,
     handleSendMessage,
@@ -327,6 +338,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     messages,
     updateMessages,
     sendChat,
+    deletePersist: persistDeleteMessage,
   })
 
   const [historyOpen, setHistoryOpen] = useState(false)

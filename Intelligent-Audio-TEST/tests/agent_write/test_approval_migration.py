@@ -148,5 +148,6 @@ def test_create_all_registers_approval_table(metadata):
     module = _load(_CREATE_ALL, 'int2466_create_all')
     # INT-2549 新增 Agent Skill 三表后全集 110 → 113
     # INT-2551 新增 agent_skill_review 后 113 → 114
-    assert module.EXPECTED_TABLE_COUNT == 114
+    # INT-2601 新增 agent_hidden_message 后 114 → 115
+    assert module.EXPECTED_TABLE_COUNT == 115
     assert _TABLE in metadata.tables

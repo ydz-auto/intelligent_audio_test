@@ -160,6 +160,8 @@ export interface AgentRun {
 
 /** 会话历史消息（GET /agent/sessions/{id} 的 messages 项） */
 export interface AgentSessionMessage {
+  /** 消息稳定 ID（删除会话消息时回传；历史数据可能为空） */
+  id?: string
   role: string
   content: string
   toolCallId?: string

@@ -26,7 +26,8 @@ import os
 # INT-2466：agent_approval（写操作审批单）109 → 110
 # INT-2549：agent_skill / agent_skill_version / agent_run_skill 110 → 113
 # INT-2551：agent_skill_review（TENANT 级审核链）113 → 114
-EXPECTED_TABLE_COUNT = 114
+# INT-2601：agent_hidden_message（会话内删除消息的隐藏集合）114 → 115
+EXPECTED_TABLE_COUNT = 115
 
 # 确保项目根目录在 sys.path 中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -104,14 +105,15 @@ def _import_all_models():
     from transfer_agent.infrastructure.persistence.models import (  # noqa: F401
         TransferRecord, TransferChunk,
     )
-    # agent_service: 13 张表（INT-2451 运行底座 7 张 + INT-2488 用户模型供应商
+    # agent_service: 14 张表（INT-2451 运行底座 7 张 + INT-2488 用户模型供应商
     #                 + INT-2466 写操作审批单 + INT-2549 Skill 三表
-    #                 + INT-2551 审核链 agent_skill_review）
+    #                 + INT-2551 审核链 agent_skill_review
+    #                 + INT-2601 隐藏消息 agent_hidden_message）
     from agent_service.infrastructure.persistence.models import (  # noqa: F401
-        AgentArtifact, AgentContextSnapshot, AgentLlmProvider, AgentRun,
-        AgentRunEvent, AgentSession, AgentStep, AgentToolCall,
-        AgentApproval, AgentSkill, AgentSkillVersion, AgentRunSkill,
-        AgentSkillReview,
+        AgentArtifact, AgentContextSnapshot, AgentHiddenMessage,
+        AgentLlmProvider, AgentRun, AgentRunEvent, AgentSession, AgentStep,
+        AgentToolCall, AgentApproval, AgentSkill, AgentSkillVersion,
+        AgentRunSkill, AgentSkillReview,
     )
 
 

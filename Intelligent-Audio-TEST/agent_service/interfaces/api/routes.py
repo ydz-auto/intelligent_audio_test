@@ -150,6 +150,21 @@ def get_session(session_id: str, request: Request,
     )
 
 
+@router.delete('/sessions/{session_id}/messages/{message_id}')
+def hide_session_message(session_id: str, message_id: str, request: Request,
+                         identity: Identity = Depends(get_identity)):
+    """删除（隐藏）会话里的一条消息：展示与模型上下文都不再返回它。
+
+    事件仍是唯一事实源（不物理删除）；``message_id`` 取自
+    ``GET /sessions/{id}.messages[].id``。非本人会话统一 404。
+    """
+    container = get_container(request)
+    container.run_service.hide_message(
+        session_id, message_id, owner_id=identity.user_id,
+        tenant_id=identity.tenant_id)
+    return {'hidden': True, 'message_id': message_id}
+
+
 @router.post('/sessions/{session_id}/runs', response_model=CreateRunResponse)
 def create_run(session_id: str, payload: CreateRunRequest, request: Request,
                response: Response,

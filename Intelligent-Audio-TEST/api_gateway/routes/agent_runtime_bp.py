@@ -260,6 +260,13 @@ async def proxy_get_session(session_id: str, request: Request):
     return await _forward(request, 'GET')
 
 
+@router.delete('/sessions/{session_id}/messages/{message_id}')
+async def proxy_hide_session_message(session_id: str, message_id: str,
+                                     request: Request):
+    """删除（隐藏）会话消息：鉴权后透明转发，归属由 agent_service 判定。"""
+    return await _forward(request, 'DELETE')
+
+
 @router.post('/sessions/{session_id}/runs')
 async def proxy_create_run(session_id: str, request: Request):
     return await _forward(request, 'POST')

@@ -412,3 +412,26 @@ class AgentSkillReview(Base):
     tenant_id = Column(String(64), nullable=True, comment='TENANT 行必填')
     created_at = Column(DateTime, nullable=False, default=utcnow,
                         server_default=func.now())
+
+
+class AgentHiddenMessage(Base):
+    """会话内被用户删除（隐藏）的消息（GET session 与上下文组装据此过滤）。
+
+    事件表是唯一事实源，删除不物理删事件：这里只记 ``(session_id,
+    message_id)``，展示与模型上下文都跳过这些消息。``message_id`` 与
+    ``ContextAssembler`` 的口径一致（user 消息 ``user:<run_id>``、assistant
+    消息为事件里的 message_id）。
+    """
+
+    __tablename__ = 'agent_hidden_message'
+    __table_args__ = (
+        UniqueConstraint('session_id', 'message_id',
+                         name='uq_agent_hidden_message'),
+        Index('ix_agent_hidden_message_session', 'session_id'),
+    )
+
+    id = Column(_PK, primary_key=True)
+    session_id = Column(_PK, nullable=False)
+    message_id = Column(String(100), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=utcnow,
+                        server_default=func.now())

@@ -1111,13 +1111,13 @@ describe('useAgentRun 刷新恢复（getAgentSession）', () => {
  * INT-2521 按 INT-2507 A5–A7 收窄后的口径：
  * - A5：浮窗最小化 / 展开整页 / 整页 ↔ 浮窗切换**不取消**在办 run，另一宿主重新挂载仍能看到
  *   流式输出与最终回复；
- * - A6：浮窗「关闭」与离开 `/ai-chat` 路由各发一次 `cancelAgentRun`；两宿主同开时卸载一侧
- *   不误取消另一侧；
- * - A7：StrictMode `mount → cleanup → mount` 不误取消；建 run 请求在途时离场，响应返回后
- *   补发取消（INT-2521 原逻辑保留）。
+ * - A6：离开 `/ai-chat` 路由（keep）**不取消**，run 继续由服务端执行；只有浮窗「关闭」
+ *   （cancel）才发一次 `cancelAgentRun`；两宿主同开时卸载一侧不误取消另一侧；
+ * - A7：StrictMode `mount → cleanup → mount` 不误取消；建 run 请求在途时按 cancel 语义离场，
+ *   响应返回后补发取消（INT-2521 原逻辑保留）。
  */
 describe('useAgentRun 宿主离场取消（INT-2521 收窄）', () => {
-  /** 按真实宿主形态挂载：浮窗 `keep`（最小化 / 展开都是暂时卸载）、整页 `cancel`（离开路由） */
+  /** 按真实宿主形态挂载：浮窗 `keep`（最小化 / 展开都是暂时卸载）、整页 `keep`（离开路由） */
   function mountHost(host: 'page' | 'workbench', reason: 'cancel' | 'keep') {
     return renderHook(() => {
       useAgentRunHost(host, reason)
@@ -1140,7 +1140,7 @@ describe('useAgentRun 宿主离场取消（INT-2521 收窄）', () => {
     expect(cancelRunMock).not.toHaveBeenCalled()
 
     // 整页宿主重新挂载：订阅同一份 store，事件仍然落到同一条 assistant 气泡
-    const page = mountHost('page', 'cancel')
+    const page = mountHost('page', 'keep')
     act(() => {
       streamOptions?.onEvent(messageDelta(1, 'm-1', '报告正文'))
       streamOptions?.onEvent(runFinished(2))
@@ -1167,8 +1167,8 @@ describe('useAgentRun 宿主离场取消（INT-2521 收窄）', () => {
     expect(toastInfoMock).toHaveBeenCalledWith(AGENT_RUN_UNMOUNT_CANCEL_COPY)
   })
 
-  it('A6：离开 /ai-chat 路由（整页卸载，cancel 语义）→ 取消一次', async () => {
-    const page = mountHost('page', 'cancel')
+  it('A6：离开 /ai-chat 路由（整页 keep 卸载）→ 不取消，run 继续', async () => {
+    const page = mountHost('page', 'keep')
     await act(async () => {
       await page.result.current.send('你好')
     })
@@ -1178,12 +1178,12 @@ describe('useAgentRun 宿主离场取消（INT-2521 收窄）', () => {
       await flushDetachGrace()
     })
 
-    expect(cancelRunMock).toHaveBeenCalledTimes(1)
-    expect(cancelRunMock).toHaveBeenCalledWith('r-1')
+    expect(cancelRunMock).not.toHaveBeenCalled()
+    expect(useAgentRunStore.getState().phase).toBe(AGENT_RUN_PHASE.RUNNING)
   })
 
   it('A6：两宿主同开时卸载一侧不误取消另一侧（关闭浮窗，整页仍开着）', async () => {
-    const page = mountHost('page', 'cancel')
+    const page = mountHost('page', 'keep')
     const float = mountHost('workbench', 'keep')
     await act(async () => {
       await page.result.current.send('你好')
@@ -1224,8 +1224,8 @@ describe('useAgentRun 宿主离场取消（INT-2521 收窄）', () => {
     // 最小化：浮窗作为唯一宿主正常离场（keep），在办 run 保留
     float.unmount()
 
-    // 整页在 StrictMode 下首挂：cleanup 会以 cancel 语义注销，但同一提交内重新 attach
-    renderHook(() => useAgentRunHost('page', 'cancel'), { wrapper: StrictMode })
+    // 整页在 StrictMode 下首挂：cleanup 会注销宿主，但同一提交内重新 attach
+    renderHook(() => useAgentRunHost('page', 'keep'), { wrapper: StrictMode })
     await act(async () => {
       await flushDetachGrace()
     })
@@ -1234,7 +1234,7 @@ describe('useAgentRun 宿主离场取消（INT-2521 收窄）', () => {
     expect(useAgentRunStore.getState().phase).toBe(AGENT_RUN_PHASE.RUNNING)
   })
 
-  it('A7：建 run 请求在途时按 cancel 语义离场 → 响应返回后补发取消一次（不留孤儿 run）', async () => {
+  it('A7：建 run 请求在途时按 cancel 语义离场（关闭浮窗）→ 响应返回后补发取消一次', async () => {
     let resolveRun: ((run: AgentRun) => void) | null = null
     createRunMock.mockImplementation(
       () =>
@@ -1242,15 +1242,15 @@ describe('useAgentRun 宿主离场取消（INT-2521 收窄）', () => {
           resolveRun = resolve
         })
     )
-    const page = mountHost('page', 'cancel')
+    const float = mountHost('workbench', 'cancel')
     let pending!: Promise<void>
     await act(async () => {
-      pending = page.result.current.send('你好')
+      pending = float.result.current.send('你好')
     })
 
     // 此时 run 还没落库，没有可取消的对象
     await act(async () => {
-      page.unmount()
+      float.unmount()
       await flushDetachGrace()
     })
     expect(cancelRunMock).not.toHaveBeenCalled()
@@ -1267,7 +1267,7 @@ describe('useAgentRun 宿主离场取消（INT-2521 收窄）', () => {
   })
 
   it('无在办 run 时离场不发取消', async () => {
-    const page = mountHost('page', 'cancel')
+    const page = mountHost('page', 'keep')
     page.unmount()
 
     await act(async () => {
@@ -1279,7 +1279,7 @@ describe('useAgentRun 宿主离场取消（INT-2521 收窄）', () => {
   })
 
   it('run 已终态时离场不发取消', async () => {
-    const page = mountHost('page', 'cancel')
+    const page = mountHost('page', 'keep')
     await act(async () => {
       await page.result.current.send('你好')
     })

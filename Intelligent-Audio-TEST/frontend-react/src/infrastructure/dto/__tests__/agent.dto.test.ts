@@ -413,7 +413,9 @@ describe('agent.dto', () => {
       runs: [{ id: 'r-1', session_id: 's-1', status: 'SUCCEEDED' }],
     })
     expect(detail.session.id).toBe('s-1')
-    expect(detail.messages).toEqual([{ role: 'user', content: '你好', toolCallId: undefined }])
+    expect(detail.messages).toEqual([
+      { id: undefined, role: 'user', content: '你好', toolCallId: undefined },
+    ])
     expect(detail.runs[0].id).toBe('r-1')
 
     expect(toAgentApprovals({ items: [] })).toEqual([])

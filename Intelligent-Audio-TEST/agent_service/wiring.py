@@ -74,8 +74,9 @@ from agent_service.infrastructure.memory import (
 from agent_service.infrastructure.memory.paths import AUDIT_DIR
 from agent_service.infrastructure.persistence.repositories import (
     SqlApprovalRepository, SqlArtifactRepository, SqlContextSnapshotRepository,
-    SqlEventRepository, SqlLlmProviderRepository, SqlRunRepository,
-    SqlSessionRepository, SqlStepRepository, SqlToolCallRepository,
+    SqlEventRepository, SqlHiddenMessageRepository, SqlLlmProviderRepository,
+    SqlRunRepository, SqlSessionRepository, SqlStepRepository,
+    SqlToolCallRepository,
 )
 from agent_service.infrastructure.sandbox.policy import load_t2_policy
 from agent_service.infrastructure.sandbox.t2_runner import build_t2_executor
@@ -409,6 +410,7 @@ def build_container(session_factory,
     approvals = SqlApprovalRepository(session_factory)
     artifacts = SqlArtifactRepository(session_factory)
     snapshots = SqlContextSnapshotRepository(session_factory)
+    hidden_messages = SqlHiddenMessageRepository(session_factory)
     provider_repository = SqlLlmProviderRepository(session_factory)
     # INT-2549：自定义 Skill 当前行 / 版本 / run 快照
     skill_repository = SqlAgentSkillRepository(session_factory)
@@ -524,7 +526,8 @@ def build_container(session_factory,
         artifact_store=artifact_store or OssArtifactStore(),
         settings=compaction, memory=memory,
         # INT-2474 L4_REBUILD：从 Run 表（step / tool_call）+ 产物索引重建
-        steps=steps, tool_calls=tool_calls)
+        steps=steps, tool_calls=tool_calls,
+        hidden_messages=hidden_messages)
 
     ratios = budget_ratios or SectionRatios.from_dict(
         Config.context_section_ratios())
@@ -575,6 +578,7 @@ def build_container(session_factory,
         run_skills=run_skill_repository,
         auto_settings=auto_config,
         tool_calls=tool_calls,
+        hidden_messages=hidden_messages,
     )
     event_stream = EventStreamService(
         events, runs, wakeup, page_size=Config.EVENT_PAGE_SIZE,
@@ -611,6 +615,7 @@ def build_container(session_factory,
             'steps': steps, 'tool_calls': tool_calls,
             'approvals': approvals,
             'artifacts': artifacts, 'snapshots': snapshots,
+            'hidden_messages': hidden_messages,
             'providers': provider_repository,
             'skills': skill_repository,
             'run_skills': run_skill_repository,

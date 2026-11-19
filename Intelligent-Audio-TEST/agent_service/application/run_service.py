@@ -27,8 +27,8 @@ from agent_service.domain.model.agent_skill import AgentRunSkill
 from agent_service.domain.model.budget import RunBudget
 from agent_service.domain.model.entities import AgentRun, AgentSession
 from agent_service.domain.repositories import (
-    AgentRunSkillRepository, EventRepository, RunRepository, SessionRepository,
-    ToolCallRepository,
+    AgentRunSkillRepository, EventRepository, HiddenMessageRepository,
+    RunRepository, SessionRepository, ToolCallRepository,
 )
 from agent_service.domain.services.state_machine import RunStateMachine
 from agent_service.domain.ports.run_wakeup import RunWakeup
@@ -48,7 +48,8 @@ class RunService:
                  approvals: Optional[ApprovalService] = None,
                  run_skills: Optional[AgentRunSkillRepository] = None,
                  auto_settings: Optional[AutoSettings] = None,
-                 tool_calls: Optional[ToolCallRepository] = None):
+                 tool_calls: Optional[ToolCallRepository] = None,
+                 hidden_messages: Optional[HiddenMessageRepository] = None):
         self._sessions = sessions
         self._runs = runs
         self._events = events
@@ -66,6 +67,8 @@ class RunService:
         self._approvals = approvals
         # INT-2549：run 激活快照（回放以本表 + 版本表为准，不随 Skill 修改变化）
         self._run_skills = run_skills
+        # 用户删除的会话消息（展示 / 模型上下文共用同一份隐藏集合）
+        self._hidden_messages = hidden_messages
 
     # ------------------------------------------------------------ sessions
 
@@ -91,6 +94,19 @@ class RunService:
         if session is None:
             raise SessionNotFound(session_id)
         return session
+
+    def hide_message(self, session_id: str, message_id: str, *,
+                     owner_id: int, tenant_id: str) -> None:
+        """删除（隐藏）会话里的一条消息；非本人 / 不存在统一 404。
+
+        事件不物理删除（唯一事实源），只落隐藏集合；GET session 与模型上下文
+        都据此过滤，刷新后不会把删掉的消息又回填回来。
+        """
+        self.get_session(session_id, owner_id=owner_id, tenant_id=tenant_id)
+        target = (message_id or '').strip()
+        if not target or self._hidden_messages is None:
+            return
+        self._hidden_messages.hide(session_id, target)
 
     def list_sessions(self, *, owner_id: int, tenant_id: str,
                       limit: int = 50, offset: int = 0) -> List[AgentSession]:

@@ -119,18 +119,19 @@ export type AgentRunPhase =
 export type AgentRunHostKind = 'page' | 'workbench'
 
 /**
- * 宿主离场语义（INT-2521 按 A5–A7 收窄）：
- * - `cancel`：浮窗「关闭」、离开 `/ai-chat` 路由 —— 用户明确结束这一侧；
- * - `keep`：浮窗「最小化」「展开整页」、整页 ↔ 浮窗切换 —— 只是宿主暂时卸载，run 应继续。
+ * 宿主离场语义：
+ * - `cancel`：浮窗「关闭」—— 用户明确结束这一侧；
+ * - `keep`：浮窗「最小化」「展开整页」、整页 ↔ 浮窗切换、离开 `/ai-chat` 路由 ——
+ *   只是宿主暂时卸载，run 继续由服务端执行，回到页面即可看到结果。
  */
 export type AgentRunHostDetachReason = 'cancel' | 'keep'
 
 /**
- * 宿主离场中断进行中回答时的用户提示（INT-2521 文案，按 A5 收窄口径：
- * 最小化 / 展开整页不再中断，只有关闭浮窗与离开页面会结束进行中的对话）。
+ * 宿主离场中断进行中回答时的用户提示（只有关闭浮窗会结束进行中的对话；
+ * 离开页面不再中断）。
  */
 export const AGENT_RUN_UNMOUNT_CANCEL_COPY =
-  '已中断当前回答：关闭浮窗或离开当前页面会结束进行中的对话'
+  '已中断当前回答：关闭浮窗会结束进行中的对话'
 
 /**
  * 宿主离场时仍需中止服务端 run 的阶段（INT-2521）：idle / cancelling / finished / error
@@ -270,10 +271,11 @@ function toRestoredMessages(
         message.content.trim() !== ''
     )
     .map((message, index) => ({
-      key: `restored-${index}`,
+      key: `restored-${message.id ?? index}`,
+      messageId: message.id,
       from: message.role === 'user' ? ('user' as const) : ('assistant' as const),
       versions: [
-        { id: `restored-${index}-v1`, content: message.content },
+        { id: `restored-${message.id ?? index}-v1`, content: message.content },
       ],
       status: CHAT_MESSAGE_STATUS.COMPLETE,
     }))
@@ -380,8 +382,9 @@ type AgentRunStoreState = {
   /** 宿主登记（整页 / 浮窗；同 kind 多次挂载按一次计） */
   attachHost: (host: AgentRunHostKind) => void
   /**
-   * 宿主注销（INT-2521 收窄）：只有最后一个宿主按 `cancel` 语义离场才中止在办 run；
-   * `keep`（最小化 / 展开整页 / 切换形态）不动 run。宽限窗口内重新登记则视为未离场。
+   * 宿主注销：只有最后一个宿主按 `cancel` 语义离场（关闭浮窗）才中止在办 run；
+   * `keep`（最小化 / 展开整页 / 切换形态 / 离开页面）不动 run，服务端继续执行。
+   * 宽限窗口内重新登记则视为未离场。
    */
   detachHost: (host: AgentRunHostKind, reason?: AgentRunHostDetachReason) => void
 }
@@ -410,6 +413,8 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
   const lastDeltaSequences = new Map<string, number>()
   /** 当前 assistant 气泡 key 与已累积正文（事件补丁的唯一写入点） */
   let assistantKey: string | null = null
+  /** 服务端 assistant 消息 ID（首个 message_delta 下发，删除会话消息时回传） */
+  let assistantMessageId: string | null = null
   /** 网络已收到的完整正文 */
   let assistantContent = ''
   /** 已上屏字数（打字机逐字揭示；与 assistantContent 的差值即积压） */
@@ -578,6 +583,7 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
       const content = assistantContent.slice(0, assistantRevealedChars)
       patchAssistant((message) => ({
         ...message,
+        messageId: assistantMessageId ?? message.messageId,
         status: CHAT_MESSAGE_STATUS.STREAMING,
         startedAt: message.startedAt ?? Date.now(),
         versions: [
@@ -1192,6 +1198,8 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
     }
     // 正文增量只累积、按帧揭示（时间线聚合条也同帧落）；不逐片重渲染整棵消息树
     if (event.type === AGENT_EVENT_TYPE.MESSAGE_DELTA) {
+      // 首帧带服务端消息 ID：删除会话消息时前端回传它
+      assistantMessageId = event.messageId
       assistantContent += event.delta
       pendingDeltaEvents.push(event)
       scheduleStreamFrame()
@@ -1281,6 +1289,7 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
     lastSequence = -1
     lastDeltaSequences.clear()
     assistantContent = ''
+    assistantMessageId = null
     resetStreamDelta()
     approvalRefreshToken += 1
     runSnapshotToken += 1
@@ -1349,6 +1358,17 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
       if (runToken !== token) return
       set({ run })
       session().setAgentRunId(run.id)
+      if (appendUserMessage) {
+        // 服务端 user 消息 ID 口径 = `user:<run_id>`（删除会话消息时回传）
+        const userMessageId = `user:${run.id}`
+        session().updateMessages((prev) =>
+          prev.map((message) =>
+            message.key === userKey
+              ? { ...message, messageId: userMessageId }
+              : message
+          )
+        )
+      }
 
       if (detachCancelPending) {
         // 建 run 在途时最后一个宿主已按取消语义离场：补发取消，不进事件流（INT-2521）

@@ -43,6 +43,8 @@ _AGENT_TABLES = [
     'agent_skill', 'agent_skill_version', 'agent_run_skill',
     # INT-2551：TENANT 级审核链
     'agent_skill_review',
+    # INT-2601：会话内删除消息的隐藏集合
+    'agent_hidden_message',
 ]
 
 TEST_MASTER_KEY = base64.b64encode(b'int2451-test-master-key-32byte!!').decode()

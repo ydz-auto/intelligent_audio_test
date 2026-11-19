@@ -223,9 +223,19 @@ export function AiChat({
                   message={message}
                   onDelete={onDeleteMessage}
                   onEdit={onEditMessage}
-                  onRegenerate={onRegenerateMessage}
-                  onToggleSource={handleToggleMessageSource}
-                  onUndo={onUndoMessage}
+                  // 用户消息只提供复制 / 编辑 / 删除：重新生成、源码预览、撤销修改
+                  // 都是 assistant 回答的动作，挂到 user 气泡上会出现点不动的按钮。
+                  onRegenerate={
+                    message.from === 'assistant' ? onRegenerateMessage : undefined
+                  }
+                  onToggleSource={
+                    message.from === 'assistant'
+                      ? handleToggleMessageSource
+                      : undefined
+                  }
+                  onUndo={
+                    message.from === 'assistant' ? onUndoMessage : undefined
+                  }
                 />
               }
               alignment={alignment}
