@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useSplHistory } from '@/application/spl/useSplMappings'
-import { formatDateTime, formatDistance, formatTestFrequency } from '@/features/spl-mapping/lib/format'
+import { formatLocalWallClock, formatDistance, formatTestFrequency } from '@/features/spl-mapping/lib/format'
 
 export type SplHistoryDialogProps = {
   open: boolean
@@ -71,7 +71,7 @@ export function SplHistoryDialog(props: SplHistoryDialogProps) {
                       )}
                     />
                     <span className='min-w-0 flex-1 text-sm'>
-                      {formatDateTime(item.createdAt)}
+                      {formatLocalWallClock(item.createdAt)}
                     </span>
                     <Badge variant='secondary' className='shrink-0 rounded-md px-1.5 font-normal'>
                       {pointCount} 个校准点

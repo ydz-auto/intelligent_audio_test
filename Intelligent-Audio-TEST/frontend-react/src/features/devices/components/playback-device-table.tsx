@@ -26,7 +26,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { formatDateTime } from '@/lib/date-time'
+import { formatLocalWallClock } from '@/lib/date-time'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import { PLAYBACK_DEVICE_TYPE_META } from '@/domain/models/playbackDevice'
 import { isDeviceSelectable } from '@/features/devices/constants'
@@ -299,7 +299,7 @@ export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
                     )}
                   </td>
                   <td className='px-3 py-2 font-mono text-xs tabular-nums'>
-                    {formatDateTime(row.updatedAt)}
+                    {formatLocalWallClock(row.updatedAt)}
                   </td>
                   <td className='px-3 py-2'>
                     <div className='flex items-center justify-end gap-0.5'>

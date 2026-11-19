@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/tooltip'
 import { StaticDataTable } from '@/features/system-settings/components/static-data-table'
 import { cn } from '@/lib/utils'
-import { formatDateTime } from '@/lib/date-time'
+import { formatLocalWallClock } from '@/lib/date-time'
 import type {
   Alarm,
   AlarmStats,
@@ -242,7 +242,7 @@ export function AlarmPanel(props: AlarmPanelProps) {
       key: 'createdAt',
       header: '触发时间',
       className: 'font-mono tabular-nums',
-      render: (alarm: Alarm) => formatDateTime(alarm.createdAt),
+      render: (alarm: Alarm) => formatLocalWallClock(alarm.createdAt),
     },
   ]
 
@@ -316,7 +316,7 @@ export function AlarmPanel(props: AlarmPanelProps) {
       key: 'createdAt',
       header: '时间',
       className: 'font-mono tabular-nums',
-      render: (event: DeviceStatusEvent) => formatDateTime(event.createdAt),
+      render: (event: DeviceStatusEvent) => formatLocalWallClock(event.createdAt),
     },
   ]
 

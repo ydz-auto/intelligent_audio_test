@@ -74,3 +74,27 @@ describe('DeviceDetailDialog 系统行归一（INT-2649）', () => {
     expect(within(dialog).getByText('HarmonyOS 1.0.0')).toBeInTheDocument()
   })
 })
+
+describe('DeviceDetailDialog 设备域时间（INT-2655）', () => {
+  it('无时区后缀的 +08 墙钟串原样展示，不再 +8', () => {
+    // device_service 用 utc8now 落库，接口裸串已是东八区墙钟（真实库 pura90gpt 同值）
+    const dialog = renderDialog(
+      makeTestDevice({
+        lastOnlineAt: '2026-11-02T20:04:00.881715',
+        updatedAt: '2026-11-19T09:58:26.466976',
+      })
+    )
+    expect(within(dialog).getByText('2026-11-02 20:04')).toBeInTheDocument()
+    expect(within(dialog).getByText('2026-11-19 09:58')).toBeInTheDocument()
+  })
+
+  it('将来后端改发带 Z 的绝对时间串时仍按本地换算（口径不分裂）', () => {
+    const dialog = renderDialog(makeTestDevice({ updatedAt: '2026-11-19T01:58:26Z' }))
+    const local = new Date('2026-11-19T01:58:26Z')
+    const pad = (value: number) => String(value).padStart(2, '0')
+    const expected = `${local.getFullYear()}-${pad(local.getMonth() + 1)}-${pad(
+      local.getDate()
+    )} ${pad(local.getHours())}:${pad(local.getMinutes())}`
+    expect(within(dialog).getByText(expected)).toBeInTheDocument()
+  })
+})

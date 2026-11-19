@@ -360,7 +360,10 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     } else {
       rows.sort((a, b) => {
         const diff = new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime()
-        return sortOrder === 'desc' ? diff : -diff
+        // INT-2655：监控会把这批设备 updated_at 刷成同值，仅按 updatedAt 排序会退化成
+        // 接口返回顺序（后端无稳定 ORDER BY，两次抓取顺序不同）；补 id 作次级键保证稳定。
+        if (diff !== 0) return sortOrder === 'desc' ? diff : -diff
+        return sortOrder === 'desc' ? b.id - a.id : a.id - b.id
       })
     }
     return rows
