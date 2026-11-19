@@ -172,6 +172,17 @@ def host_env() -> dict:
     env['DEVICE_SERVICE_GRPC_PORT'] = str(DEVICE_PORT)
     # 容器经 host.docker.internal 访问宿主服务，必须绑全部网卡
     env['SERVICE_HOST'] = '0.0.0.0'
+    # COS 的 S3 接口只接受 virtual-hosted style；本机 audio/device 也走 COS
+    env['AWS_CONFIG_FILE'] = str(Path(__file__).with_name('aws_config'))
+    # 生产形态：本机只跑硬件服务，数据面（DB/Redis/COS）在腾讯云
+    remote_env = REPO / 'logs' / 'host_services' / 'remote.env'
+    if remote_env.is_file():
+        for line in remote_env.read_text(encoding='utf-8').splitlines():
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            env[key.strip()] = value.strip()
     env['PYTHONUTF8'] = env.get('PYTHONUTF8', '1')
     return env
 

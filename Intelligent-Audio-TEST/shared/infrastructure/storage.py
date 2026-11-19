@@ -39,6 +39,8 @@ import shutil
 import tempfile
 import threading
 import time
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from typing import Optional, BinaryIO
 
@@ -143,6 +145,22 @@ class Storage:
     def _local_path(self, category: str, key: str) -> str:
         """构建本地降级存储的完整路径：{STORAGE_LOCAL_ROOT}/{category}/{key}"""
         return os.path.join(BaseConfig.STORAGE_LOCAL_ROOT, category, key)
+
+    # ---- 本地持久缓存路径 ----
+
+    def _cache_root(self) -> str:
+        """本地持久缓存根目录。
+
+        缓存复用「本地静态资源根」的目录布局（{root}/{category}/{key}），
+        与历史落盘文件（如 D:/00_code/static/audios/**）同构，可直接命中；
+        需要单独指定时用 STORAGE_LOCAL_CACHE_ROOT 覆盖。
+        """
+        return (os.environ.get('STORAGE_LOCAL_CACHE_ROOT')
+                or BaseConfig.LOCAL_STORAGE_ROOT)
+
+    def _cache_path(self, category: str, key: str) -> str:
+        """构建本地持久缓存的完整路径：{缓存根}/{category}/{key}"""
+        return os.path.join(self._cache_root(), category, key)
 
     # ---- scheme 解析 ----
 
@@ -285,6 +303,41 @@ class Storage:
 
     # ---- 公开 API：读取 ----
 
+    def _server_fetch_base(self) -> str:
+        return (os.environ.get('STORAGE_SERVER_FETCH_URL') or '').rstrip('/')
+
+    def _local_cache_enabled(self) -> bool:
+        return (os.environ.get('STORAGE_LOCAL_CACHE_ENABLED') or '').strip().lower() in (
+            '1', 'true', 'yes', 'on')
+
+    def _write_local_cache(self, category: str, key: str, data: bytes) -> None:
+        enabled = (os.environ.get('STORAGE_LOCAL_CACHE_WRITE') or '').strip().lower()
+        if enabled not in ('1', 'true', 'yes', 'on'):
+            return
+        path = self._cache_path(category, key)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = f'{path}.tmp-{os.getpid()}'
+        with open(tmp, 'wb') as f:
+            f.write(data)
+        os.replace(tmp, path)
+
+    def _fetch_bytes_via_server(self, category: str, key: str) -> Optional[bytes]:
+        """经服务器网关取音频字节（COS 由服务器读取，本机只走 Tailscale）。
+
+        未配置 STORAGE_SERVER_FETCH_URL 时返回 None；HTTP 失败抛异常，由调用方
+        回落到直连 OSS，避免代理故障导致播放不可用。
+        """
+        base = self._server_fetch_base()
+        if not base:
+            return None
+        query = urllib.parse.urlencode({'path': f'oss://{category}/{key}'})
+        req = urllib.request.Request(f'{base}/api/v1/audios/download?{query}')
+        token = os.environ.get('STORAGE_SERVER_FETCH_TOKEN', '')
+        if token:
+            req.add_header('Authorization', f'Bearer {token}')
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            return resp.read()
+
     def load_file(self, path: str, local_path: Optional[str] = None,
                   allow_fallback: bool = True) -> str:
         """从存储下载文件到本地路径。
@@ -310,6 +363,29 @@ class Storage:
             return local_path
 
         # scheme == 'oss' 或无前缀（默认 OSS）
+        if self._local_cache_enabled():
+            cache = self._cache_path(category, key)
+            if os.path.isfile(cache):
+                target = local_path
+                if os.path.abspath(target) == os.path.abspath(cache):
+                    target = tempfile.mktemp(
+                        suffix=os.path.splitext(key)[-1] or '.tmp')
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.copy2(cache, target)
+                return target
+        if self._server_fetch_base():
+            try:
+                data = self._fetch_bytes_via_server(category, key)
+                if data is not None:
+                    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+                    with open(local_path, 'wb') as f:
+                        f.write(data)
+                    self._write_local_cache(category, key, data)
+                    return local_path
+            except Exception as e:
+                _warn_oss_throttled(
+                    f'load_file server proxy failed, try OSS: {e}',
+                    category=category)
         try:
             return self._oss.download_file(category, key, local_path)
         except Exception as e:
@@ -319,12 +395,13 @@ class Storage:
             if not allow_fallback:
                 raise StorageUnavailableError(
                     f'OSS 读取失败，且调用方禁止本地降级: {path}: {e}') from e
-            # 尝试从本地降级副本读取
-            src = self._local_path(category, key)
-            if os.path.exists(src):
-                os.makedirs(os.path.dirname(local_path), exist_ok=True)
-                shutil.copy2(src, local_path)
-                return local_path
+            # 尝试从本地持久缓存/本地降级副本读取
+            for src in (self._cache_path(category, key),
+                        self._local_path(category, key)):
+                if os.path.exists(src):
+                    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+                    shutil.copy2(src, local_path)
+                    return local_path
             raise FileNotFoundError(f'文件不存在（OSS 和本地均无）: {path}')
 
     def load_bytes(self, path: str, allow_fallback: bool = True) -> bytes:
@@ -344,6 +421,21 @@ class Storage:
                 return f.read()
 
         # scheme == 'oss' 或无前缀
+        if self._local_cache_enabled():
+            cache = self._cache_path(category, key)
+            if os.path.isfile(cache):
+                with open(cache, 'rb') as f:
+                    return f.read()
+        if self._server_fetch_base():
+            try:
+                data = self._fetch_bytes_via_server(category, key)
+                if data is not None:
+                    self._write_local_cache(category, key, data)
+                    return data
+            except Exception as e:
+                _warn_oss_throttled(
+                    f'load_bytes server proxy failed, try OSS: {e}',
+                    category=category)
         try:
             return self._oss.download_bytes(category, key)
         except Exception as e:
@@ -353,10 +445,11 @@ class Storage:
             if not allow_fallback:
                 raise StorageUnavailableError(
                     f'OSS 读取失败，且调用方禁止本地降级: {path}: {e}') from e
-            src = self._local_path(category, key)
-            if os.path.exists(src):
-                with open(src, 'rb') as f:
-                    return f.read()
+            for src in (self._cache_path(category, key),
+                        self._local_path(category, key)):
+                if os.path.exists(src):
+                    with open(src, 'rb') as f:
+                        return f.read()
             raise FileNotFoundError(f'文件不存在（OSS 和本地均无）: {path}')
 
     def load_stream(self, path: str) -> BinaryIO:
@@ -370,6 +463,11 @@ class Storage:
             src = self._local_path(category, key)
             return open(src, 'rb')
 
+        if self._local_cache_enabled():
+            cache = self._cache_path(category, key)
+            if os.path.isfile(cache):
+                return open(cache, 'rb')
+
         return self._oss.download_stream(category, key)
 
     # ---- 公开 API：管理 ----
@@ -381,6 +479,10 @@ class Storage:
         if scheme == 'local':
             return os.path.exists(self._local_path(category, key))
 
+        if self._local_cache_enabled() and os.path.isfile(
+                self._cache_path(category, key)):
+            return True
+
         # OSS
         try:
             if self._oss.exists(category, key):
@@ -388,8 +490,9 @@ class Storage:
         except Exception as e:
             log_not_emit('DEBUG', _MODULE_NAME,
                          f'exists OSS check failed: {e}', category=category)
-        # 也检查本地降级副本
-        return os.path.exists(self._local_path(category, key))
+        # 也检查本地持久缓存/本地降级副本
+        return (os.path.exists(self._cache_path(category, key))
+                or os.path.exists(self._local_path(category, key)))
 
     def delete(self, path: str) -> None:
         """删除文件（OSS 和本地降级副本都会清理）。"""
