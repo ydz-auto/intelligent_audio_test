@@ -83,36 +83,49 @@ REDIS_PORT = int(os.environ.get('REDIS_PORT', '6379'))
 RUSTFS_PORT = int(os.environ.get('RUSTFS_PORT', '9000'))
 
 
-def _load_env_file():
-    """把仓库根 .env + docker/.env 读进当前进程环境（子进程 compose 继承）。
+# 仓库根 .env 是宿主进程口径：E2E_TEST_SERVICE_HOST=localhost 供宿主服务 / pytest
+# 直连宿主 e2e。同名变量在容器里必须指向宿主（compose 缺省 host.docker.internal），
+# 根 .env 的值不得参与 compose 插值——否则容器内 localhost:50051 打到自己，
+# 网关卡调 e2e gRPC 静默失败。docker/.env 或 shell 显式设置仍生效
+# （隔离栈经 shell 传 e2e_test_service）。
+_HOST_SCOPE_ONLY_KEYS = ('E2E_TEST_SERVICE_HOST', 'E2E_TEST_SERVICE_GRPC_PORT')
 
-    compose 以 docker/ 为项目目录，实际读取的是 ``docker/.env``；只读根 .env 会让
-    本脚本健康探测的端口口径与 compose 不一致（历史上 PG 5432/15435 就是这样漂移的）。
-    这里两份都读，docker/.env 覆盖同名键，与 compose 实际生效值对齐。
-    宿主 DATABASE_URL 等指向 localhost 的键不参与容器形态（compose 内置服务名寻址）。
-    """
-    root_env = os.path.join(BASE_DIR, '.env')
-    compose_env = os.path.join(BASE_DIR, 'docker', '.env')
+
+def _read_env_file(path):
+    """读取 .env 文件为 dict；文件缺失返回空。"""
+    if not os.path.isfile(path):
+        return {}
     try:
-        from dotenv import load_dotenv
-        if os.path.isfile(root_env):
-            load_dotenv(root_env)
-        if os.path.isfile(compose_env):
-            load_dotenv(compose_env, override=True)
-        return
+        from dotenv import dotenv_values
     except ImportError:
-        pass
-    # python-dotenv 缺席时的最小实现
-    for env_file in (root_env, compose_env):
-        if not os.path.isfile(env_file):
-            continue
-        with open(env_file, encoding='utf-8') as f:
+        values = {}
+        with open(path, encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith('#') or '=' not in line:
                     continue
                 key, _, val = line.partition('=')
-                os.environ[key.strip()] = val.strip()
+                values[key.strip()] = val.strip()
+        return values
+    return {k: v for k, v in dotenv_values(path).items() if v is not None}
+
+
+def _load_env_file():
+    """把仓库根 .env + docker/.env 读进当前进程环境（子进程 compose 继承）。
+
+    compose 以 docker/ 为项目目录，实际读取的是 ``docker/.env``；只读根 .env 会让
+    本脚本健康探测的端口口径与 compose 不一致（历史上 PG 5432/15435 就是这样漂移的）。
+    两份都读，优先级与 compose 实际生效值对齐：shell 显式设置 > docker/.env > 仓库根 .env。
+    宿主 DATABASE_URL 等指向 localhost 的键不参与容器形态（compose 内置服务名寻址）；
+    ``_HOST_SCOPE_ONLY_KEYS`` 同理，根 .env 的值不得外泄给 compose 插值。
+    """
+    root_values = _read_env_file(os.path.join(BASE_DIR, '.env'))
+    for key in _HOST_SCOPE_ONLY_KEYS:
+        root_values.pop(key, None)
+    compose_values = _read_env_file(os.path.join(BASE_DIR, 'docker', '.env'))
+    merged = {k: v for k, v in root_values.items() if k not in os.environ}
+    merged.update(compose_values)
+    os.environ.update(merged)
 
 
 def _compose(*args):
