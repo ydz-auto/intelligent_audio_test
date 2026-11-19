@@ -100,6 +100,9 @@ def _import_all_models():
     from api_test_service.infrastructure.persistence.models import API  # noqa: F401
     # api_gateway: 1 张表（INT-620 系统选项 KV；api_gateway 直管，无独立 config 微服务）
     from api_gateway.infrastructure.models.system_option_model import SystemOption  # noqa: F401
+    from api_gateway.infrastructure.models.system_option_secret_model import (  # noqa: F401
+        SystemOptionSecret,
+    )
     # transfer_agent: 2 张表（INT-1623 补入；此前漏导，真实库靠 transfer_agent 启动时
     #                 自行 create_all 才有这两张表，全新库 / 重引导库都缺）
     from transfer_agent.infrastructure.persistence.models import (  # noqa: F401

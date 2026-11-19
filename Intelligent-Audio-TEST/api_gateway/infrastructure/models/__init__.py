@@ -7,5 +7,8 @@ from api_gateway.infrastructure.models.param_change_history_model import (  # no
     ParamChangeHistory,
 )
 from api_gateway.infrastructure.models.system_option_model import SystemOption  # noqa: F401
+from api_gateway.infrastructure.models.system_option_secret_model import (  # noqa: F401
+    SystemOptionSecret,
+)
 
-__all__ = ['ParamChangeHistory', 'SystemOption']
+__all__ = ['ParamChangeHistory', 'SystemOption', 'SystemOptionSecret']

@@ -128,6 +128,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # 状态卡登录前也要能取真实健康数据，须公开（AUTH_MODE=prod 强制态下
         # 匿名可访问，语义同根路径 /health）
         '/api/v1/system/health',
+        # 服务间运行时配置拉取：路由内以 X-Internal-Token 校验（非用户身份，
+        # 未配置 token 时端点 503 fail-closed）
+        '/api/internal/eval-config',
         '/docs',
         '/openapi.json',
         '/redoc',

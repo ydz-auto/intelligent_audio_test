@@ -12,6 +12,7 @@ import { getIamDefaultSection, getIamSectionContent, getIamSectionMeta, type Iam
 import { getOperationsDefaultSection, getOperationsSectionContent, getOperationsSectionMeta, type OperationsSectionId } from './operations/section-registry'
 import { getSecurityDefaultSection, getSecuritySectionContent, getSecuritySectionMeta, type SecuritySectionId } from './security/section-registry'
 import { getSiteDefaultSection, getSiteSectionContent, getSiteSectionMeta, type SiteSectionId } from './site/section-registry'
+import { getEvalDefaultSection, getEvalSectionContent, getEvalSectionMeta, type EvalSectionId } from './eval/section-registry'
 
 type DomainRegistry = {
   getSectionContent: (sectionId: string, settings: SystemOptions) => ReactNode
@@ -55,5 +56,11 @@ export const SETTINGS_DOMAIN_REGISTRY: Record<string, DomainRegistry> = {
       getOperationsSectionContent(id as OperationsSectionId, settings),
     getSectionMeta: (id) => getOperationsSectionMeta(id as OperationsSectionId),
     getDefaultSection: () => getOperationsDefaultSection(),
+  },
+  eval: {
+    getSectionContent: (id, settings) =>
+      getEvalSectionContent(id as EvalSectionId, settings),
+    getSectionMeta: (id) => getEvalSectionMeta(id as EvalSectionId),
+    getDefaultSection: () => getEvalDefaultSection(),
   },
 }

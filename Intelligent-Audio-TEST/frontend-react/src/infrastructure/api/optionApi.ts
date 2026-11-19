@@ -33,3 +33,35 @@ export async function putSystemOption(
 ): Promise<void> {
   await apiClient.put('/option/', { key, value }, { rootPath: true })
 }
+
+/** 评估密钥元信息（GET /api/option/secrets；只回掩码，不含明文） */
+export type SystemSecretMeta = {
+  key: string
+  mask: string
+  updatedAt: string | null
+}
+
+export const SYSTEM_SECRETS_QUERY_KEY = ['system-option-secrets'] as const
+
+export async function getSystemSecretMeta(): Promise<{
+  items: SystemSecretMeta[]
+  cipherAvailable: boolean
+}> {
+  const data = await apiClient.get<{
+    items?: Array<{ key: string; mask?: string; updated_at?: string | null }>
+    cipherAvailable?: boolean
+  }>('/option/secrets', { rootPath: true })
+  return {
+    items: (data?.items ?? []).map((item) => ({
+      key: item.key,
+      mask: item.mask ?? '',
+      updatedAt: item.updated_at ?? null,
+    })),
+    cipherAvailable: data?.cipherAvailable ?? false,
+  }
+}
+
+/** 写入评估密钥（PUT /api/option/secrets；明文只进不出） */
+export async function putSystemSecret(key: string, value: string): Promise<void> {
+  await apiClient.put('/option/secrets', { key, value }, { rootPath: true })
+}

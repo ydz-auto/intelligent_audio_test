@@ -604,13 +604,24 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
     def _get_fallback_urls(exclude_url=None):
         """读取配置的兜底评估端点列表（默认空 = 不降级）
 
-        优先级：环境变量 EVAL_FALLBACK_URLS（逗号分隔）>
+        优先级：系统设置（评估服务）> 环境变量 EVAL_FALLBACK_URLS（逗号分隔）>
         shared/config/concurrency_config.json 的 evaluation_service.eval_fallback_urls（列表）。
         """
+        urls = []
+        try:
+            from shared.infrastructure.eval_config_client import (
+                KEY_RELAY_FALLBACK_URLS,
+                eval_config_client,
+            )
+            override = eval_config_client.option(KEY_RELAY_FALLBACK_URLS)
+            if isinstance(override, list):
+                urls = [str(u).strip() for u in override]
+        except Exception:
+            urls = []
         raw = os.environ.get('EVAL_FALLBACK_URLS', '')
-        if raw.strip():
+        if not urls and raw.strip():
             urls = [u.strip() for u in raw.split(',')]
-        else:
+        if not urls:
             cfg = config_manager.get_value('evaluation_service', 'eval_fallback_urls', [])
             urls = [str(u).strip() for u in cfg] if isinstance(cfg, (list, tuple)) else (
                 [u.strip() for u in str(cfg).split(',')] if str(cfg).strip() else [])

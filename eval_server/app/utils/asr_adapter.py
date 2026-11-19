@@ -45,6 +45,12 @@ ASR_MAX_CONCURRENCY = int(os.environ.get("ASR_MAX_CONCURRENCY", "10"))
 _asr_semaphore = threading.Semaphore(ASR_MAX_CONCURRENCY)
 
 
+def _asr_runtime():
+    """运行时 ASR 配置（系统设置优先，缺省回落 env）：返回 (base_url, timeout)。"""
+    from app.runtime_config import asr_settings
+    return asr_settings(ASR_SERVER_URL, ASR_TIMEOUT)
+
+
 def _build_json_save_path(wav_path):
     """根据 wav 路径构造 ASR 结果 JSON 的保存路径。
 
@@ -120,14 +126,15 @@ def call_modelscope_asr(wav_path, language=None):
         logger.error(f"wav 文件不存在: {wav_path}")
         return [{'text': '', 'chunks': []}]
 
-    url = f"{ASR_SERVER_URL}/asr"
+    asr_base, asr_timeout = _asr_runtime()
+    url = f"{asr_base}/asr"
     logger.info(f"调用远程 ASR: {url}  wav={wav_path}")
 
     with _asr_semaphore:
         with open(wav_path, "rb") as f:
             files = {"file": (os.path.basename(wav_path), f, "audio/wav")}
             t0 = time.time()
-            resp = requests.post(url, files=files, timeout=ASR_TIMEOUT)
+            resp = requests.post(url, files=files, timeout=asr_timeout)
             elapsed = time.time() - t0
 
     if resp.status_code != 200:
@@ -160,14 +167,15 @@ def call_modelscope_asr_word(wav_path, language=None):
         logger.error(f"wav 文件不存在: {wav_path}")
         return [{'text': '', 'chunks': []}]
 
-    url = f"{ASR_SERVER_URL}/asr_word"
+    asr_base, asr_timeout = _asr_runtime()
+    url = f"{asr_base}/asr_word"
     logger.info(f"调用远程 ASR(词级): {url}  wav={wav_path}")
 
     with _asr_semaphore:
         with open(wav_path, "rb") as f:
             files = {"file": (os.path.basename(wav_path), f, "audio/wav")}
             t0 = time.time()
-            resp = requests.post(url, files=files, timeout=ASR_TIMEOUT)
+            resp = requests.post(url, files=files, timeout=asr_timeout)
             elapsed = time.time() - t0
 
     if resp.status_code != 200:

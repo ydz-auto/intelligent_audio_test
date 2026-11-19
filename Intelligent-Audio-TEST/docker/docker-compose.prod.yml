@@ -24,6 +24,10 @@ x-backend-env: &backend-env
   AUDIO_STREAM_VIA_GATEWAY: ${AUDIO_STREAM_VIA_GATEWAY:-false}
   # 文件下载（导出 ZIP / 用例日志）：true = 网关流式直出，false = 预签名直连桶
   FILE_DOWNLOAD_VIA_GATEWAY: ${FILE_DOWNLOAD_VIA_GATEWAY:-false}
+  # 评估服务系统设置：密钥主密钥 + 服务间运行时配置通道
+  EVAL_CONFIG_MASTER_KEY: ${EVAL_CONFIG_MASTER_KEY}
+  INTERNAL_EVAL_CONFIG_TOKEN: ${INTERNAL_EVAL_CONFIG_TOKEN}
+  PLATFORM_INTERNAL_URL: http://api_gateway:5000
   # COS 的 S3 兼容接口只接受 virtual-hosted style；配置从该文件读取
   AWS_CONFIG_FILE: /app/.aws/config
   LOCAL_STORAGE_ROOT: /app/storage/static
@@ -110,6 +114,9 @@ services:
     environment:
       ASR_SERVER_URL: http://${ASR_TAILSCALE_IP}:10095
       ASR_TIMEOUT: "120"
+      # 系统设置（评估服务）运行时配置：网关内部端点 + 共享 token
+      PLATFORM_INTERNAL_URL: http://api_gateway:5000
+      EVAL_INTERNAL_TOKEN: ${INTERNAL_EVAL_CONFIG_TOKEN}
       STATIC_BASE_PATH: /data/static
       LOG_DIR: /data/static/logs/eval_server
       AWS_CONFIG_FILE: /app/.aws/config

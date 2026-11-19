@@ -1,10 +1,11 @@
 /**
- * 设置工作区六域注册表（interfaces 层，INT-347 §3.2 定稿）：
- * 站点设置/用户与权限/认证设置/外观与主题/安全设置/运维设置。
+ * 设置工作区七域注册表（interfaces 层）：
+ * 站点设置/用户与权限/认证设置/外观与主题/安全设置/运维设置/评估服务。
  * 侧栏树（layout/config/system-settings.config.ts）与路由守卫共用本表，
  * 域级门槛 = 域可见性权限（不满足整组隐藏），分区级门槛见各 section-data。
  */
 import {
+  Gauge,
   Palette,
   Settings,
   Shield,
@@ -20,6 +21,7 @@ import { IAM_DEFAULT_SECTION, IAM_SECTION_IDS, IAM_SECTIONS } from './iam/sectio
 import { OPERATIONS_DEFAULT_SECTION, OPERATIONS_SECTION_IDS, OPERATIONS_SECTIONS } from './operations/section-data'
 import { SECURITY_DEFAULT_SECTION, SECURITY_SECTION_IDS, SECURITY_SECTIONS } from './security/section-data'
 import { SITE_DEFAULT_SECTION, SITE_SECTION_IDS, SITE_SECTIONS } from './site/section-data'
+import { EVAL_DEFAULT_SECTION, EVAL_SECTION_IDS, EVAL_SECTIONS } from './eval/section-data'
 
 export type SettingsDomainSection = {
   id: string
@@ -91,6 +93,15 @@ export const SETTINGS_DOMAINS: SettingsDomain[] = [
     defaultSection: OPERATIONS_DEFAULT_SECTION,
     sections: OPERATIONS_SECTIONS,
   },
+  {
+    // 评估服务（LLM 裁判 / ASR / 第三方中转）：配置影响全局评估，按管理员口径
+    id: 'eval',
+    title: '评估服务',
+    icon: Gauge,
+    requiredPermission: 'option:write',
+    defaultSection: EVAL_DEFAULT_SECTION,
+    sections: EVAL_SECTIONS,
+  },
 ]
 
 /** 域 id 白名单（路由校验用） */
@@ -118,6 +129,7 @@ export const SETTINGS_DOMAIN_ICONS: Record<string, LucideIcon> = {
   appearance: Palette,
   security: ShieldAlert,
   operations: Wrench,
+  eval: Gauge,
 }
 
 /** 供类型消费：六域 section 白名单展开 */
@@ -128,4 +140,5 @@ export const SETTINGS_SECTION_IDS = {
   appearance: APPEARANCE_SECTION_IDS,
   security: SECURITY_SECTION_IDS,
   operations: OPERATIONS_SECTION_IDS,
+  eval: EVAL_SECTION_IDS,
 } as const

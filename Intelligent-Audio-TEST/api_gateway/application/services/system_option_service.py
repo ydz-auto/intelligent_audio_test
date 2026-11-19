@@ -16,8 +16,23 @@ from api_gateway.domain.entities.system_option import (
     SystemOptionValue,
 )
 from api_gateway.domain.repositories.system_option_repository import SystemOptionRepository
+from api_gateway.domain.repositories.system_option_secret_repository import (
+    SystemOptionSecretRepository,
+)
+from api_gateway.infrastructure import eval_secret_cipher
 from api_gateway.infrastructure.system_option_repository import SystemOptionRepositoryImpl
+from api_gateway.infrastructure.system_option_secret_repository import (
+    SystemOptionSecretRepositoryImpl,
+)
 from api_gateway.utils.response import error_response, success_response
+from shared.config.eval_settings import (
+    EVAL_LLM_DIMENSIONS,
+    EVAL_OPTION_DEFAULTS,
+    EVAL_OPTION_KEYS,
+    EVAL_SECRET_KEYS,
+    EvalOptionKey,
+    llm_model_key,
+)
 from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
 
 logger = logging.getLogger(__name__)
@@ -33,6 +48,7 @@ class SystemOptionService:
     """系统选项应用服务（读侧 Query / 写侧 Command）。"""
 
     _repo: SystemOptionRepository = SystemOptionRepositoryImpl()
+    _secret_repo: SystemOptionSecretRepository = SystemOptionSecretRepositoryImpl()
 
     @classmethod
     def get_all(cls):
@@ -103,3 +119,99 @@ class SystemOptionService:
             )
         except Exception as e:
             logger.warning("发布系统选项变更事件失败，降级忽略: %s", e)
+
+    # ------------------------------------------------------------------
+    # 评估服务密钥（只存密文 + 掩码；明文仅内部运行时端点按需解密）
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def get_eval_secret_meta(cls):
+        """密钥元信息（掩码/更新时间），供系统设置页展示「已配置」。"""
+        try:
+            return success_response(data={
+                'items': cls._secret_repo.list_meta(),
+                'cipherAvailable': eval_secret_cipher.available(),
+            })
+        except Exception as e:
+            logger.warning("读取评估密钥元信息失败", exc_info=True)
+            return error_response(message=f"读取评估密钥失败: {e}")
+
+    @classmethod
+    def upsert_eval_secret(cls, key: str, value: str, updated_by: int):
+        """写入/覆盖评估密钥（明文只进不出：加密后仅回掩码）。"""
+        if key not in EVAL_SECRET_KEYS:
+            return error_response(message=f"不支持的密钥键: {key}", http_code=400)
+        plaintext = (value or '').strip()
+        if not plaintext:
+            return error_response(message="密钥不能为空", http_code=400)
+        try:
+            ciphertext, version = eval_secret_cipher.encrypt(key, plaintext)
+        except eval_secret_cipher.EvalSecretUnavailable as e:
+            return error_response(message=str(e), http_code=503)
+        try:
+            cls._secret_repo.upsert(
+                key, ciphertext, version,
+                eval_secret_cipher.mask(plaintext), updated_by)
+            # 审计：只记键与操作人，绝不记明文
+            logger.info("eval_secret_updated key=%s operator=%s", key, updated_by)
+            cls._publish_changed(key)
+            return success_response(message="密钥已更新")
+        except Exception as e:
+            logger.warning("写入评估密钥失败 key=%s", key, exc_info=True)
+            return error_response(message=f"写入评估密钥失败: {e}")
+
+    @classmethod
+    def get_runtime_eval_config(cls) -> Dict:
+        """运行时评估配置（内部端点专用）：普通项覆盖值 + 解密后的密钥。
+
+        - 只返回已落库的键（未配置由消费方回落 env / config.yaml）；
+        - 密钥解密失败只跳过该键并记 WARNING，不影响其余配置下发。
+        """
+        stored = cls._repo.get_all()
+        model_keys = {llm_model_key(dim) for dim in EVAL_LLM_DIMENSIONS}
+        options = {
+            key: value for key, value in stored.items()
+            if key in EVAL_OPTION_KEYS and key not in model_keys
+        }
+        dimension_models = {
+            dim: stored[llm_model_key(dim)]
+            for dim in EVAL_LLM_DIMENSIONS
+            if stored.get(llm_model_key(dim))
+        }
+        secrets: Dict[str, str] = {}
+        for key in EVAL_SECRET_KEYS:
+            try:
+                row = cls._secret_repo.get_ciphertext(key)
+                if not row:
+                    continue
+                secrets[key] = eval_secret_cipher.decrypt(
+                    key, row['ciphertext'], row.get('key_version', 1))
+            except Exception as e:
+                logger.warning("评估密钥解密失败，已跳过 key=%s: %s", key, e)
+        return {
+            'options': options,
+            'secrets': secrets,
+            'dimensionModels': dimension_models,
+            'defaults': dict(EVAL_OPTION_DEFAULTS),
+            'keys': {
+                name: key.value for name, key in (
+                    ('llmApiBase', EvalOptionKey.LLM_API_BASE),
+                    ('llmApiKey', EvalOptionKey.LLM_API_KEY),
+                    ('llmDefaultModel', EvalOptionKey.LLM_DEFAULT_MODEL),
+                    ('llmMaxTokens', EvalOptionKey.LLM_MAX_TOKENS),
+                    ('llmTemperature', EvalOptionKey.LLM_TEMPERATURE),
+                    ('llmTimeout', EvalOptionKey.LLM_TIMEOUT),
+                    ('llmAudioCompress', EvalOptionKey.LLM_AUDIO_COMPRESS),
+                    ('asrUrl', EvalOptionKey.ASR_URL),
+                    ('asrTimeout', EvalOptionKey.ASR_TIMEOUT),
+                    ('relaySelfZone', EvalOptionKey.RELAY_SELF_ZONE),
+                    ('relayHubZone', EvalOptionKey.RELAY_HUB_ZONE),
+                    ('relaySyncBackZone', EvalOptionKey.RELAY_SYNC_BACK_ZONE),
+                    ('relayTriggerEnabled', EvalOptionKey.RELAY_TRIGGER_ENABLED),
+                    ('relayCApiBaseUrl', EvalOptionKey.RELAY_C_API_BASE_URL),
+                    ('relayFallbackUrls', EvalOptionKey.RELAY_FALLBACK_URLS),
+                    ('relayTokenAB', EvalOptionKey.RELAY_TOKEN_A_B),
+                    ('relayTokenBC', EvalOptionKey.RELAY_TOKEN_B_C),
+                )
+            },
+        }

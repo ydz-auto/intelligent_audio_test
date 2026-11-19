@@ -168,10 +168,13 @@ def create_app(config_name='default') -> FastAPI:
     # 根级挂载无 /api/v1 前缀；权限码 status:read / option:read|write）
     from api_gateway.routes.status_bp import router as status_router
     from api_gateway.routes.option_bp import router as option_router
+    from api_gateway.routes.internal_config_bp import router as internal_config_router
     # INT-1150：skill 包下载（/api/v1/agent/skill）+ MCP 适配端点（/api/v1/mcp）
     from api_gateway.routes.agent_bp import router as agent_router, mcp_router
 
     app.include_router(auth_router, prefix='/api/v1/auth', tags=['auth'])
+    # 服务间运行时评估配置（X-Internal-Token 校验，供 eval_server/evaluation_service 拉取）
+    app.include_router(internal_config_router, prefix='/api', tags=['internal'])
     app.include_router(user_router, prefix='/api/v1/auth', tags=['auth-management'])
     app.include_router(role_router, prefix='/api/v1/auth', tags=['auth-management'])
     app.include_router(oauth_router, prefix='/api/v1/auth', tags=['oauth-management'])

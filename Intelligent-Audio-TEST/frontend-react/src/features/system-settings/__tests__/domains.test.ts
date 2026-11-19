@@ -12,8 +12,8 @@ import {
   SYSTEM_SETTINGS_DEFAULT_PATH,
 } from '@/features/system-settings/domains'
 
-describe('SETTINGS_DOMAINS 六域注册表', () => {
-  it('六域标题与 id 齐备（站点/用户/认证/外观/安全/运维）', () => {
+describe('SETTINGS_DOMAINS 七域注册表', () => {
+  it('七域标题与 id 齐备（站点/用户/认证/外观/安全/运维/评估）', () => {
     expect(SETTINGS_DOMAINS.map((d) => d.id)).toEqual([
       'site',
       'iam',
@@ -21,6 +21,7 @@ describe('SETTINGS_DOMAINS 六域注册表', () => {
       'appearance',
       'security',
       'operations',
+      'eval',
     ])
     expect(SETTINGS_DOMAINS.map((d) => d.title)).toEqual([
       '站点设置',
@@ -29,6 +30,7 @@ describe('SETTINGS_DOMAINS 六域注册表', () => {
       '外观与主题',
       '安全设置',
       '运维设置',
+      '评估服务',
     ])
   })
 
@@ -51,6 +53,7 @@ describe('SETTINGS_DOMAINS 六域注册表', () => {
     expect(getSettingsDomain('iam')?.requiredPermission).toBe('user:read')
     expect(getSettingsDomain('security')?.requiredPermission).toBe('user:read')
     expect(getSettingsDomain('operations')?.requiredPermission).toBe('log:manage')
+    expect(getSettingsDomain('eval')?.requiredPermission).toBe('option:write')
     expect(getSettingsDomain('auth')?.requiredPermissions).toEqual([
       'auth:manage_provider',
       'user:read',

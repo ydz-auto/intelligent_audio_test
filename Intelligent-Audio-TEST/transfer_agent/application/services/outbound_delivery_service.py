@@ -97,8 +97,20 @@ class OutboundDeliveryService:
         if self._c_client is None:
             from transfer_agent.config.config import Config
             from transfer_agent.infrastructure.acl.c_api_client import ThirdPartyCAPIClient
+            base_url = Config.THIRD_PARTY_C_API_BASE_URL
+            # 系统设置（评估服务）里的第三方 C 端地址优先（未配置回落 env）
+            try:
+                from shared.infrastructure.eval_config_client import (
+                    KEY_RELAY_C_API_BASE_URL,
+                    eval_config_client,
+                )
+                override = eval_config_client.option(KEY_RELAY_C_API_BASE_URL)
+                if isinstance(override, str) and override.strip():
+                    base_url = override.strip()
+            except Exception:
+                pass
             self._c_client = ThirdPartyCAPIClient(
-                base_url=Config.THIRD_PARTY_C_API_BASE_URL,
+                base_url=base_url,
                 timeout_seconds=Config.THIRD_PARTY_C_TIMEOUT_SECONDS,
                 max_retries=Config.THIRD_PARTY_C_MAX_RETRIES,
                 backoff_seconds=Config.THIRD_PARTY_C_BACKOFF_SECONDS,
