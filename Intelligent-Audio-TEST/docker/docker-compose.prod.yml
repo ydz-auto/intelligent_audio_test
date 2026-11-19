@@ -27,9 +27,11 @@ x-backend-env: &backend-env
   # COS 的 S3 兼容接口只接受 virtual-hosted style；配置从该文件读取
   AWS_CONFIG_FILE: /app/.aws/config
   LOCAL_STORAGE_ROOT: /app/storage/static
-  AUDIO_SERVICE_HOST: ${LOCAL_TAILSCALE_IP}
+  # 本地 audio/device 可达地址：默认 docker 网桥网关（本机 SSH 反向隧道绑定），
+  # 无反向隧道时可用 LOCAL_SERVICE_HOST=<tailscale 或局域网 IP> 覆盖
+  AUDIO_SERVICE_HOST: ${LOCAL_SERVICE_HOST:-172.18.0.1}
   AUDIO_SERVICE_GRPC_PORT: "50052"
-  DEVICE_SERVICE_HOST: ${LOCAL_TAILSCALE_IP}
+  DEVICE_SERVICE_HOST: ${LOCAL_SERVICE_HOST:-172.18.0.1}
   DEVICE_SERVICE_GRPC_PORT: "50053"
 
 x-aws-volume: &aws-volume
