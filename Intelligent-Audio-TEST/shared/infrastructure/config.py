@@ -92,6 +92,12 @@ class BaseConfig:
     )
     # 本地静态资源根（音频上传临时目录/历史数据重映射基准）
     LOCAL_STORAGE_ROOT: str = os.environ.get('LOCAL_STORAGE_ROOT', './storage')
+    # 浏览器播放取流方式（成本口径开关，默认 false 保持预签名直连桶）：
+    # false → /audios/{id}/stream、/testcases/{id}/preview 返回 COS 预签名 URL，
+    #         浏览器直连桶，计「桶公网下行流量」；
+    # true  → 返回网关 /api/v1/audios/download 相对地址，前端带 JWT 取字节，
+    #         音频由服务器从桶内网读取后转发，计「服务器出流量」、不计桶公网下行。
+    AUDIO_STREAM_VIA_GATEWAY: bool = _get_bool('AUDIO_STREAM_VIA_GATEWAY', False)
     # 历史静态根（逗号分隔）：存量绝对路径音频的旧存储根，解析时重映射到
     # LOCAL_STORAGE_ROOT 下同相对路径（存储根迁移后救活旧记录，INT-106）
     AUDIO_LEGACY_STATIC_ROOTS: str = _get_env('AUDIO_LEGACY_STATIC_ROOTS', '')

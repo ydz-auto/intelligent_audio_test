@@ -10,6 +10,7 @@
  */
 import { ApiError } from './api-error'
 import { apiClient } from './client'
+import { resolvePlayableUrl } from './audio-playable-url'
 import type {
   PreviewPlaybackMode,
   TestCaseDuplicateStrategy,
@@ -306,7 +307,17 @@ export async function previewTestCase(
       lab_id: payload.labId ?? null,
     }
   )
-  return testCasePreviewFromDto(dto)
+  const preview = testCasePreviewFromDto(dto)
+  if (preview.audioStreamUrls.length === 0) return preview
+  // 网关代理模式下为相对地址：带 JWT 取 blob（绝对预签名地址原样返回）
+  const audioStreamUrls = await Promise.all(
+    preview.audioStreamUrls.map(resolvePlayableUrl)
+  )
+  return {
+    ...preview,
+    audioStreamUrls,
+    audioStreamUrl: audioStreamUrls[0] ?? preview.audioStreamUrl,
+  }
 }
 
 /** 停止试听（POST /testcases/{id}/stop_preview；§5.2 启停语义，随播放器停止/关闭触发） */

@@ -1,0 +1,125 @@
+# 腾讯云生产部署覆盖层（配合 docker-compose.yml）
+# 用法：
+#   docker compose -p intelligent-audio-test --env-file .env \
+#     -f docker-compose.yml -f docker-compose.prod.yml \
+#     --profile container-e2e up -d --no-build
+#
+# 拓扑：
+# - audio/device：本地 Windows（Tailscale 100.123.155.32）
+# - e2e：服务器容器，经 Tailscale 调本地 audio/device
+# - eval_server：服务器容器；ASR 在 blue-eval（Tailscale 100.103.97.108:10095）
+# - 对象存储：腾讯云 COS（test/intelligent_audio_test 前缀，virtual-hosted style）
+# - db_bootstrap 停用：数据库由生产 dump 恢复
+
+x-backend-env: &backend-env
+  OSS_ENDPOINT: ${OSS_ENDPOINT}
+  OSS_PUBLIC_ENDPOINT: ${OSS_PUBLIC_ENDPOINT}
+  OSS_REGION: ${OSS_REGION}
+  OSS_ACCESS_KEY: ${OSS_ACCESS_KEY}
+  OSS_SECRET_KEY: ${OSS_SECRET_KEY}
+  OSS_BUCKET_NAME: ${OSS_BUCKET_NAME}
+  OSS_KEY_PREFIX: ${OSS_KEY_PREFIX}
+  STORAGE_FALLBACK_ENABLED: "false"
+  # 浏览器播放取流：true = 网关代理（服务器出流量），false = COS 预签名直连桶
+  AUDIO_STREAM_VIA_GATEWAY: ${AUDIO_STREAM_VIA_GATEWAY:-false}
+  # COS 的 S3 兼容接口只接受 virtual-hosted style；配置从该文件读取
+  AWS_CONFIG_FILE: /app/.aws/config
+  LOCAL_STORAGE_ROOT: /app/storage/static
+  AUDIO_SERVICE_HOST: ${LOCAL_TAILSCALE_IP}
+  AUDIO_SERVICE_GRPC_PORT: "50052"
+  DEVICE_SERVICE_HOST: ${LOCAL_TAILSCALE_IP}
+  DEVICE_SERVICE_GRPC_PORT: "50053"
+
+x-aws-volume: &aws-volume
+  - ../aws-config/config:/app/.aws/config:ro
+
+services:
+  db_bootstrap:
+    image: postgres:16-alpine
+    entrypoint: ["/bin/true"]
+    command: []
+    environment: []
+
+  agent_service:
+    profiles: ["agent"]
+  agent_sandbox_runner:
+    profiles: ["agent"]
+
+  api_gateway:
+    environment:
+      <<: *backend-env
+      E2E_TEST_SERVICE_HOST: e2e_test_service
+      E2E_TEST_SERVICE_GRPC_PORT: "50051"
+      AGENT_ENABLED: "false"
+    volumes: *aws-volume
+
+  task_service:
+    environment:
+      <<: *backend-env
+      E2E_TEST_SERVICE_HOST: e2e_test_service
+      E2E_TEST_SERVICE_GRPC_PORT: "50051"
+    volumes: *aws-volume
+
+  evaluation_service:
+    environment:
+      <<: *backend-env
+      EVAL_SERVER_URL: http://eval_server:8888
+      EVAL_FALLBACK_URLS: http://eval_server:8888
+    volumes: *aws-volume
+
+  e2e_test_service:
+    environment:
+      <<: *backend-env
+    volumes: *aws-volume
+
+  api_test_service:
+    environment:
+      <<: *backend-env
+    volumes: *aws-volume
+
+  report_service:
+    environment:
+      <<: *backend-env
+    volumes: *aws-volume
+
+  algorithm_service:
+    environment:
+      <<: *backend-env
+    volumes: *aws-volume
+
+  auth_service:
+    environment:
+      <<: *backend-env
+    volumes: *aws-volume
+
+  rustfs:
+    environment:
+      RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
+
+  eval_server:
+    build:
+      context: ../eval_server
+    restart: unless-stopped
+    mem_limit: ${EVAL_SERVER_MEM_LIMIT:-512m}
+    ports:
+      - "8888:8888"
+    environment:
+      ASR_SERVER_URL: http://${ASR_TAILSCALE_IP}:10095
+      ASR_TIMEOUT: "120"
+      STATIC_BASE_PATH: /data/static
+      LOG_DIR: /data/static/logs/eval_server
+      AWS_CONFIG_FILE: /app/.aws/config
+      OSS_ENDPOINT: ${OSS_ENDPOINT}
+      OSS_PUBLIC_ENDPOINT: ${OSS_PUBLIC_ENDPOINT}
+      OSS_REGION: ${OSS_REGION}
+      OSS_ACCESS_KEY: ${OSS_ACCESS_KEY}
+      OSS_SECRET_KEY: ${OSS_SECRET_KEY}
+      OSS_BUCKET_NAME: ${OSS_BUCKET_NAME}
+      OSS_KEY_PREFIX: ${OSS_KEY_PREFIX}
+      LLM_JUDGE_API_KEY: ""
+    volumes:
+      - eval_static:/data/static
+      - ../aws-config/config:/app/.aws/config:ro
+
+volumes:
+  eval_static:

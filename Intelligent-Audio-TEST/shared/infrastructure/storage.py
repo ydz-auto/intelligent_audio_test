@@ -607,6 +607,16 @@ class Storage:
         return f'{scheme}{category}/{key}'
 
     @staticmethod
+    def build_download_url(file_path: str) -> str:
+        """网关音频字节流地址（AUDIO_STREAM_VIA_GATEWAY 开启时的播放 URL）。
+
+        相对地址：浏览器带 JWT 取流（前端转 blob 播放），音频由服务器从桶内网
+        读取后转发，计服务器出流量、不计桶公网下行（对照 COS 预签名直连）。
+        """
+        return '/api/v1/audios/download?' + urllib.parse.urlencode(
+            {'path': file_path})
+
+    @staticmethod
     def build_key(task_id, case_id, device_sn, filename) -> str:
         """构建标准存储 key：{task_id}/{case_id}/{device_sn}/{filename}"""
         return f"{task_id}/{case_id}/{device_sn}/{filename}"

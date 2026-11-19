@@ -314,16 +314,20 @@ class TestCaseQueryService:
             if rec.get('duration'):
                 total_duration += rec.get('duration')
 
-        # 前端播放模式：返回所有音频的预签名 URL，前端连续播放
+        # 前端播放模式：返回播放 URL（预签名直连桶 / 网关代理，见 AUDIO_STREAM_VIA_GATEWAY）
         if playback_mode == 'frontend':
+            from shared.infrastructure.config import BaseConfig
             from shared.infrastructure.storage import storage
 
-            # 生成预签名 URL 的辅助函数（兼容旧数据裸 OSS key）
+            # 生成播放 URL 的辅助函数（兼容旧数据裸 OSS key）
             def _make_presigned_url(file_path):
+                # 网关代理模式：经服务器取流（服务器出流量），不返回预签名直连桶
+                if BaseConfig.AUDIO_STREAM_VIA_GATEWAY:
+                    return storage.build_download_url(file_path)
                 path = file_path if file_path.startswith(('oss://', 'local://')) else storage.build_path('audios', file_path)
                 url = storage.get_url(path, expires=3600)
                 # 本地降级模式回退：网关 /audios/download 字节流路由（INT-146 缺陷4）
-                return url or f'/api/v1/audios/download?path={file_path}'
+                return url or storage.build_download_url(file_path)
 
             audio_stream_urls = []
             for aid in audio_ids:
