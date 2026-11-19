@@ -442,9 +442,9 @@ def run(base, api_base):
             pass
         ('之间' in body_text(drv) or '对齐' in body_text(drv)) or step_fail('7_invalid', body_text(drv)[-300:])
         step_ok('7_invalid', shot=shot(drv, '07_context_invalid')['name'])
-        # 超目录最大值：可保存 + 告警（先把模型名改成目录内的 deepseek-chat，目录默认 65536）
+        # 超目录最大值：可保存 + 告警（先把模型名改成目录内的 deepseek-chat，目录默认 131072）
         type_into(drv, '#agent-provider-model', 'deepseek-chat')
-        type_into(drv, '#agent-provider-context-window', '131072')
+        type_into(drv, '#agent-provider-context-window', '262144')
         try:
             WebDriverWait(drv, 10).until(lambda d: '高于目录默认' in body_text(d))
         except Exception:
@@ -455,7 +455,7 @@ def run(base, api_base):
         time.sleep(2)
         item = next(i for i in client.request('GET', '/agent/providers')['items'] if i['id'] == target['id'])
         item['context_window_warning'] or step_fail('7_above_catalog_saved', '告警未落库')
-        item['effective_context_window'] == 131072 or step_fail(
+        item['effective_context_window'] == 262144 or step_fail(
             '7_above_catalog_saved', json.dumps(item, ensure_ascii=False)[:200])
         step_ok('7_above_catalog_saved', shot=shot(drv, '08_above_catalog_warning')['name'])
 

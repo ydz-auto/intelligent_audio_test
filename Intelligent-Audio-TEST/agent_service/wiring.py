@@ -503,6 +503,8 @@ def build_container(session_factory,
         list_trim_threshold_chars=Config.CONTEXT_LIST_TRIM_THRESHOLD_CHARS,
         max_key_fields=Config.CONTEXT_MAX_KEY_FIELDS,
         memo_min_candidates=Config.CONTEXT_MEMO_MIN_CANDIDATES,
+        memo_input_ratio=Config.CONTEXT_MEMO_INPUT_RATIO,
+        memo_message_max_chars=Config.CONTEXT_MEMO_MESSAGE_MAX_CHARS,
         artifact_store_timeout_seconds=(
             Config.CONTEXT_ARTIFACT_TIMEOUT_SECONDS),
         rebuild_list_limit=Config.CONTEXT_REBUILD_LIST_LIMIT,
@@ -547,6 +549,7 @@ def build_container(session_factory,
         compaction_hard_ratio=Config.COMPACTION_HARD_RATIO,
         budget_policy=budget_policy,
         memo_max_output_tokens=Config.CONTEXT_MEMO_MAX_OUTPUT_TOKENS,
+        memo_transcript_chars=Config.CONTEXT_MEMO_MESSAGE_MAX_CHARS,
         # INT-2474：Auto 停止条件（预算暂停比例 / 熔断阈值 / 完成标记）
         auto_settings=auto_config,
     )

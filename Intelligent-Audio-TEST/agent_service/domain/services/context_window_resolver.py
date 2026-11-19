@@ -118,15 +118,23 @@ class ContextWindowResolver:
 
     def match(self, protocol: LlmProtocol,
               model: str) -> Optional[CatalogEntry]:
-        """协议 + 模型名匹配目录项（首个命中生效，支持 glob）。"""
+        """协议 + 模型名匹配目录项（首个命中生效，支持 glob）。
+
+        聚合网关 / 自建代理常把模型名写成 ``vendor/model``（如
+        ``volcengine/deepseek-v4.1-flash``）：整串优先匹配，未命中再用
+        ``/`` 之后的部分匹配，避免带前缀的模型全部掉进 128k 兜底。
+        """
         protocol_value = protocol.value if hasattr(protocol, 'value') else str(protocol)
         wanted = (model or '').strip().lower()
         if not wanted:
             return None
+        short = wanted.rsplit('/', 1)[-1]
+        candidates = (wanted, short) if short and short != wanted else (wanted,)
         for entry in self._entries:
             if entry.protocol not in ('*', protocol_value):
                 continue
-            if fnmatch.fnmatchcase(wanted, entry.match.lower()):
+            pattern = entry.match.lower()
+            if any(fnmatch.fnmatchcase(name, pattern) for name in candidates):
                 return entry
         return None
 

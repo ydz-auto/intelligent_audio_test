@@ -162,7 +162,7 @@ class Config(BaseConfig):
         int(_CONTEXT_DEFAULTS.get('tool_summary_chars', 600)))
     CONTEXT_MAX_SUMMARY_CHARS = _get_int(
         'AGENT_CONTEXT_MAX_SUMMARY_CHARS',
-        int(_CONTEXT_DEFAULTS.get('max_summary_chars', 2400)))
+        int(_CONTEXT_DEFAULTS.get('max_summary_chars', 1200)))
     CONTEXT_ARTIFACT_THRESHOLD_CHARS = _get_int(
         'AGENT_CONTEXT_ARTIFACT_THRESHOLD_CHARS',
         int(_CONTEXT_DEFAULTS.get('artifact_threshold_chars', 4000)))
@@ -188,6 +188,13 @@ class Config(BaseConfig):
     CONTEXT_MEMO_MIN_CANDIDATES = _get_int(
         'AGENT_CONTEXT_MEMO_MIN_CANDIDATES',
         int(_CONTEXT_DEFAULTS.get('memo_min_candidates', 6)))
+    # L3 摘要输入裁剪：输入 token ≤ 可用窗口 × 比例，单条消息字符上限
+    CONTEXT_MEMO_INPUT_RATIO = _get_float(
+        'AGENT_CONTEXT_MEMO_INPUT_RATIO',
+        float(_CONTEXT_DEFAULTS.get('memo_input_ratio', 0.6)))
+    CONTEXT_MEMO_MESSAGE_MAX_CHARS = _get_int(
+        'AGENT_CONTEXT_MEMO_MESSAGE_MAX_CHARS',
+        int(_CONTEXT_DEFAULTS.get('memo_message_max_chars', 2000)))
     # L4_REBUILD（INT-2474）：重建块里每个清单（步骤 / 副作用 / 产物）最多列几条
     CONTEXT_REBUILD_LIST_LIMIT = _get_int(
         'AGENT_CONTEXT_REBUILD_LIST_LIMIT',

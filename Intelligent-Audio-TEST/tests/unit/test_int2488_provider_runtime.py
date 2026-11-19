@@ -241,12 +241,12 @@ def test_budget_and_output_limit_follow_effective_window(tmp_path):
     snapshot = _steps(session_factory, run.id)[0].plan_snapshot
     assert snapshot['context_window'] == 32768
     assert snapshot['context_window_source'] == 'USER_OVERRIDE'
-    assert snapshot['token_budget'] == 65536  # 2 × W
+    assert snapshot['token_budget'] == 0  # chat 不设累计 token 上限
     available = 32768 - 3072
     assert snapshot['compaction_soft_tokens'] == int(available * 0.60)
     assert snapshot['compaction_hard_tokens'] == int(available * 0.80)
 
-    # 换默认供应商（目录默认 W=64k）后，同会话下一次 run 按新窗口重算
+    # 换默认供应商（目录默认 W=128k）后，同会话下一次 run 按新窗口重算
     second = _create_provider(
         container, key=KEY_C, base_url='http://c.local/v1',
         name='second', model='deepseek-chat')
@@ -258,10 +258,10 @@ def test_budget_and_output_limit_follow_effective_window(tmp_path):
     stored2 = container.repositories['runs'].get(run2.id)
     assert stored2.status is RunStatus.SUCCEEDED
     assert recorder.calls[-1]['authorization'] == f'Bearer {KEY_C}'
-    assert recorder.calls[-1]['body']['max_tokens'] == 6144  # 10% × 64k
+    assert recorder.calls[-1]['body']['max_tokens'] == 8192  # 10% × 128k 被 cap 收紧
     snapshot2 = _steps(session_factory, stored2.id)[0].plan_snapshot
-    assert snapshot2['context_window'] == 65536  # deepseek-chat 目录默认
-    assert snapshot2['token_budget'] == 131072
+    assert snapshot2['context_window'] == 131072  # deepseek-chat 目录默认
+    assert snapshot2['token_budget'] == 0  # chat 不设累计 token 上限
     container.shutdown()
 
 

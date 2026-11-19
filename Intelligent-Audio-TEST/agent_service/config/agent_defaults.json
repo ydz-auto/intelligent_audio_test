@@ -32,7 +32,7 @@
     "recent_messages": 50,
     "keep_recent_turns": 3,
     "tool_summary_chars": 600,
-    "max_summary_chars": 2400,
+    "max_summary_chars": 1200,
     "artifact_threshold_chars": 4000,
     "artifact_timeout_seconds": 10.0,
     "list_top_n": 5,
@@ -40,6 +40,8 @@
     "max_key_fields": 24,
     "memo_max_output_tokens": 2048,
     "memo_min_candidates": 6,
+    "memo_input_ratio": 0.6,
+    "memo_message_max_chars": 2000,
     "rebuild_list_limit": 20,
     "debug": false,
     "section_ratios": {

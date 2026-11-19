@@ -25,6 +25,8 @@ from agent_service.application.context_assembler import (
 )
 from agent_service.application.run_worker import InlineRunExecutor
 from agent_service.domain.enums import EventType, LlmMessageRole
+from agent_service.domain.exceptions import ContextOverflow
+from agent_service.domain.services.token_estimator import estimate_tokens
 from agent_service.domain.model.context_budget import ContextSection
 from agent_service.domain.model.entities import AgentArtifact
 from agent_service.domain.ports.artifact_store import ArtifactStore
@@ -395,6 +397,71 @@ def test_l3_failure_falls_back_to_l1(tmp_path):
     assert MEMO_PREFIX not in system
     snapshots = container.repositories['snapshots'].list_by_run(latest.id)
     assert snapshots[0].level.value == 'L1_TRIM'
+    container.shutdown()
+
+
+def test_compaction_clamps_to_available_window(tmp_path):
+    """硬目标：压缩后必须落在可用窗口内，而不是只回到软 / 硬阈值。"""
+    container, _engine, _sf = _container(tmp_path, name='clamp.db')
+    session = new_session(container)
+    for index in range(8):
+        _seed_run(container, session, f'旧任务 {index}', text='a' * 6000)
+    latest, _ = container.run_service.create_run(
+        session.id, owner_id=OWNER, tenant_id=TENANT, message='现在呢')
+
+    budget = _budget(container)
+    messages = container.assembler.assemble(
+        session.id, latest, budget=budget)
+    tokens = sum(estimate_tokens(m.content or '') + 4 for m in messages)
+    assert tokens <= budget.available, (tokens, budget.available)
+    container.shutdown()
+
+
+def test_overflow_raises_instead_of_calling_model(tmp_path):
+    """全部内容都被固定（超窗且无可丢轮次）→ 显式 ContextOverflow。"""
+    container, _engine, _sf = _container(tmp_path, name='overflow.db')
+    session = new_session(container)
+    _seed_run(container, session, 'u' * 40000, text='a' * 40000)
+    latest, _ = container.run_service.create_run(
+        session.id, owner_id=OWNER, tenant_id=TENANT, message='继续')
+
+    with pytest.raises(ContextOverflow) as excinfo:
+        container.assembler.assemble(
+            session.id, latest, budget=_budget(container))
+    assert excinfo.value.code == 'CONTEXT_OVERFLOW'
+    assert '新建会话' in str(excinfo.value)
+    container.shutdown()
+
+
+def test_l3_input_is_pre_trimmed_to_sendable_size(tmp_path):
+    """摘要请求本身不得超窗：输入必须先裁剪到可用窗口的比例内。"""
+    container, _engine, _sf = _container(tmp_path, name='l3trim.db')
+    session = new_session(container)
+    for index in range(10):
+        # 中文按 1 字符 ≈ 1 token 估算，确保裁剪到 2k 字符后仍明显超预算
+        _seed_run(container, session, f'旧任务 {index}', text='问' * 20000)
+    for index in range(2):
+        _seed_run(container, session, f'最近 {index}', text='ok')
+    latest, _ = container.run_service.create_run(
+        session.id, owner_id=OWNER, tenant_id=TENANT, message='汇总')
+
+    budget = _budget(container)
+    seen = []
+
+    def summarizer(items):
+        seen.append(list(items))
+        return _memo_payload()
+
+    container.assembler.assemble(
+        session.id, latest, budget=budget, memo_summarizer=summarizer)
+    assert seen
+    payload = seen[0]
+    input_tokens = sum(estimate_tokens(item.get('content') or '')
+                       for item in payload)
+    assert input_tokens <= int(budget.available * 0.6) * 1.1
+    # 更早的消息被省略时会显式标注，最新内容仍在
+    assert any(item['message_id'] == 'system:omitted' for item in payload)
+    assert payload[-1]['content'], payload[-1]
     container.shutdown()
 
 

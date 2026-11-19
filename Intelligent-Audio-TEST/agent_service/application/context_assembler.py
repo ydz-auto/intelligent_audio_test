@@ -44,7 +44,7 @@ from agent_service.domain.enums import (
     CompactionLevel, EventType, LlmMessageRole, StepStatus, ToolCallStatus,
     ToolRisk,
 )
-from agent_service.domain.exceptions import RunCancelled
+from agent_service.domain.exceptions import ContextOverflow, RunCancelled
 from agent_service.domain.model.context_budget import ContextBudget, ContextSection
 from agent_service.domain.model.entities import (
     AgentArtifact, AgentContextSnapshot, AgentRun, AgentRunEvent, LlmMessage,
@@ -91,13 +91,18 @@ class CompactionSettings:
     # 不是「N 条消息」。压缩与 `_drop_oldest_groups` 都按同一口径计数。
     keep_recent_turns: int = 3
     tool_summary_chars: int = 600
-    max_summary_chars: int = 2400
+    # 单条工具结果摘要上限：摘要 + 关键字段 + artifact 引用，默认 1.2k 字符
+    max_summary_chars: int = 1200
     artifact_threshold_chars: int = 4000
     list_top_n: int = 5
     list_trim_threshold_chars: int = 1200
     max_key_fields: int = 24
     # L3 防抖动：可压缩消息不足时不重复调模型（超过模型窗口时强制压缩）
     memo_min_candidates: int = 6
+    # L3 摘要输入必须先裁剪到可发送大小（摘要模型窗口 = 主模型窗口）：
+    # 输入 token 不得超过可用窗口的该比例，单条消息最多保留多少字符。
+    memo_input_ratio: float = 0.6
+    memo_message_max_chars: int = 2000
     approval_error_codes: Tuple[str, ...] = ('APPROVAL_REQUIRED',)
     # 对象存储上传的有界等待：OSS 不可用时快速降级为截断，不拖住模型 Loop
     artifact_store_timeout_seconds: float = 10.0
@@ -286,6 +291,9 @@ class ContextAssembler:
         if replay is not None:
             dropped = set(replay.dropped_ids or ())
             messages = [m for m in messages if m.message_id not in dropped]
+            # 回放只保留最近 N 轮原文：更早的轮次由备忘代表，避免把 20 个
+            # 历史 run 全量重放回模型上下文（每次调用都重新撑爆窗口）。
+            messages = self._recent_turns_only(messages)
             if replay.memo:
                 memo_text = f'{MEMO_PREFIX}\n' + json.dumps(
                     replay.memo, ensure_ascii=False, indent=1)
@@ -319,6 +327,11 @@ class ContextAssembler:
 
         if budget is None:
             return self._trim([m.to_llm() for m in messages])
+        tokens = self._total_tokens(messages)
+        if tokens > budget.available:
+            # 压缩后仍超窗：绝不把超窗请求发给模型（只会得到空响应，
+            # 用户看到的是无信息错误）。显式失败并给出可执行建议。
+            raise ContextOverflow(tokens, budget.available, budget.window)
         return [m.to_llm() for m in messages]
 
     def recent_messages(self, session_id: str, run: Optional[AgentRun],
@@ -460,7 +473,8 @@ class ContextAssembler:
                           and m.role != LlmMessageRole.SYSTEM.value]
             force = tokens_before > budget.window
             if force or len(candidates) >= self._settings.memo_min_candidates:
-                memo, dropped_l3 = self._apply_l3(messages, memo_summarizer)
+                memo, dropped_l3 = self._apply_l3(
+                    messages, memo_summarizer, budget)
                 if memo is not None:
                     level = CompactionLevel.L3_MEMO
                     dropped.extend(dropped_l3)
@@ -472,10 +486,21 @@ class ContextAssembler:
         # L3 被防抖动跳过时不能丢消息——那会在没有备忘的情况下丢失事实。
         if (not l3_throttled
                 and budget.exceeds_hard(self._total_tokens(messages))):
-            dropped_fallback = self._drop_oldest_groups(messages, budget)
+            dropped_fallback = self._drop_oldest_groups(
+                messages, budget, target=budget.hard_threshold)
             if dropped_fallback:
                 level = level or CompactionLevel.L1_TRIM
                 dropped.extend(dropped_fallback)
+
+        # 硬目标：无论走哪条路径，组装结果都必须落在可用窗口内。
+        # 否则上游只会返回空响应（EMPTY_MODEL_RESPONSE），把「压缩没做完」
+        # 伪装成模型故障；这里宁可继续丢最旧轮次。
+        if self._total_tokens(messages) > budget.available:
+            dropped_overflow = self._drop_oldest_groups(
+                messages, budget, target=budget.available)
+            if dropped_overflow:
+                level = level or CompactionLevel.L1_TRIM
+                dropped.extend(dropped_overflow)
 
         if level is None:
             return None
@@ -593,25 +618,25 @@ class ContextAssembler:
         return None, False
 
     def _apply_l3(self, messages: List[ContextMessage],
-                  memo_summarizer: MemoSummarizer
+                  memo_summarizer: MemoSummarizer,
+                  budget: ContextBudget
                   ) -> Tuple[Optional[Dict[str, Any]], List[str]]:
-        """L3_MEMO：旧对话压成固定 schema；失败返回 (None, []) 由调用方回退。"""
+        """L3_MEMO：旧对话压成固定 schema；失败返回 (None, []) 由调用方回退。
+
+        摘要模型与主模型共用同一个上下文窗口，因此**必须先裁剪输入**：直接把
+        上百条旧消息塞进摘要请求，会把「压缩」变成第二个超窗请求，摘要失败后
+        再回退丢消息，事实随原文一起消失。
+        """
         old = [m for m in messages
                if not m.pinned and m.role != LlmMessageRole.SYSTEM.value]
         if not old:
             return None, []
-        payload = [
-            {'message_id': m.message_id, 'role': m.role,
-             'tool': m.tool, 'content': m.content or ''}
-            for m in old
-        ]
-        # 上一次备忘必须参与本次摘要：否则每次 L3 只会看到最近几轮，
-        # 更早的已确认事实会在第二次压缩时丢失（压缩必须可累加）。
         previous_memo = self._current_memo(messages)
-        if previous_memo:
-            payload.insert(0, {
-                'message_id': 'system:memo', 'role': 'system',
-                'tool': None, 'content': previous_memo})
+        payload = _memo_input_payload(
+            old, previous_memo,
+            max_tokens=max(1, int(budget.available
+                                  * self._settings.memo_input_ratio)),
+            max_chars=max(1, self._settings.memo_message_max_chars))
         try:
             raw = memo_summarizer(payload)
             memo = _normalize_memo(raw)
@@ -651,27 +676,62 @@ class ContextAssembler:
         return memo or ''
 
     def _drop_oldest_groups(self, messages: List[ContextMessage],
-                            budget: ContextBudget) -> List[str]:
-        """回退 L1：按轮次整组丢弃最旧的未固定消息（保持 tool 配对完整）。"""
+                            budget: ContextBudget, *,
+                            target: Optional[int] = None) -> List[str]:
+        """按轮次整组丢弃最旧消息，直到总量回到 ``target``（保持 tool 配对完整）。
+
+        两阶段：先丢未固定的旧轮次；仍超目标时再丢「已固定但早已退出最近
+        窗口」的旧轮次（典型是历史 run 的用户消息）。系统提示、最近 N 轮、
+        审批轮次、最新一条用户消息始终保留 —— 固定标记不能成为超窗原因。
+        """
+        limit = (budget.available if target is None
+                 else max(1, int(target)))
         groups: Dict[int, List[ContextMessage]] = {}
         for message in messages:
             groups.setdefault(message.turn, []).append(message)
         if not groups:
             return []
         current_turn = max(groups)
+        ordered_turns = sorted(turn for turn in groups if turn >= 0)
+        recent_turns = set(ordered_turns[
+            -max(1, self._settings.keep_recent_turns):])
+        approval_turns = {m.turn for m in messages if m.approval}
+        latest_user_id = next(
+            (m.message_id for m in reversed(messages)
+             if m.role == LlmMessageRole.USER.value), '')
         dropped: List[str] = []
-        for turn in sorted(groups):
-            group = groups[turn]
-            if any(m.pinned for m in group):
-                continue
-            if turn == current_turn:
-                break  # 当前轮永远保留
-            for message in group:
-                dropped.append(message.message_id)
-            messages[:] = [m for m in messages if m.turn != turn]
-            if not budget.exceeds_hard(self._total_tokens(messages)):
-                break
+        for require_unpinned in (True, False):
+            for turn in sorted(groups):
+                if self._total_tokens(messages) <= limit:
+                    return dropped
+                group = groups.get(turn)
+                if not group:
+                    continue
+                if turn == current_turn or turn in recent_turns \
+                        or turn in approval_turns:
+                    continue
+                if any(m.role == LlmMessageRole.SYSTEM.value
+                       or m.message_id == latest_user_id for m in group):
+                    continue
+                if require_unpinned and any(m.pinned for m in group):
+                    continue
+                for message in group:
+                    dropped.append(message.message_id)
+                messages[:] = [m for m in messages if m.turn != turn]
+                groups.pop(turn, None)
         return dropped
+
+    def _recent_turns_only(
+            self, messages: Sequence[ContextMessage]
+    ) -> List[ContextMessage]:
+        """备忘回放：只保留最近 N 轮原文 + 最新用户消息（更早由备忘代表）。"""
+        turns = sorted({m.turn for m in messages if m.turn >= 0})
+        keep = set(turns[-max(1, self._settings.keep_recent_turns):])
+        latest_user_id = next(
+            (m.message_id for m in reversed(messages)
+             if m.role == LlmMessageRole.USER.value), None)
+        return [m for m in messages
+                if m.turn in keep or m.message_id == latest_user_id]
 
     def _mark_pinned(self, messages: List[ContextMessage]) -> None:
         """标记永不压缩消息（§8.4）：
@@ -1179,6 +1239,53 @@ def _dedupe_ids(ids: Iterable[str]) -> List[str]:
             seen.add(item)
             ordered.append(item)
     return ordered
+
+
+def _clip_text(text: str, max_tokens: int) -> str:
+    """按估算 token 数裁剪文本（摘要输入预算用，不需要精确）。"""
+    if max_tokens <= 0:
+        return ''
+    tokens = estimate_message_tokens(text)
+    if tokens <= max_tokens:
+        return text
+    keep = max(1, int(len(text) * max_tokens / tokens))
+    return text[:keep]
+
+
+def _memo_input_payload(old: Sequence['ContextMessage'], previous_memo: str,
+                        *, max_tokens: int, max_chars: int
+                        ) -> List[Dict[str, Any]]:
+    """构造 L3 摘要输入：先裁剪到摘要模型可接收的大小。
+
+    规则：上一版备忘始终保留（压缩必须可累加）；旧消息从**最新**往前装，
+    装不下的整条省略，并在首部标注省略条数，避免「摘要请求本身超窗」。
+    """
+    budget = max(1, int(max_tokens))
+    used = 0
+    entries: List[Dict[str, Any]] = []
+    if previous_memo:
+        content = _clip_text(previous_memo, budget // 2)
+        used += estimate_message_tokens(content)
+        entries.append({'message_id': 'system:memo', 'role': 'system',
+                        'tool': None, 'content': content})
+    kept: List[Dict[str, Any]] = []
+    omitted = 0
+    for message in reversed(list(old)):
+        content = (message.content or '')[:max(1, max_chars)]
+        cost = estimate_message_tokens(content)
+        if kept and used + cost > budget:
+            omitted += 1
+            continue
+        used += cost
+        kept.append({'message_id': message.message_id, 'role': message.role,
+                     'tool': message.tool, 'content': content})
+    kept.reverse()
+    if omitted:
+        entries.append({
+            'message_id': 'system:omitted', 'role': 'system', 'tool': None,
+            'content': (f'{L1_PREFIX} 更早 {omitted} 条消息超出摘要输入预算，'
+                        f'未纳入本次摘要；已有备忘中的事实仍然有效。')})
+    return entries + kept
 
 
 def _first_block(content: str, limit: int) -> str:

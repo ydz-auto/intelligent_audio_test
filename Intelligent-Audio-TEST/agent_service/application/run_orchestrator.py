@@ -48,8 +48,9 @@ from agent_service.domain.enums import (
     StepStatus, ToolCallStatus, ToolRisk,
 )
 from agent_service.domain.exceptions import (
-    ApprovalObjectLimitExceeded, InvalidRunTransition, LlmConfigurationError,
-    LlmInvocationError, LlmProviderNotConfigured, RunCancelled,
+    ApprovalObjectLimitExceeded, ContextOverflow, InvalidRunTransition,
+    LlmConfigurationError, LlmInvocationError, LlmProviderNotConfigured,
+    RunCancelled,
 )
 from agent_service.domain.model.budget import RunBudget
 from agent_service.domain.model.context_budget import ContextBudget
@@ -209,6 +210,8 @@ class OrchestratorSettings:
     # L3 备忘单轮输出上限（与主对话输出预留分开，避免占满上下文）；
     # 实际生效值 = min(本配置, 单轮输出预留 output_limit)
     memo_max_output_tokens: int = 2048
+    # L3 摘要输入的单条消息字符上限（装配层已按 token 预算裁剪，这里是兜底）
+    memo_transcript_chars: int = 2000
     # Auto 停止条件（INT-2474，§9.3 / §9.4）：预算暂停比例 / 熔断阈值 /
     # 完成标记全部来自配置，代码里不写死。
     auto_settings: AutoSettings = field(default_factory=AutoSettings)
@@ -541,6 +544,13 @@ class RunOrchestrator:
                 self._finish(run_id, RunStatus.FAILED,
                              error=f'{LlmProviderNotConfigured.code}: {exc}')
                 return
+            except ContextOverflow as exc:
+                # 压缩后仍超窗：不发起模型请求，显式失败并给出可执行建议
+                self._steps.finish(step.id, StepStatus.FAILED, str(exc))
+                self._append_error(run_id, exc.code, str(exc))
+                # 终态只带裸错误码：前端按码给出可操作文案，详情看错误事件
+                self._finish(run_id, RunStatus.FAILED, error=exc.code)
+                return
             except LlmConfigurationError as exc:
                 self._steps.finish(step.id, StepStatus.FAILED, str(exc))
                 self._append_error(run_id, 'LLM_NOT_CONFIGURED', str(exc))
@@ -723,7 +733,8 @@ class RunOrchestrator:
                 {'message_id': item.get('message_id'),
                  'role': item.get('role'),
                  'tool': item.get('tool'),
-                 'content': (item.get('content') or '')[:4000]}
+                 'content': (item.get('content') or '')[
+                     :max(1, self._settings.memo_transcript_chars)]}
                 for item in messages
             ]
             request = LlmRequest(

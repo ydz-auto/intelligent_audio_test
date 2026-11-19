@@ -34,10 +34,37 @@ def test_catalog_file_is_the_default_source(resolver):
 def test_no_override_uses_catalog_default(resolver):
     resolution = resolver.resolve(LlmProtocol.OPENAI_COMPATIBLE,
                                   'deepseek-chat')
-    assert resolution.effective_context_window == 65536
+    assert resolution.effective_context_window == 131072
     assert resolution.source is ContextWindowSource.MODEL_DEFAULT
-    assert resolution.catalog_context_window == 65536
+    assert resolution.catalog_context_window == 131072
     assert resolution.warning is None
+
+
+def test_vendor_prefixed_model_hits_catalog(resolver):
+    """`vendor/model` 形式也要命中目录（否则只能拿到 128k 兜底）。"""
+    resolution = resolver.resolve(
+        LlmProtocol.OPENAI_COMPATIBLE, 'volcengine/deepseek-v4.1-flash')
+    assert resolution.effective_context_window == 1048576  # deepseek-v4* = 1M
+    assert resolution.source is ContextWindowSource.MODEL_DEFAULT
+    assert resolution.catalog_context_window == 1048576
+
+
+@pytest.mark.parametrize('protocol,model,window', [
+    (LlmProtocol.OPENAI_COMPATIBLE, 'openai/gpt-5.5', 1114112),
+    (LlmProtocol.OPENAI_COMPATIBLE, 'openai/gpt-4.1', 1047576),
+    (LlmProtocol.ANTHROPIC, 'anthropic/claude-sonnet-4-6', 1048576),
+    (LlmProtocol.ANTHROPIC, 'anthropic/claude-opus-4-7', 1048576),
+    (LlmProtocol.OPENAI_COMPATIBLE, 'google/gemini-2.5-pro', 1048576),
+    (LlmProtocol.OPENAI_COMPATIBLE, 'qwen/qwen3.7-max', 1048576),
+    (LlmProtocol.OPENAI_COMPATIBLE, 'moonshotai/kimi-k2.6', 262144),
+    (LlmProtocol.OPENAI_COMPATIBLE, 'x-ai/grok-4-fast', 2097152),
+])
+def test_catalog_covers_current_model_families(resolver, protocol, model,
+                                               window):
+    """带厂商前缀 / 连字符命名的现行模型都要命中目录，不能掉进兜底。"""
+    resolution = resolver.resolve(protocol, model)
+    assert resolution.effective_context_window == window, model
+    assert resolution.source is ContextWindowSource.MODEL_DEFAULT, model
 
 
 def test_catalog_miss_falls_back_to_128k(resolver):
@@ -65,8 +92,8 @@ def test_invalid_overrides_rejected(resolver, value):
 
 def test_override_above_catalog_max_is_allowed_with_warning(resolver):
     resolution = resolver.resolve(LlmProtocol.OPENAI_COMPATIBLE,
-                                  'deepseek-chat', 131072)
-    assert resolution.effective_context_window == 131072
+                                  'deepseek-chat', 262144)
+    assert resolution.effective_context_window == 262144
     assert resolution.source is ContextWindowSource.USER_OVERRIDE
     assert resolution.warning == WARNING_ABOVE_CATALOG
     assert resolution.warning_message

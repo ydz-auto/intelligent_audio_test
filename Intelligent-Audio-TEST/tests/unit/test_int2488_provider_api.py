@@ -82,7 +82,7 @@ def test_create_returns_mask_and_never_plaintext(tmp_path):
         assert body['api_key_mask'] == 'sk-****1111'
         assert KEY_A not in resp.text
         assert 'api_key_ciphertext' not in body
-        assert body['effective_context_window'] == 65536
+        assert body['effective_context_window'] == 131072
         assert body['context_window_source'] == 'MODEL_DEFAULT'
         assert body['is_default'] is True
 
@@ -161,9 +161,9 @@ def test_context_window_override_and_warning(tmp_path):
         assert body['context_window_source'] == 'USER_OVERRIDE'
         assert body['effective_context_window'] == 32768
 
-        # 高于目录默认（65536）允许保存并带告警
+        # 高于目录默认（131072）允许保存并带告警
         resp = client.put(f'/api/v1/agent/providers/{provider_id}',
-                          json={'context_window': 131072}, headers=OWNER_A)
+                          json={'context_window': 262144}, headers=OWNER_A)
         assert resp.status_code == 200, resp.text
         assert resp.json()['context_window_warning'] == \
             'CONTEXT_WINDOW_ABOVE_CATALOG'
@@ -173,7 +173,7 @@ def test_context_window_override_and_warning(tmp_path):
                           json={'context_window': None}, headers=OWNER_A)
         assert resp.status_code == 200
         assert resp.json()['context_window_source'] == 'MODEL_DEFAULT'
-        assert resp.json()['effective_context_window'] == 65536
+        assert resp.json()['effective_context_window'] == 131072
 
 
 @pytest.mark.parametrize('value', [4096, 2098176, 33000])

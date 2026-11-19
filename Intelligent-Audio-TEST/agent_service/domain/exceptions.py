@@ -102,6 +102,25 @@ class LlmInvocationError(AgentDomainError):
         super().__init__(message)
 
 
+class ContextOverflow(AgentDomainError):
+    """压缩后上下文仍超过可用窗口：不得再调用模型（只会拿到空响应）。
+
+    可执行动作是「新建会话 / 清理历史」；把超窗请求发出去只会得到
+    ``EMPTY_MODEL_RESPONSE`` 这类无信息错误。
+    """
+
+    code = 'CONTEXT_OVERFLOW'
+
+    def __init__(self, tokens: int, available: int, window: int):
+        self.tokens = int(tokens)
+        self.available = int(available)
+        self.window = int(window)
+        super().__init__(
+            f'{self.code}: 上下文压缩后仍有 {self.tokens} tokens，'
+            f'超过可用窗口 {self.available}（模型窗口 {self.window}）。'
+            f'请新建会话或清理历史后重试')
+
+
 class BudgetExceeded(AgentDomainError):
     """预算超限：由 Loop 收口为 BUDGET_EXCEEDED 状态。"""
 
