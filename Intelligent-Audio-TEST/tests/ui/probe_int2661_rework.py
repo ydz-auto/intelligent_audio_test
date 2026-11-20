@@ -12,6 +12,12 @@
   python tests/ui/probe_int2661_rework.py downloads --base http://localhost:15173 --api http://127.0.0.1:15000
   python tests/ui/probe_int2661_rework.py formal    --base http://localhost:15173 --api http://127.0.0.1:15000
   python tests/ui/probe_int2661_rework.py leaverun  --base http://localhost:15173 --api http://127.0.0.1:15000
+  python tests/ui/probe_int2661_rework.py msgdelete --base http://localhost:15173 --api http://127.0.0.1:15000
+
+msgdelete（代码审计 2026-11-20 02:31 打回的唯一项）：在 dev_user 本 run 新建的会话里
+发一条真实消息 → 点用户气泡「删除」→ 气泡消失 → 刷新并重开同一会话仍不出现；
+同时 GET /agent/sessions/{id} 前后 messages 差 1、被删 id 不在返回里。收尾按会话 id
+删除本 run 自建的 agent_* 明细（token 标题守卫，事务外逐表 scoped delete）。
 """
 import argparse
 import io
@@ -505,9 +511,437 @@ def mode_leaverun(p, args):
     return 0 if not fails else 1
 
 
+# ---------------------------------------------------------------------------
+# 4) fb0ebb926：AI 对话消息删除的端到端持久化（真实删除 → 刷新 → 仍不出现）
+# ---------------------------------------------------------------------------
+
+TERMINAL_RUN_STATUSES = ('SUCCEEDED', 'FAILED', 'CANCELLED')
+
+
+def _open_history_session(page, token, timeout_ms=45000):
+    """展开「对话记录」并点开标题含 token 的会话（重新走 GET /agent/sessions/{id} 回填）。"""
+    hist = page.locator('aside').filter(has_text='对话记录')
+    if hist.count() == 0:
+        page.click("button[aria-label='对话记录']")
+        page.wait_for_timeout(700)
+    item = page.locator('aside button').filter(has_text=token).first
+    item.wait_for(state='visible', timeout=timeout_ms)
+    item.click()
+    page.wait_for_timeout(2500)
+
+
+def _user_bubbles(page, token):
+    """对话正文里的用户气泡（排除历史目录标题，标题本身是首条消息快照）。"""
+    return page.locator('div.group.is-user').filter(has_text=token)
+
+
+def _assistant_bubbles(page):
+    return page.locator('div.group.is-assistant')
+
+
+def _cleanup_session(sid, token, run_status):
+    """数据卫生：删除本 run 新建的会话与 run 明细（严格按 token 标题守卫）。"""
+    if not sid:
+        return {'skipped': 'no session'}
+    if run_status not in TERMINAL_RUN_STATUSES:
+        return {'skipped': 'run not terminal', 'run_status': run_status}
+    try:
+        import psycopg2
+    except Exception as exc:  # noqa: BLE001
+        return {'skipped': 'psycopg2 unavailable: %s' % exc}
+    try:
+        conn = psycopg2.connect(
+            host='127.0.0.1', port=5432, dbname='intelligent_audio_test',
+            user='intelligent_audio_test',
+            password='intelligent_audio_test666', connect_timeout=5)
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute('select title from agent_session where id=%s', (sid,))
+        row = cur.fetchone()
+        if not row or token not in (row[0] or ''):
+            conn.close()
+            return {'skipped': 'title guard mismatch',
+                    'title': row[0] if row else None}
+        scoped = [
+            ('agent_run_event', 'run_id in (select id from agent_run where session_id=%s)'),
+            ('agent_step', 'run_id in (select id from agent_run where session_id=%s)'),
+            ('agent_tool_call', 'run_id in (select id from agent_run where session_id=%s)'),
+            ('agent_approval', 'run_id in (select id from agent_run where session_id=%s)'),
+            ('agent_artifact', 'run_id in (select id from agent_run where session_id=%s)'),
+            ('agent_context_snapshot', 'run_id in (select id from agent_run where session_id=%s)'),
+            ('agent_run_skill', 'run_id in (select id from agent_run where session_id=%s)'),
+            ('agent_hidden_message', 'session_id=%s'),
+            ('agent_run', 'session_id=%s'),
+            ('agent_session', 'id=%s'),
+        ]
+        deleted = {}
+        for table, where in scoped:
+            cur.execute('delete from %s where %s' % (table, where), (sid,))
+            deleted[table] = cur.rowcount
+        conn.close()
+        return {'deleted': deleted}
+    except Exception as exc:  # noqa: BLE001
+        return {'error': str(exc)}
+
+
+def mode_msgdelete(p, args):
+    """真实删除本 run 新建的用户消息：删除请求/响应 + 气泡消失 + 刷新后仍不出现。"""
+    token = 'INT2661删除持久化验证%s' % time.strftime('%H%M%S')
+    prompt = '%s：只回复「收到」两个字，不要调用任何工具，不要展开说明。' % token
+    sid = None
+    rid = None
+    run_status = None
+    pre_msgs = []
+    deleted_id = None
+    delete_status = None
+    delete_body = ''
+    delete_url = ''
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        ctx = browser.new_context(viewport={'width': 1600, 'height': 1000})
+        page = ctx.new_page()
+        p.watch(page)
+        p.login(page)
+        page.goto(p.base + '/ai-chat', wait_until='domcontentloaded')
+        page.wait_for_timeout(3000)
+        # 新对话：确保消息落在本 run 新建的会话里，不动既有会话
+        page.click("button[aria-label='对话记录']")
+        page.wait_for_timeout(800)
+        page.get_by_role('button', name='新对话').click()
+        page.wait_for_timeout(600)
+        box = page.locator('textarea').last
+        box.click()
+        box.fill(prompt)
+        p.shot(page, '30_new_message_light')
+        box.press('Enter')
+
+        # 会话 id 从 POST /agent/sessions/{sid}/runs 的请求 URL 取
+        deadline = time.time() + 60
+        while time.time() < deadline and not sid:
+            page.wait_for_timeout(1000)
+            for n in reversed(p.net):
+                u = n['url'].split('?')[0]
+                if (n['method'] == 'POST' and '/agent/sessions/' in u
+                        and u.endswith('/runs')):
+                    sid = u.split('/agent/sessions/')[1].split('/runs')[0]
+        p.check('new_session_created', bool(sid),
+                'session=%s token=%s' % (sid, token))
+        if not sid:
+            p.shot(page, '30b_no_session')
+            ctx.close()
+            browser.close()
+            return 1
+
+        # 等 run 终态（FAILED 也继续：用户消息已落库，删除持久化仍可验）
+        deadline = time.time() + 180
+        detail = {}
+        while time.time() < deadline:
+            detail = p.api.request('GET', '/agent/sessions/%s' % sid) or {}
+            runs = detail.get('runs') or []
+            if runs:
+                rid = runs[-1].get('id')
+                run_status = runs[-1].get('status')
+                if run_status in TERMINAL_RUN_STATUSES:
+                    break
+            page.wait_for_timeout(3000)
+        p.check('run_terminal', run_status in TERMINAL_RUN_STATUSES,
+                'run=%s status=%s' % (rid, run_status))
+
+        detail = p.api.request('GET', '/agent/sessions/%s' % sid) or {}
+        pre_msgs = detail.get('messages') or []
+        pre_ids = [m.get('id') for m in pre_msgs]
+        user_msg = next((m for m in pre_msgs if m.get('role') == 'user'
+                         and token in (m.get('content') or '')), None)
+        deleted_id = (user_msg or {}).get('id')
+        p.check('pre_user_message_present', bool(user_msg),
+                'id=%s msgs=%d ids=%s' % (deleted_id, len(pre_msgs), pre_ids))
+        p.check('pre_id_matches_run', deleted_id == ('user:%s' % rid),
+                'expect user:%s got %s' % (rid, deleted_id))
+        page.wait_for_timeout(2500)
+        p.check('ui_user_bubble_visible', _user_bubbles(page, token).count() == 1,
+                'user_bubbles=%d' % _user_bubbles(page, token).count())
+        p.shot(page, '31_after_reply_light')
+
+        # 刷新后（删除前）仍在：证明后续「消失」是删除生效而不是本地态没被回填
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_timeout(3000)
+        _open_history_session(page, token)
+        p.check('pre_delete_refresh_user_persists',
+                _user_bubbles(page, token).count() == 1,
+                'user_bubbles=%d' % _user_bubbles(page, token).count())
+        p.shot(page, '32_pre_delete_refresh_light')
+
+        page.emulate_media(color_scheme='dark')
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_timeout(3000)
+        _open_history_session(page, token)
+        p.check('dark_applied',
+                page.evaluate("document.documentElement.classList.contains('dark')"),
+                'dark=%s' % page.evaluate(
+                    "document.documentElement.classList.contains('dark')"))
+        p.check('pre_delete_refresh_dark_user_persists',
+                _user_bubbles(page, token).count() == 1,
+                'user_bubbles=%d' % _user_bubbles(page, token).count())
+        p.shot(page, '32_pre_delete_refresh_dark')
+
+        page.emulate_media(color_scheme='light')
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_timeout(3000)
+        _open_history_session(page, token)
+
+        # 点用户气泡的「删除」→ 捕获 DELETE 请求/响应
+        row = _user_bubbles(page, token).first
+        row.wait_for(state='visible', timeout=15000)
+        row.hover()
+        btn = row.locator("button[aria-label='删除']").first
+        btn.wait_for(state='visible', timeout=10000)
+        try:
+            with page.expect_response(
+                    lambda r: (r.request.method == 'DELETE'
+                               and '/agent/sessions/' in r.url
+                               and '/messages/' in r.url),
+                    timeout=20000) as info:
+                btn.click()
+            resp = info.value
+            delete_status = resp.status
+            delete_url = resp.url
+            try:
+                delete_body = resp.text()
+            except Exception:  # noqa: BLE001
+                delete_body = ''
+            from urllib.parse import unquote
+            p.check('delete_request_ok', delete_status in (200, 204),
+                    'DELETE %s -> %s %s' % (delete_url, delete_status,
+                                            delete_body[:200]))
+            p.check('delete_targets_user_message',
+                    bool(deleted_id) and deleted_id in unquote(delete_url),
+                    'target=%s url=%s' % (deleted_id, delete_url))
+        except Exception as exc:  # noqa: BLE001
+            p.check('delete_request_ok', False, 'DELETE 未捕获: %s' % exc)
+
+        gone = False
+        for _ in range(20):
+            if _user_bubbles(page, token).count() == 0:
+                gone = True
+                break
+            page.wait_for_timeout(500)
+        p.check('bubble_gone_after_delete', gone,
+                'user_bubbles=%d' % _user_bubbles(page, token).count())
+
+        # 本地缓存是刷新后的首屏来源（zustand 持久化 messages 500ms 防抖）；
+        # 等缓存落盘再刷新，避免把「防抖窗口内立即刷新」当成删除未生效。
+        cache_flushed = False
+        flush_ms = None
+        cache_before = page.evaluate(
+            "localStorage.getItem('iatp:ai-chat:v1:messages')") or ''
+        t0 = time.time()
+        while time.time() - t0 < 8:
+            raw = page.evaluate(
+                "localStorage.getItem('iatp:ai-chat:v1:messages')") or ''
+            if token not in raw:
+                cache_flushed = True
+                flush_ms = int((time.time() - t0) * 1000)
+                break
+            page.wait_for_timeout(150)
+        p.check('local_cache_flushed_after_delete', cache_flushed,
+                'flush_ms=%s before_has_token=%s after_has_token=%s'
+                % (flush_ms, token in cache_before,
+                   token in (page.evaluate(
+                       "localStorage.getItem('iatp:ai-chat:v1:messages')")
+                       or '')))
+        p.shot(page, '33_after_delete_light')
+
+        # 刷新 → 重新打开同一会话：被删用户消息仍不出现，助手回复还在
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_timeout(3000)
+        _open_history_session(page, token)
+        p.check('after_refresh_user_bubble_absent',
+                _user_bubbles(page, token).count() == 0,
+                'user_bubbles=%d' % _user_bubbles(page, token).count())
+        p.check('after_refresh_session_loaded',
+                _assistant_bubbles(page).count() >= 1,
+                'assistant_bubbles=%d' % _assistant_bubbles(page).count())
+        p.shot(page, '34_after_refresh_light')
+
+        page.emulate_media(color_scheme='dark')
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_timeout(3000)
+        _open_history_session(page, token)
+        p.check('after_refresh_dark_user_absent',
+                _user_bubbles(page, token).count() == 0,
+                'user_bubbles=%d' % _user_bubbles(page, token).count())
+        p.check('after_refresh_dark_session_loaded',
+                _assistant_bubbles(page).count() >= 1,
+                'assistant_bubbles=%d' % _assistant_bubbles(page).count())
+        p.shot(page, '34_after_refresh_dark')
+
+        # 干净上下文（无 localStorage）打开同一会话：证明「不出现」来自服务端过滤，
+        # 不是只靠本地存档把消息藏起来。
+        ctx2 = browser.new_context(viewport={'width': 1600, 'height': 1000})
+        page2 = ctx2.new_page()
+        p.login(page2)
+        page2.goto(p.base + '/ai-chat', wait_until='domcontentloaded')
+        page2.wait_for_timeout(3000)
+        _open_history_session(page2, token)
+        p.check('fresh_context_user_bubble_absent',
+                _user_bubbles(page2, token).count() == 0,
+                'user_bubbles=%d' % _user_bubbles(page2, token).count())
+        p.check('fresh_context_session_loaded',
+                _assistant_bubbles(page2).count() >= 1,
+                'assistant_bubbles=%d' % _assistant_bubbles(page2).count())
+        p.shot(page2, '35_fresh_context_light')
+        ctx2.close()
+
+        # 接口口径：messages 条数差 1，被删 id 不在返回里
+        post = p.api.request('GET', '/agent/sessions/%s' % sid) or {}
+        post_msgs = post.get('messages') or []
+        post_ids = [m.get('id') for m in post_msgs]
+        p.check('api_count_minus_one', len(post_msgs) == len(pre_msgs) - 1,
+                'pre=%d post=%d' % (len(pre_msgs), len(post_msgs)))
+        p.check('api_deleted_id_absent', deleted_id not in post_ids,
+                'deleted=%s post_ids=%s' % (deleted_id, post_ids))
+        p.check('api_context_effect',
+                any(m.get('role') == 'assistant'
+                    and (m.get('content') or '').strip() for m in post_msgs),
+                'assistant 仍在：%s' % [m.get('role') for m in post_msgs])
+        p.shot(page, '35_post_api_check')
+        ctx.close()
+        browser.close()
+
+    teardown = _cleanup_session(sid, token, run_status)
+    print('TEARDOWN ' + json.dumps(teardown, ensure_ascii=False), flush=True)
+    print('SUMMARY ' + json.dumps(
+        {'token': token, 'session': sid, 'run': rid, 'run_status': run_status,
+         'pre_ids': [m.get('id') for m in pre_msgs], 'deleted': deleted_id,
+         'delete': {'url': delete_url, 'status': delete_status,
+                    'body': delete_body},
+         'checks': p.checks, 'teardown': teardown},
+        ensure_ascii=False), flush=True)
+    fails = [c for c in p.checks if not c['ok']]
+    print('RESULT pass=%d fail=%d' % (len(p.checks) - len(fails), len(fails)),
+          flush=True)
+    return 0 if not fails else 1
+
+
+def mode_msgedge(p, args):
+    """删除后立刻刷新（本地 messages 500ms 防抖窗口内）：验证是否会「删了又回来」。"""
+    token = 'INT2661删除竞态验证%s' % time.strftime('%H%M%S')
+    prompt = '%s：只回复「收到」两个字，不要调用任何工具。' % token
+    sid = rid = run_status = None
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        ctx = browser.new_context(viewport={'width': 1600, 'height': 1000})
+        page = ctx.new_page()
+        p.watch(page)
+        p.login(page)
+        page.goto(p.base + '/ai-chat', wait_until='domcontentloaded')
+        page.wait_for_timeout(3000)
+        page.click("button[aria-label='对话记录']")
+        page.wait_for_timeout(800)
+        page.get_by_role('button', name='新对话').click()
+        page.wait_for_timeout(600)
+        box = page.locator('textarea').last
+        box.click()
+        box.fill(prompt)
+        box.press('Enter')
+
+        deadline = time.time() + 60
+        while time.time() < deadline and not sid:
+            page.wait_for_timeout(1000)
+            for n in reversed(p.net):
+                u = n['url'].split('?')[0]
+                if (n['method'] == 'POST' and '/agent/sessions/' in u
+                        and u.endswith('/runs')):
+                    sid = u.split('/agent/sessions/')[1].split('/runs')[0]
+        p.check('new_session_created', bool(sid), 'session=%s' % sid)
+        if not sid:
+            ctx.close()
+            browser.close()
+            return 1
+
+        deadline = time.time() + 180
+        detail = {}
+        while time.time() < deadline:
+            detail = p.api.request('GET', '/agent/sessions/%s' % sid) or {}
+            runs = detail.get('runs') or []
+            if runs:
+                rid = runs[-1].get('id')
+                run_status = runs[-1].get('status')
+                if run_status in TERMINAL_RUN_STATUSES:
+                    break
+            page.wait_for_timeout(3000)
+        p.check('run_terminal', run_status in TERMINAL_RUN_STATUSES,
+                'run=%s status=%s' % (rid, run_status))
+        pre_msgs = (p.api.request('GET', '/agent/sessions/%s' % sid) or {}).get('messages') or []
+        user_msg = next((m for m in pre_msgs if m.get('role') == 'user'
+                         and token in (m.get('content') or '')), None)
+        deleted_id = (user_msg or {}).get('id')
+        p.check('pre_user_message_present', bool(user_msg),
+                'id=%s msgs=%d' % (deleted_id, len(pre_msgs)))
+        page.wait_for_timeout(2000)
+
+        row = _user_bubbles(page, token).first
+        row.wait_for(state='visible', timeout=15000)
+        row.hover()
+        row.locator("button[aria-label='删除']").first.click()
+        t_click = time.time()
+        gone = False
+        for _ in range(20):
+            if _user_bubbles(page, token).count() == 0:
+                gone = True
+                break
+            page.wait_for_timeout(200)
+        p.check('bubble_gone_after_delete', gone,
+                'user_bubbles=%d' % _user_bubbles(page, token).count())
+        # 不等本地防抖落盘，立刻刷新（<500ms 窗口）
+        page.reload(wait_until='domcontentloaded')
+        reload_ms = int((time.time() - t_click) * 1000)
+        page.wait_for_timeout(3000)
+        reappeared = _user_bubbles(page, token).count() == 1
+        p.check('edge_repro_user_bubble_reappears', reappeared,
+                'reload_ms=%s user_bubbles=%d'
+                % (reload_ms, _user_bubbles(page, token).count()))
+        raw = page.evaluate(
+            "localStorage.getItem('iatp:ai-chat:v1:messages')") or ''
+        p.check('edge_local_cache_contains_deleted', token in raw,
+                'local_cache_has_token=%s len=%d' % (token in raw, len(raw)))
+        post_msgs = (p.api.request('GET', '/agent/sessions/%s' % sid) or {}).get('messages') or []
+        p.check('edge_server_already_filtered',
+                len(post_msgs) == len(pre_msgs) - 1
+                and all(m.get('id') != deleted_id for m in post_msgs),
+                'pre=%d post=%d deleted_in_server=%s'
+                % (len(pre_msgs), len(post_msgs),
+                   any(m.get('id') == deleted_id for m in post_msgs)))
+        p.shot(page, '40_edge_reappear_light')
+        page.emulate_media(color_scheme='dark')
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_timeout(2500)
+        p.check('edge_reappear_dark_still_there',
+                _user_bubbles(page, token).count() == 1,
+                'user_bubbles=%d' % _user_bubbles(page, token).count())
+        p.shot(page, '40_edge_reappear_dark')
+        ctx.close()
+        browser.close()
+
+    teardown = _cleanup_session(sid, token, run_status)
+    print('TEARDOWN ' + json.dumps(teardown, ensure_ascii=False), flush=True)
+    print('SUMMARY ' + json.dumps(
+        {'token': token, 'session': sid, 'run': rid, 'run_status': run_status,
+         'deleted': deleted_id, 'reload_ms': reload_ms,
+         'checks': p.checks, 'teardown': teardown}, ensure_ascii=False),
+        flush=True)
+    fails = [c for c in p.checks if not c['ok']]
+    print('RESULT pass=%d fail=%d' % (len(p.checks) - len(fails), len(fails)),
+          flush=True)
+    return 0 if not fails else 1
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('mode', choices=['downloads', 'formal', 'leaverun'])
+    ap.add_argument('mode', choices=['downloads', 'formal', 'leaverun',
+                                     'msgdelete', 'msgedge'])
     ap.add_argument('--base', default='http://localhost:15173')
     ap.add_argument('--api', default='http://127.0.0.1:15000')
     ap.add_argument('--report', default=os.environ.get('REPORT_ID', '426'))
@@ -515,7 +949,9 @@ def main():
     ap.add_argument('--published-id', default=os.environ.get('PUBLISHED_ID', ''))
     args = ap.parse_args()
     probe = Probe(args.base, args.api)
-    fn = {'downloads': mode_downloads, 'formal': mode_formal, 'leaverun': mode_leaverun}[args.mode]
+    fn = {'downloads': mode_downloads, 'formal': mode_formal,
+          'leaverun': mode_leaverun, 'msgdelete': mode_msgdelete,
+          'msgedge': mode_msgedge}[args.mode]
     return fn(probe, args)
 
 
