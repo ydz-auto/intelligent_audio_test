@@ -71,8 +71,10 @@ class TestCaseQueryService:
                     if aid is not None:
                         audio_ids.add(aid)
 
-            # 跨域查询：Audio（后续 gRPC 改造）
-            audio_map = self.repo.list_audios_by_ids(audio_ids) if audio_ids else {}
+            # 跨域查询：仅需 duration，走窄字段投影（INT-2313）——
+            # GetAudiosByIds 全量详情在 audio_service 内部有标签/标注 N+1，
+            # 真实库单次数秒，列表只取时长会整页拖到 4~12s。
+            audio_map = self.repo.list_audio_summaries_by_ids(audio_ids) if audio_ids else {}
 
             # INT-539：lab_id → lab_name（laboratories 表 join，同共享库）
             lab_map = self._load_lab_map(test_cases)
@@ -208,8 +210,8 @@ class TestCaseQueryService:
                 if aid is not None:
                     audio_ids.add(aid)
 
-        # 跨域查询：Audio（后续 gRPC 改造）
-        audio_map = self.repo.list_audios_by_ids(audio_ids) if audio_ids else {}
+        # 跨域查询：仅需 duration，走窄字段投影（INT-2313，同上）
+        audio_map = self.repo.list_audio_summaries_by_ids(audio_ids) if audio_ids else {}
 
         # INT-539：lab_id → lab_name（laboratories 表 join，同共享库）
         lab_map = self._load_lab_map(test_cases)
