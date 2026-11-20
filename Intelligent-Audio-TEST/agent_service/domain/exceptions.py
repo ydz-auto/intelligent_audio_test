@@ -1,0 +1,332 @@
+# -*- coding: utf-8 -*-
+"""agent_service 领域异常（不依赖框架，接口层再映射 HTTP 状态码）。"""
+
+from agent_service.domain.enums import SkillErrorCode
+
+
+class AgentDomainError(Exception):
+    """agent 域异常基类。"""
+
+
+class InvalidRunTransition(AgentDomainError):
+    """非法状态迁移（§9.1 状态机拒绝）。"""
+
+    def __init__(self, current: str, target: str):
+        self.current = current
+        self.target = target
+        super().__init__(f'非法 Run 状态迁移: {current} -> {target}')
+
+
+class RunNotFound(AgentDomainError):
+    """Run 不存在，或不属于当前用户/租户（对外统一 404，不泄漏存在性）。"""
+
+
+class SessionNotFound(AgentDomainError):
+    """Session 不存在，或不属于当前用户/租户。"""
+
+
+class RunCancelled(AgentDomainError):
+    """Run 已被取消：当前模型调用中途中止。"""
+
+
+class InvalidRunMode(AgentDomainError):
+    """运行模式非法（只接受 chat / auto，§9.3）。"""
+
+    code = 'INVALID_RUN_MODE'
+
+    def __init__(self, mode: str):
+        self.mode = mode
+        super().__init__(f'不支持的运行模式：{mode}（只能是 chat / auto）')
+
+
+class InvalidBudgetOverride(AgentDomainError):
+    """请求侧预算非法（未知项 / 非整数；§9.4 预算覆盖口径，Auto 可放宽）。"""
+
+    code = 'INVALID_BUDGET'
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
+class RunNotPaused(AgentDomainError):
+    """Auto 暂停后「继续」的目标 run 不是暂停态（§9.4）。
+
+    可能是：run 已结束 / 已取消、从未暂停、仍有待审批提案（应先决策审批单）。
+    """
+
+    code = 'RUN_NOT_PAUSED'
+
+    def __init__(self, reason: str = ''):
+        self.reason = reason or 'run 当前不是暂停态，无法继续'
+        super().__init__(self.reason)
+
+
+class LlmConfigurationError(AgentDomainError):
+    """LLM 配置缺失 / 非法。"""
+
+
+class LlmProviderNotConfigured(AgentDomainError):
+    """用户没有可用的模型供应商：run 必须以 LLM_PROVIDER_NOT_CONFIGURED 失败。
+
+    绝不回退平台 Key，也不发起任何模型请求（§6.4-4）。
+    """
+
+    code = 'LLM_PROVIDER_NOT_CONFIGURED'
+
+
+class ProviderNotFound(AgentDomainError):
+    """供应商不存在、不属于当前用户/租户，或已逻辑删除。"""
+
+
+class InvalidContextWindow(AgentDomainError):
+    """上下文窗口覆盖值非法（超出 8k–2M 或未 1024 对齐）。"""
+
+
+class InvalidProviderConfiguration(AgentDomainError):
+    """供应商字段非法（协议 / 地址 / 模型名 / Key 为空或超长）。"""
+
+
+class CredentialKeyUnavailable(AgentDomainError):
+    """主密钥不可用（生产缺失即 fail-fast；开发环境显式配置后可用）。"""
+
+
+class CredentialDecryptError(AgentDomainError):
+    """密文解密失败（密钥版本缺失 / 密文被篡改 / AAD 不匹配）。"""
+
+
+class LlmInvocationError(AgentDomainError):
+    """模型调用失败（上游错误、超时、非法响应）。"""
+
+    def __init__(self, message: str, code: str = 'LLM_INVOCATION_ERROR'):
+        self.code = code
+        super().__init__(message)
+
+
+class ContextOverflow(AgentDomainError):
+    """压缩后上下文仍超过可用窗口：不得再调用模型（只会拿到空响应）。
+
+    可执行动作是「新建会话 / 清理历史」；把超窗请求发出去只会得到
+    ``EMPTY_MODEL_RESPONSE`` 这类无信息错误。
+    """
+
+    code = 'CONTEXT_OVERFLOW'
+
+    def __init__(self, tokens: int, available: int, window: int):
+        self.tokens = int(tokens)
+        self.available = int(available)
+        self.window = int(window)
+        super().__init__(
+            f'{self.code}: 上下文压缩后仍有 {self.tokens} tokens，'
+            f'超过可用窗口 {self.available}（模型窗口 {self.window}）。'
+            f'请新建会话或清理历史后重试')
+
+
+class BudgetExceeded(AgentDomainError):
+    """预算超限：由 Loop 收口为 BUDGET_EXCEEDED 状态。"""
+
+    def __init__(self, kind: str):
+        self.kind = kind
+        super().__init__(f'预算超限: {kind}')
+
+
+class ApprovalNotFound(AgentDomainError):
+    """审批单不存在，或所属 run 不属于当前用户/租户（对外统一 404）。"""
+
+
+class ApprovalConflict(AgentDomainError):
+    """审批单已被其它请求处理（并发审批 / 已决），本次决策不生效。"""
+
+    code = 'APPROVAL_ALREADY_DECIDED'
+
+
+class ApprovalExpired(AgentDomainError):
+    """审批单已过期：不执行，也不允许再决策。"""
+
+    code = 'APPROVAL_EXPIRED'
+
+    def __init__(self, approval_id: str, run_id: str):
+        self.approval_id = approval_id
+        self.run_id = run_id
+        super().__init__(f'审批单已过期: {approval_id}')
+
+
+class ApprovalConfirmationRequired(AgentDomainError):
+    """破坏性操作（DESTRUCTIVE）必须二次确认（INT-2467）。
+
+    批准请求除 ``APPROVE`` 外还要显式 ``confirm=true``：单次审批不足以放行
+    重启 / 关机 / 安装 / 卸载 / 批量设备控制这类不可回滚动作。拒绝不需要。
+    """
+
+    code = 'APPROVAL_CONFIRMATION_REQUIRED'
+
+    def __init__(self, approval_id: str, tool: str = ''):
+        self.approval_id = approval_id
+        self.tool = tool or ''
+        super().__init__(
+            f'破坏性操作需要二次确认（approval_id={approval_id}'
+            f'{", tool=" + tool if tool else ""}）')
+
+
+class ApprovalObjectLimitExceeded(AgentDomainError):
+    """单次调用影响对象超过上限（INT-2571，§9.4.1 第 3 条）。
+
+    提案前拒绝：不建单、无副作用，错误码回灌模型，让它改成多次调用（避免
+    一次调用在库里堆出上千张审批单）。
+    """
+
+    code = 'APPROVAL_OBJECT_LIMIT_EXCEEDED'
+
+    def __init__(self, count: int, limit: int):
+        self.count = int(count)
+        self.limit = int(limit)
+        super().__init__(
+            f'APPROVAL_OBJECT_LIMIT_EXCEEDED: 单次调用影响对象 {self.count} 个，'
+            f'超过上限 {self.limit} 个；请拆成多次调用')
+
+
+class SkillNotAvailable(AgentDomainError):
+    """Skill 未注册，或当前用户权限不满足（§4.2 规则 7）。"""
+
+    def __init__(self, name: str):
+        self.name = name
+        super().__init__(f'Skill 不可用: {name}')
+
+
+class SkillValidationError(AgentDomainError):
+    """Skill 校验失败（严格模式启动即失败，§4.2）。"""
+
+    def __init__(self, issues):
+        self.issues = tuple(issues)
+        detail = '; '.join(f'{i.code.value}:{i.skill or i.path}' for i in issues)
+        super().__init__(f'Skill 校验失败（{len(self.issues)} 项）: {detail}')
+
+
+# ---------------------------------------------------------------- 自定义 Skill（INT-2549）
+
+
+class SkillServiceError(AgentDomainError):
+    """自定义 Skill 域异常基类：``code`` 即接口错误码（§4.4 枚举）。"""
+
+    code = SkillErrorCode.SKILL_VALIDATION_FAILED.value
+
+    def __init__(self, message: str, *, issues=()):
+        self.issues = tuple(issues or ())
+        super().__init__(message)
+
+
+class SkillNotFound(SkillServiceError):
+    """Skill 不存在 / 非本人可见 / 无写入口（对外统一 404，不泄漏存在性）。"""
+
+    code = SkillErrorCode.SKILL_NOT_FOUND.value
+
+
+class SkillNameConflict(SkillServiceError):
+    """同名冲突：与 PLATFORM 同名或同作用域重名（拒绝，不静默覆盖）。"""
+
+    code = SkillErrorCode.SKILL_NAME_CONFLICT.value
+
+
+class SkillPermissionEscalation(SkillServiceError):
+    """``permissions`` 超出当前用户权限（不得提权）。"""
+
+    code = SkillErrorCode.SKILL_PERMISSION_ESCALATION.value
+
+
+class SkillStatusInvalid(SkillServiceError):
+    """状态迁移非法（例如 ACTIVE 才能停用、DRAFT 才能发布）。"""
+
+    code = SkillErrorCode.SKILL_STATUS_INVALID.value
+
+
+class SkillImportInvalid(SkillServiceError):
+    """zip 导入非法（结构 / 体积 / 路径 / 压缩比 / 二进制）。"""
+
+    code = SkillErrorCode.SKILL_IMPORT_INVALID.value
+
+
+class SkillPackageTooLarge(SkillImportInvalid):
+    """上传包超过体积上限（读入内存 / 解析前拒绝，对外 413）。
+
+    继承导入非法的错误码（``SKILL_IMPORT_INVALID``），不新增对外词表。
+    """
+
+
+class SkillInjectionDetected(SkillServiceError):
+    """正文命中注入规则：可存草稿，禁止发布为 ACTIVE。"""
+
+    code = SkillErrorCode.SKILL_INJECTION_DETECTED.value
+
+
+class SkillGateFailed(SkillServiceError):
+    """发布门槛未通过（golden tasks 数量 / 触发判定）。"""
+
+    code = SkillErrorCode.SKILL_GATE_FAILED.value
+
+
+class SkillReviewForbidden(SkillServiceError):
+    """非本租户管理员调用 TENANT 级写入 / 审核（INT-2551）。
+
+    双条件缺一即拒绝：网关 RBAC 权限码 ``agent:skill:admin`` 与服务端复核
+    的租户管理员角色都在应用层再校验一次 —— 前端隐藏入口不算数。
+    """
+
+    code = SkillErrorCode.SKILL_REVIEW_FORBIDDEN.value
+
+
+class SkillSelfReviewForbidden(SkillServiceError):
+    """创建人审批自己提交的版本（``SKILL_SELF_REVIEW_FORBIDDEN``）。
+
+    自审自批在同一版本上没有任何第二人复核，等于绕过审核流。
+    """
+
+    code = SkillErrorCode.SKILL_SELF_REVIEW_FORBIDDEN.value
+
+
+# ---------------------------------------------------------------- 长期记忆（INT-2490）
+
+
+class MemoryError(AgentDomainError):
+    """记忆域异常基类：``code`` 直接作为工具 / 审计的 result_code。"""
+
+    code = 'MEMORY_ERROR'
+
+    def __init__(self, message: str, *, code: str = ''):
+        if code:
+            self.code = code
+        super().__init__(message)
+
+
+class MemoryPathRejected(MemoryError):
+    """路径越界 / 非法（``..``、绝对路径、``~``、软链穿越）。"""
+
+    code = 'MEMORY_PATH_REJECTED'
+
+
+class MemorySensitiveRejected(MemoryError):
+    """命中拦截级敏感信息规则：整笔写入拒绝，不产生提案。"""
+
+    code = 'MEMORY_SENSITIVE_CONTENT'
+
+
+class MemoryProposalNotFound(MemoryError):
+    """提案不存在，或不属于当前用户 / 租户（对外统一 404，不泄漏存在性）。"""
+
+    code = 'MEMORY_PROPOSAL_NOT_FOUND'
+
+
+class MemoryProposalConflict(MemoryError):
+    """批准时目标文件已被改动：拒绝覆盖，保留本次提案。"""
+
+    code = 'MEMORY_WRITE_CONFLICT'
+
+
+class MemoryBackendUnavailable(MemoryError):
+    """检索后端（``rg``）不可用：显式失败，不静默返回空结果。"""
+
+    code = 'MEMORY_BACKEND_UNAVAILABLE'
+
+
+class MemoryPermissionDenied(MemoryError):
+    """管理端 / break-glass 权限不足。"""
+
+    code = 'MEMORY_PERMISSION_DENIED'

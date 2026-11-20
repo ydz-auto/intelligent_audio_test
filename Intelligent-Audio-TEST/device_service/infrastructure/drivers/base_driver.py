@@ -1,6 +1,9 @@
 from .utils import get_task_events, log_and_emit
 from shared.utils import distributed_coordinator as dc
-from shared.constants.ui_capture import UiCaptureDegradeReason
+from shared.constants.ui_capture import (
+    UiCaptureDegradeReason,
+    UiCaptureUnavailable,
+)
 from .contracts import AppDriver, DriverContext
 
 
@@ -122,6 +125,60 @@ class BaseDeviceDriver(AppDriver):
             'ui_capture_available': self.ui_capture_available,
             'degrade_reason': self.ui_degrade_reason,
         }
+
+    # ==================== 设备 UI 探索三能力（INT-2577） ====================
+    # 默认实现一律显式失败：未覆写的驱动 = 该平台没有 UI 探索能力。
+    # 审计红线：**永不返回空树 / 空结果冒充成功**（同 INT-296）。
+
+    def dump_ui_tree(self, device_sn, **kwargs) -> dict:
+        """读取当前页 UI 树（平台原始结构，不裁剪）。
+
+        Returns:
+            dict: ``{'platform', 'format', 'payload', 'node_count'}``
+                - platform：``UiCapturePlatform`` 值（ANDROID / HARMONYOS）
+                - format：``UiTreeFormat`` 值（ANDROID_XML / HARMONY_COMPONENTS）
+                - payload：原始结构文本（XML / 组件树 JSON）
+                - node_count：原始节点数（裁剪在 agent 侧）
+
+        Raises:
+            UiCaptureUnavailable: 平台不支持 / 设备不可用 / 树不可解析
+        """
+        raise UiCaptureUnavailable(
+            f'{type(self).__name__} 未实现 UI 树读取',
+            reason=UiCaptureDegradeReason.PLATFORM_NOT_SUPPORTED)
+
+    def perform_ui_action(self, device_sn, action_type, *, node=None,
+                          params=None) -> dict:
+        """下发一个 UiActionType 动作。
+
+        Args:
+            device_sn: 设备序列号
+            action_type: 已通过七枚举白名单校验的动作名
+            node: 定位键（``resource_id`` / ``key`` / ``text`` / ``bounds``）
+            params: 动作参数（SWIPE direction+duration / INPUT_TEXT text / WAIT seconds）
+
+        Returns:
+            dict: ``{'action_type', 'performed'}``
+
+        Raises:
+            UiCaptureUnavailable: 平台不支持 / 设备不可用
+        """
+        raise UiCaptureUnavailable(
+            f'{type(self).__name__} 未实现 UI 动作下发',
+            reason=UiCaptureDegradeReason.PLATFORM_NOT_SUPPORTED)
+
+    def capture_ui_screenshot(self, device_sn, **kwargs) -> dict:
+        """截取当前屏（PNG 字节，上传由 servicer 负责）。
+
+        Returns:
+            dict: ``{'png': bytes, 'format': 'PNG', 'width': int, 'height': int}``
+
+        Raises:
+            UiCaptureUnavailable: 平台不支持 / 设备不可用 / 截图失败
+        """
+        raise UiCaptureUnavailable(
+            f'{type(self).__name__} 未实现 UI 截图',
+            reason=UiCaptureDegradeReason.PLATFORM_NOT_SUPPORTED)
 
     def unlock(self, device_sn, **kwargs) -> None:
         """解锁设备

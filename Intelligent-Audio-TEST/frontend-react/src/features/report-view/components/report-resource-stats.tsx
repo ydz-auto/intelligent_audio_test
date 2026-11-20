@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
+import { deviceTypeLabel, toDeviceType } from '@/domain/models/device'
 import type {
   ReportApiStat,
   ReportDetailData,
@@ -139,7 +140,15 @@ function DeviceStatsGrid({ report }: { report: ReportDetailData }) {
           key={`device-${device.id}`}
           kind='device'
           name={device.name}
-          subtitle={[device.model, device.type].filter(Boolean).join(' · ') || '设备'}
+          subtitle={
+            // INT-2640：type 走三值白名单再取中文文案，三值外的存量值统一「未知」，不外露英文枚举
+            [
+              device.model,
+              device.type ? deviceTypeLabel(toDeviceType(device.type)) : null,
+            ]
+              .filter(Boolean)
+              .join(' · ') || '设备'
+          }
           status={device.status}
           totalCases={device.total_cases}
           completedCases={device.completed_cases}

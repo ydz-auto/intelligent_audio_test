@@ -3,10 +3,18 @@
  * Alert destructive「出错了」+ 描述 + 重试/编辑后重发/删除 操作组；「模型价格未配置」分支不引入（无计费业务）。
  */
 import { AlertCircle } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import {
+  AGENT_PROVIDER_NOT_CONFIGURED_CODE,
+} from '@/domain/models/agentProvider'
 import { ERROR_MESSAGES } from '@/features/ai-chat/constants'
+import {
+  AGENT_PROVIDERS_COPY,
+  AGENT_PROVIDERS_ROUTE,
+} from '@/features/agent-providers/constants'
 
 type MessageErrorProps = {
   onRetry?: () => void
@@ -27,14 +35,19 @@ export function MessageError({
   detail,
 }: MessageErrorProps) {
   const isInterrupted = errorCode === 'interrupted'
+  const providerMissing = errorCode === AGENT_PROVIDER_NOT_CONFIGURED_CODE
 
   return (
     <Alert className='mt-1' variant='destructive'>
       <AlertCircle className='size-4' aria-hidden='true' />
-      <AlertTitle>{ERROR_MESSAGES.title}</AlertTitle>
+      <AlertTitle>
+        {providerMissing ? AGENT_PROVIDERS_COPY.guidanceTitle : ERROR_MESSAGES.title}
+      </AlertTitle>
       <AlertDescription>
         {isInterrupted ? (
           ERROR_MESSAGES.interrupted
+        ) : providerMissing ? (
+          <p>{AGENT_PROVIDERS_COPY.guidanceDescription}</p>
         ) : (
           <>
             <p>{detail?.trim() ? detail.trim() : ERROR_MESSAGES.generic}</p>
@@ -43,6 +56,16 @@ export function MessageError({
         )}
       </AlertDescription>
       <div className='mt-2 flex items-center gap-1.5'>
+        {providerMissing && (
+          <Button
+            className='h-7 px-2.5 text-xs'
+            render={<Link to={AGENT_PROVIDERS_ROUTE} />}
+            size='sm'
+            type='button'
+          >
+            {AGENT_PROVIDERS_COPY.guidanceAction}
+          </Button>
+        )}
         {onRetry && (
           <Button
             className='h-7 px-2.5 text-xs'

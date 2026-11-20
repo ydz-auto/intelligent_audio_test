@@ -1,0 +1,375 @@
+# -*- coding: utf-8 -*-
+"""接口层请求 / 响应模型。
+
+camelCase 只在前端 infrastructure 层转换；服务端对外保持与现有网关一致的
+snake_case 契约（方案 §11）。
+"""
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class CreateSessionRequest(BaseModel):
+    title: str = ''
+    active_skill: Optional[str] = None
+    model: str = ''
+
+
+class CreateRunRequest(BaseModel):
+    # 预算默认值由服务端配置（agent_defaults.json + AGENT_MAX_*）给定：
+    # 普通对话的 ``budget`` 只能**收紧**（与服务端默认值取最小，0 / 负数视为
+    # 不覆盖）；目标模式（auto）允许**放宽**——正数按请求值直接生效（消耗用户
+    # 自己的 token），未知键 / 非整数 400 INVALID_BUDGET（§9.4 修订）。
+    message: str = Field(min_length=1)
+    # 可选：本轮使用的模型（同一供应商 Key / Base URL 下切换模型）；
+    # 留空沿用默认供应商配置的模型。
+    model: Optional[str] = None
+    # 可选：本轮使用的供应商（对话页供应商下拉）；留空用 owner 默认供应商。
+    provider_id: Optional[str] = None
+    # 可选：发起本轮时切换会话激活的 Skill（落库 agent_session.active_skill）
+    active_skill: Optional[str] = None
+    # 运行模式：chat（默认，单轮问答）/ auto（目标驱动长任务，§9.3 / §9.4）
+    mode: str = 'chat'
+    # 可选：请求侧预算（键同 RunBudget：max_rounds / max_tool_calls /
+    # max_tokens / max_duration_seconds / max_output_bytes）
+    budget: Optional[Dict[str, int]] = None
+
+
+class BudgetDefaultsResponse(BaseModel):
+    """目标模式预算的服务端默认值（键同 RunBudget；留空时生效）。"""
+
+    max_rounds: int
+    max_tool_calls: int
+    max_tokens: int
+    max_duration_seconds: int
+    max_output_bytes: int
+    # token 上限派生倍数（max_tokens = 0 时按「倍数 × 有效上下文窗口」计算）
+    token_budget_multiplier: int
+
+
+class SessionResponse(BaseModel):
+    id: str
+    owner_id: int
+    tenant_id: str
+    title: str
+    active_skill: Optional[str] = None
+    model: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class RunResponse(BaseModel):
+    id: str
+    session_id: str
+    owner_id: int
+    tenant_id: str
+    status: str
+    model: str
+    # 运行模式（INT-2474）：chat / auto；从 run_started 固化口径读出
+    mode: str = 'chat'
+    budget: Dict[str, Any] = Field(default_factory=dict)
+    token_in: int = 0
+    token_out: int = 0
+    error: Optional[str] = None
+    created_at: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+
+
+class CreateRunResponse(BaseModel):
+    run: RunResponse
+    created: bool
+
+
+class SessionDetailResponse(BaseModel):
+    session: SessionResponse
+    messages: list = Field(default_factory=list)
+    runs: list = Field(default_factory=list)
+
+
+class ApprovalResponse(BaseModel):
+    """一张写调用审批单（§10 agent_approval；与 React AgentApprovalDto 对齐）。
+
+    ``batch_*`` / ``object_ref`` 是 §9.4.1 拆单字段：一次 tool call 影响 >20
+    个对象时拆成 N 张单，同批共享 ``batch_id``，``batch_index`` 1..N；未拆单
+    时 ``batch_id`` 为空、``batch_index`` / ``batch_total`` 为 1。
+    """
+
+    id: str
+    run_id: str
+    tool_call_id: str
+    status: str
+    proposal: Dict[str, Any] = Field(default_factory=dict)
+    diff: Optional[Dict[str, Any]] = None
+    expires_at: Optional[str] = None
+    decided_by: Optional[int] = None
+    decided_at: Optional[str] = None
+    created_at: Optional[str] = None
+    batch_id: Optional[str] = None
+    batch_index: int = 1
+    batch_total: int = 1
+    object_ref: Optional[Dict[str, Any]] = None
+
+
+class ApprovalDecisionRequest(BaseModel):
+    """审批决议：``APPROVE`` / ``REJECT``（大小写不敏感）。
+
+    ``confirm`` 是破坏性操作（``DESTRUCTIVE``：设备重启 / 关机 / 安装 / 卸载 /
+    批量控制）的二次确认；批准这类提案时必须显式传 ``true``，拒绝不需要。
+    """
+
+    decision: str = Field(min_length=1)
+    confirm: bool = Field(False)
+
+
+class ApprovalDecisionResponse(BaseModel):
+    approval: ApprovalResponse
+    run_status: str
+
+
+class SkillResponse(BaseModel):
+    """当前用户可见的 Skill（§11 GET /api/v1/agent/skills）。"""
+
+    name: str
+    description: str
+    version: str = ''
+    owner: str = ''
+    allowed_tools: list = Field(default_factory=list)
+    permissions: list = Field(default_factory=list)
+    budgets: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SkillIssueResponse(BaseModel):
+    """一条装载问题（目录级失败 / frontmatter 校验），供看板与审计消费。"""
+
+    code: str
+    severity: str
+    skill: str = ''
+    path: str = ''
+    message: str = ''
+
+
+class SkillListResponse(BaseModel):
+    items: list = Field(default_factory=list)
+    # 装载总数（权限过滤前的 registry 结果）与问题摘要（INT-2506）
+    skills_count: int = 0
+    issues: list = Field(default_factory=list)
+    issues_count: int = 0
+    # L1 常驻预算量级（§8.3 system 区段 15%），供前端与审计核对
+    l1_tokens: int = 0
+    l1_budget_tokens: int = 0
+
+
+# ---------------------------------------------------------------- 自定义 Skill（INT-2549）
+
+class SkillIssueSchema(BaseModel):
+    """一条逐项校验问题（``code`` 为 ``SkillIssueCode`` 取值）。"""
+
+    code: str
+    severity: str
+    field: str = ''
+    message: str = ''
+
+
+class SkillViewSchema(BaseModel):
+    """Skill 列表 / 详情项（含旧字段，前端契约不破）。"""
+
+    id: str = ''
+    scope: str = ''
+    name: str = ''
+    description: str = ''
+    version: str = ''
+    status: str = ''
+    content_hash: str = ''
+    masked_by: Optional[str] = None
+    owner: str = ''
+    owner_id: Optional[int] = None
+    tenant_id: Optional[str] = None
+    created_by: Optional[int] = None
+    updated_at: Optional[str] = None
+    allowed_tools: list = Field(default_factory=list)
+    permissions: list = Field(default_factory=list)
+    budgets: Dict[str, Any] = Field(default_factory=dict)
+    issues: list = Field(default_factory=list)
+
+
+class SkillDraftRequest(BaseModel):
+    """新建 / 保存请求体。
+
+    只接受草稿内容：``scope`` / ``owner_id`` / ``tenant_id`` 由服务端按登录
+    身份填，请求体携带一律 400（字段留在这里是为了给出明确报错，而不是被
+    pydantic 静默忽略）。
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    # None = 本次不改动（PUT 语义；新建时缺省字段按空值处理）
+    name: Optional[str] = None
+    description: Optional[str] = None
+    frontmatter: Optional[Dict[str, Any]] = None
+    body: Optional[str] = None
+    resources: Optional[Dict[str, str]] = None
+    # 以下字段出现即 400（服务端赋值，不接受调用方指定）
+    scope: Optional[str] = None
+    owner_id: Optional[int] = None
+    tenant_id: Optional[str] = None
+    created_by: Optional[int] = None
+
+    def forbidden_identity_fields(self) -> list:
+        return [name for name in ('scope', 'owner_id', 'tenant_id', 'created_by')
+                if getattr(self, name) is not None]
+
+
+class SkillForkRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    name: str = ''
+    description: str = ''
+    scope: Optional[str] = None
+    owner_id: Optional[int] = None
+    tenant_id: Optional[str] = None
+
+    def forbidden_identity_fields(self) -> list:
+        return [name for name in ('scope', 'owner_id', 'tenant_id')
+                if getattr(self, name) is not None]
+
+
+class SkillVersionSchema(BaseModel):
+    version: str
+    content_hash: str = ''
+    created_at: Optional[str] = None
+    created_by: Optional[int] = None
+
+
+class SkillGateSchema(BaseModel):
+    golden_tasks: int = 0
+    passed: bool = False
+    failures: list = Field(default_factory=list)
+    note: str = ''
+
+
+class SkillPublishResponse(BaseModel):
+    skill: SkillViewSchema
+    gate: SkillGateSchema
+    participates_in_trigger: bool = False
+
+
+class SkillReplayItem(BaseModel):
+    skill_id: str
+    name: str = ''
+    scope: str = ''
+    version: str
+    content_hash: str = ''
+    activated_at: Optional[str] = None
+    resolved: bool = False
+    content_hash_matches: bool = False
+    body: str = ''
+
+
+# ---------------------------------------------------------------- 审核流（INT-2551）
+
+class SkillReviewRequest(BaseModel):
+    """``POST /skills/{id}/review`` 请求体：``{decision, reason?}``。
+
+    ``decision`` 只接受 ``APPROVE`` / ``REJECT``（大小写不敏感）；
+    ``REJECT`` 时 ``reason`` 必填（服务层校验，缺省 400）。
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    decision: str = Field(min_length=1)
+    reason: Optional[str] = None
+
+
+class SkillReviewSchema(BaseModel):
+    """一条审核链记录（``agent_skill_review`` 的对外投影）。"""
+
+    id: str
+    skill_id: str
+    version: str
+    action: str
+    status_from: str
+    status_to: str
+    reviewer_id: Optional[int] = None
+    reason: str = ''
+    created_at: Optional[str] = None
+
+
+class SkillReviewResponse(BaseModel):
+    skill: SkillViewSchema
+    review: SkillReviewSchema
+    gate: SkillGateSchema
+
+
+# ---------------------------------------------------------------- providers
+
+class CreateProviderRequest(BaseModel):
+    name: str = ''
+    protocol: str = 'OPENAI_COMPATIBLE'
+    base_url: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    api_key: str = Field(min_length=1)
+    context_window: Optional[int] = None
+
+
+class UpdateProviderRequest(BaseModel):
+    """PUT 语义：未出现的字段不变；api_key 留空 / 不传表示不变。"""
+
+    name: Optional[str] = None
+    protocol: Optional[str] = None
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    context_window: Optional[int] = None
+
+
+class ProviderResponse(BaseModel):
+    id: str
+    owner_id: int
+    tenant_id: str
+    name: str
+    protocol: str
+    base_url: str
+    model: str
+    api_key_mask: str
+    context_window: Optional[int] = None
+    context_window_source: str
+    effective_context_window: int
+    catalog_context_window: Optional[int] = None
+    catalog_max_output_tokens: Optional[int] = None
+    context_window_warning: Optional[str] = None
+    context_window_warning_message: Optional[str] = None
+    is_default: bool = False
+    status: str
+    last_verified_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ProviderListResponse(BaseModel):
+    items: list = Field(default_factory=list)
+
+
+class VerifyProviderResponse(BaseModel):
+    provider_id: str
+    ok: bool
+    code: str
+    message: str = ''
+    status: str
+    last_verified_at: Optional[str] = None
+
+
+class DiscoverModelsRequest(BaseModel):
+    """自动发现模型：新增时传 protocol/base_url/api_key，编辑时只传 provider_id。"""
+
+    provider_id: Optional[str] = None
+    protocol: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+class DiscoverModelsResponse(BaseModel):
+    ok: bool
+    code: str
+    message: str = ''
+    models: list = Field(default_factory=list)

@@ -73,16 +73,25 @@ class DistributedLock:
         self.retry_interval = retry_interval
         self.retry_timeout = retry_timeout
         self._token = None
+        #: 实际获取方式：``DISTRIBUTED``（Redis SET NX 成功）、
+        #: ``SINGLE_INSTANCE``（显式关闭分布式协调）、``DEGRADED``（Redis
+        #: 不可用 / 异常时降级放行，**没有真正加锁**）。调用方可据此留痕。
+        self.mode = 'DISTRIBUTED'
 
     def acquire(self, blocking=True):
         """获取锁，成功返回 True；非阻塞模式下获取不到立即返回 False
 
-        Redis 不可达时降级放行（返回 True），不阻塞业务，与文件头承诺一致。
+        Redis 不可达时降级放行（返回 True），不阻塞业务，与文件头承诺一致；
+        此时 ``mode`` 为 ``DEGRADED``，调用方应据此判断「拿到了锁」还是
+        「降级放行」。
         """
         if not _enabled():
+            self.mode = 'SINGLE_INSTANCE'
             return True  # 单实例模式：直接放行
         client = _client()
         if client is None:
+            self.mode = 'DEGRADED'
+            logger.warning(f"获取分布式锁 {self.key} 时 Redis 不可用，降级放行")
             return True  # Redis 不可用：降级放行，不阻塞业务
 
         self._token = uuid.uuid4().hex
@@ -96,6 +105,7 @@ class DistributedLock:
                 time.sleep(self.retry_interval)
             return False
         except Exception as e:
+            self.mode = 'DEGRADED'
             logger.warning(f"获取分布式锁 {self.key} 时 Redis 不可达，降级放行: {e}")
             return True
 

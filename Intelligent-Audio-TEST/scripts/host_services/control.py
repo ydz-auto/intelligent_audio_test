@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""宿主服务（audio_service / device_service）启停与环境口径。
+"""宿主服务（e2e_test_service / audio_service / device_service）启停与环境口径。
 
 单一来源原则：
 - **端口/基础设施**：以 ``docker compose config`` 的解析结果为准（compose 与脚本用同一份
@@ -7,7 +7,8 @@
   漂移，导致宿主 audio_service 连到测试库、音频列表“消失”。
 - **DB/Redis/OSS 地址**：由上面解析出的宿主端口拼装，宿主服务永远连 Docker 栈暴露的
   入口（主库 intelligent_audio_test），不读仓库根 .env 里给 pytest 用的测试库地址。
-- **宿主服务自身端口**：audio 50052 / device 50053（shared/config/service_ports.py 注册值）。
+- **宿主服务自身端口**：e2e 5002/50051、audio 50052 / device 50053
+  （shared/config/service_ports.py 注册值）。
 
 只被 ``stack.py`` 调用，不单独作为命令行入口。
 """
@@ -54,6 +55,10 @@ def _resolve_python() -> str:
 
 
 PY = _resolve_python()
+# 宿主服务用 pythonw.exe 拉起：WMI Create 的 python.exe 会弹出常驻黑色控制台窗口，
+# pythonw 无控制台；日志由 service_entry 重定向到 logs/host_services/*.log。
+_PYW = str(Path(PY).with_name('pythonw.exe'))
+RUNNER = _PYW if Path(_PYW).is_file() else PY
 
 PROJECT = os.environ.get('COMPOSE_PROJECT_NAME', 'intelligent-audio-test')
 COMPOSE_FILE = REPO / 'docker' / 'docker-compose.yml'
@@ -63,6 +68,10 @@ SHIM_DIR = REPO / 'tests' / 'fixtures' / 'pyaudio_shim'
 
 AUDIO_PORT = 50052
 DEVICE_PORT = 50053
+# E2E：HTTP / gRPC 同进程（e2e_test_service.app），固定宿主原生端口。
+# compose 里同名服务已改为 profile 门控（container-e2e），默认由本节拉起。
+E2E_HTTP_PORT = 5002
+E2E_GRPC_PORT = 50051
 
 ENTRY = Path(__file__).with_name('service_entry.py')
 
@@ -126,6 +135,9 @@ def published_ports() -> dict[int, int]:
     config = json.loads(result.stdout)
     ports: dict[int, int] = {}
     for service in (config.get('services') or {}).values():
+        # profile 门控服务（如 container-e2e）默认不启动，其 ports 不代表本栈实际发布端口
+        if service.get('profiles'):
+            continue
         for item in service.get('ports') or []:
             target, published = item.get('target'), item.get('published')
             if target and published:
@@ -160,6 +172,17 @@ def host_env() -> dict:
     env['DEVICE_SERVICE_GRPC_PORT'] = str(DEVICE_PORT)
     # 容器经 host.docker.internal 访问宿主服务，必须绑全部网卡
     env['SERVICE_HOST'] = '0.0.0.0'
+    # COS 的 S3 接口只接受 virtual-hosted style；本机 audio/device 也走 COS
+    env['AWS_CONFIG_FILE'] = str(Path(__file__).with_name('aws_config'))
+    # 生产形态：本机只跑硬件服务，数据面（DB/Redis/COS）在腾讯云
+    remote_env = REPO / 'logs' / 'host_services' / 'remote.env'
+    if remote_env.is_file():
+        for line in remote_env.read_text(encoding='utf-8').splitlines():
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            env[key.strip()] = value.strip()
     env['PYTHONUTF8'] = env.get('PYTHONUTF8', '1')
     return env
 
@@ -185,12 +208,16 @@ def listener_pid(port: int) -> int | None:
         ).stdout
     except OSError:
         return None
-    needle = f':{port}'
     for line in out.splitlines():
-        if needle in line and 'LISTENING' in line.upper():
-            parts = line.split()
-            if parts and parts[-1].isdigit():
-                return int(parts[-1])
+        if 'LISTENING' not in line.upper():
+            continue
+        parts = line.split()
+        # netstat -ano 列：Proto / Local Address / Foreign Address / State / PID。
+        # 必须按端口号精确比较：:5002 不能被 :15002 的行命中（容器端口覆盖时会误杀）。
+        if len(parts) < 5 or parts[1].rsplit(':', 1)[-1] != str(port):
+            continue
+        if parts[-1].isdigit():
+            return int(parts[-1])
     return None
 
 
@@ -234,11 +261,23 @@ def _launch(service: str, mode: str) -> int:
     if service == 'audio' and mode == 'shim':
         env['PYTHONPATH'] = os.pathsep.join(
             [str(SHIM_DIR), str(REPO), str(REPO / 'shared' / 'proto')])
+    if service == 'e2e':
+        # 宿主进程：固定原生端口；SERVICE_HOST 用于 Redis 注册（容器经
+        # host.docker.internal 寻址），不能沿用 host_env 给 audio/device 的 0.0.0.0
+        env.update({
+            'PORT': str(E2E_HTTP_PORT),
+            'GRPC_PORT': str(E2E_GRPC_PORT),
+            'SERVICE_NAME': 'e2e_test_service',
+            'SERVICE_HOST': 'host.docker.internal',
+            'LAB_NAME': env.get('LAB_NAME') or 'lab-a',
+        })
+        env['PYTHONPATH'] = os.pathsep.join(
+            [str(REPO), str(REPO / 'shared' / 'proto'), env.get('PYTHONPATH', '')])
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     env_file = LOG_DIR / f'{service}.env.json'
     env_file.write_text(json.dumps(env, ensure_ascii=False), encoding='utf-8')
     command_line = (
-        f'"{PY}" "{ENTRY}" --service {service} --mode {mode} --env-file "{env_file}"')
+        f'"{RUNNER}" "{ENTRY}" --service {service} --mode {mode} --env-file "{env_file}"')
     return _wmi_create(command_line, REPO)
 
 
@@ -266,6 +305,43 @@ def _log_tail(log_name: str, lines: int = 20) -> str:
     except OSError:
         return ''
     return '\n'.join(content[-lines:])
+
+
+# ---------------------------------------------------------------- e2e
+
+def start_e2e(timeout: float = READY_TIMEOUT_DEFAULT) -> tuple[bool, str]:
+    """启动宿主 e2e_test_service（HTTP :5002 + gRPC :50051 同进程）。"""
+    if port_listening(E2E_HTTP_PORT):
+        if port_listening(E2E_GRPC_PORT):
+            return True, (f'[skip] e2e_test_service 已在 :{E2E_HTTP_PORT}/'
+                          f':{E2E_GRPC_PORT} 监听')
+        return False, (f'[fail] e2e_test_service :{E2E_HTTP_PORT} 已监听，'
+                       f'但 gRPC :{E2E_GRPC_PORT} 未就绪')
+    ok, msg = _start('e2e_test_service', 'e2e', 'real', E2E_HTTP_PORT,
+                     timeout, 'e2e_test_service.log')
+    if not ok:
+        return ok, msg
+    if not wait_port(E2E_GRPC_PORT, True, timeout):
+        return False, (f'[fail] e2e_test_service gRPC :{E2E_GRPC_PORT} 在 {timeout:.0f}s 内'
+                       f'未监听，日志: {LOG_DIR / "e2e_test_service.log"}\n'
+                       f'{_log_tail("e2e_test_service.log")}')
+    return True, msg
+
+
+def stop_e2e(timeout: float = DEVICE_STOP_TIMEOUT) -> tuple[bool, str]:
+    """停止宿主 e2e_test_service：按 5002/50051 定位 PID 后杀进程树。"""
+    pids = sorted({pid for pid in (listener_pid(E2E_HTTP_PORT),
+                                   listener_pid(E2E_GRPC_PORT)) if pid})
+    if not pids:
+        return True, f'[skip] e2e_test_service 未在 :{E2E_HTTP_PORT}/:{E2E_GRPC_PORT} 监听'
+    for pid in pids:
+        subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
+                       capture_output=True, text=True)
+    if not (wait_port(E2E_HTTP_PORT, False, timeout)
+            and wait_port(E2E_GRPC_PORT, False, timeout)):
+        return False, (f'[fail] e2e_test_service :{E2E_HTTP_PORT}/:{E2E_GRPC_PORT} '
+                       f'在 {timeout}s 内未释放')
+    return True, f'[ok] e2e_test_service 已停止 pid={pids}'
 
 
 # ---------------------------------------------------------------- audio
@@ -331,6 +407,8 @@ def stop_device() -> tuple[bool, str]:
 def status() -> list[tuple[str, int, int | None]]:
     """返回 [(服务名, 端口, PID 或 None)]。"""
     rows = []
-    for name, port in (('audio_service', AUDIO_PORT), ('device_service', DEVICE_PORT)):
+    for name, port in (('e2e_test_service', E2E_HTTP_PORT),
+                       ('audio_service', AUDIO_PORT),
+                       ('device_service', DEVICE_PORT)):
         rows.append((name, port, listener_pid(port) if port_listening(port) else None))
     return rows

@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from api_gateway.application.services.device.device_query_service import DeviceQueryService
 from api_gateway.application.services.device.device_command_service import DeviceCommandService
 from api_gateway.application.services.device.device_import_export_service import ResourceImportExportService
+from api_gateway.application.services.device.device_ui_service import DeviceUiService
 from api_gateway.routes._response import to_response
 from api_gateway.application.services.auth.dependencies import require_permission
 
@@ -204,6 +205,29 @@ def uninstall_app(device_id: int, _: None = require_permission('device:control')
 def get_device_status_history(device_id: int, _: None = require_permission('device:read')):
     """单设备状态历史/趋势查询（INT-80）"""
     return to_response(DeviceQueryService.get_status_history(device_id))
+
+
+# ==================== INT-2578 设备 UI 探索（INT-2569 拆分 2/4） ====================
+# 读树 / 截图是读侧（device:read），动作是控制侧（device:control）；
+# 动作只接受 UiActionType 七枚举，错误码映射与审计在 DeviceUiService。
+
+
+@router.post('/{device_id}/ui/tree')
+def dump_device_ui_tree(device_id: int, _: None = require_permission('device:read')):
+    """读当前页 UI 树（平台原始结构，不裁剪；裁剪在 agent 侧）"""
+    return to_response(DeviceUiService.dump_tree(device_id))
+
+
+@router.post('/{device_id}/ui/screenshot')
+def capture_device_ui_screenshot(device_id: int, _: None = require_permission('device:read')):
+    """截取当前屏，返回 screenshot_ref 对象键（不回 base64 整图）"""
+    return to_response(DeviceUiService.capture_screenshot(device_id))
+
+
+@router.post('/{device_id}/ui/action')
+def perform_device_ui_action(device_id: int, _: None = require_permission('device:control')):
+    """下发一个 UiActionType 动作（七枚举白名单，device_service 侧二次校验）"""
+    return to_response(DeviceUiService.perform_action(device_id))
 
 
 # ==================== INT-816 导入导出（静态段，须先于 /{device_id} 注册） ====================

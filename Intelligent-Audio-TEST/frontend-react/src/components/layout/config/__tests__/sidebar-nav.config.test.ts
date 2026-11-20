@@ -23,9 +23,23 @@ describe('ROOT_SIDEBAR_NAV 完整性', () => {
     ])
   })
 
-  it('每组至少一项，条目总数与规范一致（INT-486 六组十四项；INT-1153 二轮返工后导航栏无「连接你的 agent」条目）', () => {
-    expect(allItems.length).toBe(14)
+  it('每组至少一项，条目总数与规范一致（INT-486 六组十四项 + INT-2493 模型供应商 + INT-2550 Skill 管理=十六项；INT-1153 二轮返工后导航栏无「连接你的 agent」条目）', () => {
+    expect(allItems.length).toBe(16)
     expect(ROOT_SIDEBAR_NAV.every((g) => g.items.length >= 1)).toBe(true)
+  })
+
+  it('AI 工具组含模型供应商入口（INT-2493；供应商按用户隔离，登录即可配置）', () => {
+    const aiTools = ROOT_SIDEBAR_NAV.find((g) => g.id === 'ai-tools')
+    const provider = aiTools?.items.find((i) => i.url === '/agent-providers')
+    expect(provider?.title).toBe('模型供应商')
+    expect(provider?.requiredPermission).toBe('auth:me')
+  })
+
+  it('AI 工具组含 Skill 管理入口（INT-2550，权限码 agent:skill:manage）', () => {
+    const aiTools = ROOT_SIDEBAR_NAV.find((g) => g.id === 'ai-tools')
+    const skill = aiTools?.items.find((i) => i.url === '/agent-skills')
+    expect(skill?.title).toBe('Skill 管理')
+    expect(skill?.requiredPermission).toBe('agent:skill:manage')
   })
 
   it('总览组首项为「概览」指向 /dashboard', () => {

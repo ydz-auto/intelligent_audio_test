@@ -84,7 +84,11 @@ interface Frame {
   retry: number | undefined
 }
 
-function parseFrame(raw: string): Frame | null {
+/**
+ * 解析单个 SSE 帧（event/data/id/retry；注释行与心跳忽略）。
+ * 导出供 Agent Run 事件流（infrastructure/api/agentApi.ts）复用同一解析口径。
+ */
+export function parseSseFrame(raw: string): Frame | null {
   let eventType = 'message'
   let id: string | undefined
   let retry: number | undefined
@@ -188,7 +192,7 @@ export function subscribeSse(options: SseSubscribeOptions): () => void {
 
   function handleFrame(raw: string): void {
     lastFrameAt = Date.now()
-    const frame = parseFrame(raw)
+    const frame = parseSseFrame(raw)
     if (!frame) return
     if (frame.eventType === 'message') return
     if (frame.retry !== undefined && Number.isFinite(frame.retry) && frame.retry > 0) {

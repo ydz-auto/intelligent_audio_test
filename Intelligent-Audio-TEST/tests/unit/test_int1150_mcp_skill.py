@@ -6,7 +6,8 @@
 - _user_has_permission 越权预检
 - MCP JSON-RPC：initialize / tools/list / tools/call（转发打桩）/ 越权拒绝 /
   未知方法 / 通知
-- skill 包：build_skill_zip 含 SKILL.md + mcp.json 且 base_url 注入；
+- skill 包：build_skill_zip 含根级 SKILL.md + assets/mcp.json（INT-2476 起
+  还带 references/），且 base_url 注入；
   resolve_base_url ?base_url= → Origin → Host 兜底
 - 路由：skill 下载 / MCP 端点需登录（无 user_id → 401）
 """
@@ -345,22 +346,34 @@ class TestMcpToolsCall:
 # ========================================================================
 
 class TestSkillPackage:
+    """INT-2476：平台包按 skills/ 生成，根级 SKILL.md + 资源目录。"""
 
-    def test_build_zip_contains_members_with_injected_url(self):
-        data = skill_package.build_skill_zip('http://10.0.0.8:8080')
-        zf = zipfile.ZipFile(io.BytesIO(data))
-        assert set(zf.namelist()) == {'SKILL.md', 'mcp.json'}
+    def _members(self, base_url='http://10.0.0.8:8080'):
+        data = skill_package.build_skill_zip(base_url)
+        return zipfile.ZipFile(io.BytesIO(data))
+
+    def test_build_zip_root_level_and_base_url_injected(self):
+        zf = self._members()
+        names = set(zf.namelist())
+        assert 'SKILL.md' in names
+        assert 'assets/mcp.json' in names
+        assert 'references/endpoints.md' in names
+        assert all(name == 'SKILL.md' or '/' in name for name in names), \
+            '根级只允许 SKILL.md，资源必须在 references/scripts/assets/ 下'
+        assert not any(name.startswith('intelligent-audio-test/')
+                       for name in names)
         skill = zf.read('SKILL.md').decode('utf-8')
-        mcp = json.loads(zf.read('mcp.json').decode('utf-8'))
+        mcp = json.loads(zf.read('assets/mcp.json').decode('utf-8'))
+        assert skill.startswith('---\n')
         assert mcp['url'] == 'http://10.0.0.8:8080/api/v1/mcp'
         assert 'http://10.0.0.8:8080/api/v1/mcp' in skill
         assert '{{BASE_URL}}' not in skill and '{{BASE_URL}}' not in mcp['url']
-        assert mcp['headers']['Authorization'] == 'Bearer 在此填入你的 Access Token'
+        assert mcp['headers']['Authorization'] == 'Bearer <ACCESS_TOKEN>'
 
     def test_build_zip_trailing_slash_normalized(self):
         data = skill_package.build_skill_zip('http://example.com/')
         mcp = json.loads(zipfile.ZipFile(io.BytesIO(data))
-                         .read('mcp.json').decode('utf-8'))
+                         .read('assets/mcp.json').decode('utf-8'))
         assert mcp['url'] == 'http://example.com/api/v1/mcp'
 
     def test_resolve_base_url_query_first(self):
@@ -417,7 +430,7 @@ class TestAgentRoutes:
         assert 'attachment' in resp.headers['content-disposition']
         zf = zipfile.ZipFile(io.BytesIO(resp.body))
         assert 'SKILL.md' in zf.namelist()
-        assert 'mcp.json' in zf.namelist()
+        assert 'assets/mcp.json' in zf.namelist()
 
     def test_mcp_logged_in_returns_json(self):
         req = _req(user_id=7, body={'jsonrpc': '2.0', 'id': 1,

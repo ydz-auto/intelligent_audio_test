@@ -3926,3 +3926,179 @@ class LaboratoryConfigService:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class DeviceUiServiceStub:
+    """===== 设备 UI 探索服务（INT-2569 / INT-2577，设备侧 UI 探索通道 1/4） =====
+    三个 RPC 同 SN 串行（与任务执行同一把 SN 锁），响应沿用 success/message/data 约定，
+    并新增 string code 透传显式业务码（DEVICE_NOT_FOUND / PLATFORM_UNSUPPORTED /
+    UI_CAPTURE_UNAVAILABLE / TREE_TOO_LARGE / ELEMENT_NOT_FOUND / ACTION_NOT_ALLOWED / BUSY），
+    调用方按 code 判型，不靠 message 字符串。
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.DumpUiTree = channel.unary_unary(
+                '/device_service.DeviceUiService/DumpUiTree',
+                request_serializer=device__service__pb2.DumpUiTreeRequest.SerializeToString,
+                response_deserializer=device__service__pb2.DumpUiTreeResponse.FromString,
+                _registered_method=True)
+        self.PerformUiAction = channel.unary_unary(
+                '/device_service.DeviceUiService/PerformUiAction',
+                request_serializer=device__service__pb2.PerformUiActionRequest.SerializeToString,
+                response_deserializer=device__service__pb2.PerformUiActionResponse.FromString,
+                _registered_method=True)
+        self.CaptureUiScreenshot = channel.unary_unary(
+                '/device_service.DeviceUiService/CaptureUiScreenshot',
+                request_serializer=device__service__pb2.CaptureUiScreenshotRequest.SerializeToString,
+                response_deserializer=device__service__pb2.CaptureUiScreenshotResponse.FromString,
+                _registered_method=True)
+
+
+class DeviceUiServiceServicer:
+    """===== 设备 UI 探索服务（INT-2569 / INT-2577，设备侧 UI 探索通道 1/4） =====
+    三个 RPC 同 SN 串行（与任务执行同一把 SN 锁），响应沿用 success/message/data 约定，
+    并新增 string code 透传显式业务码（DEVICE_NOT_FOUND / PLATFORM_UNSUPPORTED /
+    UI_CAPTURE_UNAVAILABLE / TREE_TOO_LARGE / ELEMENT_NOT_FOUND / ACTION_NOT_ALLOWED / BUSY），
+    调用方按 code 判型，不靠 message 字符串。
+    """
+
+    def DumpUiTree(self, request, context):
+        """读当前页 UI 树（平台原始结构，不裁剪；裁剪在 agent 侧）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PerformUiAction(self, request, context):
+        """下发一个 UiActionType 动作（七枚举白名单）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CaptureUiScreenshot(self, request, context):
+        """截取当前屏并上传对象存储，返回对象键
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_DeviceUiServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'DumpUiTree': grpc.unary_unary_rpc_method_handler(
+                    servicer.DumpUiTree,
+                    request_deserializer=device__service__pb2.DumpUiTreeRequest.FromString,
+                    response_serializer=device__service__pb2.DumpUiTreeResponse.SerializeToString,
+            ),
+            'PerformUiAction': grpc.unary_unary_rpc_method_handler(
+                    servicer.PerformUiAction,
+                    request_deserializer=device__service__pb2.PerformUiActionRequest.FromString,
+                    response_serializer=device__service__pb2.PerformUiActionResponse.SerializeToString,
+            ),
+            'CaptureUiScreenshot': grpc.unary_unary_rpc_method_handler(
+                    servicer.CaptureUiScreenshot,
+                    request_deserializer=device__service__pb2.CaptureUiScreenshotRequest.FromString,
+                    response_serializer=device__service__pb2.CaptureUiScreenshotResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'device_service.DeviceUiService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('device_service.DeviceUiService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class DeviceUiService:
+    """===== 设备 UI 探索服务（INT-2569 / INT-2577，设备侧 UI 探索通道 1/4） =====
+    三个 RPC 同 SN 串行（与任务执行同一把 SN 锁），响应沿用 success/message/data 约定，
+    并新增 string code 透传显式业务码（DEVICE_NOT_FOUND / PLATFORM_UNSUPPORTED /
+    UI_CAPTURE_UNAVAILABLE / TREE_TOO_LARGE / ELEMENT_NOT_FOUND / ACTION_NOT_ALLOWED / BUSY），
+    调用方按 code 判型，不靠 message 字符串。
+    """
+
+    @staticmethod
+    def DumpUiTree(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceUiService/DumpUiTree',
+            device__service__pb2.DumpUiTreeRequest.SerializeToString,
+            device__service__pb2.DumpUiTreeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PerformUiAction(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceUiService/PerformUiAction',
+            device__service__pb2.PerformUiActionRequest.SerializeToString,
+            device__service__pb2.PerformUiActionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CaptureUiScreenshot(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceUiService/CaptureUiScreenshot',
+            device__service__pb2.CaptureUiScreenshotRequest.SerializeToString,
+            device__service__pb2.CaptureUiScreenshotResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

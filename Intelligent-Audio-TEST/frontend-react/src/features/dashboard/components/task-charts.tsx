@@ -2,31 +2,22 @@
  * ④ 任务统计图表区（#task-charts 锚点；04_控制台.md §3.7，自 /tasks 移交二图卡）：
  * 任务完成趋势（柱状/面积 + 粒度页签）+ 任务状态分布（饼图）。
  * 图表机制照 newAPI ModelCharts 全套：ThemeManager 门控 + key 整图重建 + 色板分档。
+ * VChart 约 2MB 分块经 LazyChartCanvas 视口懒加载，工作台首屏不再下载图表运行时。
  */
-import { VChart } from '@visactor/react-vchart'
-import type { ISpec } from '@visactor/vchart'
 import { Activity, ChartNoAxesCombined } from 'lucide-react'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { useTaskDomainStats } from '@/application/dashboard/use-task-domain-stats'
 import type { TrendGranularity } from '@/application/dashboard/use-task-domain-stats'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getTaskStatusLabel } from '@/features/dashboard/constants'
-import {
-  buildDistributionPieSpec,
-  buildTrendSpec,
-} from '@/features/dashboard/lib/charts'
-import {
-  useChartTheme,
-  useThemePresetKey,
-  useThemeRadiusPx,
-  VCHART_OPTION,
-} from '@/features/dashboard/lib/vchart'
+import { useThemeRadiusPx } from '@/features/dashboard/lib/vchart'
 import {
   GRANULARITY_OPTIONS,
   TREND_VARIANT_OPTIONS,
 } from '@/features/dashboard/constants'
+
+import { LazyChartCanvas } from './lazy-chart-canvas'
 
 type TrendVariant = (typeof TREND_VARIANT_OPTIONS)[number]['value']
 
@@ -92,49 +83,11 @@ function ChartCardShell(props: {
   )
 }
 
-function ChartCanvas(props: { spec: Record<string, unknown> }) {
-  const { themeReady, themeKey } = useChartTheme()
-  const presetKey = useThemePresetKey()
-
-  if (!themeReady) return null
-
-  return (
-    <VChart
-      // 主题/预设/数据变化整图重建（key 含 themeKey/presetKey —— newAPI 同款机制）
-      key={[props.spec.type, themeKey, presetKey].join('-')}
-      spec={
-        {
-          ...props.spec,
-          theme: themeKey,
-          background: 'transparent',
-        } as ISpec
-      }
-      options={VCHART_OPTION}
-    />
-  )
-}
-
 export function TaskCharts() {
   const [trendVariant, setTrendVariant] = useState<TrendVariant>('bar')
   const [granularity, setGranularity] = useState<TrendGranularity>('day')
   const statsQuery = useTaskDomainStats(granularity)
   const chartRadius = useThemeRadiusPx()
-
-  const trendSpec = useMemo(
-    () =>
-      buildTrendSpec(statsQuery.data?.trend ?? [], {
-        variant: trendVariant,
-        chartRadius,
-      }),
-    [statsQuery.data?.trend, trendVariant, chartRadius, statsQuery.isLoading]
-  )
-
-  const statusPieSpec = useMemo(() => {
-    const values = Object.entries(statsQuery.data?.status_counts ?? {}).map(
-      ([status, value]) => ({ type: getTaskStatusLabel(status), value })
-    )
-    return buildDistributionPieSpec(values, { chartRadius })
-  }, [statsQuery.data?.status_counts, chartRadius])
 
   return (
     <section className='flex flex-col gap-4'>
@@ -168,7 +121,12 @@ export function TaskCharts() {
         }
       >
         <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
-          <ChartCanvas spec={trendSpec} />
+          <LazyChartCanvas
+            kind='trend'
+            trend={statsQuery.data?.trend ?? []}
+            variant={trendVariant}
+            chartRadius={chartRadius}
+          />
         </div>
       </ChartCardShell>
 
@@ -179,7 +137,11 @@ export function TaskCharts() {
         loading={statsQuery.isLoading}
       >
         <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
-          <ChartCanvas spec={statusPieSpec} />
+          <LazyChartCanvas
+            kind='status'
+            statusCounts={statsQuery.data?.status_counts ?? {}}
+            chartRadius={chartRadius}
+          />
         </div>
       </ChartCardShell>
     </section>

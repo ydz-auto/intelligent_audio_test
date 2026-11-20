@@ -23,6 +23,12 @@ export interface ApiErrorPayload {
    * 「已有导出任务在进行」带 `data: {task_id, status}`），丢弃会让页面无法接管在办任务。
    */
   data?: unknown
+  /**
+   * 错误响应体里的 `issues`（INT-2550）。
+   * Agent Skill 保存 / 发布 / 导入的逐项校验失败把明细放在顶层 `issues`
+   * （{code, severity, field, message}），丢弃会让页面无法按字段定位。
+   */
+  issues?: unknown
   /** 网络层失败（fetch 未到达服务端），userMessage 固定为网络文案 */
   isNetworkError?: boolean
 }
@@ -61,6 +67,13 @@ function resolveUserMessage(payload: {
 export class ApiError extends Error {
   /** 领域业务错误码（响应无业务码时为 null；网络层失败亦为 null） */
   readonly code: ApiErrorCode | null
+  /**
+   * 服务端原始业务码的字符串形态（如 agent_service 的
+   * `APPROVAL_CONFIRMATION_REQUIRED`、Agent Skill 的 `SKILL_VALIDATION_FAILED`）。
+   * `code` 只收平台数字码，字符串业务码保留在这里供调用方分流（INT-2550 错误码
+   * →文案映射用）；无业务码时为 null。
+   */
+  readonly rawCode: string | null
   /** HTTP 状态码（网络层失败为 null） */
   readonly httpStatus: number | null
   /** 服务端原始 message（可为空） */
@@ -71,6 +84,8 @@ export class ApiError extends Error {
   readonly errors: unknown
   /** 服务端错误响应体里的 data（失败明细；无则 undefined） */
   readonly data: unknown
+  /** 服务端逐项校验明细（INT-2550 Skill issues；无则 undefined） */
+  readonly issues: unknown
   /** 网络层失败标记（fetch 未到达服务端） */
   readonly isNetworkError: boolean
   /** 可直接呈现的中文文案（错误码映射 > 服务端 message > detail > HTTP 兜底 > 网络兜底） */
@@ -78,15 +93,23 @@ export class ApiError extends Error {
 
   constructor(payload: ApiErrorPayload) {
     const code = normalizeCode(payload.code)
+    const rawCode =
+      typeof payload.code === 'string' && payload.code.trim() !== ''
+        ? payload.code.trim()
+        : typeof payload.code === 'number' && Number.isFinite(payload.code)
+          ? String(payload.code)
+          : null
     const message = typeof payload.message === 'string' ? payload.message : ''
     super(message)
     this.name = 'ApiError'
     this.code = code
+    this.rawCode = rawCode
     this.httpStatus = payload.httpStatus ?? null
     this.serverMessage = message
     this.detail = payload.detail
     this.errors = payload.errors
     this.data = payload.data
+    this.issues = payload.issues
     this.isNetworkError = payload.isNetworkError ?? false
     this.userMessage = resolveUserMessage({
       code,

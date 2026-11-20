@@ -111,6 +111,31 @@ class ThirdPartyEvalSettings:
                                            if part.strip()]
         else:
             self.response_required_keys = list(raw_required_keys)
+        self._apply_runtime_overrides()
+
+    def _apply_runtime_overrides(self):
+        """系统设置（评估服务）覆盖：空值不覆盖 env/配置文件。"""
+        try:
+            from shared.infrastructure.eval_config_client import (
+                KEY_RELAY_HUB_ZONE,
+                KEY_RELAY_SELF_ZONE,
+                KEY_RELAY_SYNC_BACK_ZONE,
+                KEY_RELAY_TRIGGER_ENABLED,
+                eval_config_client,
+            )
+        except Exception:  # 运行时配置不可用不阻塞启动
+            return
+
+        def _zone(key, current):
+            value = eval_config_client.option(key)
+            return value.strip().upper() if isinstance(value, str) and value.strip() else current
+
+        self.self_zone = _zone(KEY_RELAY_SELF_ZONE, self.self_zone)
+        self.hub_zone = _zone(KEY_RELAY_HUB_ZONE, self.hub_zone)
+        self.sync_back_zone = _zone(KEY_RELAY_SYNC_BACK_ZONE, self.sync_back_zone)
+        trigger = eval_config_client.option(KEY_RELAY_TRIGGER_ENABLED)
+        if isinstance(trigger, bool):
+            self.relay_trigger_enabled = trigger
 
     @property
     def is_hub(self) -> bool:

@@ -1,6 +1,7 @@
 # Docker Compose 部署（INT-272）
 
-全栈（3 infra + 12 后端微服务 + 前端）纳入 Docker Compose 编排。服务生命周期归
+全栈（3 infra + 容器化后端 + 前端）纳入 Docker Compose 编排；e2e/audio/device
+由宿主机进程提供（`python stack.py up`）。服务生命周期归
 Docker daemon，与一切 agent run 树彻底解耦——run 退出收割不带走任何服务，
 run_all 启动清场也不会击穿栈（清场模式已废除）。
 
@@ -11,9 +12,9 @@ run_all 启动清场也不会击穿栈（清场模式已废除）。
 ## 快速开始
 
 ```bash
-# 1. 环境变量（仓库根 .env 或 export；AUTH_MODE/VITE_AUTH_MODE 必填且一致）
+# 1. 环境变量（仓库根 .env 或 export；AUTH_MODE 必填，前端运行时经 GET /auth/mode 读取）
 #    完整清单见 docker/.env.compose.example
-export AUTH_MODE=dev VITE_AUTH_MODE=dev
+export AUTH_MODE=dev
 
 # 2. 拉起全栈（构建 + 分离模式启动；容器归 daemon 托管）
 python docker/run_stack.py up --build
@@ -42,7 +43,7 @@ python docker/run_stack.py down -v --yes
 |---|---|---|
 | api_gateway | 5000 | 5000 |
 | task_service | 5001 / 51061 | 同左 |
-| e2e_test_service | 5002 / 50051 | 同左 |
+| e2e_test_service | 5002 / 50051（**宿主默认**） | 5002 / 50051（仅 `--profile container-e2e`） |
 | api_test_service | **不发布**（UC-1001，容器网络内互访，多副本 DNS 轮询） | 5003 / 51071 |
 | evaluation_service | 5004 / 51091 | 同左 |
 | report_service | 5006 / 51068 | 同左 |
@@ -52,7 +53,7 @@ python docker/run_stack.py down -v --yes
 | transfer_agent | 5010 / 51101 | 同左 |
 | audio_service (gRPC-only) | 50052 | 50052 |
 | device_service (gRPC-only) | 50053 | 50053 |
-| frontend (nginx) | **5173** | 80 |
+| frontend (nginx) | **8080** | 80 |
 | postgres | 5432 | 5432 |
 | redis | 6379 | 6379 |
 | rustfs | 9000 (S3) / 9001 (Console) | 同左 |
@@ -78,8 +79,9 @@ python docker/run_stack.py down -v --yes
   shared 以源码随镜像打包。audio_service / device_service 依赖宿主声卡与 USB/ADB，
   按宿主形态运行，无容器镜像。
 - `docker/Dockerfile.db_bootstrap`：一次性引导 job 镜像（同 requirements）。
-- `docker/Dockerfile.frontend`：前端生产构建（VITE_AUTH_MODE 必须显式注入，
-  INT-181 构建期守卫）+ nginx 反代（/api、/socket.io、/ws 契约与 vite dev 一致）。
+- `docker/Dockerfile.frontend`：前端生产构建（frontend-react：pnpm + rsbuild → nginx 反代
+  `/api`、`/socket.io`、`/ws`，契约与 `frontend-react/rsbuild.config.ts` 的 dev proxy 一致）。
+  认证模式不进构建产物，由前端运行时 `GET /auth/mode` 读取。
 
 镜像/网络加速：`PY_IMAGE` / `APT_MIRROR` / `NODE_IMAGE` / `POSTGRES_IMAGE` / `REDIS_IMAGE` /
 `RUSTFS_IMAGE` / `PIP_INDEX_URL` 环境变量按需覆盖（`docker-compose.yml` 顶部的
@@ -100,11 +102,10 @@ python docker/run_stack.py down -v --yes
 
 ## 已知边界
 
-- **frontend 构建需前端专用 dockerignore（2026-10-16 修复）**：根 `.dockerignore`
-  为后端镜像瘦身排除 `frontend/`（后端 `COPY . .` 不需要），但 `Dockerfile.frontend`
-  依赖 `frontend/` 进构建上下文。已新增 `docker/Dockerfile.frontend.dockerignore`
-  （= 根忽略移除 `frontend/` 行，BuildKit 对命名 Dockerfile 取同目录
-  `<名>.dockerignore` 替代根忽略）——前端构建恢复，后端镜像瘦身不受影响。
+- **frontend 构建需前端专用 dockerignore**：根 `.dockerignore` 面向后端镜像瘦身
+  （排除 `tests/`、`docs/` 等），`Dockerfile.frontend` 另用同目录
+  `docker/Dockerfile.frontend.dockerignore` 接管前端构建上下文（BuildKit 对命名
+  Dockerfile 取同目录 `<名>.dockerignore` 替代根忽略），只保留 `frontend-react/` 所需内容。
 - **OSS presign 直传 URL 宿主侧需可达 `rustfs`**：容器内 `OSS_ENDPOINT=http://rustfs:9000`，
   presign 直传 URL 宿主为容器网络名 `rustfs`，宿主侧脚本/浏览器无法解析。冒烟脚本
   把 netloc 改写为 `127.0.0.1:9000` 并保留原 `Host: rustfs:9000` 头（S3 SigV4 签名
@@ -149,16 +150,16 @@ python docker/run_stack.py down -v --yes
   渲染链可用，物理放音不可用，CI 由 `tests/fixtures/pyaudio_shim` 兜底）。
   与 device_service 同理，物理放音验收时该服务保留宿主形态例外；容器化
   需 Linux 宿主 + ALSA/PulseAudio 直通才成立。
-- **混合部署形态（2026-10-23 全仓排查）**：物理世界依赖只有两个——
-  device_service（adb/hdc/USB/串口/hypium）与 audio_service（声卡/
-  WASAPI）必须宿主；其余业务服务（api_gateway/task/evaluation/report/
-  algorithm/auth/api_test/frontend）与基础设施（postgres/redis/rustfs）
-  全容器化已闭环。e2e_test_service 零硬件调用（设备操作 gRPC 委托
-  device_service），纯容器可跑，真机 E2E 时经 `DEVICE_SERVICE_HOST`/
-  `AUDIO_SERVICE_HOST` 指向宿主实例（host.docker.internal）；compose 里
-  给 e2e 挂 `/dev/bus/usb` 属冗余防御。transfer_agent 未纳入 compose
-  编排（B 区实例需跨区网络部署），属编排缺口而非技术不可行。mock
-  四件套（mock_dut/mock_realtime/mock_eval/mock_third_party_eval）本就是
-  真硬件替身，iso 栈已示范容器化。
-- 宿主 audio_service / device_service 由 `python stack.py up` 拉起；生产/验收形态
-  一律 compose。
+- **混合部署形态（2026-11-18 更新）**：物理世界依赖的 e2e/device/audio 默认全部
+  跑宿主机——e2e 需与本机 USB/ADB/声卡同宿主排障，device_service（adb/hdc/USB/
+  串口/hypium）与 audio_service（声卡/WASAPI）必须宿主。其余业务服务
+  （api_gateway/task/evaluation/report/algorithm/auth/api_test/agent/frontend）
+  与基础设施（postgres/redis/rustfs）全容器化。容器内 api_gateway/task_service
+  经 `host.docker.internal:50051` 调宿主 e2e；compose 的 e2e 服务已改为
+  `profiles: ["container-e2e"]`，仅供隔离测试栈显式启用（`run_stack_iso.py`
+  会自动带该 profile 并覆盖 `E2E_TEST_SERVICE_HOST=e2e_test_service`）。
+  transfer_agent 未纳入 compose 编排（B 区实例需跨区网络部署），属编排缺口
+  而非技术不可行。mock 四件套（mock_dut/mock_realtime/mock_eval/
+  mock_third_party_eval）本就是真硬件替身，iso 栈已示范容器化。
+- 宿主 e2e/audio/device 由 `python stack.py up` 拉起（`status`/`health`/`down`
+  同口径）；生产/验收形态一律 compose。

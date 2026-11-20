@@ -1,7 +1,8 @@
 /**
  * AI 对话组件测试——AiChatEmptyState（INT-435/INT-598 返修）：空态标题/描述渲染、
- * 常用入门 starter 按权限过滤、全能力分组 11 域入口卡（§3.3 区二）按在册权限码
- * 显可执行/待接入、点击回填输入框（不自动发送，对位 08_AI对话页.md §3.3）。
+ * 常用入门 starter 按权限过滤、全能力分组入口卡（§3.3 区二）按在册权限码
+ * 显可执行/待接入、管理员专属域（系统设置）对普通用户不渲染、
+ * 点击回填输入框（不自动发送，对位 08_AI对话页.md §3.3）。
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -29,14 +30,18 @@ describe('AiChatEmptyState', () => {
     expect(screen.getByText(/当前为 Demo 预览/)).toBeInTheDocument()
   })
 
-  it('未登录权限全失：常用入门 starter 不渲染，全能力分组 11 卡显「待接入」', () => {
+  it('未登录权限全失：常用入门 starter 不渲染，业务域卡片显「待接入」', () => {
     render(<AiChatEmptyState onFillPrompt={vi.fn()} />)
     expect(
       screen.queryByRole('button', { name: /生成测试报告/ })
     ).not.toBeInTheDocument()
-    // 全能力分组照 §5 注5：全部可见、无在册权限统一标「待接入」（可显不可执行）
+    // 全能力分组照 §5 注5：业务域可见、无在册权限统一标「待接入」（可显不可执行）
     expect(screen.getByText('全能力分组')).toBeInTheDocument()
-    expect(screen.getAllByText('待接入')).toHaveLength(11)
+    expect(screen.getAllByText('待接入')).toHaveLength(10)
+    // 系统设置是管理员域，普通用户不渲染该卡
+    expect(
+      screen.queryByText('系统设置（配置域（OAuth/系统配置））')
+    ).not.toBeInTheDocument()
   })
 
   it('超级管理员可见常用入门四卡 + 全能力分组 11 卡（仅系统设置待接入）', () => {
@@ -88,14 +93,17 @@ describe('AiChatEmptyState', () => {
     expect(
       screen.getByRole('button', { name: /追问报告数据/ })
     ).toBeInTheDocument()
-    // 报告域在册 report:read → 可执行；其余 10 域待接入（可显不可执行）
+    // 报告域在册 report:read → 可执行；其余业务域待接入（系统设置对普通用户不渲染）
     expect(
       screen.getByRole('button', { name: '对比最近两次测试的报告，找出退步项' })
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: '帮我从 URL 导入这批音频并带上标注' })
     ).not.toBeInTheDocument()
-    expect(screen.getAllByText('待接入')).toHaveLength(10)
+    expect(screen.getAllByText('待接入')).toHaveLength(9)
+    expect(
+      screen.queryByText('系统设置（配置域（OAuth/系统配置））')
+    ).not.toBeInTheDocument()
   })
 
   it('点击常用入门 starter 回填提示词', async () => {

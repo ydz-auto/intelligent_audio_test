@@ -301,6 +301,11 @@ class AudioQueryHandler:
         if not file_path:
             return _fail('音频文件路径缺失', 404)
 
+        # 网关代理模式：音频经服务器转发（服务器出流量），不返回预签名直连桶
+        from shared.infrastructure.config import BaseConfig
+        if BaseConfig.AUDIO_STREAM_VIA_GATEWAY:
+            return _ok(data={'url': storage.build_download_url(file_path)})
+
         presigned_url = storage.get_url(
             file_path if file_path.startswith(('oss://', 'local://'))
             else storage.build_path('audios', file_path),
@@ -309,7 +314,7 @@ class AudioQueryHandler:
         if presigned_url:
             return _ok(data={'url': presigned_url})
         # 本地降级模式：网关 /download 路由承载字节流回退（INT-146 缺陷4）
-        return _ok(data={'url': f'/api/v1/audios/download?path={file_path}'})
+        return _ok(data={'url': storage.build_download_url(file_path)})
 
     def handle_stream_audio_by_path(self, query: StreamAudioByPathQuery) -> Dict[str, Any]:
         oss_key = query.data.get('path')
@@ -348,6 +353,11 @@ class AudioQueryHandler:
             if denied:
                 return denied
 
+        # 网关代理模式：音频经服务器转发（服务器出流量），不返回预签名直连桶
+        from shared.infrastructure.config import BaseConfig
+        if BaseConfig.AUDIO_STREAM_VIA_GATEWAY:
+            return _ok(data={'url': storage.build_download_url(oss_key)})
+
         try:
             # 无 scheme 的逻辑 key 默认挂在 audios 分类下（与 handle_stream_audio 一致），
             # 否则 _parse_path 会把 key 首段误判为 category 导致 404
@@ -359,7 +369,7 @@ class AudioQueryHandler:
             if presigned_url:
                 return _ok(data={'url': presigned_url})
             # 本地降级模式（get_url 返回 None）：与 handle_stream_audio 同一回退口径
-            return _ok(data={'url': f'/api/v1/audios/download?path={oss_key}'})
+            return _ok(data={'url': storage.build_download_url(oss_key)})
         except Exception as e:
             logger.error(f"stream_by_path 获取存储 URL 失败: {e}, key={oss_key}")
             return _fail(f'获取音频失败: {e}', 404)

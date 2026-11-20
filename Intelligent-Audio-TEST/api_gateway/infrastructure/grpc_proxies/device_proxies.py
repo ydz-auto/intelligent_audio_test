@@ -5,6 +5,7 @@ from shared.clients.grpc_clients import (
     get_device_service_stub,
     get_device_result_service_stub,
     get_device_config_service_stub,
+    get_device_ui_service_stub,
     get_laboratory_config_service_stub,
 )
 
@@ -938,6 +939,98 @@ class _DeviceConfigProxy:
         )
 
 
+# ==================== 设备 UI 探索代理（INT-2578） ====================
+
+def _ui_unreachable(prefix, exc):
+    """gRPC 不可达统一信封：显式 ``UI_CAPTURE_UNAVAILABLE``（不冒充空树 / 假成功）。"""
+    from shared.constants.ui_capture import UiCaptureErrorCode
+
+    return {
+        'success': False,
+        'message': f'{prefix}: {exc}',
+        'code': UiCaptureErrorCode.UI_CAPTURE_UNAVAILABLE.value,
+        'data': None,
+    }
+
+
+class _DeviceUiProxy:
+    """设备 UI 探索代理：转发到 gRPC DeviceUiService（INT-2577，卡 1）。
+
+    与 ``_DeviceConfigProxy`` 同风格，差异在于响应的 ``code`` 是**字符串业务码**
+    （``shared.constants.ui_capture.UiCaptureErrorCode``）而非 HTTP 数字码；
+    网关按 ``code`` 映射 HTTP 状态并原样透传，**不得靠 message 判型**。
+    信封统一 ``{success, message, code, data}``，``data`` 与卡 1 gRPC 同形。
+    """
+
+    @staticmethod
+    def _envelope(resp):
+        from shared.constants.ui_capture import UiCaptureErrorCode
+
+        code = (resp.code or '').strip()
+        if not code and not resp.success:
+            # servicer 契约是显式业务码；缺失时按不可用兜底，绝不返回空 code
+            code = UiCaptureErrorCode.UI_CAPTURE_UNAVAILABLE.value
+        return {
+            'success': bool(resp.success),
+            'message': resp.message,
+            'code': code,
+            'data': json.loads(resp.data) if resp.data else None,
+        }
+
+    def dump_ui_tree(self, device_id):
+        """读当前页 UI 树（``DumpUiTree``）。"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_ui_service_stub()
+            resp = stub.DumpUiTree(device_pb.DumpUiTreeRequest(device_id=int(device_id)))
+            return self._envelope(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: _ui_unreachable('读取设备 UI 树失败', e),
+            error_msg_prefix='读取设备 UI 树失败',
+        )
+
+    def perform_ui_action(self, device_id, action_type, node=None, params=None):
+        """下发一个 ``UiActionType`` 动作（``PerformUiAction``）。"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_ui_service_stub()
+            resp = stub.PerformUiAction(device_pb.PerformUiActionRequest(
+                device_id=int(device_id),
+                action_type=action_type or '',
+                node=json.dumps(node or {}, ensure_ascii=False, default=str),
+                params=json.dumps(params or {}, ensure_ascii=False, default=str),
+            ))
+            return self._envelope(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: _ui_unreachable('设备 UI 动作执行失败', e),
+            error_msg_prefix='设备 UI 动作执行失败',
+        )
+
+    def capture_ui_screenshot(self, device_id, label=None):
+        """截取当前屏并取对象键（``CaptureUiScreenshot``，不回 base64 整图）。"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_ui_service_stub()
+            resp = stub.CaptureUiScreenshot(device_pb.CaptureUiScreenshotRequest(
+                device_id=int(device_id),
+                label=label or '',
+            ))
+            return self._envelope(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: _ui_unreachable('设备 UI 截图失败', e),
+            error_msg_prefix='设备 UI 截图失败',
+        )
+
+
 class _LaboratoryConfigProxy:
     """实验室配置 CRUD 代理（INT-655）：转发到 gRPC LaboratoryConfigService。
 
@@ -1086,3 +1179,5 @@ class _LaboratoryConfigProxy:
 device_config_service = _DeviceConfigProxy()
 # 实验室配置 CRUD 模块级单例（INT-655）
 laboratory_config_service = _LaboratoryConfigProxy()
+# 设备 UI 探索模块级单例（INT-2578）
+device_ui_proxy = _DeviceUiProxy()

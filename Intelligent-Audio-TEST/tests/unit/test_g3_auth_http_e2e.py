@@ -361,6 +361,107 @@ class TestRegistrationPolicyHttp:
         assert resp.json()['user']['username'] == username
 
 
+class TestInviteCodeRegistrationHttp:
+    """邀请码注册（系统选项 auth.invite_code_registration 开启时生效）。
+
+    邀请码取 auth.invite_code，仅服务端校验；注册请求 body.invite_code
+    缺失/不一致均拒绝，一致则正常建号（邀请码可重复使用）。
+    """
+
+    _INVITE_CODE = 'INV-2026'
+
+    def _enable(self, monkeypatch, code=_INVITE_CODE):
+        from api_gateway.application.services.system_option_service import (
+            SystemOptionService,
+        )
+        monkeypatch.setattr(
+            SystemOptionService, 'is_invite_code_registration_required',
+            lambda: True)
+        monkeypatch.setattr(
+            SystemOptionService, 'get_invite_code', lambda: code)
+
+    def test_register_missing_invite_code_rejected_400(self, client, seeded,
+                                                       monkeypatch):
+        from api_gateway.application.services.auth.user_management_service import (
+            REGISTER_ERR_INVITE_CODE_REQUIRED,
+        )
+        self._enable(monkeypatch)
+        username = f'e2e_inv_missing_{_RUN}'
+        resp = client.post('/api/v1/auth/register', json={
+            'username': username, 'password': 'pass123456',
+            'email': f'{username}@example.com'})
+        assert resp.status_code == 400, resp.text
+        assert resp.json()['message'] == REGISTER_ERR_INVITE_CODE_REQUIRED
+
+    def test_register_wrong_invite_code_rejected_400(self, client, seeded,
+                                                     monkeypatch):
+        from api_gateway.application.services.auth.user_management_service import (
+            REGISTER_ERR_INVITE_CODE_INVALID,
+        )
+        self._enable(monkeypatch)
+        username = f'e2e_inv_wrong_{_RUN}'
+        resp = client.post('/api/v1/auth/register', json={
+            'username': username, 'password': 'pass123456',
+            'email': f'{username}@example.com', 'invite_code': 'WRONG'})
+        assert resp.status_code == 400, resp.text
+        assert resp.json()['message'] == REGISTER_ERR_INVITE_CODE_INVALID
+
+    def test_register_valid_invite_code_accepted(self, client, seeded,
+                                                 monkeypatch):
+        self._enable(monkeypatch)
+        username = f'e2e_inv_ok_{_RUN}'
+        resp = client.post('/api/v1/auth/register', json={
+            'username': username, 'password': 'pass123456',
+            'email': f'{username}@example.com',
+            'invite_code': self._INVITE_CODE})
+        assert resp.status_code == 201, resp.text
+
+    def test_register_invite_enabled_but_unconfigured_rejected_400(
+            self, client, seeded, monkeypatch):
+        from api_gateway.application.services.auth.user_management_service import (
+            REGISTER_ERR_INVITE_CODE_NOT_CONFIGURED,
+        )
+        self._enable(monkeypatch, code='')
+        username = f'e2e_inv_unset_{_RUN}'
+        resp = client.post('/api/v1/auth/register', json={
+            'username': username, 'password': 'pass123456',
+            'email': f'{username}@example.com', 'invite_code': 'ANY'})
+        assert resp.status_code == 400, resp.text
+        assert resp.json()['message'] == REGISTER_ERR_INVITE_CODE_NOT_CONFIGURED
+
+    def test_registration_policy_public_and_no_code_leak(self, client,
+                                                         monkeypatch):
+        """公开策略端点：匿名可读、只下发策略布尔口径（同 /auth/mode 扁平口径）。"""
+        self._enable(monkeypatch)
+        resp = client.get('/api/v1/auth/registration-policy')
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {
+            'invite_code_required': True,
+            # 邀请码注册开启 → 首页强制注册后可见
+            'home_require_registration': True,
+        }
+        assert self._INVITE_CODE not in resp.text
+
+    def test_registration_policy_home_visible_switch(self, client,
+                                                     monkeypatch):
+        """邀请码注册关闭时，首页可见性按 site.home_require_registration 独立配置。"""
+        from api_gateway.application.services.system_option_service import (
+            SystemOptionService,
+        )
+        monkeypatch.setattr(
+            SystemOptionService, 'is_invite_code_registration_required',
+            lambda: False)
+        monkeypatch.setattr(
+            SystemOptionService, '_read_option',
+            lambda key: key == 'site.home_require_registration')
+        resp = client.get('/api/v1/auth/registration-policy')
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {
+            'invite_code_required': False,
+            'home_require_registration': True,
+        }
+
+
 class TestCustomOAuthCallbackHttp:
     """AC2：自定义提供方登录页可见 → 真实 mock IdP 授权回调 → 建号登录。"""
 

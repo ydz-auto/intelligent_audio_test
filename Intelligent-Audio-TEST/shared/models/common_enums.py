@@ -539,6 +539,13 @@ class AuditEvent(str, Enum):
     AI_REVIEW_REJECTED = 'AI_REVIEW_REJECTED'
     # 数据可见性审计（INT-423，category='System'）——私有资源被非 owner 访问（越权命中/尝试）时落一条
     PRIVATE_RESOURCE_ACCESS = 'PRIVATE_RESOURCE_ACCESS'
+    # Agent 模型供应商管理审计（INT-2488，category='System'）
+    # 只记 provider_id 与操作类型，绝不记 Key / 密文。
+    AGENT_PROVIDER_CREATED = 'AGENT_PROVIDER_CREATED'
+    AGENT_PROVIDER_UPDATED = 'AGENT_PROVIDER_UPDATED'
+    AGENT_PROVIDER_DELETED = 'AGENT_PROVIDER_DELETED'
+    AGENT_PROVIDER_VERIFIED = 'AGENT_PROVIDER_VERIFIED'
+    AGENT_PROVIDER_DEFAULT_SET = 'AGENT_PROVIDER_DEFAULT_SET'
 
 
 class AuthErrorCode(str, Enum):
@@ -858,12 +865,19 @@ class PickableTaskStatus(str, Enum):
 class StudioExportFormat(str, Enum):
     """Report Studio 导出格式（INT-673，设计文档 §15.6）
 
-    HTML/MD 为本卡落地格式；PPTX/PDF 属 S3 增强候选技术（需实测后定）。
+    四种格式均为正式导出产物：HTML / MD（INT-673 首版）、PDF（reportlab，
+    中文走内置 CID 字体）、PPTX（python-pptx，INT-2471）。渲染实现见
+    ``report_service/application/services/report_studio_renderer.py``。
     """
     HTML = 'html'
     MD = 'md'
     PPTX = 'pptx'
     PDF = 'pdf'
+
+
+# 导出主题缺省值（INT-2471）：请求不带 theme 时服务端归一成该值落库，
+# 渲染器与导出幂等查询都按同一口径比对，避免各处各写一份 'default' 字面量。
+DEFAULT_EXPORT_THEME = 'default'
 
 
 class StudioExportStatus(str, Enum):

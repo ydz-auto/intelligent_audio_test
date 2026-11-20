@@ -65,6 +65,19 @@ def load_transfer_tokens(secrets_file: Optional[str] = None) -> Dict[str, str]:
         val = os.environ.get(env_key, '')
         if val:
             tokens[env_key.replace('TRANSFER_TOKEN_', '', 1)] = val
+    # 系统设置（评估服务）中的区间 token 优先于 env / 密钥文件
+    try:
+        from shared.infrastructure.eval_config_client import (
+            KEY_RELAY_TOKEN_A_B,
+            KEY_RELAY_TOKEN_B_C,
+            eval_config_client,
+        )
+        for key, name in ((KEY_RELAY_TOKEN_A_B, 'A_B'), (KEY_RELAY_TOKEN_B_C, 'B_C')):
+            secret = eval_config_client.secret(key)
+            if secret:
+                tokens[name] = secret
+    except Exception:  # 运行时配置不可用不阻塞传输链路
+        pass
     return tokens
 
 

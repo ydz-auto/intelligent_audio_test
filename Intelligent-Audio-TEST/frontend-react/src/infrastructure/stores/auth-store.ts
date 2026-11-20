@@ -33,10 +33,15 @@ type AuthState = {
   logout: () => Promise<void>
   /** 会话恢复：有 token → GET /auth/me 回填；无 token 且 AUTH_MODE=off → dev_user 放行 */
   hydrateSession: () => Promise<void>
+  /** 静默刷新会话（权限调整后同步前端菜单/按钮；失败不打断当前状态） */
+  refreshSession: () => Promise<void>
 }
 
 /** 会话引导 promise（守卫/挂载共享；登出/会话过期复位以允许重新引导） */
 let sessionBootstrap: Promise<void> | null = null
+
+/** 会话刷新 promise（切页可见 + 定时同步并发去重） */
+let sessionRefresh: Promise<void> | null = null
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -95,6 +100,18 @@ export const useAuthStore = create<AuthState>()(
           // 模式查询失败（后端未起等）不阻断，保留现有状态
         }
       },
+      refreshSession: async () => {
+        // 无 token（off 模式 dev_user）不走 /auth/me 定期刷新
+        if (!authTokenStore.get()) return
+        try {
+          // 与 hydrateSession 同口径：role_name 沿用缓存，避免中文名被空值覆盖
+          const cachedRoleName = useAuthStore.getState().user?.roleName ?? ''
+          const user = await authApi.getMe({}, cachedRoleName)
+          set({ user })
+        } catch {
+          // 401 已由 client 侧触发会话过期清理；其余错误保留现有状态
+        }
+      },
     }),
     {
       name: 'iatp:auth:v1',
@@ -125,4 +142,20 @@ export function ensureAuthSession(): Promise<void> {
     sessionBootstrap = useAuthStore.getState().hydrateSession()
   }
   return sessionBootstrap
+}
+
+/**
+ * 静默刷新会话（权限变更同步）：切回标签页 / 定时同步共用。
+ * 并发调用共享同一 promise，避免切回瞬间与定时器重复请求 /auth/me。
+ */
+export function refreshAuthSession(): Promise<void> {
+  if (!sessionRefresh) {
+    sessionRefresh = useAuthStore
+      .getState()
+      .refreshSession()
+      .finally(() => {
+        sessionRefresh = null
+      })
+  }
+  return sessionRefresh
 }

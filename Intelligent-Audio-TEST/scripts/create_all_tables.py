@@ -21,7 +21,13 @@ import sys
 import os
 
 # 模型全集应有的表数（新增表必须同时改这里）
-EXPECTED_TABLE_COUNT = 100
+# INT-2451：agent_service 7 张运行底座表登记后 101 → 108
+# INT-2488：agent_llm_provider（用户模型供应商密钥库）108 → 109
+# INT-2466：agent_approval（写操作审批单）109 → 110
+# INT-2549：agent_skill / agent_skill_version / agent_run_skill 110 → 113
+# INT-2551：agent_skill_review（TENANT 级审核链）113 → 114
+# INT-2601：agent_hidden_message（会话内删除消息的隐藏集合）114 → 115
+EXPECTED_TABLE_COUNT = 115
 
 # 确保项目根目录在 sys.path 中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -94,10 +100,23 @@ def _import_all_models():
     from api_test_service.infrastructure.persistence.models import API  # noqa: F401
     # api_gateway: 1 张表（INT-620 系统选项 KV；api_gateway 直管，无独立 config 微服务）
     from api_gateway.infrastructure.models.system_option_model import SystemOption  # noqa: F401
+    from api_gateway.infrastructure.models.system_option_secret_model import (  # noqa: F401
+        SystemOptionSecret,
+    )
     # transfer_agent: 2 张表（INT-1623 补入；此前漏导，真实库靠 transfer_agent 启动时
     #                 自行 create_all 才有这两张表，全新库 / 重引导库都缺）
     from transfer_agent.infrastructure.persistence.models import (  # noqa: F401
         TransferRecord, TransferChunk,
+    )
+    # agent_service: 14 张表（INT-2451 运行底座 7 张 + INT-2488 用户模型供应商
+    #                 + INT-2466 写操作审批单 + INT-2549 Skill 三表
+    #                 + INT-2551 审核链 agent_skill_review
+    #                 + INT-2601 隐藏消息 agent_hidden_message）
+    from agent_service.infrastructure.persistence.models import (  # noqa: F401
+        AgentArtifact, AgentContextSnapshot, AgentHiddenMessage,
+        AgentLlmProvider, AgentRun, AgentRunEvent, AgentSession, AgentStep,
+        AgentToolCall, AgentApproval, AgentSkill, AgentSkillVersion,
+        AgentRunSkill, AgentSkillReview,
     )
 
 

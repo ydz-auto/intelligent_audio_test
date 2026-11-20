@@ -34,6 +34,10 @@ export interface DistributionStats {
   q1: number
   q2: number
   q3: number
+  /** 尾部分位数 P90 */
+  p90: number
+  /** 尾部分位数 P95 */
+  p95: number
   max: number
   /** 正方向区间百分比 [0,μ) / (μ,μ+σ] / (μ+σ,μ+2σ] / (μ+2σ,μ+3σ] / 超出+(μ+3σ) */
   positiveRanges: { label: string; percent: number }[]
@@ -108,6 +112,8 @@ export function calculateDistributionStats(values: number[]): DistributionStats 
     q1: quantile(numeric, 0.25),
     q2: quantile(numeric, 0.5),
     q3: quantile(numeric, 0.75),
+    p90: quantile(numeric, 0.9),
+    p95: quantile(numeric, 0.95),
     max,
     positiveRanges: toPercent(positiveRanges),
     negativeRanges: toPercent(negativeRanges),

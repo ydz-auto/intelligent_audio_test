@@ -109,7 +109,7 @@ export function MessageActions({
           <Copy className='size-4' />
         )}
       </Button>
-      {hasContent && (
+      {hasContent && onToggleSource && (
         <Button
           aria-label={isSourceVisible ? '显示预览' : '显示源码'}
           className={actionClass}

@@ -157,7 +157,12 @@ export function ReportHero({
         >
           <SelectTrigger size='sm' aria-label='时间范围'>
             <CalendarDays className='text-muted-foreground size-4' />
-            <SelectValue />
+            {/* INT-2447：Base UI Select 无 items/子节点时直接回显 value（英文 all），
+                按 pick-filter-bar 同款写法用选项表解析中文 label。 */}
+            <SelectValue placeholder='全部时间'>
+              {TIME_RANGE_OPTIONS.find((option) => option.value === (timeRange ?? 'all'))?.label ??
+                '全部时间'}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent align='start'>
             {TIME_RANGE_OPTIONS.map((option) => (

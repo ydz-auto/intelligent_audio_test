@@ -783,6 +783,7 @@ export const MOCK_TASK_DETAIL: TaskDetailData = {
   apis: [],
   createdAt: '2026-10-15T08:30:00',
   updatedAt: '2026-10-15T09:12:00',
+  createdByUserId: 1,
 }
 
 /** 实时日志 mock（MM-DD HH:mm:ss.mmm + 级别） */

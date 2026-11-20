@@ -9,6 +9,7 @@
 - playback_config_servicers.py：播放设备配置 CRUD（CQRS）
 - spl_config_servicers.py：SPL 映射配置 CRUD（CQRS）
 - laboratory_config_servicers.py：实验室配置 CRUD（INT-655，CQRS）
+- device_ui_servicers.py：设备 UI 探索三 RPC（INT-2577：读树 / 动作 / 截图）
 
 约定：
 - 复杂参数通过 JSON string 传递，方法内 _loads 解析
@@ -35,6 +36,9 @@ from device_service.interfaces.grpc.spl_config_servicers import (
 from device_service.interfaces.grpc.laboratory_config_servicers import (
     LaboratoryConfigServiceServicer,
 )
+from device_service.interfaces.grpc.device_ui_servicers import (
+    DeviceUiServiceServicer,
+)
 
 __all__ = [
     "DeviceServiceServicer",
@@ -44,4 +48,5 @@ __all__ = [
     "PlaybackConfigServiceServicer",
     "SPLConfigServiceServicer",
     "LaboratoryConfigServiceServicer",
+    "DeviceUiServiceServicer",
 ]

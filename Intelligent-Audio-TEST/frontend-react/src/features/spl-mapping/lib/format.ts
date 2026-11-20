@@ -11,9 +11,13 @@ export function gainToDb(gain: number | null | undefined): string {
 
 /**
  * 时间格式化（mono tabular，YYYY-MM-DD HH:mm 口径）。
- * INT-2211：后端下发裸 UTC，统一走共享工具按 UTC 解析后转本地展示。
+ * INT-2655：声压映射由 device_service 维护，其 `created_at`/`updated_at` 用
+ * `utc8now`（东八区 aware）落 `timestamp without time zone`，接口下发的是 **+08
+ * 墙钟裸串**（无时区后缀）。按裸 UTC 解析会再 +8（恒晚 8 小时），故走墙钟口径
+ * 原样展示；若将来后端改发带 `Z`/`±HH:mm` 的绝对时间串，该函数自动回落
+ * {@link formatDateTime}，不会两套口径各解一次。
  */
-export { formatDateTime } from '@/lib/date-time'
+export { formatLocalWallClock } from '@/lib/date-time'
 
 
 /** 线性增益列值格式化：整数补一位小数（1.0/10.0），其余保留至 3 位去尾零（0.001/3.162）。 */

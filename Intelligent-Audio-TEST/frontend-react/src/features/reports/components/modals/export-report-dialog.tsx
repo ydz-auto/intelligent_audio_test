@@ -179,7 +179,8 @@ export function ExportReportDialog({
                 <span className='text-sm font-medium'>格式</span>
                 <Select value={format} onValueChange={(value) => setFormat(value ?? 'csv')}>
                   <SelectTrigger className='w-full justify-between'>
-                    <SelectValue />
+                    {/* INT-2447：Base UI Select 无 items/子节点时直出 value（英文 csv/excel），按选项表解析 label */}
+                    <SelectValue>{formatLabel(format)}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {EXPORT_FORMATS.map((item) => (

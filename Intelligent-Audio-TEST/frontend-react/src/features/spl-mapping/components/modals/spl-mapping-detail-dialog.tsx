@@ -23,7 +23,7 @@ import { useMemo } from 'react'
 import type { SplMapping } from '@/domain/models/splMapping'
 import { DEVICE_TYPE_OPTIONS } from '@/features/spl-mapping/constants'
 import {
-  formatDateTime,
+  formatLocalWallClock,
   formatDistance,
   formatTargetSpl,
   formatTestFrequency,
@@ -138,8 +138,8 @@ export function SplMappingDetailDialog(props: SplMappingDetailDialogProps) {
                     label='校准点数'
                     value={mapping.calibrationData?.points.length ?? 0}
                   />
-                  <FieldRow label='创建时间' value={formatDateTime(mapping.createdAt)} />
-                  <FieldRow label='更新时间' value={formatDateTime(mapping.updatedAt)} />
+                  <FieldRow label='创建时间' value={formatLocalWallClock(mapping.createdAt)} />
+                  <FieldRow label='更新时间' value={formatLocalWallClock(mapping.updatedAt)} />
                 </div>
               </section>
 

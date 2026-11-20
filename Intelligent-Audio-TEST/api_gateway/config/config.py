@@ -1,10 +1,24 @@
 """API Gateway 领域配置"""
 import os
+
+from shared.agent_access import (
+    ENV_AGENT_GRAY_TENANTS, ENV_AGENT_GRAY_USERS, parse_gray_values,
+)
+from shared.config.service_ports import AGENT_SERVICE_HTTP_PORT
 from shared.infrastructure.config import BaseConfig, _get_int
+
+# 项目根目录（仓内 ``Intelligent-Audio-TEST/``）：本文件位于 api_gateway/config/
+_PROJECT_DIR = os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))
 
 
 class Config(BaseConfig):
     PORT = int(os.environ.get('PORT', 5000))
+    # 平台 Skill 目录（INT-2476）：``GET /api/v1/agent/skill`` 的平台下载包按
+    # ``skills/<name>/`` 生成，与 agent_service 的 AGENT_SKILLS_ROOT 同一物理
+    # 目录（部署挂载 ../skills:ro）。缺失时 skill 下载回退内置模板，不阻断。
+    SKILLS_ROOT = os.environ.get(
+        'AGENT_SKILLS_ROOT', os.path.join(_PROJECT_DIR, 'skills'))
     # 本地音频上传临时存储路径（分片上传、合并、转码中间文件）
     AUDIO_STORAGE_PATH = os.environ.get(
         'AUDIO_STORAGE_PATH',
@@ -71,6 +85,14 @@ class Config(BaseConfig):
     JWT_EXPIRE_HOURS = int(os.environ.get('JWT_EXPIRE_HOURS', '24'))
     JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
 
+    # 权限实时化（JWT 请求 → auth_service 当前权限）：
+    # 缓存秒数（0=关闭实时化，回退 JWT 快照，供回滚）；RPC 超时秒数。
+    # 权限变更入口会主动清缓存，正常路径无需等待 TTL。
+    AUTH_PERMISSION_CACHE_TTL_SECONDS = int(os.environ.get(
+        'AUTH_PERMISSION_CACHE_TTL_SECONDS', '10'))
+    AUTH_PERMISSION_RPC_TIMEOUT_SECONDS = int(os.environ.get(
+        'AUTH_PERMISSION_RPC_TIMEOUT_SECONDS', '3'))
+
     # 开发模式 - 本地 OAuth
     DEV_OAUTH_CLIENT_ID = os.environ.get('DEV_OAUTH_CLIENT_ID', 'local_dev_client')
     DEV_OAUTH_CLIENT_SECRET = os.environ.get('DEV_OAUTH_CLIENT_SECRET', 'local_dev_secret')
@@ -110,6 +132,43 @@ class Config(BaseConfig):
     # 容器网络后如需显式指定内部入口，设 MCP_SELF_FORWARD_BASE
     # （如 http://api_gateway:5000）。
     MCP_SELF_FORWARD_BASE = os.environ.get('MCP_SELF_FORWARD_BASE', '')
+
+    # ===== Agent 运行底座代理（INT-2451）=====
+    # 网关只做鉴权 / 租户 / 审计后转发，Agent Loop 在 agent_service。
+    # 部署编排（compose）由 M0-06 负责；此处缺省指向同机端口。
+    AGENT_SERVICE_URL = os.environ.get(
+        'AGENT_SERVICE_URL', f'http://127.0.0.1:{AGENT_SERVICE_HTTP_PORT}')
+    AGENT_SERVICE_TIMEOUT_SECONDS = float(
+        os.environ.get('AGENT_SERVICE_TIMEOUT_SECONDS', '30'))
+    # SSE 连接读超时（秒）；0 = 不设读超时（长连接）。连接超时单独限制。
+    AGENT_SERVICE_SSE_READ_TIMEOUT_SECONDS = float(
+        os.environ.get('AGENT_SERVICE_SSE_READ_TIMEOUT_SECONDS', '0'))
+    AGENT_DEFAULT_TENANT_ID = os.environ.get('AGENT_DEFAULT_TENANT_ID', 'default')
+
+    # INT-2456：Agent 总开关（方案 07 §13-1 / 03 §7「AGENT_ENABLED=false」）。
+    # 默认关闭。关闭时 /api/v1/agent 的会话 / Run / 事件 / 审批 / provider
+    # 接口返回 503 + code=AGENT_DISABLED，**不转发**到 agent_service；任务、
+    # 用例、报告等人工流程不经过这些路由，完全不受影响。agent_service 不发布
+    # 宿主端口，网关是该开关的唯一执行点（不写第二套口径）。
+    # 按调用时环境求值而非进程初始化时冻结：灰度切换与测试注入都以即时值为准。
+    @classmethod
+    def agent_enabled(cls) -> bool:
+        return os.environ.get('AGENT_ENABLED', 'false').strip().lower() in (
+            '1', 'true', 'yes', 'on')
+
+    # INT-2478：总闸之上的灰度白名单（方案 07 §13-1 / 08 运维手册 §1）。
+    # 只做「总闸开启后谁可以用」，不新增开关名；两个都为空 = 全员放行
+    # （向后兼容现役 AGENT_ENABLED=true 的部署）。判定逻辑统一在
+    # shared/agent_access.py，网关按调用时环境求值，改配置后无需重启
+    # （容器内 env 仍是启动时快照，真实切换按 env 重启目标服务）。
+    @classmethod
+    def agent_gray_tenants(cls) -> frozenset:
+        return parse_gray_values(
+            os.environ.get(ENV_AGENT_GRAY_TENANTS))
+
+    @classmethod
+    def agent_gray_users(cls) -> frozenset:
+        return parse_gray_values(os.environ.get(ENV_AGENT_GRAY_USERS))
 
     # ===== 报告对比（INT-1406）=====
     # 跨任务大结果集同步聚合的 GenerateCompareReport gRPC 调用显式超时（秒）。

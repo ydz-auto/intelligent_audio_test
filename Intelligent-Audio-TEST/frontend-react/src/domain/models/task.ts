@@ -186,6 +186,12 @@ export interface TaskDetailData {
   apis: TaskApiBrief[]
   createdAt: string | null
   updatedAt: string | null
+  /**
+   * 创建人用户 id（INT-2446：后端 TaskDetailData.created_by_user_id）。
+   * 详情接口只回 id、不回姓名，显示名由 application 层查用户详情解析；
+   * 解析失败时页面回退「用户 #id」，不得写死人名。
+   */
+  createdByUserId: number | null
   /** 关联资源摘要（详情卡信息格补充，mock 口径派生） */
   apiCount: number | null
   concurrency: number | null

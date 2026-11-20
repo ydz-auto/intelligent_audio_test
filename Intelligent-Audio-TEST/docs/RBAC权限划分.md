@@ -158,7 +158,7 @@
 
 | 权限点 | 说明 | 对应端点 |
 |---|---|---|
-| `algorithm:read` | 查看算法定义/分组/参数/用例参数 | `GET /algorithm/definitions`、`GET /algorithm/definitions/{type}`、`GET /algorithm/groups`、`GET /algorithm/groups/{id}`、`GET /algorithm/params`、`GET /algorithm/params/{id}`、`GET /algorithm/case-params`、`GET /algorithm/case-params/{id}` |
+| `algorithm:read` | 查看算法定义/分组/参数/用例参数/参考参数/映射/选项/表单 Schema/维度参数 | `GET /algorithm/definitions`、`GET /algorithm/definitions/{type}`、`GET /algorithm/definitions/draft/{type}`、`GET /algorithm/groups`、`GET /algorithm/groups/{id}`、`GET /algorithm/params`、`GET /algorithm/params/{id}`、`GET /algorithm/param-profiles`、`GET /algorithm/param-profiles/{id}`、`GET /algorithm/param-history`、`GET /algorithm/case-params`、`GET /algorithm/case-params/{id}`、`GET /algorithm/reference-params`、`GET /algorithm/reference-params/{id}`、`GET /algorithm/mappings`、`GET /algorithm/options`、`GET /algorithm/form-schema/{type}`、`GET /algorithm/dimensions/{type}`、`GET /algorithm/dimension-params/{id}` |
 | `algorithm:definition_manage` | 算法定义 CRUD | `POST /algorithm/definitions`、`PUT /algorithm/definitions/{type}`、`DELETE /algorithm/definitions/{type}` |
 | `algorithm:group_manage` | 算法分组 CRUD | `POST /algorithm/groups`、`PUT /algorithm/groups/{id}`、`DELETE /algorithm/groups/{id}` |
 | `algorithm:param_manage` | 算法参数 CRUD | `POST /algorithm/params`、`PUT /algorithm/params/{id}`、`DELETE /algorithm/params/{id}` |
@@ -244,6 +244,12 @@
 | `auth:refresh` | 刷新令牌 | `POST /api/v1/auth/refresh` |
 | `auth:logout` | 登出 | `POST /api/v1/auth/logout` |
 | `auth:me` | 获取当前用户信息 | `GET /api/v1/auth/me` |
+
+### 3.18 Agent 模型供应商（agent）
+
+| 权限点 | 说明 | 对应端点 |
+|---|---|---|
+| `agent:provider:manage` | 管理自己的模型供应商与密钥（Key 加密落库、响应只回 `sk-****abcd` 掩码；含上下文窗口覆盖与模型目录读取，INT-2488） | `GET/POST /api/v1/agent/providers`、`PUT/DELETE /api/v1/agent/providers/{id}`、`POST /api/v1/agent/providers/{id}/verify`、`POST /api/v1/agent/providers/{id}/set-default`、`GET /api/v1/agent/model-catalog` |
 
 ## 四、角色-权限映射矩阵
 
@@ -375,16 +381,18 @@
 | auth:refresh | ✓ | ✓ | ✓ | ✓ | ✓ |
 | auth:logout | ✓ | ✓ | ✓ | ✓ | ✓ |
 | auth:me | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Agent 模型供应商** | | | | | |
+| agent:provider:manage | ✓ | ✓ | ✓ | ✗ | ✗ |
 
 ### 4.2 角色权限汇总（精简）
 
 | 角色 | 权限范围 | 权限点数 |
 |---|---|---|
 | `admin` | 全部权限 | 全部（含用户/角色/权限管理） |
-| `tester` | 用例/音频/任务/报告/评估/算法参数/Benchmark 排行的读写 + 执行，不含设备/SPL 管理、算法定义管理、报告发布、用户角色管理 | 80 个 |
-| `algo_engineer` | 报告/评估/算法配置/Benchmark 排行的读写 + 报告发布/对比 + 任务执行只读观察，不含测试执行（写）、设备管理、用户角色管理 | 40 个 |
-| `device_admin` | 被测设备/播放设备/SPL/首页/SSE 的全权管理，不含用例/任务/报告/算法/用户角色管理 | ~25 个 |
-| `guest` | 报告只读 + 报告对比 + 首页统计 + SSE + 认证，不可看日志、不可执行任何写操作 | ~8 个 |
+| `tester` | 用例/音频/任务/报告/评估/算法参数/Benchmark 排行的读写 + 执行 + Agent 模型供应商管理，不含设备/SPL 管理、算法定义管理、报告发布、用户角色管理 | 92 个 |
+| `algo_engineer` | 报告/评估/算法配置/Benchmark 排行的读写 + 报告发布/对比 + 任务执行只读观察 + Agent 模型供应商管理，不含测试执行（写）、设备管理、用户角色管理 | 49 个 |
+| `device_admin` | 被测设备/播放设备/SPL/首页/SSE 的全权管理，不含用例/任务/报告/算法/用户角色管理 | 31 个 |
+| `guest` | 报告只读 + 报告对比 + 首页统计 + SSE + 认证，不可看日志、不可执行任何写操作 | 10 个 |
 
 ### 4.3 行级可见性（visibility 与 RBAC 正交叠加）
 

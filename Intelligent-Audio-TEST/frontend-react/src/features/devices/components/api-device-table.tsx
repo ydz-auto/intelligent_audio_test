@@ -34,7 +34,7 @@ import {
 } from '@/features/dashboard/components/ui/status-badge'
 import { StaticDataTable } from '@/features/system-settings/components/static-data-table'
 import { cn } from '@/lib/utils'
-import { formatDateTime } from '@/lib/date-time'
+import { formatLocalWallClock } from '@/lib/date-time'
 import type { ApiDevice } from '@/domain/models/apiDevice'
 import { API_ENV_META, API_PROTOCOL_META } from '@/domain/models/apiDevice'
 import { streamingLabel } from '@/domain/models/apiProtocol'
@@ -323,7 +323,7 @@ export function ApiDeviceTable(props: ApiDeviceTableProps) {
                       )}
                     </td>
                     <td className='px-3 py-2 font-mono text-xs tabular-nums'>
-                      {formatDateTime(row.updatedAt)}
+                      {formatLocalWallClock(row.updatedAt)}
                     </td>
                     <td className='px-3 py-2'>
                       <div className='flex items-center justify-end gap-0.5'>

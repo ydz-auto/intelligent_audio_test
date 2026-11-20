@@ -91,7 +91,7 @@ export function UserAuthForm({
   }
 
   return (
-    <div className={cn('grid gap-4', className)} {...props}>
+    <div className={cn('grid gap-6', className)} {...props}>
       {encryptionAlert && (
         <AuthAlert variant='destructive'>
           <TriangleAlert aria-hidden='true' />
@@ -100,7 +100,7 @@ export function UserAuthForm({
       )}
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className='grid gap-4'
+        className='grid gap-6'
         noValidate
       >
         <OAuthProviders disabled={form.formState.isSubmitting} />
@@ -134,7 +134,7 @@ export function UserAuthForm({
         </div>
         <Button
           type='submit'
-          className='mt-2 w-full justify-center gap-2'
+          className='w-full justify-center gap-2'
           disabled={form.formState.isSubmitting}
         >
           {form.formState.isSubmitting ? (

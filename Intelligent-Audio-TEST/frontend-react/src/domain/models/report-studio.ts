@@ -24,6 +24,15 @@ export const STUDIO_SOURCE_TYPE_LABEL: Record<StudioSourceTypeValue, string> = {
 export const STUDIO_UPLOAD_FORMATS = ['md', 'html', 'pptx'] as const
 export type StudioUploadFormat = (typeof STUDIO_UPLOAD_FORMATS)[number]
 
+/**
+ * 上传件里的二进制格式：源文件不是 markdown，不能当正文编辑（只能用源文件预览/下载）。
+ * 是 {@link STUDIO_UPLOAD_FORMATS} 的子集——md 上传件仍是可编辑正文。
+ */
+export const STUDIO_BINARY_SOURCE_FORMATS: readonly StudioUploadFormat[] = [
+  'html',
+  'pptx',
+]
+
 /** 上传大小上限默认值（后端 REPORT_STUDIO_UPLOAD_MAX_MB 默认 50，超限 413） */
 export const STUDIO_UPLOAD_MAX_MB = 50
 
@@ -114,4 +123,154 @@ export interface ReportPackageManifestSummary {
 /** 上传文档的「无法预览/未绑定」类降级判定（图表需重新绑定报告，设计 §6.3-5） */
 export function needsChartRebind(doc: StudioDocument): boolean {
   return doc.chartRefs.length > 0 && doc.reportId === null
+}
+
+// ---------------------------------------------------------------------------
+// 对话式工作台：起草 / 版本 / 导出（INT-2473，设计文档 §15.5）
+// ---------------------------------------------------------------------------
+
+/**
+ * 版本快照原因（后端 StudioSnapshotReason 同口径）。
+ * 页面按枚举出中文标签，禁止直接比较后端字符串。
+ */
+export const StudioSnapshotReason = {
+  AI_EDIT: 'ai_edit',
+  MANUAL_EDIT: 'manual_edit',
+  RESTORE: 'restore',
+  IMPORT: 'import',
+} as const
+
+export type StudioSnapshotReasonValue =
+  (typeof StudioSnapshotReason)[keyof typeof StudioSnapshotReason]
+
+export const STUDIO_SNAPSHOT_REASON_LABEL: Record<string, string> = {
+  [StudioSnapshotReason.AI_EDIT]: 'AI 起草',
+  [StudioSnapshotReason.MANUAL_EDIT]: '人工编辑',
+  [StudioSnapshotReason.RESTORE]: '版本恢复',
+  [StudioSnapshotReason.IMPORT]: '文件导入',
+}
+
+/**
+ * 历史版本快照（GET /documents/{id}/versions 单项）。
+ * 后端 `_version_dict` 不返回正文，`markdownContent` 恒为空串——历史正文只能
+ * 通过恢复版本读取（恢复生成新版本并返回最新文档），页面不得把空串当正文展示。
+ */
+export interface StudioDocumentVersion {
+  id: number
+  docId: string
+  version: number
+  markdownContent: string
+  parentVersion: number | null
+  /** 已知枚举优先按 `StudioSnapshotReasonValue` 理解；后端新增原因时仍可透传原串 */
+  snapshotReason: StudioSnapshotReasonValue | string
+  createdAt: string | null
+  createdBy: number | null
+}
+
+/** 起草文档入参（POST /documents：绑定平台报告生成新草稿） */
+export interface StudioDocumentCreateInput {
+  reportId: number
+  title?: string
+  markdownContent?: string
+  /** 关联的 Agent 会话（AI 起草时由后端落版本快照原因 ai_edit） */
+  agentSessionId?: string | null
+}
+
+/** 导出格式（后端 StudioExportFormat；PDF/PPTX 依赖渲染器，未部署时返回失败态） */
+export const StudioExportFormatKind = {
+  PDF: 'pdf',
+  PPTX: 'pptx',
+  HTML: 'html',
+  MD: 'md',
+} as const
+
+export type StudioExportFormat =
+  (typeof StudioExportFormatKind)[keyof typeof StudioExportFormatKind]
+
+export const STUDIO_EXPORT_FORMATS: readonly StudioExportFormat[] = Object.values(
+  StudioExportFormatKind
+)
+
+export const STUDIO_EXPORT_FORMAT_LABEL: Record<StudioExportFormat, string> = {
+  pdf: 'PDF',
+  pptx: 'PPTX',
+  html: 'HTML',
+  md: 'Markdown',
+}
+
+/** 导出作业状态（后端 StudioExportStatus） */
+export const StudioExportStatus = {
+  PENDING: 'pending',
+  RUNNING: 'running',
+  DONE: 'done',
+  FAILED: 'failed',
+} as const
+
+export type StudioExportStatusValue =
+  (typeof StudioExportStatus)[keyof typeof StudioExportStatus]
+
+/** 导出作业（POST /documents/{id}/exports 与 GET /exports/{id}） */
+export interface StudioExportJob {
+  exportId: string
+  docId: string
+  version: number
+  format: string
+  theme: string
+  status: StudioExportStatusValue
+  /** 0~100；pending 0 / running 10+ / 终态 100 */
+  progress: number
+  error: string | null
+  createdAt: string | null
+  updatedAt: string | null
+  /** 网关鉴权下载引用（完成后可下载） */
+  downloadRef: string | null
+}
+
+/**
+ * 会话内导出产物（Agent 工具结果 report_export / studio_request_export 的领域投影）。
+ * 与 StudioExportJob 同源，但允许字段缺省：工具结果是模型上下文里的 JSON，
+ * 前端只渲染可确认的字段，不补造文档标题 / 版本。
+ */
+export interface StudioExportArtifact {
+  exportId: string
+  docId: string | null
+  reportId: number | null
+  version: number | null
+  format: StudioExportFormat | null
+  theme: string | null
+  status: StudioExportStatusValue
+  progress: number | null
+  error: string | null
+  /** 后端鉴权下载引用（裸路径不能直接点：前端必须走 Bearer token 下载） */
+  downloadRef: string | null
+}
+
+/** 文档预览焦点（Agent 工具结果 / 产物卡 → 右侧文档面板） */
+export interface StudioDocumentFocus {
+  docId: string
+  reportId: number | null
+}
+
+/** 可直接在会话内渲染的导出格式（PDF / PPTX 只提供下载） */
+export function isStudioExportRenderable(format: StudioExportFormat | null): boolean {
+  return (
+    format === StudioExportFormatKind.MD ||
+    format === StudioExportFormatKind.HTML
+  )
+}
+
+/** 导出是否处于在途状态（按钮防重复 + 轮询区间） */
+export function isStudioExportActive(job: StudioExportJob | null): boolean {
+  return (
+    job?.status === StudioExportStatus.PENDING ||
+    job?.status === StudioExportStatus.RUNNING
+  )
+}
+
+/** 导出作业状态 → 中文文案 */
+export const STUDIO_EXPORT_STATUS_LABEL: Record<StudioExportStatusValue, string> = {
+  [StudioExportStatus.PENDING]: '排队中',
+  [StudioExportStatus.RUNNING]: '导出中',
+  [StudioExportStatus.DONE]: '已完成',
+  [StudioExportStatus.FAILED]: '导出失败',
 }

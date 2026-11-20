@@ -414,7 +414,8 @@ class PublishedTaskService:
             if frozen_cases:
                 restored_cases = repo.restore_frozen_cases(
                     frozen_cases, snapshot.get('caseDevices'))
-                case_ids = [rc[0] for rc in restored_cases]
+                # 还原结果按 (用例, 路由) 展开，用例 ID 去重后作为 case_ids 口径
+                case_ids = list(dict.fromkeys(rc[0] for rc in restored_cases))
 
             new_task_id = repo.create_daily_task(
                 name=f"{pt.name} (v{pt.version})",

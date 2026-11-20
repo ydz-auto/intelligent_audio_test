@@ -1,0 +1,97 @@
+{
+  "system_prompt": "你是智能语音测试平台的运行助手。只依据工具返回的真实数据回答，不得编造数值、指标与对象 ID；不确定时先调用工具核实。回答使用简体中文，先给结论再给依据。\n\n【输出与渲染口径】\n- 平台前端会按 Markdown 渲染你的回答：标题、表格、加粗、列表、代码块都会显示，可直接使用 Markdown；不要回答“客户端可能不支持渲染/我无法干预渲染”。\n- 平台没有“把任意内容挂到侧边栏或新建页面”的工具；需要跨轮保留、可交付的成体系内容时，走 Report Studio 文档：用 report_generate（action=studio_draft）或 studio_create_draft 写入 markdown_content，用 studio_apply_edit 修改，用 report_export / studio_request_export 导出 PDF、PPTX、HTML、MD。\n- 起草、编辑、导出成功后，前端会自动打开右侧文档面板并定位到该文档；导出结果会在会话里显示为产物卡：PDF/PPTX 可直接下载，MD/HTML 可在线预览。\n- 导出下载链接需要登录鉴权，裸路径不能直接粘贴打开；应引导用户在产物卡中下载或预览。",
+  "budget": {
+    "max_rounds": 40,
+    "max_tool_calls": 80,
+    "max_tokens": 0,
+    "max_duration_seconds": 900,
+    "max_output_bytes": 10485760
+  },
+  "auto_budget": {
+    "max_rounds": 60,
+    "max_tool_calls": 120,
+    "max_tokens": 0,
+    "max_duration_seconds": 1800,
+    "max_output_bytes": 20971520
+  },
+  "auto": {
+    "pause_budget_ratio": 0.8,
+    "pause_consecutive_failures": 2,
+    "max_consecutive_failures": 3,
+    "max_idle_turns": 2,
+    "complete_marker": "[[AUTO_DONE]]",
+    "plan_max_chars": 800
+  },
+  "max_consecutive_tool_failures": 3,
+  "worker_concurrency": 4,
+  "tool_max_concurrency": 8,
+  "tool_result_max_chars": 8000,
+  "context": {
+    "max_runs": 20,
+    "max_messages": 120,
+    "recent_messages": 50,
+    "keep_recent_turns": 3,
+    "tool_summary_chars": 600,
+    "max_summary_chars": 1200,
+    "artifact_threshold_chars": 4000,
+    "artifact_timeout_seconds": 10.0,
+    "list_top_n": 5,
+    "list_trim_threshold_chars": 1200,
+    "max_key_fields": 24,
+    "memo_max_output_tokens": 2048,
+    "memo_min_candidates": 6,
+    "memo_input_ratio": 0.6,
+    "memo_message_max_chars": 2000,
+    "rebuild_list_limit": 20,
+    "debug": false,
+    "section_ratios": {
+      "system": 0.15,
+      "scratchpad": 0.10,
+      "dialogue": 0.35,
+      "tool_results": 0.30,
+      "reserve": 0.10
+    }
+  },
+  "event_stream": {
+    "page_size": 200,
+    "poll_interval_seconds": 0.5,
+    "heartbeat_seconds": 15,
+    "terminal_grace_seconds": 5
+  },
+  "approval": {
+    "ttl_seconds": 900,
+    "expiry_scan_limit": 200,
+    "expiry_scan_interval_seconds": 30,
+    "split_threshold": 20,
+    "split_chunk_size": 1,
+    "max_objects": 100
+  },
+  "skills": {
+    "body_max_lines": 500,
+    "validation_strict": false,
+    "context_window_tokens": 128000,
+    "system_section_ratio": 0.15,
+    "max_file_bytes": 65536,
+    "max_resource_bytes": 524288,
+    "max_package_bytes": 5242880,
+    "max_upload_bytes": 10485760,
+    "max_entries": 200,
+    "max_compression_ratio": 100,
+    "publish_min_golden_tasks": 3,
+    "resource_prefix": "agent-skill",
+    "run_snapshot_retention_days": 180
+  },
+  "driver_proposal": {
+    "publish_enabled": false,
+    "max_result_chars": 6000,
+    "max_diff_chars": 4000
+  },
+  "exploration": {
+    "max_actions": 30,
+    "max_seconds": 300,
+    "lease_ttl_seconds": 900
+  },
+  "onboarding": {
+    "staging_dir": ""
+  }
+}

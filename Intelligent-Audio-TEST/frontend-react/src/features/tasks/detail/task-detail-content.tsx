@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useContainerComposition } from '@/application/tasks/use-container-composition'
 import { useTaskActions } from '@/application/tasks/use-task-actions'
+import { useTaskCreatorName } from '@/application/tasks/use-task-creator-name'
 import { useTaskDetail } from '@/application/tasks/use-task-detail'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -99,6 +100,9 @@ export function TaskDetailContent({
 }) {
   const { hasPermission } = usePermissions()
   const detailQuery = useTaskDetail(taskId)
+  // INT-2446：详情只回 created_by_user_id，创建人显示名由 application 层另查用户详情；
+  // 无条件在顶层调用（hook 顺序稳定），无权限/查不到时卡片回退「用户 #id」。
+  const creatorName = useTaskCreatorName(detailQuery.data?.createdByUserId)
   const actions = useTaskActions()
   // 容器识别 + 组成数据（§5.5.2 ⑤：source 端点 200 → 容器；任意 ApiError → null 静默非容器）
   const composition = useContainerComposition(taskId)
@@ -202,6 +206,7 @@ export function TaskDetailContent({
       <div className='flex flex-col gap-4'>
         <TaskInfoCard
           detail={detail}
+          createdByName={creatorName}
           headerExtra={
             isContainer ? (
               <ContainerHeaderBadges trace={composition.trace} detail={detail} />

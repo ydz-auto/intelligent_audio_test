@@ -15,9 +15,13 @@
 import type {
   ReportPackageImportReceipt,
   StudioDocument,
+  StudioDocumentCreateInput,
   StudioDocumentList,
   StudioDocumentListQuery,
   StudioDocumentUpdateInput,
+  StudioDocumentVersion,
+  StudioExportFormat,
+  StudioExportJob,
   StudioUploadInput,
 } from '@/domain/models/report-studio'
 import { apiClient } from '@/infrastructure/api/client'
@@ -25,9 +29,13 @@ import {
   toReportPackageImportReceipt,
   toStudioDocument,
   toStudioDocumentList,
+  toStudioDocumentVersion,
+  toStudioExportJob,
   type ReportPackageImportReceiptDto,
   type StudioDocumentDto,
   type StudioDocumentListDto,
+  type StudioExportJobDto,
+  type StudioVersionListDto,
 } from '@/infrastructure/dto/report-studio.dto'
 
 /** 文档列表（source_type 由调用方显式给出，平台报告与独立文档库不混） */
@@ -54,6 +62,22 @@ export async function getStudioDocument(docId: string): Promise<StudioDocument> 
   const dto = await apiClient.get<StudioDocumentDto>(
     `/report-studio/documents/${encodeURIComponent(docId)}`
   )
+  return toStudioDocument(dto)
+}
+
+/**
+ * 起草文档（POST /documents）：绑定平台报告生成新草稿（current_version=1）。
+ * 对话式工作台「起草」入口；AI 起草时带 agentSessionId，快照原因落 ai_edit。
+ */
+export async function createStudioDocument(
+  input: StudioDocumentCreateInput
+): Promise<StudioDocument> {
+  const dto = await apiClient.post<StudioDocumentDto>('/report-studio/documents', {
+    report_id: input.reportId,
+    title: input.title,
+    markdown_content: input.markdownContent,
+    agent_session_id: input.agentSessionId ?? undefined,
+  })
   return toStudioDocument(dto)
 }
 
@@ -88,47 +112,18 @@ export async function updateStudioDocument(
   return toStudioDocument(dto)
 }
 
-export interface StudioDocumentVersion {
-  id: number
-  docId: string
-  version: number
-  markdownContent: string
-  parentVersion: number | null
-  snapshotReason: string
-  createdAt: string | null
-}
-
-interface StudioVersionDto {
-  id?: number
-  doc_id?: string
-  version?: number
-  markdown_content?: string
-  parent_version?: number | null
-  snapshot_reason?: string
-  created_at?: string | null
-}
-
-function toVersion(dto: StudioVersionDto): StudioDocumentVersion {
-  return {
-    id: dto.id ?? 0,
-    docId: dto.doc_id ?? '',
-    version: dto.version ?? 0,
-    markdownContent: dto.markdown_content ?? '',
-    parentVersion: dto.parent_version ?? null,
-    snapshotReason: dto.snapshot_reason ?? '',
-    createdAt: dto.created_at ?? null,
-  }
-}
-
-/** 版本链 */
+/**
+ * 版本链（snake_case → camelCase 只在 DTO 层）。
+ * 后端固定返回 `{items,total}`（report_service `list_versions`），不再兼容裸数组——
+ * 双口径会掩盖契约漂移。
+ */
 export async function listStudioDocumentVersions(
   docId: string
 ): Promise<StudioDocumentVersion[]> {
-  const data = await apiClient.get<{ items?: StudioVersionDto[] } | StudioVersionDto[]>(
+  const data = await apiClient.get<StudioVersionListDto>(
     `/report-studio/documents/${encodeURIComponent(docId)}/versions`
   )
-  const items = Array.isArray(data) ? data : (data?.items ?? [])
-  return items.map(toVersion)
+  return (data?.items ?? []).map(toStudioDocumentVersion)
 }
 
 /**
@@ -154,6 +149,40 @@ export async function restoreStudioDocumentVersion(
 export async function fetchStudioSourceBlob(docId: string): Promise<Blob> {
   return apiClient.get<Blob>(
     `/report-studio/documents/${encodeURIComponent(docId)}/source`,
+    { responseType: 'blob', unwrapResponse: false }
+  )
+}
+
+/**
+ * 创建导出作业（POST /documents/{id}/exports，固定文档版本 + 格式）。
+ * 返回作业快照（pending 起步），进度由页面轮询 GET /exports/{id}。
+ */
+export async function createStudioExportJob(
+  docId: string,
+  version: number,
+  format: StudioExportFormat
+): Promise<StudioExportJob> {
+  const dto = await apiClient.post<StudioExportJobDto>(
+    `/report-studio/documents/${encodeURIComponent(docId)}/exports`,
+    { version, format }
+  )
+  return toStudioExportJob(dto)
+}
+
+/** 导出作业快照（轮询状态 / 进度 / 失败原因） */
+export async function getStudioExportJob(exportId: string): Promise<StudioExportJob> {
+  const dto = await apiClient.get<StudioExportJobDto>(
+    `/report-studio/exports/${encodeURIComponent(exportId)}`
+  )
+  return toStudioExportJob(dto)
+}
+
+/** 导出产物鉴权下载（二进制；文件名由页面按文档标题 + 版本生成） */
+export async function downloadStudioExportBlob(
+  exportId: string
+): Promise<Blob> {
+  return apiClient.get<Blob>(
+    `/report-studio/exports/${encodeURIComponent(exportId)}/download`,
     { responseType: 'blob', unwrapResponse: false }
   )
 }

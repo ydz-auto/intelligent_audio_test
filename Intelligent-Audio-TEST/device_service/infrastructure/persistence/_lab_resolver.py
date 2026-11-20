@@ -10,7 +10,7 @@ import logging
 
 from sqlalchemy import text
 
-from shared.models.database import get_db_session
+from shared.models.database import end_read_transaction, get_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -41,4 +41,10 @@ def resolve_lab_names(lab_ids) -> dict:
         # 实验室表尚未就绪时降级为空映射：lab_name 为可选字段，不阻塞设备列表
         logger.debug("laboratories 表不可用，lab_name 降级为 null", exc_info=True)
         return {}
+    finally:
+        # INT-2590：只读解析不得把事务留给调用方。后台线程（presence/monitor）没有
+        # 请求级 scope，SELECT 后既不 commit 也不 rollback 时连接会挂着 AccessShareLock
+        # （INT-2588 实证：laboratories 上的悬挂事务挡住 db_bootstrap 的 DDL）。
+        # end_read_transaction 只在无待提交改动时回滚，有写时原样返回，不吞调用链的写。
+        end_read_transaction(session)
     return {row[0]: row[1] for row in rows}

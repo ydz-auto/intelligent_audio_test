@@ -4,6 +4,6 @@
   "type": "http",
   "url": "{{BASE_URL}}/api/v1/mcp",
   "headers": {
-    "Authorization": "Bearer 在此填入你的 Access Token"
+    "Authorization": "Bearer <ACCESS_TOKEN>"
   }
 }

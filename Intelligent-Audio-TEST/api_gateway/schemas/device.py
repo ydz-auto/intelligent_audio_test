@@ -303,3 +303,21 @@ class AlarmListQuery(APIModel):
 
 class AlarmAcknowledgeRequest(APIModel):
     acknowledged_by: Optional[str] = Field(None)
+
+
+# ==================== INT-2578 设备 UI 探索 ====================
+
+class DeviceUiScreenshotRequest(APIModel):
+    """截图请求：``label`` 仅写日志 / 便于回放定位，不参与对象键。"""
+    label: Optional[str] = Field(None, max_length=64)
+
+
+class DeviceUiActionRequest(APIModel):
+    """动作请求：``action_type`` 取 UiActionType 七枚举（网关先校验）。
+
+    ``node`` 为定位键 ``{resource_id, key, text, bounds, ...}``；
+    ``params`` 为动作参数（SWIPE direction+duration / INPUT_TEXT text / WAIT seconds）。
+    """
+    action_type: str = Field(...)
+    node: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    params: Optional[Dict[str, Any]] = Field(default_factory=dict)

@@ -12,6 +12,7 @@ from starlette.responses import JSONResponse
 
 from api_gateway.infrastructure.request_adapter import set_current_request
 from shared.infrastructure.config import BaseConfig
+from shared.utils.secret_mask import mask_text
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +66,17 @@ class RequestAdapterMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        # 错误响应(>=400)记录响应体，方便排查问题
+        # 错误响应(>=400)记录响应体，方便排查问题。
+        # INT-2509：上游可能把请求体（含供应商明文 API Key）回显在 422 里，
+        # 落日志前统一走 shared 脱敏（同一事实源，§6.4-2 / §13-4）；
+        # 只脱敏日志文本，回给调用方的响应体原样透传。
         if response.status_code >= 400:
             try:
                 resp_body = b""
                 async for chunk in response.body_iterator:
                     resp_body += chunk
-                resp_text = resp_body.decode('utf-8', errors='replace')[:500]
+                resp_text = mask_text(
+                    resp_body.decode('utf-8', errors='replace'))[:500]
                 logger.info(
                     f"API Response - URL: {request.url.path} | Method: {request.method} | "
                     f"Status: {response.status_code} | Body: {resp_text}"
@@ -102,6 +107,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         '/api/v1/auth/login',
         '/api/v1/auth/callback',
         '/api/v1/auth/register',
+        # 注册策略（是否需要邀请码）——注册页在登录前就要按策略渲染邀请码输入
+        '/api/v1/auth/registration-policy',
         # INT-179：登录前 RSA 公钥下发（旧库路径别名，与 /login/encryption-key
         # 同源）——公钥用于加密登录密码，拿公钥本身不得先登录
         '/api/v1/auth/encryption-key',
@@ -121,6 +128,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # 状态卡登录前也要能取真实健康数据，须公开（AUTH_MODE=prod 强制态下
         # 匿名可访问，语义同根路径 /health）
         '/api/v1/system/health',
+        # 服务间运行时配置拉取：路由内以 X-Internal-Token 校验（非用户身份，
+        # 未配置 token 时端点 503 fail-closed）
+        '/api/internal/eval-config',
         '/docs',
         '/openapi.json',
         '/redoc',
@@ -222,17 +232,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """Bearer 身份解析：JWT 优先，失败回落 access token 查证（INT-1140）。
 
         Returns: (user_id, username, role_id, permissions) 或 None（均无效）。
+
+        JWT 的 permissions 只是登录时快照；这里向 auth_service 取用户当前权限
+        （短 TTL 缓存 + 变更主动失效），避免权限调整后必须重新登录才生效。
         """
         try:
             from api_gateway.application.services.auth.token_service import TokenService
             payload = TokenService.verify(token)
         except Exception:
             return AuthMiddleware._resolve_access_token(request, token)
+        from api_gateway.infrastructure.permission_cache import resolve_permissions
+        user_id = payload.get('user_id', 0)
         return (
-            payload.get('user_id', 0),
+            user_id,
             payload.get('username', ''),
             payload.get('role_id', 0),
-            payload.get('permissions', []),
+            resolve_permissions(user_id, payload.get('permissions', [])),
         )
 
     @staticmethod

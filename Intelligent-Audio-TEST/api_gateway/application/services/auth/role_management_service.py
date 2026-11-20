@@ -105,6 +105,9 @@ class RoleManagementService:
             ), default_error='更新角色权限失败')
         if fail:
             return fail
+        # 角色影响该角色下所有用户：整表清缓存，下一次请求立即按新权限鉴权
+        from api_gateway.infrastructure.permission_cache import invalidate_permissions
+        invalidate_permissions()
         return with_notice(success_response(None, '角色权限已更新'))
 
     @staticmethod

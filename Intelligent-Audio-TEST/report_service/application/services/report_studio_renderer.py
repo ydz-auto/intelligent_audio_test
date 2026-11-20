@@ -1,0 +1,403 @@
+# -*- coding: utf-8 -*-
+"""Report Studio 导出渲染（INT-2471，设计文档 §15.6）。
+
+同一份受控 Markdown（Studio 文档版本快照）渲染为四种产物：
+
+- ``md``：原样字节（内容源即版本快照，不二次加工）；
+- ``html``：受控 Markdown 子集 → HTML（模型输出按不可信内容处理，全部转义，
+  不执行任何脚本）；
+- ``pdf``：reportlab 排版（A4、中文字体走 reportlab 内置 CID 字体 STSong-Light，
+  无需外部字体文件）；
+- ``pptx``：python-pptx 生成幻灯片（标题页 + 按 H1/H2 分节的内容页 + 表格）。
+
+渲染是**确定性**的：只做 Markdown 结构到格式的转换，不重新计算任何指标、
+不执行模型给出的 JS/SQL/URL，也不回源报告数据（数值以文档正文为准，文档正文
+由 ``report_query`` 取数后写入并由用户审批）。
+
+依赖：reportlab 已在 requirements（平台既有 PDF 导出）；python-pptx 是本卡
+新增（requirements.txt「Report Generation」段）。缺依赖时抛
+:class:`ExportRenderError`，由导出作业落 ``failed`` + 可读原因，不静默成功。
+"""
+from __future__ import annotations
+
+import html
+import io
+from typing import Dict, List, Tuple
+
+from shared.models.common_enums import DEFAULT_EXPORT_THEME, StudioExportFormat
+
+# 导出格式 → (扩展名, MIME)。单一事实源，download 侧与作业落盘共用。
+EXPORT_MEDIA_TYPES: Dict[str, Tuple[str, str]] = {
+    StudioExportFormat.MD.value: ('.md', 'text/markdown'),
+    StudioExportFormat.HTML.value: ('.html', 'text/html'),
+    StudioExportFormat.PDF.value: ('.pdf', 'application/pdf'),
+    StudioExportFormat.PPTX.value: (
+        '.pptx',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation'),
+}
+
+# PDF 中文字体：reportlab 内置 CID 字体（不需要安装字体文件，主流阅读器可显示）
+PDF_CJK_FONT = 'STSong-Light'
+PDF_FALLBACK_FONT = 'Helvetica'
+PDF_PAGE_MARGIN_MM = 18
+PDF_TABLE_MAX_ROWS = 400
+
+# PPTX 版式实现独立在 report_studio_pptx（汇报版式，便于单测与迭代）
+
+
+class ExportRenderError(ValueError):
+    """导出渲染失败（格式不支持 / 依赖缺失 / 排版异常），消息可直接给用户看。"""
+
+
+# ---------------------------------------------------------------- Markdown 解析
+
+
+def _is_table_separator(line: str) -> bool:
+    """表格分隔行（``| --- | :---: |``）判定。"""
+    stripped = line.strip()
+    if not stripped.startswith('|'):
+        return False
+    cells = (stripped.replace('|', '').replace(':', '')
+             .replace('-', '').replace(' ', ''))
+    return cells == ''
+
+
+def _split_row(line: str) -> List[str]:
+    return [cell.strip() for cell in line.strip().strip('|').split('|')]
+
+
+def parse_markdown(markdown: str) -> List[dict]:
+    """把 Markdown 子集解析成块列表（HTML / PDF / PPTX 三种渲染器共用）。
+
+    块形状（稳定契约）：
+    - ``{'kind': 'heading', 'level': 1..4, 'text': str}``
+    - ``{'kind': 'paragraph', 'text': str}``
+    - ``{'kind': 'bullet', 'text': str}``
+    - ``{'kind': 'code', 'text': str}``
+    - ``{'kind': 'table', 'headers': [...], 'rows': [[...]]}``
+    - ``{'kind': 'rule'}``
+    """
+    lines = (markdown or '').splitlines()
+    blocks: List[dict] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            i += 1
+            code_lines: List[str] = []
+            while i < len(lines) and not lines[i].strip().startswith('```'):
+                code_lines.append(lines[i])
+                i += 1
+            i += 1  # 跳过结束围栏（缺失时按文件末尾处理）
+            blocks.append({'kind': 'code', 'text': '\n'.join(code_lines)})
+            continue
+        if not stripped:
+            i += 1
+            continue
+        if stripped == '---':
+            blocks.append({'kind': 'rule'})
+            i += 1
+            continue
+        if stripped.startswith('#### '):
+            blocks.append({'kind': 'heading', 'level': 4,
+                           'text': stripped[5:].strip()})
+            i += 1
+            continue
+        if stripped.startswith('### '):
+            blocks.append({'kind': 'heading', 'level': 3,
+                           'text': stripped[4:].strip()})
+            i += 1
+            continue
+        if stripped.startswith('## '):
+            blocks.append({'kind': 'heading', 'level': 2,
+                           'text': stripped[3:].strip()})
+            i += 1
+            continue
+        if stripped.startswith('# '):
+            blocks.append({'kind': 'heading', 'level': 1,
+                           'text': stripped[2:].strip()})
+            i += 1
+            continue
+        if stripped.startswith('|') and i + 1 < len(lines) \
+                and _is_table_separator(lines[i + 1]):
+            headers = _split_row(stripped)
+            i += 2
+            rows: List[List[str]] = []
+            while i < len(lines) and lines[i].strip().startswith('|'):
+                rows.append(_split_row(lines[i]))
+                i += 1
+            blocks.append({'kind': 'table', 'headers': headers, 'rows': rows})
+            continue
+        if stripped.startswith('- ') or stripped.startswith('* '):
+            blocks.append({'kind': 'bullet', 'text': stripped[2:].strip()})
+            i += 1
+            continue
+        blocks.append({'kind': 'paragraph', 'text': stripped})
+        i += 1
+    return blocks
+
+
+def _plain(text: str) -> str:
+    """去掉行内强调标记（PPTX / 纯文本口径）。"""
+    return (text or '').replace('**', '').replace('__', '')
+
+
+def _inline_html(text: str) -> str:
+    """转义后加行内粗体 / 斜体（先转义，标签只由渲染器产生）。"""
+    escaped = html.escape(text or '')
+    escaped = escaped.replace('**', '<strong>', 1).replace('**', '</strong>', 1)
+    escaped = escaped.replace('__', '<em>', 1).replace('__', '</em>', 1)
+    return escaped
+
+
+# ---------------------------------------------------------------- HTML
+
+
+_HTML_CSS = (
+    '*,*::before,*::after{box-sizing:border-box;}'
+    'html,body{margin:0;padding:0;}'
+    'body{background:#fff;color:#1f2329;}'
+    '.report-studio-export{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",'
+    '"PingFang SC","Microsoft YaHei",Roboto,sans-serif;max-width:920px;'
+    'margin:0 auto;padding:32px 40px 64px;font-size:14px;line-height:1.7;'
+    'word-break:break-word;overflow-wrap:anywhere;}'
+    '.report-studio-export h1{font-size:24px;line-height:1.35;font-weight:600;'
+    'margin:0 0 8px;}'
+    '.report-studio-export h2{font-size:18px;line-height:1.4;font-weight:600;'
+    'margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid #eceff3;}'
+    '.report-studio-export h3{font-size:16px;line-height:1.45;font-weight:600;'
+    'margin:20px 0 8px;}'
+    '.report-studio-export h4,.report-studio-export h5,.report-studio-export h6'
+    '{font-size:14px;font-weight:600;margin:16px 0 6px;}'
+    '.report-studio-export p{margin:8px 0;}'
+    '.report-studio-export ul{margin:8px 0;padding-left:22px;}'
+    '.report-studio-export li{margin:4px 0;}'
+    '.report-studio-export hr{border:0;border-top:1px solid #e5e7eb;margin:18px 0;}'
+    '.report-studio-export .export-theme{color:#8a8f99;font-size:12px;'
+    'margin:0 0 16px;}'
+    '.report-studio-export table{width:100%;max-width:100%;border-collapse:collapse;'
+    'table-layout:fixed;margin:12px 0;font-size:13px;}'
+    '.report-studio-export th,.report-studio-export td{border:1px solid #e5e7eb;'
+    'padding:8px 10px;text-align:left;vertical-align:top;}'
+    '.report-studio-export th{background:#f7f8fa;font-weight:600;}'
+    '.report-studio-export pre{background:#f6f7f9;padding:12px;border-radius:6px;'
+    'overflow-x:auto;font-size:12px;line-height:1.55;}'
+    '.report-studio-export code{font-family:SFMono-Regular,Consolas,monospace;'
+    'background:#f6f7f9;padding:1px 4px;border-radius:3px;font-size:12px;}')
+
+
+def render_html(markdown: str, theme: str, title: str) -> bytes:
+    """受控 Markdown → HTML（全部文本转义；无脚本、无外链资源）。"""
+    out: List[str] = []
+    in_list = False
+    for block in parse_markdown(markdown):
+        kind = block['kind']
+        if kind != 'bullet' and in_list:
+            out.append('</ul>')
+            in_list = False
+        if kind == 'heading':
+            level = int(block['level'])
+            out.append(f'<h{level}>{_inline_html(block["text"])}</h{level}>')
+        elif kind == 'paragraph':
+            out.append(f'<p>{_inline_html(block["text"])}</p>')
+        elif kind == 'bullet':
+            if not in_list:
+                out.append('<ul>')
+                in_list = True
+            out.append(f'<li>{_inline_html(block["text"])}</li>')
+        elif kind == 'code':
+            out.append('<pre><code>' + html.escape(block['text']) + '</code></pre>')
+        elif kind == 'rule':
+            out.append('<hr/>')
+        elif kind == 'table':
+            head = ''.join(f'<th>{_inline_html(cell)}</th>'
+                           for cell in block['headers'])
+            rows = ''.join(
+                '<tr>' + ''.join(f'<td>{_inline_html(cell)}</td>' for cell in row)
+                + '</tr>'
+                for row in block['rows'])
+            out.append(f'<table><thead><tr>{head}</tr></thead>'
+                       f'<tbody>{rows}</tbody></table>')
+    if in_list:
+        out.append('</ul>')
+    return (
+        '<!DOCTYPE html><html><head><meta charset="utf-8"/>'
+        '<meta name="viewport" content="width=device-width, initial-scale=1"/>'
+        f'<title>{html.escape(title or "")}</title><style>{_HTML_CSS}</style>'
+        '</head><body class="report-studio-export">'
+        f'<h1>{html.escape(title or "")}</h1>'
+        f'<p class="export-theme">主题：{html.escape(theme or DEFAULT_EXPORT_THEME)}</p>'
+        + ''.join(out) + '</body></html>'
+    ).encode('utf-8')
+
+
+# ---------------------------------------------------------------- PDF
+
+
+_PDF_FONT_CACHE: Dict[str, str] = {}
+
+
+def _pdf_font() -> str:
+    """注册并返回 PDF 正文字体（CID 中文字体优先，失败回退 Helvetica）。"""
+    if PDF_CJK_FONT in _PDF_FONT_CACHE:
+        return _PDF_FONT_CACHE[PDF_CJK_FONT]
+    font = PDF_FALLBACK_FONT
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        pdfmetrics.registerFont(UnicodeCIDFont(PDF_CJK_FONT))
+        font = PDF_CJK_FONT
+    except Exception:  # pragma: no cover - 依赖缺失时回退拉丁字体
+        font = PDF_FALLBACK_FONT
+    _PDF_FONT_CACHE[PDF_CJK_FONT] = font
+    return font
+
+
+def render_pdf(markdown: str, theme: str, title: str) -> bytes:
+    """受控 Markdown → PDF（reportlab 排版，中文字体 STSong-Light）。"""
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import (
+            ListFlowable, ListItem, Paragraph, Preformatted, SimpleDocTemplate,
+            Spacer, Table, TableStyle,
+        )
+    except ImportError as exc:  # pragma: no cover - 容器缺依赖
+        raise ExportRenderError(f'PDF 渲染依赖缺失：{exc}') from exc
+
+    font = _pdf_font()
+    base = ParagraphStyle('body', fontName=font, fontSize=10.5, leading=15,
+                          spaceAfter=4)
+    title_style = ParagraphStyle('title', parent=base, fontSize=20, leading=26,
+                                 spaceAfter=10)
+    heading_styles = {
+        1: ParagraphStyle('h1', parent=base, fontSize=16, leading=21,
+                          spaceBefore=10, spaceAfter=6),
+        2: ParagraphStyle('h2', parent=base, fontSize=13.5, leading=18,
+                          spaceBefore=8, spaceAfter=4),
+        3: ParagraphStyle('h3', parent=base, fontSize=12, leading=16,
+                          spaceBefore=6, spaceAfter=3),
+        4: ParagraphStyle('h4', parent=base, fontSize=11, leading=15,
+                          spaceBefore=4, spaceAfter=2),
+    }
+    code_style = ParagraphStyle('code', parent=base, fontName=font, fontSize=8.5,
+                                leading=12, backColor=colors.HexColor('#f5f5f5'))
+
+    def _para(text: str, style=None) -> Paragraph:
+        escaped = html.escape(text or '')
+        return Paragraph(escaped, style or base)
+
+    story = [Paragraph(html.escape(title or ''), title_style),
+             Paragraph(f'主题：{html.escape(theme or DEFAULT_EXPORT_THEME)}', base),
+             Spacer(1, 4)]
+    pending_bullets: List[str] = []
+
+    def _flush_bullets() -> None:
+        if not pending_bullets:
+            return
+        story.append(ListFlowable(
+            [ListItem(_para(item), leftIndent=12) for item in pending_bullets],
+            bulletType='bullet', start='•', leftIndent=14))
+        pending_bullets.clear()
+
+    for block in parse_markdown(markdown):
+        kind = block['kind']
+        if kind != 'bullet':
+            _flush_bullets()
+        if kind == 'heading':
+            level = min(int(block['level']), 4)
+            story.append(_para(block['text'], heading_styles[level]))
+        elif kind == 'paragraph':
+            story.append(_para(block['text']))
+        elif kind == 'bullet':
+            pending_bullets.append(block['text'])
+        elif kind == 'code':
+            story.append(Preformatted(block['text'], code_style))
+            story.append(Spacer(1, 4))
+        elif kind == 'rule':
+            story.append(Spacer(1, 6))
+        elif kind == 'table':
+            truncated = len(block['rows']) > PDF_TABLE_MAX_ROWS
+            rows = [block['headers']] + block['rows'][:PDF_TABLE_MAX_ROWS]
+            data = [[_para(str(cell)) for cell in row] for row in rows]
+            table = Table(data, repeatRows=1)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e9ecef')),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#adb5bd')),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            story.append(table)
+            # 超长表格截断要注明（与 PPTX 口径一致），不静默丢行（复审 P3-3）
+            if truncated:
+                story.append(Paragraph(
+                    f'（表格超过 {PDF_TABLE_MAX_ROWS} 行已截断，完整数据见 HTML/MD 产物）',
+                    base))
+            story.append(Spacer(1, 6))
+    _flush_bullets()
+
+    output = io.BytesIO()
+    try:
+        SimpleDocTemplate(
+            output, pagesize=A4,
+            leftMargin=PDF_PAGE_MARGIN_MM * mm,
+            rightMargin=PDF_PAGE_MARGIN_MM * mm,
+            topMargin=PDF_PAGE_MARGIN_MM * mm,
+            bottomMargin=PDF_PAGE_MARGIN_MM * mm,
+            title=title or '', author='Report Studio',
+        ).build(story)
+    except Exception as exc:  # pragma: no cover - 排版异常按作业失败
+        raise ExportRenderError(f'PDF 排版失败：{exc}') from exc
+    return output.getvalue()
+
+
+# ---------------------------------------------------------------- PPTX
+
+
+def render_pptx(markdown: str, theme: str, title: str) -> bytes:
+    """受控 Markdown → PPTX（汇报版式；实现见 report_studio_pptx）。"""
+    try:
+        from report_service.application.services.report_studio_pptx import (
+            render_pptx as _render_pptx,
+        )
+    except ImportError as exc:  # pragma: no cover - 容器缺依赖
+        raise ExportRenderError(
+            'PPTX 渲染依赖缺失（python-pptx 未安装）；'
+            f'请确认 requirements.txt 已安装后重试：{exc}') from exc
+    try:
+        return _render_pptx(parse_markdown(markdown), theme, title)
+    except RuntimeError as exc:
+        raise ExportRenderError(str(exc)) from exc
+
+
+# ---------------------------------------------------------------- 入口
+
+
+def render_export(markdown: str, fmt: str, theme: str, title: str
+                  ) -> Tuple[bytes, str, str]:
+    """按格式渲染导出产物 → ``(内容, 扩展名, MIME)``；失败抛 ExportRenderError。"""
+    try:
+        fmt_value = StudioExportFormat(str(fmt or '').strip().lower()).value
+    except ValueError:
+        supported = ' / '.join(f.value for f in StudioExportFormat)
+        raise ExportRenderError(f'不支持的导出格式：{fmt}（仅支持 {supported}）')
+    ext, mime = EXPORT_MEDIA_TYPES[fmt_value]
+    body = markdown or ''
+    if fmt_value == StudioExportFormat.MD.value:
+        return body.encode('utf-8'), ext, mime
+    if fmt_value == StudioExportFormat.HTML.value:
+        return render_html(body, theme, title), ext, mime
+    if fmt_value == StudioExportFormat.PDF.value:
+        return render_pdf(body, theme, title), ext, mime
+    return render_pptx(body, theme, title), ext, mime
+
+
+__all__ = [
+    'EXPORT_MEDIA_TYPES', 'ExportRenderError', 'PDF_CJK_FONT',
+    'parse_markdown', 'render_export', 'render_html', 'render_pdf',
+    'render_pptx',
+]

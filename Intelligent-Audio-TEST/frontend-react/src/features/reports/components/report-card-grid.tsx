@@ -2,6 +2,7 @@
  * 报告卡片视图（规范 §3.5：ModelCardGrid 同款卡片栅格；列 meta 出卡）。
  * 报告名/类型/状态/通过率/用例数/任务/时间/操作菜单。
  */
+import { ErrorState } from '@/components/error-state'
 import {
   Card,
   CardAction,
@@ -80,21 +81,14 @@ export function ReportCardGrid({
   }
 
   if (hasError && items.length === 0) {
+    // INT-2447：错误态统一走公共 ErrorState（图标/标题/按钮与设备·音频·用例·任务页一致）。
     return (
-      <Empty className='min-h-fit border-dashed'>
-        <EmptyHeader>
-          <EmptyMedia variant='icon'>
-            <LayoutGrid className='size-4' />
-          </EmptyMedia>
-          <EmptyTitle>加载失败</EmptyTitle>
-          <EmptyDescription>报告列表加载失败，请重试</EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>
-          <Button variant='outline' size='sm' onClick={onRetry}>
-            请重试
-          </Button>
-        </EmptyContent>
-      </Empty>
+      <ErrorState
+        className='min-h-fit'
+        title='报告列表加载失败'
+        description='报告列表获取失败，请重试'
+        onRetry={onRetry}
+      />
     )
   }
 

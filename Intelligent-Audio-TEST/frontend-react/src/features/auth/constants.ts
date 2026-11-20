@@ -18,13 +18,15 @@ export const loginFormSchema = z.object({
 
 export type LoginForm = z.infer<typeof loginFormSchema>
 
-/** 注册表单（§3.6：四字段 + 确认密码 refine；密码下限 AUTH_PASSWORD_MIN_LENGTH=6 实测） */
+/** 注册表单（§3.6：四字段 + 确认密码 refine；密码下限 AUTH_PASSWORD_MIN_LENGTH=6 实测；
+ * 邀请码选填，站点开启邀请码注册时由表单按策略强制必填） */
 export const registerFormSchema = z
   .object({
     username: z.string().min(1, '请输入用户名'),
     email: z.string().min(1, '请输入邮箱').email('请输入有效的邮箱地址'),
     password: z.string().min(6, '请输入密码（至少 6 位）'),
     confirmPassword: z.string().min(1, '请再次输入密码'),
+    inviteCode: z.string().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: '两次输入的密码不一致',

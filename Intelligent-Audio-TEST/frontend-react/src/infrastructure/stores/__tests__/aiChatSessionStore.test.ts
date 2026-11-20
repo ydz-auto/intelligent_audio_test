@@ -5,9 +5,11 @@
  * 任何情况下都不回落到 infrastructure/mock/ai-chat-mock 的演示名。
  */
 import { waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { ChatMessage } from '@/domain/models/aiChat'
 import { ApiError } from '@/infrastructure/api/api-error'
+import { aiChatPrefs } from '@/infrastructure/storage/aiChatPrefs'
 import { useAiChatSession } from '@/infrastructure/stores/aiChatSessionStore'
 
 const fetchReportDetailMock = vi.hoisted(() => vi.fn())
@@ -147,5 +149,128 @@ describe('aiChatSessionStore URL 上下文（INT-1936 真实接口解析）', ()
     expect(config.providerId).toBe('p1')
     expect(config.modelId).toBe('m1')
     expect(config.reportContextId).toBe('567')
+  })
+})
+
+describe('aiChatSessionStore 「沉淀为 Skill」建议忽略（INT-2584）', () => {
+  const suggestion = {
+    suggestedName: 'platform-contract-tool-search',
+    description: '基于本次 run 的执行流程沉淀的 Skill 草案',
+    toolsUsed: ['platform_contract', 'tool_search'],
+    created: false,
+    requiresConfirmation: true,
+  } as const
+
+  /** 带建议的 assistant 气泡 */
+  function suggestedMessage(key: string): ChatMessage {
+    return {
+      key,
+      from: 'assistant',
+      versions: [{ id: `${key}-v1`, content: '已整理本次流程。' }],
+      status: 'complete',
+      skillSuggestion: { ...suggestion, toolsUsed: [...suggestion.toolsUsed] },
+    }
+  }
+
+  beforeEach(() => {
+    resetStore()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('只清该条消息的建议：卡片消失，正文与其他消息不动', () => {
+    const target = suggestedMessage('m1')
+    const other = suggestedMessage('m2')
+    const userMessage: ChatMessage = {
+      key: 'u1',
+      from: 'user',
+      versions: [{ id: 'u1-v1', content: '把导出流程沉淀成 Skill' }],
+      status: 'complete',
+    }
+    useAiChatSession.setState({ messages: [userMessage, target, other] })
+
+    useAiChatSession.getState().dismissSkillSuggestion('m1')
+
+    const [user, dismissed, untouched] = useAiChatSession.getState().messages
+    expect(dismissed.key).toBe('m1')
+    expect(dismissed.skillSuggestion).toBeUndefined()
+    // 页面其他内容（正文 / 另一条消息 / 用户消息）保持不变
+    expect(dismissed.versions).toEqual(target.versions)
+    expect(dismissed.status).toBe('complete')
+    expect(untouched.skillSuggestion).toEqual(other.skillSuggestion)
+    expect(user).toBe(userMessage)
+  })
+
+  it('重复忽略 / 消息没有建议时是 no-op（不重写消息数组、不触发持久化）', () => {
+    useAiChatSession.setState({ messages: [suggestedMessage('m1')] })
+    useAiChatSession.getState().dismissSkillSuggestion('m1')
+    const afterFirst = useAiChatSession.getState().messages
+
+    useAiChatSession.getState().dismissSkillSuggestion('m1')
+    useAiChatSession.getState().dismissSkillSuggestion('missing')
+
+    expect(useAiChatSession.getState().messages).toBe(afterFirst)
+  })
+
+  it('忽略随既有消息持久化：刷新（重新载入）后该消息回到无卡片状态', () => {
+    vi.useFakeTimers()
+    useAiChatSession.setState({ messages: [suggestedMessage('m1')] })
+
+    useAiChatSession.getState().dismissSkillSuggestion('m1')
+    vi.advanceTimersByTime(600)
+
+    const restored = aiChatPrefs.loadMessages()
+    expect(restored).toHaveLength(1)
+    expect(restored?.[0]?.skillSuggestion).toBeUndefined()
+  })
+})
+
+describe('aiChatSessionStore 消息落盘时机（INT-2665 删除后立即可刷新）', () => {
+  const userMessage: ChatMessage = {
+    key: 'u1',
+    messageId: 'user:r-1',
+    from: 'user',
+    versions: [{ id: 'u1-v1', content: '删掉我' }],
+    status: 'complete',
+  }
+  const reply: ChatMessage = {
+    key: 'a1',
+    messageId: 'm-1',
+    from: 'assistant',
+    versions: [{ id: 'a1-v1', content: '收到' }],
+    status: 'complete',
+  }
+
+  beforeEach(() => {
+    resetStore()
+  })
+
+  it('删除消息后立即落盘：不必等 500ms 防抖，刷新重载的存档不含被删消息', () => {
+    useAiChatSession.setState({ messages: [userMessage, reply] })
+
+    useAiChatSession
+      .getState()
+      .updateMessages((prev) => prev.filter((item) => item.key !== 'u1'))
+
+    // 防抖窗口内同步读存档：已是删除后的列表（服务端早已隐藏该消息，旧存档会把它复活）
+    const persisted = aiChatPrefs.loadMessages()
+    expect(persisted?.map((item) => item.key)).toEqual(['a1'])
+  })
+
+  it('新增消息仍走 500ms 防抖：未到窗口不落盘（防抖策略不变）', () => {
+    useAiChatSession.setState({ messages: [userMessage] })
+
+    expect(aiChatPrefs.loadMessages()).toBeNull()
+  })
+
+  it('页面隐藏（pagehide）冲刷待写消息：防抖窗口内关标签页 / 刷新不丢最新列表', () => {
+    useAiChatSession.setState({ messages: [reply] })
+
+    expect(aiChatPrefs.loadMessages()).toBeNull()
+    window.dispatchEvent(new Event('pagehide'))
+
+    expect(aiChatPrefs.loadMessages()?.map((item) => item.key)).toEqual(['a1'])
   })
 })

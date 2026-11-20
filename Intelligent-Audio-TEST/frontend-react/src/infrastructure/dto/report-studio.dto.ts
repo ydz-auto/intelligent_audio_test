@@ -9,11 +9,15 @@
  * 页面层只读 domain/models/report-studio。
  */
 import {
+  StudioExportStatus,
   StudioSourceType,
   type ReportPackageImportReceipt,
   type ReportPackageManifestSummary,
   type StudioDocument,
   type StudioDocumentList,
+  type StudioDocumentVersion,
+  type StudioExportJob,
+  type StudioExportStatusValue,
   type StudioSourceTypeValue,
 } from '@/domain/models/report-studio'
 
@@ -130,6 +134,85 @@ export function toStudioDocumentList(
     total: dto?.total ?? items.length,
     limit: dto?.limit ?? items.length,
     offset: dto?.offset ?? 0,
+  }
+}
+
+/** GET /report-studio/documents/{id}/versions 单项（snake_case） */
+export interface StudioVersionDto {
+  id?: number
+  doc_id?: string
+  version?: number
+  markdown_content?: string
+  parent_version?: number | null
+  snapshot_reason?: string
+  created_at?: string | null
+  created_by?: number | null
+}
+
+export function toStudioDocumentVersion(
+  dto: StudioVersionDto | null | undefined
+): StudioDocumentVersion {
+  return {
+    id: dto?.id ?? 0,
+    docId: dto?.doc_id ?? '',
+    version: dto?.version ?? 0,
+    // 后端快照列表不含正文（_version_dict），恒为空；历史正文只能恢复后读取
+    markdownContent: dto?.markdown_content ?? '',
+    parentVersion: dto?.parent_version ?? null,
+    snapshotReason: dto?.snapshot_reason ?? '',
+    createdAt: dto?.created_at ?? null,
+    createdBy: dto?.created_by ?? null,
+  }
+}
+
+export interface StudioVersionListDto {
+  items?: StudioVersionDto[]
+  total?: number
+}
+
+/** POST /documents/{id}/exports 与 GET /exports/{id}（snake_case） */
+export interface StudioExportJobDto {
+  export_id?: string
+  doc_id?: string
+  version?: number
+  format?: string
+  theme?: string
+  status?: string
+  progress?: number
+  error?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  download_ref?: string | null
+}
+
+const EXPORT_STATUSES: StudioExportStatusValue[] = [
+  StudioExportStatus.PENDING,
+  StudioExportStatus.RUNNING,
+  StudioExportStatus.DONE,
+  StudioExportStatus.FAILED,
+]
+
+/** 未知状态按失败处理（不让页面卡在轮询里），并回显原始值供排查 */
+function toExportStatus(value: string | undefined): StudioExportStatusValue {
+  const status = (value ?? '') as StudioExportStatusValue
+  return EXPORT_STATUSES.includes(status) ? status : StudioExportStatus.FAILED
+}
+
+export function toStudioExportJob(
+  dto: StudioExportJobDto | null | undefined
+): StudioExportJob {
+  return {
+    exportId: dto?.export_id ?? '',
+    docId: dto?.doc_id ?? '',
+    version: dto?.version ?? 0,
+    format: dto?.format ?? '',
+    theme: dto?.theme ?? '',
+    status: toExportStatus(dto?.status),
+    progress: dto?.progress ?? 0,
+    error: dto?.error ?? null,
+    createdAt: dto?.created_at ?? null,
+    updatedAt: dto?.updated_at ?? null,
+    downloadRef: dto?.download_ref ?? null,
   }
 }
 

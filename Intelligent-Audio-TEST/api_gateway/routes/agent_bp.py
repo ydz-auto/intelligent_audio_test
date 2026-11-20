@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """skill 下载 + MCP 适配端点路由（INT-1150 / INT-1140 分道 A）。
 
-- GET  /api/v1/agent/skill   下载 skill 包 zip（SKILL.md + mcp.json 模板，
-  base_url 注入；?base_url= → Origin 头 → Host 头兜底；需登录）
+- GET  /api/v1/agent/skill   下载 skill 包 zip（根级 SKILL.md + references/
+  + assets/mcp.json；正文按 skills/platform-reference/ 生成，base_url 注入；
+  ?base_url= → Origin 头 → Host 头兜底；需登录）
 - POST /api/v1/mcp           MCP JSON-RPC 2.0 端点（initialize/tools/list/
   tools/call + tools 注册表；同一 access token 走同一条 AuthMiddleware 分支）
 """
@@ -40,7 +41,7 @@ def _require_login(request: Request):
 
 @router.get('/skill')
 def download_skill(request: Request, base_url: str = ''):
-    """下载 skill 包 zip：SKILL.md + mcp.json（base_url 注入）。"""
+    """下载 skill 包 zip：`SKILL.md` + `assets/mcp.json`（base_url 注入）。"""
     from api_gateway.application.services.mcp.skill_package import (
         build_skill_zip, resolve_base_url, ZIP_FILENAME,
     )

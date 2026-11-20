@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "GT-01",
+      "category": "platform_contract",
+      "active_skill": null,
+      "prompt": "平台一共有几个后端服务？",
+      "tool": "platform_contract",
+      "arguments": {
+        "section": "services"
+      },
+      "fact_key": "contract:services_count",
+      "expected_value": "8",
+      "forbidden_values": [
+        "6",
+        "10",
+        "12"
+      ]
+    },
+    {
+      "id": "GT-02",
+      "category": "platform_contract",
+      "active_skill": null,
+      "prompt": "认证服务的接口前缀是什么？",
+      "tool": "platform_contract",
+      "arguments": {
+        "section": "prefixes"
+      },
+      "fact_key": "contract:auth_prefix",
+      "expected_value": "/api/v1/auth",
+      "forbidden_values": [
+        "/api/v1/user",
+        "/auth/v1"
+      ]
+    },
+    {
+      "id": "GT-03",
+      "category": "platform_contract",
+      "active_skill": null,
+      "prompt": "Run 状态枚举有几个取值？",
+      "tool": "platform_contract",
+      "arguments": {
+        "section": "enums"
+      },
+      "fact_key": "contract:run_status_enum_count",
+      "expected_value": "7",
+      "forbidden_values": [
+        "5",
+        "6",
+        "8"
+      ]
+    },
+    {
+      "id": "GT-04",
+      "category": "platform_contract",
+      "active_skill": null,
+      "prompt": "发起 Agent run 需要什么权限码？",
+      "tool": "platform_contract",
+      "arguments": {
+        "section": "permissions"
+      },
+      "fact_key": "contract:agent_run_permission",
+      "expected_value": "agent:run:read",
+      "forbidden_values": [
+        "agent:run:write",
+        "agent:admin"
+      ]
+    },
+    {
+      "id": "GT-05",
+      "category": "task_query",
+      "active_skill": null,
+      "prompt": "任务 T7 的状态是什么？",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T7"
+      },
+      "fact_key": "task:T7:status",
+      "expected_value": "RUNNING",
+      "forbidden_values": [
+        "CANCELLED",
+        "WAITING_APPROVAL"
+      ]
+    },
+    {
+      "id": "GT-06",
+      "category": "task_query",
+      "active_skill": null,
+      "prompt": "任务 T12 当前进度是多少？",
+      "tool": "task_query",
+      "arguments": {
+        "action": "detail",
+        "task_id": "T12"
+      },
+      "fact_key": "task:T12:progress",
+      "expected_value": "84",
+      "forbidden_values": [
+        "99",
+        "100",
+        "0"
+      ]
+    },
+    {
+      "id": "GT-07",
+      "category": "task_query",
+      "active_skill": null,
+      "prompt": "任务列表一共有多少条任务？",
+      "tool": "task_query",
+      "arguments": {
+        "action": "list"
+      },
+      "fact_key": "task:list:total",
+      "expected_value": "60",
+      "forbidden_values": [
+        "48",
+        "50",
+        "100"
+      ]
+    },
+    {
+      "id": "GT-08",
+      "category": "report_query",
+      "active_skill": null,
+      "prompt": "报告 R3 的准确率是多少？",
+      "tool": "report_query",
+      "arguments": {
+        "action": "detail",
+        "report_id": "R3"
+      },
+      "fact_key": "report:R3:accuracy",
+      "expected_value": "0.903",
+      "forbidden_values": [
+        "0.950",
+        "0.999",
+        "0.900"
+      ]
+    },
+    {
+      "id": "GT-09",
+      "category": "report_query",
+      "active_skill": null,
+      "prompt": "报告列表一共有多少份报告？",
+      "tool": "report_query",
+      "arguments": {
+        "action": "list"
+      },
+      "fact_key": "report:list:total",
+      "expected_value": "12",
+      "forbidden_values": [
+        "8",
+        "10",
+        "20"
+      ]
+    },
+    {
+      "id": "GT-10",
+      "category": "platform-reference",
+      "active_skill": "platform-reference",
+      "prompt": "tool_search 检索到的 task_get 工具风险等级是什么？",
+      "tool": "tool_search",
+      "arguments": {
+        "query": "task_get"
+      },
+      "fact_key": "tool_search:task_get:risk",
+      "expected_value": "READ",
+      "forbidden_values": [
+        "WRITE",
+        "DESTRUCTIVE"
+      ]
+    }
+  ]
+}

@@ -62,6 +62,23 @@ class DeviceAclRepository(ABC):
     def get_status_history(self, query: dict) -> CommandResultDTO: ...
 
 
+class DeviceUiAclRepository(ABC):
+    """device_ui 实体 ACL 接口（INT-2578 设备 UI 探索三端点）。
+
+    信封 ``code`` 为字符串业务码（``UiCaptureErrorCode``），与
+    ``DeviceAclRepository`` 的 HTTP 数字码不同，调用方按 ``code`` 判型。
+    """
+
+    @abstractmethod
+    def dump_ui_tree(self, device_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def perform_ui_action(self, device_id, action_type, node=None, params=None) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def capture_ui_screenshot(self, device_id, label=None) -> CommandResultDTO: ...
+
+
 class DeviceGroupAclRepository(ABC):
     """device_group 实体 ACL 接口（INT-80 设备分组）。"""
 

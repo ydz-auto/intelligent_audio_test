@@ -120,6 +120,8 @@ export interface TaskDetailDto {
   review_count?: number | null
   created_at: string | null
   updated_at: string | null
+  /** INT-2446：创建人用户 id（TaskDetailData.created_by_user_id；接口不返回姓名，显示名另查用户详情） */
+  created_by_user_id?: number | null
 }
 
 export interface TaskCaseBriefDto {

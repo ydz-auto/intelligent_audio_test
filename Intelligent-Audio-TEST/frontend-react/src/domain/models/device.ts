@@ -2,8 +2,10 @@
  * 设备域领域模型（domain 层；10_测试执行.md §9 落位）。
  * 形态对照 api_gateway/schemas/device.py DeviceItem 实测：
  * id/name/model/description/type/system/system_version/serial_number/ip/status/
- * last_online_at/supported_algorithms/connection_type。
+ * last_online_at/supported_algorithms/connection_type/lab_id/lab_name。
  * 混跑口径（§3.6.1）：device_type 三值 physical/http_api/websocket_api 同任务可选。
+ * INT-2641：所属实验室走真实 /test-devices 返回的 lab_id/lab_name（网关装饰名称），
+ * 开始测试第二步实验室 facet 按此真实绑定过滤，不再用前端硬编码 mock。
  */
 
 /** 设备类型（device_type 三值，混跑徽章依据） */
@@ -27,6 +29,10 @@ export interface Device {
   /** 算法过滤依据（supported_algorithms 实测） */
   supportedAlgorithms: string[] | null
   connectionType: string | null
+  /** 所属实验室（INT-2641：/test-devices 实测 lab_id；null = 未挂实验室） */
+  labId: number | null
+  /** 所属实验室名称（网关按 lab_id 装饰的 lab_name） */
+  labName: string | null
 }
 
 /** 设备类型徽章元数据（§3.6.1 混跑：图标 + 中文文案） */
@@ -37,6 +43,32 @@ export const DEVICE_TYPE_META: Record<
   physical: { label: '真机', short: 'physical' },
   http_api: { label: 'HTTP API', short: 'http_api' },
   websocket_api: { label: 'Realtime WS', short: 'websocket_api' },
+}
+
+/**
+ * 设备类型三值白名单（唯一事实源，INT-2640）：适配器归一、表单选项、展示文案共用，
+ * 杜绝同一 type 字段在两个适配器/多个页面各写一套口径。
+ */
+export const DEVICE_TYPE_VALUES = ['physical', 'http_api', 'websocket_api'] as const
+
+const DEVICE_TYPE_SET: ReadonlySet<string> = new Set(DEVICE_TYPE_VALUES)
+
+/** 三值之外的未知类型统一展示文案（不外露后端原始英文枚举） */
+export const DEVICE_TYPE_UNKNOWN_LABEL = '未知'
+
+/**
+ * 后端 `type` → domain 三值枚举（INT-2640）。
+ * 三值之外（历史 `phone`、扫描脏值）一律返回 null，由展示层统一归一为「未知」；
+ * 需要保留原值的调用方（编辑回写）自行读取原始字符串。
+ */
+export function toDeviceType(type: string | null | undefined): DeviceType | null {
+  if (!type || !DEVICE_TYPE_SET.has(type)) return null
+  return type as DeviceType
+}
+
+/** 设备类型中文文案（三值取 DEVICE_TYPE_META；null/未知统一「未知」） */
+export function deviceTypeLabel(type: DeviceType | null | undefined): string {
+  return type ? DEVICE_TYPE_META[type].label : DEVICE_TYPE_UNKNOWN_LABEL
 }
 
 /**

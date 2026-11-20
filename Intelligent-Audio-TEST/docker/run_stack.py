@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """INT-272：全栈 Docker Compose 薄封装 —— docker-only 启停/探测。
 
-全栈唯一入口是仓库根 ``stack.py``（compose + 宿主机 audio/device 服务）；
+全栈唯一入口是仓库根 ``stack.py``（compose + 宿主机 e2e/audio/device 服务）；
 本脚本只负责 compose 侧操作，被 ``stack.py`` 委托调用。
 
 根治口径（成员裁定）：服务生命周期归 Docker daemon，与一切 run 树解耦。
@@ -9,15 +9,15 @@ agent 运行时只做 `docker compose up/down` 与健康探测；禁止宿主机
 禁止启动期整树清场（遇宿主端口被占用，compose 报错退出，交执行者处置）。
 
 用法（仓库根目录）：
-    python docker/run_stack.py up        # 拉起全栈（infra + 引导 + 11 后端 + 前端）
+    python docker/run_stack.py up        # 拉起全栈（infra + 引导 + 10 后端 + 前端；e2e 由宿主进程提供）
     python docker/run_stack.py down      # 停止全栈（保留数据卷）
     python docker/run_stack.py down -v   # 停止全栈并删除数据卷（危险：清库）
     python docker/run_stack.py ps        # 容器状态
-    python docker/run_stack.py health    # 13 端点健康探测（scripts/health_smoke.py 口径）
+    python docker/run_stack.py health    # 全端点健康探测（scripts/health_smoke.py 口径）
     python docker/run_stack.py logs [服务名] [-f]   # 跟踪日志
 
 环境变量（读仓库根 .env，缺省值与宿主历史口径一致）：
-    AUTH_MODE / VITE_AUTH_MODE  必填（off|dev|prod），compose 强制校验
+    AUTH_MODE  必填（off|dev|prod），前后端同源；前端运行时经 GET /auth/mode 读取
     OSS_ACCESS_KEY / OSS_SECRET_KEY / JWT_SECRET / DEV_DEFAULT_*  可选
     POSTGRES_PORT / REDIS_PORT / RUSTFS_PORT / *_HTTP_PORT / *_GRPC_PORT  可选端口覆盖
 
@@ -45,13 +45,13 @@ DEFAULT_PROJECT = 'intelligent-audio-test'
 def _project():
     return os.environ.get('COMPOSE_PROJECT_NAME') or DEFAULT_PROJECT
 
-# 健康探测口径（与 scripts/health_smoke.py 一致）：10 个 HTTP /health
-# + 前端 HTTP + 11 个 gRPC TCP + 3 个 infra TCP。api_test_service 不发布宿主
-# 端口（UC-1001），探测在容器网络内经 compose exec 完成。
+# 健康探测口径（与 scripts/health_smoke.py 一致）：HTTP /health（宿主映射端口）
+# + 前端 HTTP + gRPC TCP + 3 个 infra TCP。api_test_service 不发布宿主
+# 端口（UC-1001）、agent_service 不发布宿主端口（INT-2456，只经网关访问），
+# 两者探测都在容器网络内经 compose exec 完成。
 GRPC_PROBES = [
     # (服务名, 容器内端口)。宿主映射端口经 *_GRPC_PORT 环境变量覆盖（cmd_health 读取）；
     # api_test_service 宿主不发布端口（UC-1001），探测走 compose exec 容器内 TCP。
-    ('e2e_test_service', 50051, 'E2E_TEST_GRPC_PORT'),
     ('audio_service', 50052, 'AUDIO_SERVICE_GRPC_PORT'),
     ('device_service', 50053, 'DEVICE_SERVICE_GRPC_PORT'),
     ('task_service', 51061, 'TASK_SERVICE_GRPC_PORT'),
@@ -63,20 +63,51 @@ GRPC_PROBES = [
     ('transfer_agent', 51101, 'TRANSFER_AGENT_GRPC_PORT'),
 ]
 HTTP_PROBES = [
-    # (服务名, 容器内端口, 宿主端口环境变量)
+    # (服务名, 容器内端口, 宿主端口环境变量)；None = 宿主不发布端口，容器内探测
     ('api_gateway', 5000, 'API_GATEWAY_PORT'),
     ('task_service', 5001, 'TASK_SERVICE_HTTP_PORT'),
-    ('e2e_test_service', 5002, 'E2E_TEST_HTTP_PORT'),
     ('evaluation_service', 5004, 'EVALUATION_SERVICE_HTTP_PORT'),
     ('report_service', 5006, 'REPORT_SERVICE_HTTP_PORT'),
     ('algorithm_service', 5007, 'ALGORITHM_SERVICE_HTTP_PORT'),
     ('auth_service', 5009, 'AUTH_SERVICE_HTTP_PORT'),
     ('transfer_agent', 5010, 'TRANSFER_AGENT_HTTP_PORT'),
+    # INT-2456：agent_service 只经网关访问（不发布宿主端口，身份头不可伪造）。
+    ('agent_service', 5011, None),
 ]
-FRONTEND_PORT = int(os.environ.get('FRONTEND_PORT', '5173'))
+# e2e_test_service 默认跑宿主机（stack.py 拉起），固定原生端口；容器形态仅隔离栈使用
+HOST_E2E_HTTP_PORT = 5002
+HOST_E2E_GRPC_PORT = 50051
+FRONTEND_PORT = int(os.environ.get('FRONTEND_PORT', '8080'))
 POSTGRES_PORT = int(os.environ.get('POSTGRES_PORT', '5432'))
 REDIS_PORT = int(os.environ.get('REDIS_PORT', '6379'))
 RUSTFS_PORT = int(os.environ.get('RUSTFS_PORT', '9000'))
+
+
+# 仓库根 .env 是宿主进程口径：E2E_TEST_SERVICE_HOST=localhost 供宿主服务 / pytest
+# 直连宿主 e2e。同名变量在容器里必须指向宿主（compose 缺省 host.docker.internal），
+# 根 .env 的值不得参与 compose 插值——否则容器内 localhost:50051 打到自己，
+# 网关卡调 e2e gRPC 静默失败。docker/.env 或 shell 显式设置仍生效
+# （隔离栈经 shell 传 e2e_test_service）。
+_HOST_SCOPE_ONLY_KEYS = ('E2E_TEST_SERVICE_HOST', 'E2E_TEST_SERVICE_GRPC_PORT')
+
+
+def _read_env_file(path):
+    """读取 .env 文件为 dict；文件缺失返回空。"""
+    if not os.path.isfile(path):
+        return {}
+    try:
+        from dotenv import dotenv_values
+    except ImportError:
+        values = {}
+        with open(path, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, _, val = line.partition('=')
+                values[key.strip()] = val.strip()
+        return values
+    return {k: v for k, v in dotenv_values(path).items() if v is not None}
 
 
 def _load_env_file():
@@ -84,31 +115,17 @@ def _load_env_file():
 
     compose 以 docker/ 为项目目录，实际读取的是 ``docker/.env``；只读根 .env 会让
     本脚本健康探测的端口口径与 compose 不一致（历史上 PG 5432/15435 就是这样漂移的）。
-    这里两份都读，docker/.env 覆盖同名键，与 compose 实际生效值对齐。
-    宿主 DATABASE_URL 等指向 localhost 的键不参与容器形态（compose 内置服务名寻址）。
+    两份都读，优先级与 compose 实际生效值对齐：shell 显式设置 > docker/.env > 仓库根 .env。
+    宿主 DATABASE_URL 等指向 localhost 的键不参与容器形态（compose 内置服务名寻址）；
+    ``_HOST_SCOPE_ONLY_KEYS`` 同理，根 .env 的值不得外泄给 compose 插值。
     """
-    root_env = os.path.join(BASE_DIR, '.env')
-    compose_env = os.path.join(BASE_DIR, 'docker', '.env')
-    try:
-        from dotenv import load_dotenv
-        if os.path.isfile(root_env):
-            load_dotenv(root_env)
-        if os.path.isfile(compose_env):
-            load_dotenv(compose_env, override=True)
-        return
-    except ImportError:
-        pass
-    # python-dotenv 缺席时的最小实现
-    for env_file in (root_env, compose_env):
-        if not os.path.isfile(env_file):
-            continue
-        with open(env_file, encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#') or '=' not in line:
-                    continue
-                key, _, val = line.partition('=')
-                os.environ[key.strip()] = val.strip()
+    root_values = _read_env_file(os.path.join(BASE_DIR, '.env'))
+    for key in _HOST_SCOPE_ONLY_KEYS:
+        root_values.pop(key, None)
+    compose_values = _read_env_file(os.path.join(BASE_DIR, 'docker', '.env'))
+    merged = {k: v for k, v in root_values.items() if k not in os.environ}
+    merged.update(compose_values)
+    os.environ.update(merged)
 
 
 def _compose(*args):
@@ -120,22 +137,16 @@ def _compose(*args):
 
 
 def _require_auth_mode():
-    """AUTH_MODE / VITE_AUTH_MODE 必填校验（INT-181 口径，失败立即退出）。"""
+    """AUTH_MODE 必填校验（认证模式由前端运行时 GET /auth/mode 读取，失败立即退出）。"""
     auth_mode = os.environ.get('AUTH_MODE', '').strip()
-    vite_auth_mode = os.environ.get('VITE_AUTH_MODE', '').strip()
-    if not auth_mode and not vite_auth_mode:
+    if not auth_mode:
         print(
-            "[STACK] ERROR: AUTH_MODE / VITE_AUTH_MODE 均未设置。\n"
+            "[STACK] ERROR: AUTH_MODE 未设置。\n"
             "        认证模式必须显式注入（off|dev|prod），禁止静默默认 off（INT-181）。\n"
-            "        示例：AUTH_MODE=dev VITE_AUTH_MODE=dev python docker/run_stack.py up\n"
+            "        示例：AUTH_MODE=dev python docker/run_stack.py up\n"
             "        取值含义见 docs/oauth.md。",
             flush=True)
         sys.exit(2)
-    # AUTH_MODE 侧有值而 VITE_AUTH_MODE 缺失时以前者补齐（同一认证态，避免双变量错位）
-    if auth_mode and not vite_auth_mode:
-        os.environ['VITE_AUTH_MODE'] = auth_mode
-    if vite_auth_mode and not auth_mode:
-        os.environ['AUTH_MODE'] = vite_auth_mode
 
 
 def cmd_up(args):
@@ -195,8 +206,15 @@ def cmd_health(args):
 
     checks = []  # (名称, 探测函数)
     for name, container_port, host_env in HTTP_PROBES:
+        if host_env is None:
+            # 宿主不发布端口（agent_service）：容器网络内探测
+            checks.append((f"{name} :{container_port}(容器内)",
+                           lambda s=name, p=container_port: _compose_exec_tcp(s, p)))
+            continue
         host_p = host_port(host_env, container_port)
         checks.append((f"{name} :{host_p}", lambda p=host_p: _http_health(p)))
+    checks.append((f"e2e_test_service :{HOST_E2E_HTTP_PORT}(宿主)",
+                   lambda: _http_health(HOST_E2E_HTTP_PORT)))
     checks.append((f"frontend :{host_port('FRONTEND_PORT', FRONTEND_PORT)}",
                    lambda: _http_ok(host_port('FRONTEND_PORT', FRONTEND_PORT), '/')))
     for name, container_port, host_env in GRPC_PROBES:
@@ -208,6 +226,8 @@ def cmd_health(args):
             host_p = host_port(host_env, container_port)
             checks.append((f"{name} gRPC :{host_p}",
                            lambda p=host_p: _tcp_open('127.0.0.1', p)))
+    checks.append((f"e2e_test_service gRPC :{HOST_E2E_GRPC_PORT}(宿主)",
+                   lambda: _tcp_open('127.0.0.1', HOST_E2E_GRPC_PORT)))
     checks.append((f"postgres :{host_port('POSTGRES_PORT', POSTGRES_PORT)}",
                    lambda: _tcp_open('127.0.0.1', host_port('POSTGRES_PORT', POSTGRES_PORT))))
     checks.append((f"redis :{host_port('REDIS_PORT', REDIS_PORT)}",
@@ -275,8 +295,7 @@ def _compose_exec_tcp(service, port, timeout=5.0):
          'python', '-c',
          f"import socket; s=socket.create_connection(('127.0.0.1',{port}),{timeout}); s.close()"],
         capture_output=True, timeout=timeout + 10,
-        env={**os.environ, 'AUTH_MODE': os.environ.get('AUTH_MODE', 'off'),
-             'VITE_AUTH_MODE': os.environ.get('VITE_AUTH_MODE', 'off')})
+        env={**os.environ, 'AUTH_MODE': os.environ.get('AUTH_MODE', 'off')})
     return result.returncode == 0
 
 

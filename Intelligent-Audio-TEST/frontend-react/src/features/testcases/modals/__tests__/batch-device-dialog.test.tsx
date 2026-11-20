@@ -9,7 +9,6 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BatchDeviceDialog } from '@/features/testcases/modals/batch-device-dialog'
-import { batchTestcaseAction } from '@/infrastructure/api/testcases-batch-api'
 
 const batchActionMock = vi.hoisted(() => vi.fn())
 

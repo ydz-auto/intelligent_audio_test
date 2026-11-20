@@ -39,7 +39,7 @@ ALIGN_NCC_MIN = 0.2
 
 def _build_dimension_reasons(turns, normal, no_takeover, false_takeover,
                              false_then_normal, false_then_no,
-                             latency_values, score_values):
+                             backchannel, latency_values, score_values):
     """Build user-facing reasons for each turn_eval sub-dimension."""
     total = len(turns)
 
@@ -87,6 +87,7 @@ def _build_dimension_reasons(turns, normal, no_takeover, false_takeover,
         'false_takeover_rate': rate_reason('误接管', false_takeover),
         'false_then_normal_takeover_rate': rate_reason('误接管-正常接管', false_then_normal),
         'false_then_no_takeover_rate': rate_reason('误接管-未接管', false_then_no),
+        'backchannel_rate': rate_reason('主动反馈-backchannel', backchannel),
         'takeover_latency_avg': latency_reason,
         'reply_quality_avg': quality_reason,
     }
@@ -537,8 +538,10 @@ class TurnEvalCalculator(BaseCalculator):
         shared_asr_injected = params.get('_shared_asr')
 
         # Whole-case semantic segmentation. No automatic fallback to local windows.
-        # Explicit single-round requests retain the legacy slice contract.
-        if rounds and task_params.get('round_number') is None and task_params.get('turn_eval_full_timeline', True):
+        # 旧评估已废弃：turn_eval 默认无条件走 full_timeline（不再受 round_number 影响，
+        # 即使调用方显式传了 round_number 也走整条录音全局切分）。
+        # 仅当显式设置 turn_eval_full_timeline=False 时才回退旧切片流程。
+        if rounds and task_params.get('turn_eval_full_timeline', True):
             from app.services.calculators.xiaoyi_metrics.turn_eval.full_timeline_judge import evaluate
             return evaluate(self, task_params)
 
@@ -757,22 +760,31 @@ class TurnEvalCalculator(BaseCalculator):
             false_takeover = sum(1 for t in rt if t.get('classification') == TurnClassification.MISUNDERSTAND)
             false_then_normal = sum(1 for t in rt if t.get('classification') == '误接管-正常接管')
             false_then_no_takeover = sum(1 for t in rt if t.get('classification') == '误接管-未接管')
+            backchannel = sum(
+                1 for t in rt
+                if t.get('has_backchannel') or t.get('classification') == '主动反馈-backchannel'
+            )
+            has_backchannel = backchannel > 0
 
             item = {
                 'round_number': i,
                 'turn_classification': {
-                    'summary': f'正常接管{normal}，未接管{no_takeover}，误接管{false_takeover}',
+                    'summary': f'正常接管{normal}，未接管{no_takeover}，误接管{false_takeover}，主动反馈-backchannel{backchannel}',
                     'normal_takeover_count': normal,
                     'no_takeover_count': no_takeover,
                     'false_takeover_count': false_takeover,
                     'false_then_normal_takeover_count': false_then_normal,
                     'false_then_no_takeover_count': false_then_no_takeover,
+                    'backchannel_count': backchannel,
+                    'backchannel_round_count': backchannel,
+                    'has_backchannel': has_backchannel,
                     'total_turns': len(rt),
                     'takeover_rate': round(normal / len(rt), 4) if rt else 0,
                     'no_takeover_rate': round(no_takeover / len(rt), 4) if rt else 0,
                     'false_takeover_rate': round(false_takeover / len(rt), 4) if rt else 0,
                     'false_then_normal_takeover_rate': round(false_then_normal / len(rt), 4) if rt else 0,
                     'false_then_no_takeover_rate': round(false_then_no_takeover / len(rt), 4) if rt else 0,
+                    'backchannel_rate': round(backchannel / len(rt), 4) if rt else 0,
                     'turns': rt,
                 },
                 # 该轮未计算 TOR（如「误接管」轮本就不算 TOR，tor=None 是合法的）：
@@ -821,7 +833,7 @@ class TurnEvalCalculator(BaseCalculator):
             item['reasons'] = _build_dimension_reasons(
                 rt, normal, no_takeover, false_takeover,
                 false_then_normal, false_then_no_takeover,
-                _lat_vals, _score_vals,
+                backchannel, _lat_vals, _score_vals,
             )
             per_round.append(item)
         return per_round

@@ -107,8 +107,6 @@ export const ReasoningContent = ({
     )}
     {...props}
   >
-    <Response className='grid gap-1.5 [&_li]:my-0.5 [&_ol]:my-1.5 [&_p]:my-1.5 [&_p]:leading-5 [&_ul]:my-1.5'>
-      {children}
-    </Response>
+    <Response compact>{children}</Response>
   </CollapsibleContent>
 )

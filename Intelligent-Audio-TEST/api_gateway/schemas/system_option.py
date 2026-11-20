@@ -20,3 +20,11 @@ class SystemOptionUpdateRequest(APIModel):
 
     key: str = Field(..., min_length=1, max_length=255, description='选项键（域.分区.字段）')
     value: SystemOptionValue = Field(..., description='选项值（string/number/boolean/string[]）')
+
+
+class SystemOptionSecretUpdateRequest(APIModel):
+    """PUT /api/option/secrets 请求体：写入评估密钥（明文只进不出）。"""
+
+    key: str = Field(..., min_length=1, max_length=128,
+                     description='密钥键（如 eval.llm.api_key）')
+    value: str = Field(..., min_length=1, description='明文密钥（写后只回掩码）')

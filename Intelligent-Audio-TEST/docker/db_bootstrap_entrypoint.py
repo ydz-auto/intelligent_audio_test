@@ -442,6 +442,57 @@ BOOTSTRAP_STEPS = [
     #     algorithm_api_params / source='api' 映射恢复为可见，并解绑迁移期 default 策略。
     #     幂等（只命中 deleted=true 且同键无活跃行的记录）；纯数据 UPDATE，须排在 ㊽ 之前。
     ('python', 'scripts/migrations/202611/restore_api_algorithm_level.py', '--apply'),
+    # ㊾-8 agent_service 运行底座七表（INT-2451，落地方案 §10）：
+    #     agent_session / agent_run / agent_run_event / agent_step /
+    #     agent_tool_call / agent_artifact / agent_context_snapshot。
+    #     create_all 只建缺失的表，建库早于本卡的存量库在本步自愈；含
+    #     (run_id, sequence) / (run_id, tool_call_id) / idempotency_key 唯一约束。
+    #     幂等（表/索引 IF NOT EXISTS、约束先查 pg_constraint），全新库为全 SKIP；
+    #     默认 dry-run，引导链必须带 --apply。须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_agent_runtime_tables.py', '--apply'),
+    # ㊾-8.1 agent_llm_provider 用户模型供应商密钥库（INT-2488 / 落地方案
+    #     §6.4 / §10）：Key 只存 AES-256-GCM 密文 + 掩码；索引
+    #     (owner_id, tenant_id, is_default) / (owner_id, status)，
+    #     部分唯一索引 (owner_id, tenant_id) WHERE is_default AND status
+    #     <> 'DELETED' 保证每用户唯一默认。幂等（表/索引 IF NOT EXISTS），
+    #     全新库为全 SKIP；默认 dry-run，引导链必须带 --apply。须排在 ㊽
+    #     ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_agent_llm_provider_table.py', '--apply'),
+    # ㊾-9 agent_tool_call 补 result_code 审计列（INT-2453 §6.3）：
+    #     审计行字段 run_id / tool / args_hash / decision / latency / result_code
+    #     齐全。列可 NULL，存量行不迁移；幂等（列存在即 SKIP，全新库 create_all
+    #     已含为全 SKIP）；须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_agent_tool_call_result_code.py', '--apply'),
+    # ㊾-10 agent_step / agent_context_snapshot 冗余索引下线（INT-2516）：
+    #     `ix_agent_step_run (run_id, "index")` 与 `ix_agent_context_snapshot_run
+    #     (run_id, version)` 与同列同序的唯一约束完全重复，纯写放大。ORM 的
+    #     Index(...) 与 ㊾-8 的 INDEXES 清单已同步移除；本步兜底删存量库的索引。
+    #     按「索引名 + 定义」双匹配才 DROP，定义对不上或覆盖的唯一约束索引
+    #     缺失时跳过并 WARN。幂等（DROP INDEX IF EXISTS，第二次执行全 SKIP）；
+    #     默认 dry-run，引导链必须带 --apply。须排在 ㊾-8 之后、㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/drop_agent_redundant_indexes_int2516.py',
+     '--apply'),
+    # ㊾-11 agent_approval 写操作审批单（INT-2466，落地方案 §9.4 / §10）：
+    #     proposal / diff / status / expires_at / decided_by / decided_at /
+    #     decision_permissions，唯一约束 (run_id, tool_call_id)，
+    #     (status, expires_at) 索引服务待办与过期扫描。幂等（表/约束/索引
+    #     均 IF NOT EXISTS，约束先查 pg_constraint），全新库为全 SKIP；
+    #     默认 dry-run，引导链必须带 --apply。须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_agent_approval_table.py', '--apply'),
+    # ㊾-12 自定义 Skill 三表（INT-2549，落地方案 §4.4 / §10）：
+    #     agent_skill（当前版本指针，正文不双写）+ agent_skill_version
+    #     （不可变版本快照，正文唯一事实源）+ agent_run_skill（run 激活快照）。
+    #     唯一性用局部唯一索引 (owner_id,name)/(tenant_id,name)。
+    #     幂等（表/约束/索引均 IF NOT EXISTS，约束先查 pg_constraint），
+    #     全新库为全 SKIP；默认 dry-run，引导链必须带 --apply。
+    ('python', 'scripts/migrations/202611/add_agent_skill_tables.py', '--apply'),
+    # ㊾-13 TENANT 级 Skill 审核链（INT-2551，落地方案 §4.4 / §10）：
+    #     agent_skill_review（提交 / 批准 / 驳回 / 撤回 / 停用各一行，只追加）。
+    #     索引 (skill_id, version) / (tenant_id, status_to) / (skill_id, created_at)。
+    #     幂等（表/索引 IF NOT EXISTS），全新库为全 SKIP；默认 dry-run，引导链
+    #     必须带 --apply。须排在 ㊾-12 之后、㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_agent_skill_review_table.py',
+     '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
@@ -530,6 +581,20 @@ PROD_DDL_SCRIPTS = frozenset({
     'scripts/migrations/202611/add_audios_md5_filepath_index.py',
     'scripts/migrations/202611/add_task_list_indexes.py',
     'scripts/migrations/202611/add_param_change_history.py',
+    # INT-2451 agent_service 运行底座七表（结构 DDL，幂等）
+    'scripts/migrations/202611/add_agent_runtime_tables.py',
+    # INT-2488 用户模型供应商密钥库（结构 DDL，幂等）
+    'scripts/migrations/202611/add_agent_llm_provider_table.py',
+    # INT-2453 agent_tool_call 补 result_code 审计列（纯 DDL，幂等）
+    'scripts/migrations/202611/add_agent_tool_call_result_code.py',
+    # INT-2516 agent_step / agent_context_snapshot 冗余索引下线（纯 DDL，幂等）
+    'scripts/migrations/202611/drop_agent_redundant_indexes_int2516.py',
+    # INT-2466 agent_approval 写操作审批单（结构 DDL，幂等）
+    'scripts/migrations/202611/add_agent_approval_table.py',
+    # INT-2549 自定义 Skill 三表（结构 DDL，幂等）
+    'scripts/migrations/202611/add_agent_skill_tables.py',
+    # INT-2551 TENANT 级 Skill 审核链（结构 DDL，幂等）
+    'scripts/migrations/202611/add_agent_skill_review_table.py',
     'scripts/migrations/202610/analyze_stale_statistics_int1741.py',
 })
 

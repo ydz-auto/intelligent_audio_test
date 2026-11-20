@@ -491,7 +491,6 @@ export function LogsPage() {
                 setAlgorithmType(v)
                 setPage(1)
               }}
-              algorithmOptions={algorithmOptionsQuery.options}
               startTime={startTime}
               onStartTime={(v) => {
                 setStartTime(v)

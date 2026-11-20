@@ -15,7 +15,7 @@ Docker Desktop 进程消失），**全部容器 Exited 255**。Dockerfile 侧已
   - 重试：失败层有缓存，重试只重跑失败层；引擎已死时不重试（白等）。
 
 用法（仓库根目录）：
-    python docker/build_stack.py                        # 构建全部 9 个容器化后端服务
+    python docker/build_stack.py                        # 构建全部 10 个容器化后端服务
     python docker/build_stack.py api_gateway task_service evaluation_service
     python docker/build_stack.py --buildkit 0 api_gateway   # 旧 builder（BuildKit 打崩引擎时）
     python docker/build_stack.py --project int1820-verify api_gateway   # 隔离验证，不动现役镜像
@@ -43,7 +43,7 @@ COMPOSE_FILE = os.path.join(BASE_DIR, 'docker', 'docker-compose.yml')
 # 现役栈根本不会用——INT-1820 实测踩到过。非部署场景请用 --project 指定隔离名字。
 DEFAULT_PROJECT = 'intelligent-audio-test'
 
-# 构建目标：compose 里带 build: 段的全部后端服务（frontend 需显式点名，见 _require_vite_mode）
+# 构建目标：compose 里带 build: 段的全部后端服务（frontend 需显式点名）
 # audio_service / device_service 依赖宿主声卡与 USB/ADB，按宿主形态运行、不在 compose 内，故不可构建。
 BACKEND_SERVICES = [
     'db_bootstrap',
@@ -55,6 +55,8 @@ BACKEND_SERVICES = [
     'algorithm_service',
     'auth_service',
     'api_test_service',
+    # INT-2456：Agent 运行底座
+    'agent_service',
 ]
 
 PROBE_TIMEOUT = 20          # 单次引擎探测上限（秒）；引擎「半死」时 docker CLI 会挂到 45s+
@@ -157,25 +159,6 @@ def image_identity(project, services):
     return idents
 
 
-def _require_vite_mode(services):
-    """compose 文件里 frontend 的 VITE_AUTH_MODE 是必填插值（INT-181），缺它会解析失败。
-
-    只构建后端时不涉及前端 bundle，缺省补 off 仅用于通过 compose 插值；一旦目标里
-    包含 frontend，则拒绝替用户决定认证态。
-    """
-    vite = os.environ.get('VITE_AUTH_MODE', '').strip()
-    if 'frontend' in services:
-        if not vite:
-            _log('ERROR: 目标含 frontend，但 VITE_AUTH_MODE 未设置。'
-                 '前端构建期认证态必须显式注入（off|dev|prod），本脚本不代填。')
-            sys.exit(2)
-        return
-    if not vite:
-        os.environ['VITE_AUTH_MODE'] = os.environ.get('AUTH_MODE', '').strip() or 'off'
-        _log(f'注：未设置 VITE_AUTH_MODE，仅用于 compose 插值，本次补 {os.environ["VITE_AUTH_MODE"]}'
-             '（不构建 frontend，不进任何镜像）。')
-
-
 def _normalize_services(names):
     if not names:
         return list(BACKEND_SERVICES)
@@ -226,7 +209,6 @@ def cmd_check():
 
 def cmd_build(args):
     services = _normalize_services(args.services)
-    _require_vite_mode(services)
     project = args.project
 
     # ---- 构建前体检 ----

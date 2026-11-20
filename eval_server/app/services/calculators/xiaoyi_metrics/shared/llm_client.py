@@ -264,9 +264,17 @@ def build_content(prompt: str, file_paths: Optional[List[str]] = None) -> list:
 
 # ─────────── LLM 配置读取 ───────────
 def get_llm_config() -> Dict[str, Any]:
-    """读取 config.LLM_JUDGE，返回统一配置 dict"""
+    """读取 config.LLM_JUDGE，并叠加系统设置里的运行时覆盖。
+
+    系统设置（评估服务）为空时行为不变：完全沿用 env/config.yaml。
+    """
     from app.config import config
-    return getattr(config, 'LLM_JUDGE', {})
+    base = getattr(config, 'LLM_JUDGE', {})
+    try:
+        from app import runtime_config
+        return runtime_config.merge_llm(base)
+    except Exception:  # 运行时配置不可用不阻塞评估
+        return base
 
 
 def resolve_model(model: str = '', dimension: str = '') -> str:

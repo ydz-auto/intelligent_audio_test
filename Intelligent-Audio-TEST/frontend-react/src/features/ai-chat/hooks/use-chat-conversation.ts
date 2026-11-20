@@ -18,10 +18,13 @@ export function useChatConversation({
   messages,
   updateMessages,
   sendChat,
+  deletePersist,
 }: {
   messages: ChatMessage[]
   updateMessages: UpdateMessagesFn
   sendChat: (text: string, options?: SendChatOptions) => void
+  /** 删除持久化（平台会话：服务端隐藏集合；缺省只删本地） */
+  deletePersist?: (message: ChatMessage) => Promise<void>
 }) {
   const [editingMessageKey, setEditingMessageKey] = useState<string | null>(null)
 
@@ -79,17 +82,26 @@ export function useChatConversation({
     if (!open) setEditingMessageKey(null)
   }, [])
 
-  /** 编辑提交：保存新版本；submit=true 时保存并重发 */
+  /**
+   * 编辑提交：保存新版本；submit=true 时保存并重发。
+   *
+   * 重发只复用被编辑的这条 user 消息：截断其后的旧回答 / 错误气泡，并以
+   * ``appendUserMessage: false`` 发送 —— 否则界面会多出一条同样的用户输入
+   * （编辑前的那条 + 新追加的一条），看起来像「用户输入被重复发送」。
+   */
   const applyEdit = useCallback(
     (newContent: string, submit: boolean) => {
       if (!editingMessageKey) return
-      const target = messages.find(
+      const index = messages.findIndex(
         (message) => message.key === editingMessageKey
       )
-      if (!target) return
+      if (index < 0) return
+      const target = messages[index]
+      const previousContent = getCurrentMessageContent(target)
+      const resend = submit && previousContent !== newContent
 
-      updateMessages((prev) =>
-        prev.map((message) => {
+      updateMessages((prev) => {
+        const next = prev.map((message) => {
           if (message.key !== editingMessageKey) return message
           return {
             ...message,
@@ -102,14 +114,16 @@ export function useChatConversation({
             ],
           }
         })
-      )
+        // 重发 = 截断重建：编辑的 user 消息之后是旧回答 / 错误气泡，不再保留
+        return resend ? next.slice(0, index + 1) : next
+      })
       setEditingMessageKey(null)
 
-      if (submit) {
-        const previousContent = getCurrentMessageContent(target)
-        if (previousContent !== newContent) {
-          sendChat(newContent)
-        }
+      if (resend) {
+        sendChat(newContent, {
+          historyMessages: messages.slice(0, index),
+          appendUserMessage: false,
+        })
       }
     },
     [editingMessageKey, messages, sendChat, updateMessages]
@@ -117,11 +131,26 @@ export function useChatConversation({
 
   const handleDeleteMessage = useCallback(
     (message: ChatMessage) => {
-      updateMessages((prev) =>
-        prev.filter((item) => item.key !== message.key)
-      )
+      const remove = () =>
+        updateMessages((prev) =>
+          prev.filter((item) => item.key !== message.key)
+        )
+      if (!deletePersist) {
+        remove()
+        return
+      }
+      // 先落服务端隐藏集合再删本地：失败保留消息，避免「界面删了、刷新又回来」
+      void deletePersist(message)
+        .then(remove)
+        .catch((err) => {
+          toast.error(
+            err instanceof Error && err.message
+              ? err.message
+              : '删除失败，请重试'
+          )
+        })
     },
-    [updateMessages]
+    [deletePersist, updateMessages]
   )
 
   /** 撤销修改（studio_restore_version，恢复产生新版本不覆盖；待后端立项） */

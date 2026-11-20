@@ -45,6 +45,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # INT-2529：同时加入 agent 内部网络，供 agent_service 直连（其不入默认网络）。
+    networks:
+      - default
+      - agent_internal
     logging:
       driver: json-file
       options:
@@ -61,6 +65,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - default
+      - agent_internal
 
   # ==================== 数据库结构引导 job（一次性，门控后端服务启动）====================
   # 全新库初始化链（scripts/migrations/README.md）：建表 → 202608 结构 + RBAC 种子 →
@@ -125,6 +132,16 @@ services:
       retries: 5
       start_period: 20s
     restart: unless-stopped
+    # INT-2591：agent_service 的 OSS_ENDPOINT=http://rustfs:9000，但它按
+    # INT-2529 只挂 agent_internal / agent_egress、不挂默认网络，此前 rustfs
+    # 仅在 default 上 → 容器内 rustfs 主机名解析不到（NO_DNS），Skill fork /
+    # zip 导入复制 references 到对象存储时 EndpointConnectionError → 500。
+    # 按本文件既有约定「新增被 agent 依赖的容器需同时加入 agent_internal」，
+    # 让 rustfs 进内部网络（agent_service 不进 default，保住 INT-2529 的入站面）。
+    # rustfs 是 S3 服务端，无出网需求；控制台/预签名仍走 default + 宿主端口映射。
+    networks:
+      - default
+      - agent_internal
 
   api_gateway:
     # INT-2373：Docker 引擎抖动/重启后长驻业务容器曾整批 Exited(255) 不自愈。
@@ -159,8 +176,10 @@ services:
       - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=51061
-      - E2E_TEST_SERVICE_HOST=e2e_test_service
-      - E2E_TEST_SERVICE_GRPC_PORT=50051
+      # e2e 默认跑宿主机 :50051（stack.py 拉起）；隔离栈用容器形态时经
+      # E2E_TEST_SERVICE_HOST/GRPC_PORT 覆盖为 e2e_test_service:50051
+      - E2E_TEST_SERVICE_HOST=${E2E_TEST_SERVICE_HOST:-host.docker.internal}
+      - E2E_TEST_SERVICE_GRPC_PORT=${E2E_TEST_SERVICE_GRPC_PORT:-50051}
       - API_TEST_SERVICE_HOST=api_test_service
       - API_TEST_SERVICE_GRPC_PORT=51071
       - EVALUATION_SERVICE_HOST=evaluation_service
@@ -180,11 +199,29 @@ services:
       - JWT_EXPIRE_HOURS=${JWT_EXPIRE_HOURS:-24}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
       - DATA_TRANSFER_TMP_DIR=/app/storage/data_transfer
+      # INT-2456：Agent 运行底座代理与总开关。开关默认关闭：关闭时
+      # /api/v1/agent 的会话 / Run / provider 接口返回 503 AGENT_DISABLED，
+      # 不转发到 agent_service；任务/用例/报告等人工流程完全不受影响。
+      # 开启需在 .env 置 AGENT_ENABLED=true（agent_service 不发布宿主端口，
+      # 只能经网关访问，网关是该开关的唯一执行点）。
+      - AGENT_SERVICE_URL=http://agent_service:5011
+      - AGENT_ENABLED=${AGENT_ENABLED:-false}
+      # INT-2478：总闸之上的灰度白名单（不是第二个开关）。两者都空 = 全员放行；
+      # 配置后只有命中租户 / 用户的请求可用，未命中返回同一 503 AGENT_DISABLED。
+      - AGENT_GRAY_TENANTS=${AGENT_GRAY_TENANTS:-}
+      - AGENT_GRAY_USERS=${AGENT_GRAY_USERS:-}
+      - AGENT_SERVICE_TIMEOUT_SECONDS=${AGENT_SERVICE_TIMEOUT_SECONDS:-30}
+      - AGENT_DEFAULT_TENANT_ID=${AGENT_DEFAULT_TENANT_ID:-default}
+      # INT-2476：GET /api/v1/agent/skill 的平台包按 skills/ 生成（与
+      # agent_service 同一批 Skill 资产）。只读挂载，任何容器内写入都是缺陷。
+      - AGENT_SKILLS_ROOT=/app/skills
     volumes:
       # 与 task_service 共享：数据导入/导出 ZIP 中转（INT-25），两容器必须挂同一卷
       - data_transfer_tmp:/app/storage/data_transfer
       # INT-81：服务运行日志/业务日志统一卷（api_gateway 读取侧与写入侧必须同卷）
       - service_logs:/app/logs
+      # INT-2476：平台 Skill 顶层只读（外部 Skill 包下载按它生成，单一事实源）
+      - ../skills:/app/skills:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -206,6 +243,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    # INT-2529：网关是 agent_service 的唯一入站方（默认网络 + agent 内部网络）。
+    networks:
+      - default
+      - agent_internal
 
   task_service:
     restart: unless-stopped
@@ -233,8 +274,8 @@ services:
       # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
       - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - GRPC_PORT=51061
-      - E2E_TEST_SERVICE_HOST=e2e_test_service
-      - E2E_TEST_SERVICE_GRPC_PORT=50051
+      - E2E_TEST_SERVICE_HOST=${E2E_TEST_SERVICE_HOST:-host.docker.internal}
+      - E2E_TEST_SERVICE_GRPC_PORT=${E2E_TEST_SERVICE_GRPC_PORT:-50051}
       - API_TEST_SERVICE_HOST=api_test_service
       - API_TEST_SERVICE_PORT=5003
       - API_TEST_SERVICE_GRPC_PORT=51071
@@ -330,6 +371,10 @@ services:
       start_period: 20s
 
   e2e_test_service:
+    # 默认由宿主机进程提供（stack.py → scripts/host_services，:5002/:50051）：
+    # e2e 执行要触达本机 USB/ADB/声卡，且与 device_service 同宿主便于排障。
+    # 容器形态仅供隔离测试栈显式启用：docker compose --profile container-e2e up -d
+    profiles: ["container-e2e"]
     restart: unless-stopped
     build:
       context: ..
@@ -537,6 +582,128 @@ services:
       retries: 5
       start_period: 20s
 
+  # ==================== Agent 运行底座（INT-2456，方案 07 §12.1）====================
+  # 唯一 Agent Loop 宿主。**不发布宿主端口**（与 api_test_service 同口径）：
+  # agent_service 只消费网关转发来的身份头（X-User-Id / X-Tenant-Id），
+  # 暴露到宿主等于把身份头变成可伪造的授权入口。宿主调试按需在
+  # compose.override.yml 里对单实例追加 ports 映射。
+  #
+  # 总开关在网关（AGENT_ENABLED，缺省 false）：本服务随之常驻但不可达，
+  # 关闭态不产生任何后台 run，人工业务流程零影响。agent_service 也消费同一个
+  # 开关，但只用于启动期恢复投递门控（INT-2529），不新增第二个开关名。
+  agent_service:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.agent_service
+      args: *backend-build-args
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
+      - REDIS_URL=redis://redis:6379
+      # shared.infrastructure.config.BaseConfig 在导入期强校验 OSS 凭据
+      # （按各服务统一口径），即便 M0 不用对象存储也必须注入，否则启动即
+      # ConfigValidationError。取值与其余后端服务同源。
+      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=agent_service
+      - SERVICE_NAME=agent_service
+      - PORT=5011
+      # dev/prod 口径决定主密钥是否强制（prod 缺 AGENT_CREDENTIAL_MASTER_KEY
+      # 时本服务启动失败，方案 07 §13-8）；缺省 dev 与现役栈一致。
+      - LOG_ENVIRONMENT=${LOG_ENVIRONMENT:-dev}
+      # ===== 用户模型供应商密钥库（INT-2488 / §6.4）=====
+      # 生产必填：32 字节 base64 或 hex，或 {"版本": "密钥"} JSON 支持轮换。
+      # 缺失时 dev 仅告警（provider 保存/解密 503），prod 拒绝启动。
+      - AGENT_CREDENTIAL_MASTER_KEY=${AGENT_CREDENTIAL_MASTER_KEY:-}
+      - AGENT_CREDENTIAL_KEY_VERSION=${AGENT_CREDENTIAL_KEY_VERSION:-1}
+      # 平台 Key 分支未实现，只保留 false 位（置 true 服务拒绝启动）。
+      - AGENT_ALLOW_PLATFORM_KEY=false
+      - AGENT_MODEL_CATALOG_PATH=/app/agent_service/config/model_catalog.json
+      # ===== 三个卷的路径（挂载见下方 volumes，缺一即启动失败）=====
+      - AGENT_SKILLS_ROOT=/app/skills
+      - AGENT_MEMORY_ROOT=/app/memory
+      # ===== 身份（网关转发身份头；直连无头一律 401）=====
+      - AGENT_AUTH_REQUIRED=true
+      - AGENT_DEFAULT_TENANT_ID=${AGENT_DEFAULT_TENANT_ID:-default}
+      # 总开关同源传入（INT-2529）：仅门控启动期恢复投递，关闭态不产生任何
+      # 后台 run；网关入口门控仍是唯一入口执行点。
+      - AGENT_ENABLED=${AGENT_ENABLED:-false}
+      # ===== LLM 运行时（供应商/模型由用户自带，§6.4；此处只有运行时参数）=====
+      - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-60}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.2}
+      # ===== 每 run 预算（§9.3；缺省取 agent_service/config/agent_defaults.json）=====
+      - AGENT_MAX_ROUNDS=${AGENT_MAX_ROUNDS:-12}
+      - AGENT_MAX_TOOL_CALLS=${AGENT_MAX_TOOL_CALLS:-40}
+      - AGENT_MAX_TOKENS=${AGENT_MAX_TOKENS:-0}
+      - AGENT_MAX_DURATION_SECONDS=${AGENT_MAX_DURATION_SECONDS:-600}
+      - AGENT_MAX_OUTPUT_BYTES=${AGENT_MAX_OUTPUT_BYTES:-262144}
+      - AGENT_WORKER_CONCURRENCY=${AGENT_WORKER_CONCURRENCY:-4}
+      # ===== SSE 唤醒 / 启动恢复 =====
+      - AGENT_EVENT_WAKEUP_BACKEND=${AGENT_EVENT_WAKEUP_BACKEND:-redis}
+      # 启动恢复只在总开关开启时生效（INT-2529：关闭态不产生任何后台 run）。
+      - AGENT_RECOVERY_ON_STARTUP=${AGENT_RECOVERY_ON_STARTUP:-true}
+      # ===== 沙箱（§7；agent_service 不持有 docker.sock）=====
+      # runner_http：执行只经独立 runner/sidecar（AGENT_SANDBOX_RUNNER_URL）；
+      # 未部署 runner 时 execute 明确失败，不回落本机 docker。
+      - AGENT_SANDBOX_EXECUTOR_MODE=${AGENT_SANDBOX_EXECUTOR_MODE:-runner_http}
+      - AGENT_SANDBOX_RUNNER_URL=${AGENT_SANDBOX_RUNNER_URL:-}
+      - AGENT_SANDBOX_RUNNER_TOKEN=${AGENT_SANDBOX_RUNNER_TOKEN:-}
+      # T2 可信运行时（gVisor runsc / Firecracker）：缺失时 T2 请求报
+      # T2_RUNTIME_UNAVAILABLE，绝不静默降级 T1（方案 07 §7，INT-2456 拍板#2）。
+      - AGENT_T2_RUNTIME=${AGENT_T2_RUNTIME:-runsc}
+      # ===== 意图工具回源（INT-2529）=====
+      # 工具经网关 REST 执行。容器内 agent_service 监听 5011 而非 5000，缺省回落
+      # http://127.0.0.1:5000 会把每次工具调用打到容器自身（ConnectError），
+      # 而容器启动与 /health 全程正常——必须在编排层显式指向网关服务名。
+      - AGENT_TOOL_GATEWAY_BASE_URL=http://api_gateway:5000
+      # ===== onboarding 交付包 staging（INT-2491）=====
+      # 只写这个卷；不写生产驱动 / 适配器注册表。staging 冒烟按 driver_ref
+      # 从这里读取，跨重启保留。
+      - AGENT_ONBOARDING_STAGING_DIR=/app/storage/onboarding_staging
+    volumes:
+      # skills/ 顶层只读（§12.1「skills/ 顶层只读挂载」）：Skill 单一事实源，
+      # 任何容器内写入都是缺陷，故 ro。
+      - ../skills:/app/skills:ro
+      # 长期记忆写卷（§8.6）：按 tenant/owner 隔离的文件树，跨重启保留。
+      - agent_memory:/app/memory
+      # onboarding 交付包 staging（INT-2491）：只落 staging，不写生产目录。
+      - agent_onboarding_staging:/app/storage/onboarding_staging
+      # 配置目录只读：model_catalog.json（窗口/输出上限）+ agent_defaults.json
+      # （预算/压缩/Skill 阈值）。改配置需重启容器，避免运行期口径漂移。
+      - ../agent_service/config:/app/agent_service/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db_bootstrap:
+        condition: service_completed_successfully
+      api_gateway:
+        condition: service_healthy
+    healthcheck:
+      # /health 校验 DB / Redis 连通（INT-2456：不再是静态 ok）。
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5011/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # INT-2529：只加入专用内部网络，不挂默认网络 —— 其余业务容器无法凭
+    # X-User-Id 头绕过网关开关直连建 run（agent_service 只信网关注入的身份）。
+    # agent_egress 仅承载出网（用户自带 LLM 供应商在集群外），成员只有本服务，
+    # 不构成第二条入站路径。新增被 agent 依赖的容器需同时加入 agent_internal。
+    networks:
+      - agent_internal
+      - agent_egress
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
   api_test_service:
     restart: unless-stopped
     build:
@@ -602,10 +769,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.frontend
-      args:
-        # INT-181：必填——认证模式（off|dev|prod），须与 api_gateway 的 AUTH_MODE 一致；
-        # 未显式设置时 compose 直接报错退出，禁止静默默认 off
-        VITE_AUTH_MODE: ${VITE_AUTH_MODE:?VITE_AUTH_MODE must be set explicitly (off|dev|prod), see docs/oauth.md}
+      # 认证模式由前端运行时 GET /auth/mode 读取（INT-180），不再有构建期 VITE_AUTH_MODE 入参。
     ports:
       - "${FRONTEND_PORT:-8080}:80"
     depends_on:
@@ -615,7 +779,26 @@ services:
 volumes:
   # INT-81：服务运行日志/业务日志统一卷
   service_logs:
+  # INT-2456：agent_service 长期记忆卷（§8.6 按 tenant/owner 隔离的文件树；
+  # 不建表、不走 OSS，重启与镜像重建后保留）。
+  agent_memory:
+  # INT-2491：onboarding 交付包 staging 卷（只读生产注册表之外的 staging 包）
+  agent_onboarding_staging:
   postgres_data:
   rustfs_data:
   # 网关 ↔ task_service 数据导入/导出 ZIP 中转卷（INT-25 链路依赖）
   data_transfer_tmp:
+
+networks:
+  # 默认网络：现役全栈互访口径（未显式声明 networks 的服务自动加入）。
+  default:
+  # INT-2529：agent_service 专用内部网络，成员为 api_gateway / postgres /
+  # redis / rustfs（INT-2591：rustfs 是 agent_service 的 OSS 后端，按「被 agent
+  # 依赖的容器同时加入 agent_internal」的约定入网；其它业务容器无入站改动）。
+  # internal 断掉该网络的出网与外部路由，收掉「同网络容器凭 X-User-Id 头绕过
+  # 网关开关直连建 run」的面。
+  agent_internal:
+    internal: true
+  # agent_service 出网：用户自带 LLM 供应商在集群外，内部网络不能出网；
+  # 该网络只有 agent_service 一个成员，不构成第二条入站路径。
+  agent_egress:

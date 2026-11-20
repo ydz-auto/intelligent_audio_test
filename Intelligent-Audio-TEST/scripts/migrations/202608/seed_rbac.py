@@ -4,7 +4,8 @@ RBAC 种子数据初始化
 ===================================
 
 向 permissions / roles / role_permissions 表插入系统内置数据：
-  - 130 个权限点（permissions）
+  - 134 个权限点（permissions；INT-2549 新增 agent:skill:read/manage，
+    INT-2551 新增 agent:skill:admin）
   - 5 个系统角色（roles: admin / tester / algo_engineer / device_admin / guest）
   - 超级通配权限 * → admin
   - tester / algo_engineer / device_admin / guest 各自的角色-权限映射
@@ -40,7 +41,7 @@ POSTGRES_URI = os.environ.get(
 
 
 # ========================================================================
-# 权限点定义（130 个）
+# 权限点定义（134 个）
 # ========================================================================
 
 PERMISSIONS = [
@@ -197,6 +198,13 @@ PERMISSIONS = [
     ('auth:refresh', '刷新令牌'),
     ('auth:logout', '登出'),
     ('auth:me', '获取当前用户信息'),
+    # Agent 模型供应商 (1)（INT-2488：用户自带供应商 / Key / 上下文窗口）
+    ('agent:provider:manage', '管理自己的模型供应商与密钥'),
+    # 自定义 Skill (2)（INT-2549：本人 Skill 的读 / 写与管理）
+    ('agent:skill:read', '查看自己的自定义 Skill'),
+    ('agent:skill:manage', '创建 / 修改 / 发布 / 停用 / 导入导出自己的 Skill'),
+    # TENANT 级共享 Skill (1)（INT-2551：租户管理员的写入口 + 发布审核）
+    ('agent:skill:admin', '管理同租户共享 Skill（创建 / 审核 / 强制停用）'),
     # 超级通配 (1)
     ('*', '超级权限（通配所有操作）'),
 ]
@@ -253,6 +261,10 @@ TESTER_PERMS = [
     'status:read', 'option:read', 'option:write',
     'sse:read',
     'auth:login', 'auth:callback', 'auth:refresh', 'auth:logout', 'auth:me',
+    # Agent 模型供应商（INT-2488：测试工程师自带 Key 跑 Agent）
+    'agent:provider:manage',
+    # 自定义 Skill（INT-2549：测试工程师维护自己的 Skill）
+    'agent:skill:read', 'agent:skill:manage',
 ]
 
 # algo_engineer 权限
@@ -286,6 +298,10 @@ ALGO_ENGINEER_PERMS = [
     'status:read', 'option:read',
     'sse:read',
     'auth:login', 'auth:callback', 'auth:refresh', 'auth:logout', 'auth:me',
+    # Agent 模型供应商（INT-2488：算法工程师自带 Key 跑 Agent）
+    'agent:provider:manage',
+    # 自定义 Skill（INT-2549：算法工程师维护自己的 Skill）
+    'agent:skill:read', 'agent:skill:manage',
 ]
 
 # device_admin 权限
@@ -399,7 +415,10 @@ def seed_role_permissions(conn, dry_run=False):
     role_map = _get_role_id_map(conn)
 
     role_perm_groups = [
-        ('admin', ['*']),  # admin 持有超级通配权限
+        # INT-2594 P3：admin 显式持有专属管理员码，不再只靠 ``*`` 兜底——
+        # 网关 / 服务端的租户管理员判定把两者都当管理员级授予，自定义租户
+        # 管理员角色照此模式显式授该码即可生效。
+        ('admin', ['*', 'agent:skill:admin']),  # admin 持有超级通配权限
         ('tester', TESTER_PERMS),
         ('algo_engineer', ALGO_ENGINEER_PERMS),
         ('device_admin', DEVICE_ADMIN_PERMS),

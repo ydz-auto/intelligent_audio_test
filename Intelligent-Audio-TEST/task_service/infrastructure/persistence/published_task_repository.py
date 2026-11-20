@@ -824,64 +824,84 @@ class PublishedTaskRepository:
         已存在同 ID 行且（config/algorithm_params/algorithm_type/reference_params
         路径）与冻结数据一致时直接复用；源用例缺失或任一不一致时以新 UUID
         重建只读影子用例（不回写源用例，配置内容以冻结数据为准）。
-        设备路由按快照 caseDevices 重映射到新用例 ID。
+        设备路由按快照 caseDevices 重映射到新用例 ID——同一用例可有多条路由
+        （INT-604 混选：设备侧 + API 侧 / 多台设备），快照 caseDevices 按
+        TaskCase 逐路由冻结，1 用例 × N 目标即 N 条。
+
+        INT-2662：冻结用例同样按 TaskCase 逐路由重复出现（同一 caseId 的 N 条
+        冻结体只差路由），此前按 case_id 建单值映射（末条覆盖）+ 每条冻结体各落
+        一行，导致同一 (用例, 路由) 重复插入、撞 uq_task_case_route。现按 caseId
+        只还原一次用例，路由按 caseDevices 全量展开并按 (用例, 路由) 去重。
 
         Returns:
-            [(new_case_id, device_type, device_id, lab_id)]，顺序与 frozen_cases 一致。
+            [(new_case_id, device_type, device_id, lab_id)]，每个 (用例, 路由)
+            一条；caseDevices 无该用例时按无路由兜底（存量引用轨）。
         """
         session = get_db_session()
         restored = []
         try:
-            device_map = {
-                str(item.get('case_id')): item
-                for item in (case_devices or [])
-                if item.get('case_id') is not None
-            }
+            device_map = {}
+            for item in (case_devices or []):
+                case_id = item.get('case_id')
+                if case_id is not None:
+                    device_map.setdefault(str(case_id), []).append(item)
+            restored_ids = {}
+            seen_routes = set()
+
+            def _restore_case(old_id, frozen):
+                """按冻结数据复用源用例或重建确定性影子用例，返回可用用例 ID。"""
+                existing = session.get(TestCase, old_id)
+                if existing is not None and not existing.deleted and self._case_matches_frozen(existing, frozen):
+                    return old_id
+                shadow_id = str(uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f'int303-published-task-frozen-case:{old_id}:'
+                    f'{json.dumps(frozen.get("config") or {}, ensure_ascii=False, sort_keys=True, default=str)}'
+                    f':{frozen.get("name") or ""}',
+                ))
+                probe = session.get(TestCase, shadow_id)
+                if probe is None:
+                    session.add(TestCase(
+                        id=shadow_id,
+                        name=frozen.get('name') or str(old_id),
+                        description=frozen.get('description'),
+                        config=copy.deepcopy(frozen.get('config') or {}),
+                        algorithm_params=copy.deepcopy(frozen.get('algorithmParams') or None),
+                        reference_params=self._frozen_reference_params_column(frozen),
+                        algorithm_type=frozen.get('algorithmType'),
+                    ))
+                    session.flush()
+                    for tag_name in frozen.get('tags') or []:
+                        tag = session.query(Tag).filter_by(name=tag_name).first()
+                        if not tag:
+                            tag = Tag(name=tag_name, created_at=datetime.now(_UTC_PLUS_8),
+                                      updated_at=datetime.now(_UTC_PLUS_8))
+                            session.add(tag)
+                            session.flush()
+                        session.add(TestCaseTag(
+                            test_case_id=shadow_id, tag_id=tag.id,
+                            created_at=datetime.now(_UTC_PLUS_8),
+                        ))
+                    session.flush()
+                return shadow_id
+
             for frozen in frozen_cases or []:
                 old_id = frozen.get('caseId')
                 if old_id is None:
                     continue
-                existing = session.get(TestCase, old_id)
-                if existing is not None and not existing.deleted and self._case_matches_frozen(existing, frozen):
-                    new_id = old_id
-                else:
-                    new_id = str(uuid.uuid5(
-                        uuid.NAMESPACE_URL,
-                        f'int303-published-task-frozen-case:{old_id}:'
-                        f'{json.dumps(frozen.get("config") or {}, ensure_ascii=False, sort_keys=True, default=str)}'
-                        f':{frozen.get("name") or ""}',
-                    ))
-                    probe = session.get(TestCase, new_id)
-                    if probe is None:
-                        session.add(TestCase(
-                            id=new_id,
-                            name=frozen.get('name') or str(old_id),
-                            description=frozen.get('description'),
-                            config=copy.deepcopy(frozen.get('config') or {}),
-                            algorithm_params=copy.deepcopy(frozen.get('algorithmParams') or None),
-                            reference_params=self._frozen_reference_params_column(frozen),
-                            algorithm_type=frozen.get('algorithmType'),
-                        ))
-                        session.flush()
-                        for tag_name in frozen.get('tags') or []:
-                            tag = session.query(Tag).filter_by(name=tag_name).first()
-                            if not tag:
-                                tag = Tag(name=tag_name, created_at=datetime.now(_UTC_PLUS_8),
-                                          updated_at=datetime.now(_UTC_PLUS_8))
-                                session.add(tag)
-                                session.flush()
-                            session.add(TestCaseTag(
-                                test_case_id=new_id, tag_id=tag.id,
-                                created_at=datetime.now(_UTC_PLUS_8),
-                            ))
-                        session.flush()
-                dev = device_map.get(str(old_id), {})
-                restored.append((
-                    new_id,
-                    dev.get('device_type'),
-                    str(dev['device_id']) if dev.get('device_id') is not None else None,
-                    dev.get('lab_id'),
-                ))
+                map_key = str(old_id)
+                new_id = restored_ids.get(map_key)
+                if new_id is None:
+                    new_id = _restore_case(old_id, frozen)
+                    restored_ids[map_key] = new_id
+                for dev in (device_map.get(map_key) or [{}]):
+                    device_type = dev.get('device_type')
+                    device_id = str(dev['device_id']) if dev.get('device_id') is not None else None
+                    route_key = (new_id, device_type or '', device_id or '')
+                    if route_key in seen_routes:
+                        continue
+                    seen_routes.add(route_key)
+                    restored.append((new_id, device_type, device_id, dev.get('lab_id')))
             session.commit()
             return restored
         except Exception:
@@ -1114,11 +1134,18 @@ class PublishedTaskRepository:
         """按快照创建新的日常任务（执行已发布任务的复用链路）。
 
         用例级 device_type/device_id 从快照 caseDevices 还原
-        （差异#2 收尾：执行路由唯一依据，task.type 已废弃）。
+        （差异#2 收尾：执行路由唯一依据，task.type 已废弃）；同一用例可有多条
+        路由（INT-604 混选：多台设备 / 设备 + API），路由按
+        (case_id, device_type, device_id) 去重后逐条落 TaskCase，与建任务
+        `_add_task_relations` 同一口径。total_cases 按去重用例数（一个用例 ×
+        多路由只算一条）。
 
         INT-303：restored_cases 非空时（冻结用例还原模式），用例路由按还原
         结果 [(case_id, device_type, device_id, lab_id)] 写入——保证源用例
-        被删/改名后仍按冻结配置执行；case_ids 参数此时仅用于 total_cases 计数。
+        被删/改名后仍按冻结配置执行。
+
+        INT-2662：落库前统一去重，同一 (用例, 路由) 只落一行，避免撞
+        uq_task_case_route。
 
         Returns:
             新任务 ID。
@@ -1126,6 +1153,7 @@ class PublishedTaskRepository:
         # 任务/用例/标签关联的时间列一律 UTC naive（INT-2283）；Tag 不在本条链路，
         # 由模型默认值（本地墙钟）负责，这里不传。
         now = utcnow()
+        route_rows = self._resolve_task_case_routes(snapshot_config, case_ids, restored_cases)
         session = get_db_session()
         try:
             from shared.infrastructure.user_context import get_current_user_id
@@ -1136,7 +1164,7 @@ class PublishedTaskRepository:
                 config=snapshot_config.get('config') or None,
                 algorithm_type=snapshot_config.get('algorithmType'),
                 algorithm_params=snapshot_config.get('algorithmParams') or None,
-                total_cases=len(case_ids),
+                total_cases=len({str(row[0]) for row in route_rows}),
                 completed_cases=0,
                 failed_cases=0,
                 created_by_user_id=get_current_user_id(),
@@ -1147,38 +1175,18 @@ class PublishedTaskRepository:
             session.flush()
             task_id = new_task.id
 
-            if restored_cases:
-                for case_id, device_type, device_id, lab_id in restored_cases:
-                    session.add(TaskCase(
-                        task_id=task_id,
-                        test_case_id=case_id,
-                        status=TaskCaseStatus.PENDING,
-                        execution_status=ExecutionStatus.PENDING,
-                        evaluation_status=EvaluationStatus.PENDING,
-                        device_type=device_type,
-                        device_id=device_id,
-                        lab_id=lab_id,
-                        created_at=now,
-                    ))
-            else:
-                device_map = {
-                    str(item.get('case_id')): item
-                    for item in (snapshot_config.get('caseDevices') or [])
-                    if item.get('case_id') is not None
-                }
-                for case_id in case_ids:
-                    dev = device_map.get(str(case_id), {})
-                    session.add(TaskCase(
-                        task_id=task_id,
-                        test_case_id=case_id,
-                        status=TaskCaseStatus.PENDING,
-                        execution_status=ExecutionStatus.PENDING,
-                        evaluation_status=EvaluationStatus.PENDING,
-                        device_type=dev.get('device_type') or None,
-                        device_id=str(dev['device_id']) if dev.get('device_id') is not None else None,
-                        lab_id=dev.get('lab_id') or None,
-                        created_at=now,
-                    ))
+            for case_id, device_type, device_id, lab_id in route_rows:
+                session.add(TaskCase(
+                    task_id=task_id,
+                    test_case_id=case_id,
+                    status=TaskCaseStatus.PENDING,
+                    execution_status=ExecutionStatus.PENDING,
+                    evaluation_status=EvaluationStatus.PENDING,
+                    device_type=device_type,
+                    device_id=device_id,
+                    lab_id=lab_id,
+                    created_at=now,
+                ))
             for device_id in (snapshot_config.get('deviceIds') or []):
                 session.add(TaskDevice(task_id=task_id, device_id=device_id))
             for api_id in (snapshot_config.get('apiIds') or []):
@@ -1199,6 +1207,50 @@ class PublishedTaskRepository:
             raise
         finally:
             session.close()
+
+    @staticmethod
+    def _resolve_task_case_routes(snapshot_config, case_ids, restored_cases=None):
+        """解析执行建任务的 (用例, 路由) 行，按路由键去重。
+
+        Args:
+            snapshot_config: 发布快照（caseDevices 为逐用例目标）
+            case_ids: 用例 ID 列表（快照 caseIds；冻结模式仅占位）
+            restored_cases: 冻结还原结果 [(case_id, device_type, device_id, lab_id)]，
+                非空时以其为准（快照复现，源用例删改后仍按发布时配置执行）。
+
+        Returns:
+            [(case_id, device_type, device_id, lab_id)]，每个 (用例, 路由) 一条。
+            caseDevices 无该用例时按无路由兜底（存量引用轨，与改动前一致）。
+        """
+        rows = []
+        seen_routes = set()
+
+        def _add(case_id, device_type, device_id, lab_id):
+            route_key = (str(case_id), device_type or '', device_id or '')
+            if route_key in seen_routes:
+                return
+            seen_routes.add(route_key)
+            rows.append((
+                case_id,
+                device_type,
+                str(device_id) if device_id is not None else None,
+                lab_id,
+            ))
+
+        if restored_cases:
+            for case_id, device_type, device_id, lab_id in restored_cases:
+                _add(case_id, device_type, device_id, lab_id)
+            return rows
+
+        device_map = {}
+        for item in (snapshot_config.get('caseDevices') or []):
+            case_id = item.get('case_id')
+            if case_id is not None:
+                device_map.setdefault(str(case_id), []).append(item)
+        for case_id in case_ids:
+            for dev in (device_map.get(str(case_id)) or [{}]):
+                _add(case_id, dev.get('device_type'), dev.get('device_id'), dev.get('lab_id'))
+        return rows
 
     # ==================== 详情组装数据 ====================
 

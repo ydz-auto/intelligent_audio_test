@@ -11,6 +11,7 @@ from api_gateway.domain.repositories.acl.device_acl_repository import (
     DeviceAclRepository,
     DeviceGroupAclRepository,
     DeviceMonitorAclRepository,
+    DeviceUiAclRepository,
     PlaybackConfigAclRepository,
 )
 
@@ -91,6 +92,27 @@ class DeviceAclRepositoryImpl(DeviceAclRepository):
     def get_status_history(self, query: dict) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import device_config_service
         return _wrap(device_config_service.get_status_history(query))
+
+
+class DeviceUiAclRepositoryImpl(DeviceUiAclRepository):
+    """device_ui 实体 ACL 实现（INT-2578 设备 UI 探索三端点）。
+
+    委托 ``device_ui_proxy`` 调 gRPC ``DeviceUiService``；信封 ``code``
+    为 ``UiCaptureErrorCode`` 字符串码，原样保留给应用层映射 HTTP。
+    """
+
+    def dump_ui_tree(self, device_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import device_ui_proxy
+        return _wrap(device_ui_proxy.dump_ui_tree(device_id))
+
+    def perform_ui_action(self, device_id, action_type, node=None, params=None) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import device_ui_proxy
+        return _wrap(device_ui_proxy.perform_ui_action(
+            device_id, action_type, node=node, params=params))
+
+    def capture_ui_screenshot(self, device_id, label=None) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import device_ui_proxy
+        return _wrap(device_ui_proxy.capture_ui_screenshot(device_id, label=label))
 
 
 class DeviceGroupAclRepositoryImpl(DeviceGroupAclRepository):

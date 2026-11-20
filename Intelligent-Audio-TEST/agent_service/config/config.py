@@ -1,0 +1,625 @@
+# -*- coding: utf-8 -*-
+"""agent_service 领域配置。
+
+所有预算、阈值、超时、并发数与模型参数一律配置化（env + 本目录
+``agent_defaults.json``），代码中不硬编码。环境变量前缀 ``AGENT_``；
+模型调用不再读服务端统一 LLM Key / model（§6.4）：base_url / model /
+protocol / api_key 全部来自用户自己的 ``agent_llm_provider``，本文件只保留
+运行时超时 / 温度 / 流式选项与「有效窗口 → 预算」的派生系数。
+"""
+import json
+import os
+from pathlib import Path
+
+from agent_service.domain.model.skill import SKILL_FILE_NAME
+from shared.config.service_ports import AGENT_SERVICE_HTTP_PORT, API_GATEWAY_PORT
+from shared.infrastructure.config import BaseConfig, _get_bool, _get_float, _get_int
+
+_SERVICE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PROJECT_DIR = os.path.dirname(_SERVICE_DIR)
+
+
+def _load_defaults() -> dict:
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        'agent_defaults.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        # 配置文件缺失/损坏不阻断启动：全部预算仍可由环境变量给出
+        return {}
+
+
+_DEFAULTS = _load_defaults()
+_BUDGET_DEFAULTS = _DEFAULTS.get('budget', {})
+_AUTO_BUDGET_DEFAULTS = _DEFAULTS.get('auto_budget', {})
+_AUTO_DEFAULTS = _DEFAULTS.get('auto', {})
+_CONTEXT_DEFAULTS = _DEFAULTS.get('context', {})
+_STREAM_DEFAULTS = _DEFAULTS.get('event_stream', {})
+_SKILL_DEFAULTS = _DEFAULTS.get('skills', {})
+_APPROVAL_DEFAULTS = _DEFAULTS.get('approval', {})
+_DRIVER_PROPOSAL_DEFAULTS = _DEFAULTS.get('driver_proposal', {})
+_ONBOARDING_DEFAULTS = _DEFAULTS.get('onboarding', {})
+_EXPLORATION_DEFAULTS = _DEFAULTS.get('exploration', {})
+
+
+class Config(BaseConfig):
+    """agent_service 配置（HTTP 端口 5011，见 shared/config/service_ports.py）。"""
+
+    PORT = _get_int('PORT', AGENT_SERVICE_HTTP_PORT)
+    SERVICE_NAME = 'agent_service'
+    DB_POOL_SIZE = _get_int('AGENT_DB_POOL_SIZE', 5)
+
+    # ===== LLM 运行时参数（供应商由用户自带，见下）=====
+    LLM_TIMEOUT_SECONDS = _get_float('LLM_TIMEOUT_SECONDS', 60.0)
+    LLM_TEMPERATURE = _get_float('LLM_TEMPERATURE', 0.2)
+    LLM_STREAM_INCLUDE_USAGE = _get_bool('LLM_STREAM_INCLUDE_USAGE', True)
+    ANTHROPIC_VERSION = os.environ.get('ANTHROPIC_VERSION', '2023-06-01')
+
+    # ===== 用户模型供应商 / 加密密钥库（§6.4）=====
+    # 平台 Key 分支不实现：开关只保留 false 位，置 true 即拒绝启动。
+    AGENT_ALLOW_PLATFORM_KEY = _get_bool('AGENT_ALLOW_PLATFORM_KEY', False)
+    # 主密钥：单个 base64 32 字节值，或 JSON 对象 {"版本": "密钥"} 支持轮换
+    CREDENTIAL_MASTER_KEY = os.environ.get('AGENT_CREDENTIAL_MASTER_KEY', '')
+    CREDENTIAL_KEY_VERSION = _get_int('AGENT_CREDENTIAL_KEY_VERSION', 1)
+    # 模型目录；空 = 用 agent_service/config/model_catalog.json
+    MODEL_CATALOG_PATH = os.environ.get('AGENT_MODEL_CATALOG_PATH', '').strip()
+    PROVIDER_VERIFY_TIMEOUT_SECONDS = _get_float(
+        'AGENT_PROVIDER_VERIFY_TIMEOUT_SECONDS', 10.0)
+    # 预算与压缩阈值按有效窗口 W 派生（§8.3），不写死 128k。
+    # AUTO 乘数只保留配置位：run 的 Auto 模式属 M1（INT-2477），M0 尚未接线。
+    TOKEN_BUDGET_MULTIPLIER_DEFAULT = _get_int(
+        'AGENT_TOKEN_BUDGET_MULTIPLIER_DEFAULT', 2)
+    TOKEN_BUDGET_MULTIPLIER_AUTO = _get_int(
+        'AGENT_TOKEN_BUDGET_MULTIPLIER_AUTO', 4)
+    OUTPUT_TOKEN_RATIO = _get_float('AGENT_OUTPUT_TOKEN_RATIO', 0.10)
+    OUTPUT_TOKEN_CAP = _get_int('AGENT_OUTPUT_TOKEN_CAP', 8192)
+    COMPACTION_SOFT_RATIO = _get_float('AGENT_COMPACTION_SOFT_RATIO', 0.60)
+    COMPACTION_HARD_RATIO = _get_float('AGENT_COMPACTION_HARD_RATIO', 0.80)
+
+    # ===== 能否直连（网关转发时必带 X-User-Id）=====
+    AUTH_REQUIRED = _get_bool('AGENT_AUTH_REQUIRED', True)
+    DEFAULT_TENANT_ID = os.environ.get('AGENT_DEFAULT_TENANT_ID', 'default')
+
+    # ===== 每 run 预算（§9.3）=====
+    MAX_ROUNDS = _get_int('AGENT_MAX_ROUNDS', int(_BUDGET_DEFAULTS.get('max_rounds', 12)))
+    MAX_TOOL_CALLS = _get_int(
+        'AGENT_MAX_TOOL_CALLS', int(_BUDGET_DEFAULTS.get('max_tool_calls', 40)))
+    # 0 = 普通对话不设累计 token 上限（默认靠上下文压缩 + 轮数 / 工具数 /
+    # 时长 / 输出字节兜底；累计 token 只作计费统计，不用于终止）；
+    # 显式正数作为运营方硬上限（普通对话直接生效）。
+    MAX_TOKENS = _get_int('AGENT_MAX_TOKENS', int(_BUDGET_DEFAULTS.get('max_tokens', 0)))
+    MAX_DURATION_SECONDS = _get_int(
+        'AGENT_MAX_DURATION_SECONDS', int(_BUDGET_DEFAULTS.get('max_duration_seconds', 600)))
+    MAX_OUTPUT_BYTES = _get_int(
+        'AGENT_MAX_OUTPUT_BYTES', int(_BUDGET_DEFAULTS.get('max_output_bytes', 262144)))
+    MAX_CONSECUTIVE_TOOL_FAILURES = _get_int(
+        'AGENT_MAX_CONSECUTIVE_TOOL_FAILURES',
+        int(_DEFAULTS.get('max_consecutive_tool_failures', 3)))
+
+    # ===== Auto 模式预算 / 熔断（INT-2474，§9.3 / §9.4 修订口径）=====
+    # Auto 预算默认值（60 轮 / 120 工具 / 4×W token / 30min / 20MB）；
+    # 留空时使用这里的值；请求侧可上调（Auto 允许放宽，消耗用户自己的 token）。
+    AUTO_MAX_ROUNDS = _get_int(
+        'AGENT_AUTO_MAX_ROUNDS', int(_AUTO_BUDGET_DEFAULTS.get('max_rounds', 60)))
+    AUTO_MAX_TOOL_CALLS = _get_int(
+        'AGENT_AUTO_MAX_TOOL_CALLS',
+        int(_AUTO_BUDGET_DEFAULTS.get('max_tool_calls', 120)))
+    # 0 = 按有效上下文窗口派生（Auto 4×W）；正数作为 Auto 默认值（可被请求上调）
+    AUTO_MAX_TOKENS = _get_int(
+        'AGENT_AUTO_MAX_TOKENS', int(_AUTO_BUDGET_DEFAULTS.get('max_tokens', 0)))
+    AUTO_MAX_DURATION_SECONDS = _get_int(
+        'AGENT_AUTO_MAX_DURATION_SECONDS',
+        int(_AUTO_BUDGET_DEFAULTS.get('max_duration_seconds', 1800)))
+    AUTO_MAX_OUTPUT_BYTES = _get_int(
+        'AGENT_AUTO_MAX_OUTPUT_BYTES',
+        int(_AUTO_BUDGET_DEFAULTS.get('max_output_bytes', 20971520)))
+    # 预算消耗到该比例（含）暂停交用户决策；用户继续后同一暂停点不再触发
+    AUTO_PAUSE_BUDGET_RATIO = _get_float(
+        'AGENT_AUTO_PAUSE_BUDGET_RATIO',
+        float(_AUTO_DEFAULTS.get('pause_budget_ratio', 0.80)))
+    # 连续工具失败到该值暂停（必须小于上面的熔断阈值，否则暂停永远轮不到）
+    AUTO_PAUSE_CONSECUTIVE_FAILURES = _get_int(
+        'AGENT_AUTO_PAUSE_CONSECUTIVE_FAILURES',
+        int(_AUTO_DEFAULTS.get('pause_consecutive_failures', 2)))
+    # 「没有完成标记也不调工具」的空转最多提示几次，超过按完成收口
+    AUTO_MAX_IDLE_TURNS = _get_int(
+        'AGENT_AUTO_MAX_IDLE_TURNS', int(_AUTO_DEFAULTS.get('max_idle_turns', 2)))
+    # 模型宣告目标完成的标记（写进 Auto 系统提示；空值禁止启动）
+    AUTO_COMPLETE_MARKER = os.environ.get(
+        'AGENT_AUTO_COMPLETE_MARKER',
+        str(_AUTO_DEFAULTS.get('complete_marker', '[[AUTO_DONE]]')))
+    # scratchpad 计划摘要长度上限（字符）
+    AUTO_PLAN_MAX_CHARS = _get_int(
+        'AGENT_AUTO_PLAN_MAX_CHARS', int(_AUTO_DEFAULTS.get('plan_max_chars', 800)))
+
+    # ===== 并发 =====
+    WORKER_CONCURRENCY = _get_int(
+        'AGENT_WORKER_CONCURRENCY', int(_DEFAULTS.get('worker_concurrency', 4)))
+    TOOL_MAX_CONCURRENCY = _get_int(
+        'AGENT_TOOL_MAX_CONCURRENCY', int(_DEFAULTS.get('tool_max_concurrency', 8)))
+    TOOL_RESULT_MAX_CHARS = _get_int(
+        'AGENT_TOOL_RESULT_MAX_CHARS', int(_DEFAULTS.get('tool_result_max_chars', 8000)))
+    # 流式期间回读取消标志的间隔（每 N 个片段查一次 DB），避免每片段一次查询
+    CANCEL_DB_CHECK_EVERY = _get_int('AGENT_CANCEL_DB_CHECK_EVERY', 16)
+    # 重建上下文 / 恢复时单 run 扫描事件的页上限
+    EVENT_SCAN_LIMIT = _get_int('AGENT_EVENT_SCAN_LIMIT', 10000)
+
+    # ===== 上下文（§5.1 第 1 步 + §8 无感压缩）=====
+    CONTEXT_MAX_RUNS = _get_int(
+        'AGENT_CONTEXT_MAX_RUNS', int(_CONTEXT_DEFAULTS.get('max_runs', 20)))
+    CONTEXT_MAX_MESSAGES = _get_int(
+        'AGENT_CONTEXT_MAX_MESSAGES', int(_CONTEXT_DEFAULTS.get('max_messages', 120)))
+    CONTEXT_RECENT_MESSAGES = _get_int(
+        'AGENT_CONTEXT_RECENT_MESSAGES', int(_CONTEXT_DEFAULTS.get('recent_messages', 50)))
+    # 最近 N 轮原文永不压缩（§8.4-6，N 配置化）
+    CONTEXT_KEEP_RECENT_TURNS = _get_int(
+        'AGENT_CONTEXT_KEEP_RECENT_TURNS',
+        int(_CONTEXT_DEFAULTS.get('keep_recent_turns', 3)))
+    # L1：摘要长度 / 单条摘要上限 / 大结果外置阈值（字符）
+    CONTEXT_TOOL_SUMMARY_CHARS = _get_int(
+        'AGENT_CONTEXT_TOOL_SUMMARY_CHARS',
+        int(_CONTEXT_DEFAULTS.get('tool_summary_chars', 600)))
+    CONTEXT_MAX_SUMMARY_CHARS = _get_int(
+        'AGENT_CONTEXT_MAX_SUMMARY_CHARS',
+        int(_CONTEXT_DEFAULTS.get('max_summary_chars', 1200)))
+    CONTEXT_ARTIFACT_THRESHOLD_CHARS = _get_int(
+        'AGENT_CONTEXT_ARTIFACT_THRESHOLD_CHARS',
+        int(_CONTEXT_DEFAULTS.get('artifact_threshold_chars', 4000)))
+    # 外置上传的有界等待（秒）：OSS 不可用时快速降级为截断，不拖住 Loop
+    CONTEXT_ARTIFACT_TIMEOUT_SECONDS = _get_float(
+        'AGENT_CONTEXT_ARTIFACT_TIMEOUT_SECONDS',
+        float(_CONTEXT_DEFAULTS.get('artifact_timeout_seconds', 10.0)))
+    # L2：列表只留计数 + TopN + 查询入口
+    CONTEXT_LIST_TOP_N = _get_int(
+        'AGENT_CONTEXT_LIST_TOP_N',
+        int(_CONTEXT_DEFAULTS.get('list_top_n', 5)))
+    CONTEXT_LIST_TRIM_THRESHOLD_CHARS = _get_int(
+        'AGENT_CONTEXT_LIST_TRIM_THRESHOLD_CHARS',
+        int(_CONTEXT_DEFAULTS.get('list_trim_threshold_chars', 1200)))
+    CONTEXT_MAX_KEY_FIELDS = _get_int(
+        'AGENT_CONTEXT_MAX_KEY_FIELDS',
+        int(_CONTEXT_DEFAULTS.get('max_key_fields', 24)))
+    # L3 备忘单轮输出上限
+    CONTEXT_MEMO_MAX_OUTPUT_TOKENS = _get_int(
+        'AGENT_CONTEXT_MEMO_MAX_OUTPUT_TOKENS',
+        int(_CONTEXT_DEFAULTS.get('memo_max_output_tokens', 2048)))
+    # L3 防抖动：可压缩消息少于此数时不重复调模型（超过模型窗口强制压缩）
+    CONTEXT_MEMO_MIN_CANDIDATES = _get_int(
+        'AGENT_CONTEXT_MEMO_MIN_CANDIDATES',
+        int(_CONTEXT_DEFAULTS.get('memo_min_candidates', 6)))
+    # L3 摘要输入裁剪：输入 token ≤ 可用窗口 × 比例，单条消息字符上限
+    CONTEXT_MEMO_INPUT_RATIO = _get_float(
+        'AGENT_CONTEXT_MEMO_INPUT_RATIO',
+        float(_CONTEXT_DEFAULTS.get('memo_input_ratio', 0.6)))
+    CONTEXT_MEMO_MESSAGE_MAX_CHARS = _get_int(
+        'AGENT_CONTEXT_MEMO_MESSAGE_MAX_CHARS',
+        int(_CONTEXT_DEFAULTS.get('memo_message_max_chars', 2000)))
+    # L4_REBUILD（INT-2474）：重建块里每个清单（步骤 / 副作用 / 产物）最多列几条
+    CONTEXT_REBUILD_LIST_LIMIT = _get_int(
+        'AGENT_CONTEXT_REBUILD_LIST_LIMIT',
+        int(_CONTEXT_DEFAULTS.get('rebuild_list_limit', 20)))
+    # 调试模式：context_compacted 事件附带被裁消息 ID 与备忘，供回放（§8.5）
+    CONTEXT_DEBUG = _get_bool(
+        'AGENT_CONTEXT_DEBUG', bool(_CONTEXT_DEFAULTS.get('debug', False)))
+    # 区段占比（§8.3，合计 1.0）：每项可用环境变量单独覆盖
+    _CONTEXT_RATIO_DEFAULTS = _CONTEXT_DEFAULTS.get('section_ratios') or {}
+    CONTEXT_RATIO_SYSTEM = _get_float(
+        'AGENT_CONTEXT_RATIO_SYSTEM',
+        float(_CONTEXT_RATIO_DEFAULTS.get('system', 0.15)))
+    CONTEXT_RATIO_SCRATCHPAD = _get_float(
+        'AGENT_CONTEXT_RATIO_SCRATCHPAD',
+        float(_CONTEXT_RATIO_DEFAULTS.get('scratchpad', 0.10)))
+    CONTEXT_RATIO_DIALOGUE = _get_float(
+        'AGENT_CONTEXT_RATIO_DIALOGUE',
+        float(_CONTEXT_RATIO_DEFAULTS.get('dialogue', 0.35)))
+    CONTEXT_RATIO_TOOL_RESULTS = _get_float(
+        'AGENT_CONTEXT_RATIO_TOOL_RESULTS',
+        float(_CONTEXT_RATIO_DEFAULTS.get('tool_results', 0.30)))
+    CONTEXT_RATIO_RESERVE = _get_float(
+        'AGENT_CONTEXT_RATIO_RESERVE',
+        float(_CONTEXT_RATIO_DEFAULTS.get('reserve', 0.10)))
+    SYSTEM_PROMPT = os.environ.get(
+        'AGENT_SYSTEM_PROMPT', _DEFAULTS.get('system_prompt', ''))
+
+    # ===== SSE 事件流（§11）=====
+    EVENT_PAGE_SIZE = _get_int(
+        'AGENT_EVENT_PAGE_SIZE', int(_STREAM_DEFAULTS.get('page_size', 200)))
+    EVENT_POLL_INTERVAL_SECONDS = _get_float(
+        'AGENT_EVENT_POLL_INTERVAL_SECONDS',
+        float(_STREAM_DEFAULTS.get('poll_interval_seconds', 0.5)))
+    EVENT_HEARTBEAT_SECONDS = _get_float(
+        'AGENT_EVENT_HEARTBEAT_SECONDS',
+        float(_STREAM_DEFAULTS.get('heartbeat_seconds', 15)))
+    # 终态先落、run_finished 事件后落库的窗口内，SSE 最多再等多久
+    EVENT_TERMINAL_GRACE_SECONDS = _get_float(
+        'AGENT_EVENT_TERMINAL_GRACE_SECONDS',
+        float(_STREAM_DEFAULTS.get('terminal_grace_seconds', 5)))
+    # redis：发布唤醒消息（正文仍回表读）；local：仅进程内唤醒 + 轮询
+    EVENT_WAKEUP_BACKEND = os.environ.get('AGENT_EVENT_WAKEUP_BACKEND', 'redis').strip().lower()
+    # 勤务通道：与现有 EventChannel 五通道隔离，只作 wakeup，不承载事件正文
+    EVENT_CHANNEL = (BaseConfig.EVENT_CHANNEL_PREFIX or '') + 'agent_run_wakeup'
+
+    # ===== 工具层（INT-2453）=====
+    # 意图工具 → 网关 REST 的基址：容器内用 http://api_gateway:5000，
+    # 本机 docker 栈用宿主映射端口；默认取网关 HTTP 端口。
+    TOOL_GATEWAY_BASE_URL = os.environ.get(
+        'AGENT_TOOL_GATEWAY_BASE_URL',
+        f'http://127.0.0.1:{API_GATEWAY_PORT}')
+    TOOL_HTTP_TIMEOUT_SECONDS = _get_float('AGENT_TOOL_HTTP_TIMEOUT_SECONDS', 30.0)
+    # run 级 Authorization 暂存 TTL（只在 run 执行窗口内需要，不落库）
+    TOOL_CREDENTIAL_TTL_SECONDS = _get_int(
+        'AGENT_TOOL_CREDENTIAL_TTL_SECONDS', 3600)
+
+    # ===== 写操作审批（INT-2466，§9.4）=====
+    # 提案过期时间（秒）：到点即不可执行，决策返回 409；配置化，不硬编码。
+    APPROVAL_TTL_SECONDS = _get_int(
+        'AGENT_APPROVAL_TTL_SECONDS', int(_APPROVAL_DEFAULTS.get('ttl_seconds', 900)))
+    # 启动过期扫描单次上限（避免一次拉全表）
+    APPROVAL_EXPIRY_SCAN_LIMIT = _get_int(
+        'AGENT_APPROVAL_EXPIRY_SCAN_LIMIT',
+        int(_APPROVAL_DEFAULTS.get('expiry_scan_limit', 200)))
+    # 运行期过期扫描间隔（秒）：到点单结算后提交 run，不依赖重启
+    APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS = _get_float(
+        'AGENT_APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS',
+        float(_APPROVAL_DEFAULTS.get('expiry_scan_interval_seconds', 30)))
+    # ===== 拆单（INT-2571，§9.4.1）=====
+    # 单次影响 > 阈值的显式枚举对象必须拆成 N 张审批单（逐张决策、全批批准后
+    # 一次执行）。阈值默认 20 且**只允许收紧**：请求侧没有放宽入口，配置写大
+    # 也会被 20 夹住（§9.4「单次影响 > 20 个对象必须单条审批」是硬口径）。
+    APPROVAL_SPLIT_THRESHOLD_CAP = 20
+    APPROVAL_SPLIT_THRESHOLD = max(1, min(
+        APPROVAL_SPLIT_THRESHOLD_CAP,
+        _get_int('AGENT_APPROVAL_SPLIT_THRESHOLD',
+                 int(_APPROVAL_DEFAULTS.get('split_threshold', 20)))))
+    # 拆单粒度：每几张单一块；默认 1（每对象一张单）
+    APPROVAL_SPLIT_CHUNK_SIZE = max(1, _get_int(
+        'AGENT_APPROVAL_SPLIT_CHUNK_SIZE',
+        int(_APPROVAL_DEFAULTS.get('split_chunk_size', 1))))
+    # 单次调用对象上限：超过不建单，提案前拒绝 APPROVAL_OBJECT_LIMIT_EXCEEDED
+    APPROVAL_MAX_OBJECTS = max(1, _get_int(
+        'AGENT_APPROVAL_MAX_OBJECTS',
+        int(_APPROVAL_DEFAULTS.get('max_objects', 100))))
+
+    # ===== 驱动提案（INT-2467，§6.5）=====
+    # 发布开关：默认关闭（T2 隔离测试未启用前不发布；发布另需 DESTRUCTIVE 审批）
+    DRIVER_PUBLISH_ENABLED = _get_bool(
+        'AGENT_DRIVER_PUBLISH_ENABLED',
+        bool(_DRIVER_PROPOSAL_DEFAULTS.get('publish_enabled', False)))
+    # 工具结果里保留提案正文 / diff 的预算（超出只回清单 + hash，可复现）
+    DRIVER_PROPOSAL_MAX_RESULT_CHARS = _get_int(
+        'AGENT_DRIVER_PROPOSAL_MAX_RESULT_CHARS',
+        int(_DRIVER_PROPOSAL_DEFAULTS.get('max_result_chars', 6000)))
+    DRIVER_PROPOSAL_MAX_DIFF_CHARS = _get_int(
+        'AGENT_DRIVER_PROPOSAL_MAX_DIFF_CHARS',
+        int(_DRIVER_PROPOSAL_DEFAULTS.get('max_diff_chars', 4000)))
+    # 接入包 staging 目录（INT-2491）：只写这里，不写生产注册表；默认系统临时目录。
+    ONBOARDING_STAGING_DIR = (
+        os.environ.get('AGENT_ONBOARDING_STAGING_DIR', '').strip()
+        or str(_ONBOARDING_DEFAULTS.get('staging_dir', '')).strip())
+
+    # ===== 探索预算（INT-2492，§6.6「UI 探索会话」）=====
+    # 单次探索：最多 30 个动作 / 5 分钟，超限以 BUDGET 停止并交回（卡面硬口径）。
+    EXPLORATION_MAX_ACTIONS = _get_int(
+        'AGENT_EXPLORATION_MAX_ACTIONS',
+        int(_EXPLORATION_DEFAULTS.get('max_actions', 30)))
+    EXPLORATION_MAX_SECONDS = _get_float(
+        'AGENT_EXPLORATION_MAX_SECONDS',
+        float(_EXPLORATION_DEFAULTS.get('max_seconds', 300)))
+    # 设备租约 TTL：覆盖单次探索上限 + 收尾余量；持有者崩溃由 TTL 自愈。
+    EXPLORATION_LEASE_TTL_SECONDS = _get_int(
+        'AGENT_EXPLORATION_LEASE_TTL_SECONDS',
+        int(_EXPLORATION_DEFAULTS.get('lease_ttl_seconds', 900)))
+
+    # ===== 总开关（INT-2529，与网关同源）=====
+    # 只用于启动期恢复投递门控：关闭态不产生任何后台 run（网关入口门控不变，
+    # 刻意不新增第二个开关名，避免形成第二套语义）。缺省与网关一致：关闭。
+    AGENT_ENABLED = _get_bool('AGENT_ENABLED', False)
+
+    # ===== 重启恢复（§9.2；仅总开关开启时生效）=====
+    RECOVERY_ON_STARTUP = _get_bool('AGENT_RECOVERY_ON_STARTUP', True)
+
+    # ===== T1 沙箱接线（INT-2495；执行器参数仍由 AGENT_SANDBOX_* 单一读取）=====
+    # runner_http = 生产（只向 runner/sidecar 发 HTTP，不持有 docker.sock）；
+    # host_cli = 开发机 / 宿主 runner 进程内执行。
+    SANDBOX_EXECUTOR_MODE = os.environ.get(
+        'AGENT_SANDBOX_EXECUTOR_MODE', 'runner_http').strip().lower()
+    SANDBOX_RUNNER_URL = (os.environ.get('AGENT_SANDBOX_RUNNER_URL') or '').strip()
+    SANDBOX_RUNNER_TOKEN = (
+        os.environ.get('AGENT_SANDBOX_RUNNER_TOKEN') or '').strip()
+    SANDBOX_DOCKER_BIN = os.environ.get(
+        'AGENT_SANDBOX_DOCKER_BIN', 'docker').strip() or 'docker'
+    # /work 临时目录根（空 = 系统临时目录）；容器内需挂载到该路径。
+    SANDBOX_WORK_ROOT = (os.environ.get('AGENT_SANDBOX_WORK_ROOT') or '').strip()
+    # 回灌模型的 stdout / stderr 摘要上限（字符）；原始输出仍由执行器按
+    # output_limit_bytes（默认 1MB）截断。
+    SANDBOX_OUTPUT_SUMMARY_CHARS = _get_int(
+        'AGENT_SANDBOX_OUTPUT_SUMMARY_CHARS', 2000)
+
+    # ===== Skill（§4；顶层只读目录由部署挂载，INT-2456）=====
+    SKILLS_ROOT = os.environ.get(
+        'AGENT_SKILLS_ROOT', os.path.join(_PROJECT_DIR, 'skills'))
+    # 长期记忆文件树（§8.6）；部署为写卷，按 tenant/owner 隔离。
+    MEMORY_ROOT = os.environ.get(
+        'AGENT_MEMORY_ROOT', os.path.join(_PROJECT_DIR, 'memory'))
+
+    # ===== 长期记忆（INT-2490，§8.6 / §8.6.1）=====
+    # rg 可执行文件（模板镜像用 Dockerfile 安装 ripgrep；缺失时 memory_search
+    # 显式返回后端不可用，不静默当「没有记忆」）。
+    MEMORY_RG_BIN = (os.environ.get('AGENT_MEMORY_RG_BIN') or 'rg').strip() or 'rg'
+    MEMORY_RG_TIMEOUT_SECONDS = _get_float('AGENT_MEMORY_RG_TIMEOUT_SECONDS', 5.0)
+    MEMORY_SEARCH_DEFAULT_LIMIT = _get_int(
+        'AGENT_MEMORY_SEARCH_DEFAULT_LIMIT', 10)
+    MEMORY_SEARCH_MAX_LIMIT = _get_int('AGENT_MEMORY_SEARCH_MAX_LIMIT', 20)
+    MEMORY_SEARCH_MAX_QUERY_CHARS = _get_int(
+        'AGENT_MEMORY_SEARCH_MAX_QUERY_CHARS', 200)
+    MEMORY_SNIPPET_CHARS = _get_int('AGENT_MEMORY_SNIPPET_CHARS', 240)
+    # 会话开始注入摘要的 token 上限（卡面验收 5：实测不超过该值）
+    MEMORY_INJECT_MAX_TOKENS = _get_int('AGENT_MEMORY_INJECT_MAX_TOKENS', 600)
+    MEMORY_SUMMARY_MAX_PROJECTS = _get_int(
+        'AGENT_MEMORY_SUMMARY_MAX_PROJECTS', 5)
+    MEMORY_SUMMARY_LINES_PER_FILE = _get_int(
+        'AGENT_MEMORY_SUMMARY_LINES_PER_FILE', 20)
+    # 每用户磁盘上限（只回报用量；自动清理策略不在本卡实现，见 memory/README）
+    MEMORY_USER_QUOTA_BYTES = _get_int(
+        'AGENT_MEMORY_USER_QUOTA_BYTES', 20 * 1024 * 1024)
+    MEMORY_SENSITIVE_RULES_PATH = (
+        os.environ.get('AGENT_MEMORY_SENSITIVE_RULES')
+        or os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        'memory_sensitive_rules.json'))
+
+    # 本目录（含 model_catalog.json / agent_defaults.json），部署为只读挂载。
+    CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
+    # T2 可信运行时（§7 拍板#2）：runsc（gVisor）或 firecracker。
+    # 缺失时 T2 请求报 T2_RUNTIME_UNAVAILABLE，不得静默降级 T1。
+    T2_RUNTIME = os.environ.get('AGENT_T2_RUNTIME', 'runsc').strip() or 'runsc'
+    SKILL_BODY_MAX_LINES = _get_int(
+        'AGENT_SKILL_BODY_MAX_LINES', int(_SKILL_DEFAULTS.get('body_max_lines', 500)))
+    # ---- 自定义 Skill 写入口径（INT-2549 §4.4 逐项校验，全部配置化）----
+    SKILL_MAX_FILE_BYTES = _get_int(
+        'AGENT_SKILL_MAX_FILE_BYTES',
+        int(_SKILL_DEFAULTS.get('max_file_bytes', 64 * 1024)))
+    SKILL_MAX_RESOURCE_BYTES = _get_int(
+        'AGENT_SKILL_MAX_RESOURCE_BYTES',
+        int(_SKILL_DEFAULTS.get('max_resource_bytes', 512 * 1024)))
+    SKILL_MAX_PACKAGE_BYTES = _get_int(
+        'AGENT_SKILL_MAX_PACKAGE_BYTES',
+        int(_SKILL_DEFAULTS.get('max_package_bytes', 5 * 1024 * 1024)))
+    # 上传（压缩前）体积上限：网关与接口层读入内存前按同一口径拒绝
+    SKILL_MAX_UPLOAD_BYTES = _get_int(
+        'AGENT_SKILL_MAX_UPLOAD_BYTES',
+        int(_SKILL_DEFAULTS.get('max_upload_bytes', 10 * 1024 * 1024)))
+    SKILL_MAX_ENTRIES = _get_int(
+        'AGENT_SKILL_MAX_ENTRIES',
+        int(_SKILL_DEFAULTS.get('max_entries', 200)))
+    SKILL_MAX_COMPRESSION_RATIO = _get_int(
+        'AGENT_SKILL_MAX_COMPRESSION_RATIO',
+        int(_SKILL_DEFAULTS.get('max_compression_ratio', 100)))
+    SKILL_PUBLISH_MIN_GOLDEN_TASKS = _get_int(
+        'AGENT_SKILL_PUBLISH_MIN_GOLDEN_TASKS',
+        int(_SKILL_DEFAULTS.get('publish_min_golden_tasks', 3)))
+    SKILL_RESOURCE_PREFIX = os.environ.get(
+        'AGENT_SKILL_RESOURCE_PREFIX',
+        str(_SKILL_DEFAULTS.get('resource_prefix', 'agent-skill'))).strip()
+    # agent_run_skill 保留口径（配置化；本卡只给口径与索引，不做自动清理）
+    SKILL_RUN_SNAPSHOT_RETENTION_DAYS = _get_int(
+        'AGENT_SKILL_RUN_SNAPSHOT_RETENTION_DAYS',
+        int(_SKILL_DEFAULTS.get('run_snapshot_retention_days', 180)))
+    # 发布门槛的 golden tasks 评测集：复用 INT-2454 / INT-2465 的基座文件，
+    # 不新建第二套。容器内未挂载时为空集（发布门槛恒不通过、只能留 DRAFT）。
+    SKILL_GOLDEN_TASKS_PATH = (
+        os.environ.get('AGENT_SKILL_GOLDEN_TASKS_PATH')
+        or os.path.join(_PROJECT_DIR, 'tests', 'agent_eval', 'coverage',
+                        'datasets', 'skill_trigger_tasks.json'))
+    # 注入 / 内网地址规则表（规则配置化，便于扩充而不改代码）
+    SKILL_GUARD_RULES_PATH = (
+        os.environ.get('AGENT_SKILL_GUARD_RULES')
+        or os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        'skill_guard_rules.json'))
+    # True：任何校验问题都让启动失败；False：ERROR 剔除该 Skill、WARNING 仅告警
+    SKILL_VALIDATION_STRICT = _get_bool(
+        'AGENT_SKILL_VALIDATION_STRICT',
+        bool(_SKILL_DEFAULTS.get('validation_strict', False)))
+    # L1 常驻预算 = 模型窗口 × system 区段占比（§8.3：15%）
+    CONTEXT_WINDOW_TOKENS = _get_int(
+        'AGENT_CONTEXT_WINDOW_TOKENS',
+        int(_SKILL_DEFAULTS.get('context_window_tokens', 128000)))
+    SYSTEM_SECTION_RATIO = _get_float(
+        'AGENT_SYSTEM_SECTION_RATIO',
+        float(_SKILL_DEFAULTS.get('system_section_ratio', 0.15)))
+
+    @classmethod
+    def skill_l1_budget_tokens(cls) -> int:
+        return int(cls.CONTEXT_WINDOW_TOKENS * cls.SYSTEM_SECTION_RATIO)
+
+    @classmethod
+    def skill_settings(cls):
+        """自定义 Skill 写入口径（避免 application 反向依赖 config 常量字面量）。"""
+        from agent_service.application.skill_service import SkillSettings
+        return SkillSettings(
+            max_body_lines=cls.SKILL_BODY_MAX_LINES,
+            max_skill_bytes=cls.SKILL_MAX_FILE_BYTES,
+            max_resource_bytes=cls.SKILL_MAX_RESOURCE_BYTES,
+            max_package_bytes=cls.SKILL_MAX_PACKAGE_BYTES,
+            max_upload_bytes=cls.SKILL_MAX_UPLOAD_BYTES,
+            max_entries=cls.SKILL_MAX_ENTRIES,
+            max_compression_ratio=cls.SKILL_MAX_COMPRESSION_RATIO,
+            publish_min_golden_tasks=cls.SKILL_PUBLISH_MIN_GOLDEN_TASKS,
+            resource_prefix=cls.SKILL_RESOURCE_PREFIX)
+
+    @classmethod
+    def model_catalog_path(cls) -> str:
+        """模型目录的实际路径（空配置 = config/model_catalog.json）。"""
+        return cls.MODEL_CATALOG_PATH or os.path.join(
+            cls.CONFIG_DIR, 'model_catalog.json')
+
+    @classmethod
+    def validate_mounts(cls) -> None:
+        """启动前校验三个部署挂载点（方案 07 拍板#3，INT-2456）。
+
+        - ``skills/`` 只读：缺失即启动失败（空目录会被解读成「没有 Skill」，
+          属于静默故障）；
+        - ``memory/`` 写卷：缺失或不可写即启动失败（长期记忆写丢不能等到运行期
+          才发现）；
+        - ``agent_service/config/``：模型目录文件必须存在（窗口/输出上限的唯一
+          事实源）。
+
+        只在真实进程启动路径（自建组合根）调用；测试注入组合根不校验，避免把
+        宿主机目录布局带进单测。
+        """
+        problems = []
+        skills = Path(cls.SKILLS_ROOT)
+        if not skills.is_dir():
+            problems.append(f'skills 目录不存在：{skills}（应只读挂载 ../skills）')
+        elif not os.access(str(skills), os.R_OK):
+            problems.append(f'skills 目录不可读：{skills}')
+        else:
+            # INT-2529：Docker 对不存在的 bind 源会自动创建空目录，只判
+            # is_dir() 会把「零 Skill」静默放行。以 platform-reference 作哨兵，
+            # 至少要求一个合法 SKILL.md 真实可读。
+            sentinel = skills / 'platform-reference' / SKILL_FILE_NAME
+            if not sentinel.is_file():
+                problems.append(
+                    f'skills 目录没有可用的 {SKILL_FILE_NAME}：{skills}'
+                    f'（至少需 platform-reference/{SKILL_FILE_NAME}；'
+                    '空目录多因 bind 源缺失被 Docker 自动创建）')
+            elif not os.access(str(sentinel), os.R_OK):
+                problems.append(f'Skill 哨兵文件不可读：{sentinel}')
+        catalog = Path(cls.model_catalog_path())
+        if not catalog.is_file():
+            problems.append(f'模型目录文件不存在：{catalog}')
+        memory = Path(cls.MEMORY_ROOT)
+        if not memory.is_dir():
+            problems.append(
+                f'memory 目录不存在：{memory}（应挂载可写卷，见 compose agent_memory）')
+        else:
+            probe = memory / '.write_probe'
+            try:
+                probe.write_text('ok', encoding='utf-8')
+                probe.unlink()
+            except OSError as exc:
+                problems.append(f'memory 目录不可写：{memory}（{exc}）')
+        if problems:
+            raise RuntimeError(
+                'agent_service 部署挂载校验失败：' + '；'.join(problems))
+
+    @classmethod
+    def context_section_ratios(cls) -> dict:
+        """§8.3 区段占比（ContextBudgetPolicy 的唯一配置来源）。"""
+        return {
+            'system': cls.CONTEXT_RATIO_SYSTEM,
+            'scratchpad': cls.CONTEXT_RATIO_SCRATCHPAD,
+            'dialogue': cls.CONTEXT_RATIO_DIALOGUE,
+            'tool_results': cls.CONTEXT_RATIO_TOOL_RESULTS,
+            'reserve': cls.CONTEXT_RATIO_RESERVE,
+        }
+
+    @classmethod
+    def budget_defaults(cls) -> dict:
+        return {
+            'max_rounds': cls.MAX_ROUNDS,
+            'max_tool_calls': cls.MAX_TOOL_CALLS,
+            'max_tokens': cls.MAX_TOKENS,
+            'max_duration_seconds': cls.MAX_DURATION_SECONDS,
+            'max_output_bytes': cls.MAX_OUTPUT_BYTES,
+        }
+
+    @classmethod
+    def auto_budget_defaults(cls) -> dict:
+        """Auto 模式的预算默认值（§9.4：60 / 120 / 4×W / 30min / 20MB）。
+
+        仅作「留空生效」的默认值；请求侧可上调（Auto 允许放宽）。
+        """
+        return {
+            'max_rounds': cls.AUTO_MAX_ROUNDS,
+            'max_tool_calls': cls.AUTO_MAX_TOOL_CALLS,
+            'max_tokens': cls.AUTO_MAX_TOKENS,
+            'max_duration_seconds': cls.AUTO_MAX_DURATION_SECONDS,
+            'max_output_bytes': cls.AUTO_MAX_OUTPUT_BYTES,
+        }
+
+    @classmethod
+    def auto_settings(cls):
+        """Auto 停止条件参数（避免 application 反向读配置常量）。"""
+        from agent_service.application.auto_mode import AutoSettings
+        return AutoSettings(
+            pause_budget_ratio=cls.AUTO_PAUSE_BUDGET_RATIO,
+            pause_consecutive_failures=cls.AUTO_PAUSE_CONSECUTIVE_FAILURES,
+            max_consecutive_failures=cls.MAX_CONSECUTIVE_TOOL_FAILURES,
+            max_idle_turns=cls.AUTO_MAX_IDLE_TURNS,
+            complete_marker=cls.AUTO_COMPLETE_MARKER,
+            plan_max_chars=cls.AUTO_PLAN_MAX_CHARS)
+
+    @classmethod
+    def validate(cls):
+        super().validate()
+        if cls.WORKER_CONCURRENCY <= 0:
+            raise ValueError('AGENT_WORKER_CONCURRENCY 必须为正数')
+        if cls.AGENT_ALLOW_PLATFORM_KEY:
+            raise ValueError(
+                'AGENT_ALLOW_PLATFORM_KEY 只保留 false 开关位：'
+                '平台 Key 分支未实现，禁止开启')
+        if cls.LOG_ENVIRONMENT == 'prod' and not cls.CREDENTIAL_MASTER_KEY:
+            raise ValueError(
+                '生产环境缺少 AGENT_CREDENTIAL_MASTER_KEY，拒绝启动')
+        if not 0 < cls.OUTPUT_TOKEN_RATIO <= 1:
+            raise ValueError('AGENT_OUTPUT_TOKEN_RATIO 必须在 (0, 1] 内')
+        if not 0 < cls.COMPACTION_SOFT_RATIO < cls.COMPACTION_HARD_RATIO <= 1:
+            raise ValueError(
+                'AGENT_COMPACTION_SOFT_RATIO / HARD_RATIO 必须满足 '
+                '0 < soft < hard <= 1')
+        if cls.TOKEN_BUDGET_MULTIPLIER_DEFAULT <= 0 \
+                or cls.TOKEN_BUDGET_MULTIPLIER_AUTO <= 0:
+            raise ValueError('AGENT_TOKEN_BUDGET_MULTIPLIER_* 必须为正数')
+        if cls.SANDBOX_OUTPUT_SUMMARY_CHARS < 0:
+            raise ValueError('AGENT_SANDBOX_OUTPUT_SUMMARY_CHARS 不能为负数')
+        ratios = cls.context_section_ratios()
+        if any(value < 0 for value in ratios.values()) \
+                or abs(sum(ratios.values()) - 1.0) > 1e-6:
+            raise ValueError(
+                'AGENT_CONTEXT_RATIO_* 区段占比必须非负且合计为 1.0')
+        # 长期记忆（INT-2490）：上限必须为正且有序；敏感信息规则文件缺失即
+        # 启动失败——没有扫描规则就不能放行 memory_write（防静默无扫描写）。
+        if cls.MEMORY_SEARCH_DEFAULT_LIMIT <= 0 \
+                or cls.MEMORY_SEARCH_MAX_LIMIT < cls.MEMORY_SEARCH_DEFAULT_LIMIT:
+            raise ValueError(
+                'AGENT_MEMORY_SEARCH_*_LIMIT 必须为正，且 MAX ≥ DEFAULT')
+        if cls.MEMORY_INJECT_MAX_TOKENS <= 0:
+            raise ValueError('AGENT_MEMORY_INJECT_MAX_TOKENS 必须为正数')
+        if cls.MEMORY_RG_TIMEOUT_SECONDS <= 0:
+            raise ValueError('AGENT_MEMORY_RG_TIMEOUT_SECONDS 必须为正数')
+        if cls.APPROVAL_TTL_SECONDS <= 0:
+            raise ValueError('AGENT_APPROVAL_TTL_SECONDS 必须为正数')
+        if cls.APPROVAL_EXPIRY_SCAN_LIMIT <= 0:
+            raise ValueError('AGENT_APPROVAL_EXPIRY_SCAN_LIMIT 必须为正数')
+        if cls.APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS <= 0:
+            raise ValueError(
+                'AGENT_APPROVAL_EXPIRY_SCAN_INTERVAL_SECONDS 必须为正数')
+        # Auto 模式（INT-2474）：暂停阈值必须早于熔断阈值，否则「暂停交用户
+        # 决策」永远轮不到；比例在 (0, 1) 内；完成标记为空会让 Auto 永远无法
+        # 正常收口（只能烧到预算），启动即拒绝。
+        if not 0 < cls.AUTO_PAUSE_BUDGET_RATIO < 1:
+            raise ValueError('AGENT_AUTO_PAUSE_BUDGET_RATIO 必须在 (0, 1) 内')
+        if not 0 < cls.AUTO_PAUSE_CONSECUTIVE_FAILURES \
+                < cls.MAX_CONSECUTIVE_TOOL_FAILURES:
+            raise ValueError(
+                'AGENT_AUTO_PAUSE_CONSECUTIVE_FAILURES 必须为正，且小于 '
+                'AGENT_MAX_CONSECUTIVE_TOOL_FAILURES（暂停要早于熔断）')
+        if cls.AUTO_MAX_IDLE_TURNS < 0:
+            raise ValueError('AGENT_AUTO_MAX_IDLE_TURNS 不能为负数')
+        if not str(cls.AUTO_COMPLETE_MARKER or '').strip():
+            raise ValueError('AGENT_AUTO_COMPLETE_MARKER 不能为空')
+        if cls.AUTO_MAX_ROUNDS <= 0 or cls.AUTO_MAX_TOOL_CALLS <= 0 \
+                or cls.AUTO_MAX_DURATION_SECONDS <= 0 \
+                or cls.AUTO_MAX_OUTPUT_BYTES <= 0:
+            raise ValueError('AGENT_AUTO_MAX_* 预算必须为正数')
+        if cls.EXPLORATION_MAX_ACTIONS <= 0:
+            raise ValueError('AGENT_EXPLORATION_MAX_ACTIONS 必须为正数')
+        if cls.EXPLORATION_MAX_SECONDS <= 0:
+            raise ValueError('AGENT_EXPLORATION_MAX_SECONDS 必须为正数')
+        if cls.EXPLORATION_LEASE_TTL_SECONDS < cls.EXPLORATION_MAX_SECONDS:
+            raise ValueError(
+                'AGENT_EXPLORATION_LEASE_TTL_SECONDS 不能小于探索时长上限')
+        if not Path(cls.MEMORY_SENSITIVE_RULES_PATH).is_file():
+            raise ValueError(
+                f'敏感信息规则文件不存在：{cls.MEMORY_SENSITIVE_RULES_PATH}')

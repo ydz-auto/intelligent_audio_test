@@ -27,7 +27,7 @@ WSL2 稳定性），只能靠「构建前体检 + 串行单服务 + 崩溃后按
 # 只体检引擎，不构建（20s 内必回，不跑无限等）
 python docker/build_stack.py --check
 
-# 构建全部 9 个容器化后端服务（audio/device 跑宿主机，无镜像）
+# 构建全部 10 个容器化后端服务（audio/device 跑宿主机，无镜像）
 python docker/build_stack.py
 
 # 常规发版：只构建这一批变动的服务（推荐）
@@ -78,7 +78,7 @@ python docker/build_stack.py --project int1820-verify api_gateway
 
 ## 3. 故障 A：apt 源 502 —— 已修
 
-### 3.1 改了什么（`docker/Dockerfile.*`，9 个后端镜像统一）
+### 3.1 改了什么（`docker/Dockerfile.*`，10 个后端镜像统一）
 
 覆盖 `build_stack.py` 的 `BACKEND_SERVICES` 全量：`api_gateway` / `task_service` /
 `evaluation_service` / `e2e_test_service` / `report_service` / `algorithm_service` /
@@ -86,7 +86,7 @@ python docker/build_stack.py --project int1820-verify api_gateway
 `APT_MIRROR`（缺省 `mirrors.tuna.tsinghua.edu.cn`）、`PIP_INDEX_URL`（缺省
 `https://pypi.org/simple`），并由 `docker-compose.yml` 的 `x-backend-build-args` 统一透传。
 `mock_dut` / `mock_eval` 是纯标准库替身镜像，不跑 apt/pip，无需接；
-`frontend` 是 node/nginx 多阶段构建，不走 Debian 源。
+`frontend` 是 frontend-react（pnpm + rsbuild）→ nginx 多阶段构建，不走 Debian 源。
 
 1. **apt 源换可达镜像**：`sed -i "s|deb.debian.org|${APT_MIRROR}|g"`，缺省
    `mirrors.tuna.tsinghua.edu.cn`。构建不再依赖 `deb.debian.org` 的可用性。
@@ -209,6 +209,10 @@ docker ps --format "table {{.Names}}\t{{.Status}}"
 
 ## 6. 为什么不给 e2e 挂 `/dev/bus/usb`
 
+> 2026-11-18 起 e2e_test_service 默认由宿主机进程提供（`python stack.py up`，
+> `:5002/:50051`）；容器形态仅在隔离测试栈用 `--profile container-e2e` 启用。
+> 本节保留容器形态的 USB 结论。
+
 e2e_test_service 曾映射 `devices: /dev/bus/usb:/dev/bus/usb`。WSL VM 重启后该路径在 VM 内
 不存在，容器直接起不来（`error gathering device information while adding custom device`），
 建空目录也不行（`not a device node`），历史上只能手敲 `mknod c 189 0` 造假节点兜底，
@@ -293,9 +297,108 @@ docker inspect -f '{{.State.ExitCode}}' intelligent-audio-test-db_bootstrap-1
 - 不要在构建期间并发跑宿主机重活（批量测试 / 前端打包 / 全量迁移）。
 - 不改业务代码：本卡只动 `docker/` 下的构建链路与脚本。
 
+### 8.1 Agent 运行底座（agent_service，INT-2456）
+
+compose 新增 `agent_service`（`docker/Dockerfile.agent_service`），依赖
+`postgres` / `redis` / `db_bootstrap` / `api_gateway`，`restart: unless-stopped`。
+
+- **不发布宿主端口**（与 `api_test_service` 同口径）：它只消费网关转发的
+  `X-User-Id` / `X-Tenant-Id` / `X-User-Permissions`，暴露到宿主等于把身份头
+  变成可伪造的授权入口。健康探测经 `run_stack.py` 的容器内 exec 完成。
+- **总开关 `AGENT_ENABLED`（缺省 false）**：网关是唯一入口执行点。关闭时
+  `/api/v1/agent` 的会话 / Run / 事件 / 审批 / skills / provider 接口返回
+  `503 {"detail":{"code":"AGENT_DISABLED",...}}` 且不转发上游；任务、用例、
+  报告等人工流程不经过这些路由，完全不受影响。开启只需在 `docker/.env` 置
+  `AGENT_ENABLED=true` 并重建 `api_gateway` 容器。同一开关也传入
+  `agent_service`，但**只用于启动期恢复投递门控**（INT-2529）：关闭时
+  `recovery.recover()` 与对应 `executor.submit` 一律跳过，保证「关闭态不产生
+  任何后台 run」；不新增第二个开关名，也不形成第二套语义。
+- **网络隔离（INT-2529）**：`agent_service` 不加入默认网络，只连
+  `agent_internal`（`internal: true`，成员仅 `api_gateway` / `postgres` /
+  `redis`）与 `agent_egress`（仅本服务，用于访问用户自带的集群外 LLM 供应商）。
+  其余业务容器因此无法凭 `X-User-Id` 头绕过网关直连建 run；新增被 agent 依赖
+  的容器需同时加入 `agent_internal`。
+- **三个挂载点**（缺一即启动失败，`Config.validate_mounts`）：
+
+  | 容器路径 | 来源 | 读写 |
+  |---|---|---|
+  | `/app/skills` | `../skills` | ro（Skill 单一事实源） |
+  | `/app/memory` | 命名卷 `agent_memory` | rw（长期记忆，按 tenant/owner 隔离） |
+  | `/app/agent_service/config` | `../agent_service/config` | ro（模型目录/预算/压缩阈值） |
+
+  `skills/` 还必须是**非空**的合法技能目录：以 `platform-reference/SKILL.md`
+  作哨兵（INT-2529）。Docker 对不存在的 bind 源会自动创建空目录，只判
+  `is_dir()` 会让「零 Skill」静默通过；空目录或只剩非 `SKILL.md` 文件时启动
+  明确失败，`SkillRegistry` 同样 fail-fast 报 `EMPTY_SKILLS_ROOT`。
+
+- **`/health`**：DB 不可用 → 503（无法读写 run/event）；Redis 不可用 →
+  200 + `degraded`（只影响 SSE 唤醒，已退化为轮询）；`t2_runtime` 字段给出
+  强隔离运行时可见性结论。
+- **主密钥**：`AGENT_CREDENTIAL_MASTER_KEY` 在 `LOG_ENVIRONMENT=prod` 下必填，
+  缺失即启动失败（§13-8）；dev 缺省仅告警，provider 保存/解密返回 503。
+
+#### T2 运行时（gVisor runsc / Firecracker）
+
+`T2_UNTRUSTED_CODE` 需要强隔离运行时；缺失时请求报
+`T2_RUNTIME_UNAVAILABLE`，**不静默降级 T1**。启用方式：
+
+1. 在运行时所在主机（宿主或 runner 镜像）安装 gVisor 并按官方文档把
+   `runsc` 注册进 Docker 的 `runtimes`（或部署 Firecracker）；
+2. 使 `runsc` 出现在 `agent_service` 的 `PATH` 上，或把
+   `AGENT_T2_RUNTIME` 指到可执行文件名；
+3. 验收：`docker compose exec agent_service python -c "import
+   json,urllib.request;print(urllib.request.urlopen('http://localhost:5011/health').read().decode())"`
+   的 `t2_runtime.status` 为 `available`（`detail` 带版本行）。
+
+> 本机开发环境（Windows + Docker Desktop）默认**没有** `runsc`，
+> `t2_runtime.status` 会是 `unavailable`，属预期结论而非缺陷；T2 真机用例
+> 在 `tests/agent_sandbox` 里按运行时缺失 skip。
+
+### 8.2 Agent 五层评测门禁（INT-2475）
+
+评测门禁是**离线**工具链，不是常驻服务：不连网关 / 数据库 / OSS，模型与工具都是
+确定性替身，因此不需要改业务镜像，也不需要把容器放进 `agent_internal`。
+
+- **入口（宿主，五层全跑）**：`python scripts/run_agent_eval.py`。默认沙箱 T1
+  （需 Docker + `python:3.11-slim`）；`--sandbox-tier t2` 需宿主已注册
+  `runsc`（同 §8.1 T2 运行时）。产物 `tests/agent_eval/out/report.json` +
+  `report.md`（可用 `--out` / `AGENT_EVAL_OUT` 改到构建产物目录）。
+- **退出码**（INT-2614 起的编码层完整性口径）：0 = 门槛满足（默认只认五层全跑且全过，
+  开启放行口后层子集全过也按 0）；1 = 有层未通过 **或层不完整**；2 = 基础设施不可用
+  （Docker / 镜像 / runsc / 评测集缺失）。层不完整指 `--layers` 子集少跑的层
+  （报告 `layers_missing`）或 `--sandbox-tier none` 选而不跑的层（报告
+  `layers_skipped`），默认都按 1 退出；**唯一放行口是显式 `--allow-skip` /
+  环境变量 `AGENT_EVAL_ALLOW_SKIP=1`**，开启后退出码 0，且报告仍带 `allow_skip=true`、
+  `full_five=false`、`degraded=true` 与 `layers_missing` / `layers_skipped`，降级可在
+  报告里机器分辨，不会被当成「五层全过」。CI 据此区分「用例失败」「层不完整」与
+  「环境不可用」。
+- **变更 Skill 门禁**：`--changed-skills auto --base-ref V10.11.2` 按 `git diff`
+  （含工作区未提交改动）只跑变更 Skill 的集合，失败项精确到 `skill:<name>`。
+- **一次性容器（四层）**：`docker/docker-compose.eval.yml` 复用
+  `agent_service` 镜像（`AGENT_EVAL_IMAGE` 可覆盖），把仓库只读挂到 `/repo`，
+  报告写宿主 `docker/eval-out/`：
+
+  ```bash
+  docker compose -f docker/docker-compose.eval.yml --profile eval run --rm agent_eval
+  ```
+
+  容器内没有 docker CLI / `.git`，故固定 `--sandbox-tier none`，且
+  `--changed-skills auto` 不可用；**合并门禁仍应在宿主跑完整五层**，容器只作
+  无宿主环境的四层回归。四层是该入口的**显式选择**而非意外降级，compose 里已设
+  `AGENT_EVAL_ALLOW_SKIP=1`（INT-2618），故四层全过即 exit 0，报告里
+  `allow_skip=true` / `full_five=false` / `degraded=true` /
+  `layers_missing=["sandbox"]` 仍如实标注（`layers_skipped` 为空：沙箱层是被
+  `--layers` 子集排除，不是选中后跳过）；需要复现严格口径时用
+  `AGENT_EVAL_ALLOW_SKIP=0 docker compose …`（或宿主 `--layers` 子集不加
+  `--allow-skip`），预期 exit 1。
+- **口径边界**：Skill 触发是确定性词面代理（`trigger_proxy: true`），不是模型
+  实测；成本是确定性替身的相对口径（轮次 / 工具调用 / 近似 token），不产生计费。
+  详见 `tests/agent_eval/README.md` 与方案 07 §14.1。
+
 ## 9. 演示前端部署（15173 / 16173）的三道护栏（INT-2012）
 
-`docker/deploy_demo_frontends.ps1` 把 build 产物打进 nginx 镜像托管两个演示地址。2026-10-26 起
+`docker/deploy_demo_frontends.ps1` 把 build 产物打进 nginx 镜像托管演示地址（React 15173；
+旧 Vue `frontend/` 已下线，16173 仅在显式传 `-VueDist` 时部署）。2026-10-26 起
 **15173 的产物来源唯一 = 接线分支的产品演示**（此前脚本默认指向 `design/ux-redesign` 的 dist，
 按默认执行会把只有占位实现的设计稿刷上去，任务域导入导出等功能在演示上「消失」）。护栏：
 
@@ -309,21 +412,20 @@ docker inspect -f '{{.State.ExitCode}}' intelligent-audio-test-db_bootstrap-1
    容器内 `static/js/async` 数量 == dist 内数量；任一失败自动回滚旧镜像（并把 `latest` 指回旧镜像）
    后退出非 0。
 
-**默认产物来源（INT-2426，2026-11-09）**：不带 `-ReactDist` / `-VueDist` 时，默认 dist =
-**当前仓库自己 build 出来的产物**（脚本在 `docker/` 下，取 `$PSScriptRoot\..\frontend-react\dist`
-与 `$PSScriptRoot\..\frontend\dist`），不再指向已冻结的 `V9.7.31-WIRING-REACT` /
-`V9.7.31-WIRING-UXVUE` 旧 clone。默认目录不存在时**直接拒绝并退出非 0**（预检在部署锁与任何
-docker 操作之前，容器与 `latest` tag 不变），提示先在当前仓库 build 或显式传
-`-ReactDist` / `-VueDist`。部署日志会打印实际 dist 的**绝对路径与构建时间**。
+**默认产物来源（INT-2426，2026-11-09）**：不带 `-ReactDist` 时，默认 dist =
+**当前仓库自己 build 出来的产物**（脚本在 `docker/` 下，取 `$PSScriptRoot\..\frontend-react\dist`），
+不再指向已冻结的 `V9.7.31-WIRING-REACT` / `V9.7.31-WIRING-UXVUE` 旧 clone。默认目录不存在时
+**直接拒绝并退出非 0**（预检在部署锁与任何 docker 操作之前，容器与 `latest` tag 不变），
+提示先在当前仓库 build 或显式传 `-ReactDist`。部署日志会打印实际 dist 的**绝对路径与构建时间**。
 
-两侧产物**先都校验通过再一起部署**：任一边校验失败，两边都不动。演练自检失败路径用
+产物**先全部校验通过再部署**：任一边校验失败，两边都不动。演练自检失败路径用
 `-FaultInject missing-chunk`（从构建上下文删一个 async chunk，预期自检失败 → 回滚 → 退出非 0）。
 
 ```powershell
-# 常规发版（只刷 React 15173，用当前仓库 frontend-react 的最新 dist）
-pwsh -File deploy_demo_frontends.ps1 -SkipVue
-# 故意传设计稿 dist：应被拒绝，容器与 latest tag 前后 ID 一致
-pwsh -File deploy_demo_frontends.ps1 -SkipVue -ReactDist D:\00_code\V10.11.2\Intelligent-Audio-TEST\frontend-react\dist
+# 常规发版（用当前仓库 frontend-react 的最新 dist）
+pwsh -File deploy_demo_frontends.ps1
+# 显式指定 dist：会做同样的来源校验
+pwsh -File deploy_demo_frontends.ps1 -ReactDist D:\00_code\V10.11.2\Intelligent-Audio-TEST\frontend-react\dist
 ```
 
 > 一次发版只做一次部署（环境铁律）：不要为了「再确认一下」重复执行；自检失败会自己回滚，

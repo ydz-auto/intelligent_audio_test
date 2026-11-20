@@ -103,48 +103,15 @@ def _self_forward_base() -> str:
 
 
 def _build_target_url(tool: dict, args: dict) -> str:
-    """按工具定义拼目标网关 URL：内部自转发基址 + path 占位符替换 + 查询串。"""
-    base = _self_forward_base()
-    path = tool['path']
-    path_params = set(tool['path_params'])
-    for name in path_params:
-        if name in args and args[name] is not None:
-            path = path.replace('{%s}' % name, str(args[name]))
-    query_args = {}
-    if tool['method'] == 'GET':
-        # GET/DELETE：剩余参数全部进查询串
-        for name, value in args.items():
-            if name not in path_params and value is not None:
-                query_args[name] = value
-    else:
-        for name in tool['query_params']:
-            if name in args and args[name] is not None:
-                query_args[name] = args[name]
-    url = f'{base}{path}'
-    if query_args:
-        import urllib.parse
-        qs = urllib.parse.urlencode(
-            {k: (str(v) if not isinstance(v, (list, tuple)) else v)
-             for k, v in query_args.items()}, doseq=True)
-        url = f'{url}?{qs}'
-    return url
+    """按工具定义拼目标网关 URL：内部自转发基址 + 共享注册表路径构造。"""
+    from shared.agent_tools.mcp_registry import build_path
+    return f'{_self_forward_base()}{build_path(tool, args)}'
 
 
 def _build_target_body(tool: dict, args: dict) -> dict | None:
-    """POST/PUT/PATCH body：剩余参数（非路径、非显式查询）进 JSON body。
-
-    arguments 里显式 ``body`` 字段直接作为整个 body（覆盖其余参数），
-    便于透传复杂嵌套结构。
-    """
-    if tool['method'] == 'GET':
-        return None
-    if 'body' in args and isinstance(args['body'], dict):
-        return args['body']
-    path_params = set(tool['path_params'])
-    query_params = set(tool['query_params'])
-    body = {k: v for k, v in args.items()
-            if k not in path_params and k not in query_params and v is not None}
-    return body or None
+    """POST/PUT/PATCH body：共享注册表口径（``body`` 显式覆盖其余参数）。"""
+    from shared.agent_tools.mcp_registry import build_body
+    return build_body(tool, args)
 
 
 def _forward_tool_call(request, tool: dict, args: dict, token: str):

@@ -5,11 +5,20 @@
  * 域能力与工具摘要摘录自 doc/agent化/01_功能介绍.md §2.1 能力地图 / §3.x（61 工具分域）；
  * 命中规则：路由前缀最长优先。Demo 态仅展示能力标签与快捷指令（点击回填输入框、
  * 不自动发送、不假接线），真实工具执行待后端立项（红线：不杜撰数据交互面）。
- * /ai-chat=全能力 61 工具 / 11 域分组（2026-10-17 08:06 负责人口径：灵犀Agent 主工作台
- * 主推全部能力、不只报告三件；域清单/工具摘要与 CAPABILITY_GROUPS §3.3 区二同源）。
+ * /ai-chat=全能力 61 工具 / 业务域分组（2026-10-17 08:06 负责人口径：灵犀Agent 主工作台
+ * 主推全部能力、不只报告三件；域清单/工具摘要与 CAPABILITY_GROUPS §3.3 区二同源，
+ * 管理员专属域除外）。
  */
 
 import { CAPABILITY_GROUPS } from '@/features/ai-chat/constants'
+
+/**
+ * 能力条只下发业务域：带 visiblePermissions 的管理员专属域（系统设置）
+ * 不面向普通用户展示，避免把不可用能力摆进「本页 Agent 能做什么」。
+ */
+const VISIBLE_ABILITY_GROUPS = CAPABILITY_GROUPS.filter(
+  (group) => !group.visiblePermissions
+)
 
 export type PageAgentCapability = {
   /** 路由前缀（pathname 等于或以该前缀开头即命中；同一卡内多个前缀取最长） */
@@ -111,13 +120,14 @@ export const PAGE_AGENT_CAPABILITIES: PageAgentCapability[] = [
     quickPrompts: ['看看当前有哪些系统配置项', '查一下用户与角色配置'],
   },
   {
-    // /ai-chat 整页即灵犀Agent 本体：主推全部能力（61 工具 / 11 域分组，
-    // 2026-10-17 08:06 负责人口径：灵犀Agent 主工作台主推全部能力、不只报告三件）
+    // /ai-chat 整页即灵犀Agent 本体：主推全部业务域能力（61 工具；
+    // 管理员专属域不入能力条），2026-10-17 08:06 负责人口径：
+    // 灵犀Agent 主工作台主推全部能力、不只报告三件
     match: ['/ai-chat'],
     pageLabel: '灵犀Agent',
-    domainLabel: '全能力（61 工具 / 11 域分组）',
-    tools: CAPABILITY_GROUPS.map((group) => group.domainLabel),
-    quickPrompts: CAPABILITY_GROUPS.flatMap((group) =>
+    domainLabel: '全能力（61 工具 / 业务域分组）',
+    tools: VISIBLE_ABILITY_GROUPS.map((group) => group.domainLabel),
+    quickPrompts: VISIBLE_ABILITY_GROUPS.flatMap((group) =>
       group.prompt ? [group.prompt] : []
     ),
   },

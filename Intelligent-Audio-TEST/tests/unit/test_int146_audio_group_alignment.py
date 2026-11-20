@@ -441,8 +441,9 @@ class TestStreamFallbackUrl:
         handler = self._make_handler(audio)
         result = handler.handle_stream_audio(StreamAudioQuery(audio_id=1))
         assert result['success'] is True
+        # 回退地址的 path 参数须 URL 编码（中文/空格/# 等字符不得截断查询串）
         assert result['data']['url'] == (
-            f'/api/v1/audios/download?path=local://audios/x.wav')
+            '/api/v1/audios/download?path=local%3A%2F%2Faudios%2Fx.wav')
 
     def test_stream_audio_presigned_url_unchanged(self, monkeypatch):
         from shared.infrastructure.storage import storage
@@ -470,7 +471,26 @@ class TestStreamFallbackUrl:
             StreamAudioByPathQuery(data={'path': 'local://audios/tree.wav'}))
         assert result['success'] is True
         assert result['data']['url'] == (
-            f'/api/v1/audios/download?path=local://audios/tree.wav')
+            '/api/v1/audios/download?path=local%3A%2F%2Faudios%2Ftree.wav')
+
+    def test_stream_audio_gateway_mode(self, monkeypatch):
+        """AUDIO_STREAM_VIA_GATEWAY=true：不发预签名，直接回网关代理地址。"""
+        from shared.infrastructure.config import BaseConfig
+        from shared.infrastructure.storage import storage
+        from audio_service.application.queries import StreamAudioQuery
+
+        audio = SimpleNamespace(
+            id=1, deleted=False, file_path='oss://audios/接管/x y.wav')
+        monkeypatch.setattr(BaseConfig, 'AUDIO_STREAM_VIA_GATEWAY', True)
+        monkeypatch.setattr(
+            storage, 'get_url',
+            lambda path, expires=3600: f'https://oss/{path}?sig=1')
+
+        handler = self._make_handler(audio)
+        result = handler.handle_stream_audio(StreamAudioQuery(audio_id=1))
+        assert result['data']['url'] == (
+            '/api/v1/audios/download?path=oss%3A%2F%2Faudios%2F%E6%8E%A5%E7%AE%A1'
+            '%2Fx+y.wav')
 
 
 class _NoopRepo:

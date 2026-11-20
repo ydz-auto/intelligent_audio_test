@@ -168,10 +168,13 @@ def create_app(config_name='default') -> FastAPI:
     # 根级挂载无 /api/v1 前缀；权限码 status:read / option:read|write）
     from api_gateway.routes.status_bp import router as status_router
     from api_gateway.routes.option_bp import router as option_router
+    from api_gateway.routes.internal_config_bp import router as internal_config_router
     # INT-1150：skill 包下载（/api/v1/agent/skill）+ MCP 适配端点（/api/v1/mcp）
     from api_gateway.routes.agent_bp import router as agent_router, mcp_router
 
     app.include_router(auth_router, prefix='/api/v1/auth', tags=['auth'])
+    # 服务间运行时评估配置（X-Internal-Token 校验，供 eval_server/evaluation_service 拉取）
+    app.include_router(internal_config_router, prefix='/api', tags=['internal'])
     app.include_router(user_router, prefix='/api/v1/auth', tags=['auth-management'])
     app.include_router(role_router, prefix='/api/v1/auth', tags=['auth-management'])
     app.include_router(oauth_router, prefix='/api/v1/auth', tags=['oauth-management'])
@@ -214,6 +217,24 @@ def create_app(config_name='default') -> FastAPI:
     # 同一 access token 通用，AuthMiddleware 单分支鉴权）
     app.include_router(agent_router, prefix='/api/v1/agent', tags=['agent-skill'])
     app.include_router(mcp_router, prefix='/api/v1/mcp', tags=['mcp'])
+
+    # INT-2451：Agent 运行底座（sessions / runs / events / approvals）代理到
+    # agent_service；鉴权/租户/限流/审计仍在网关，代理不绕过 AuthMiddleware
+    from api_gateway.routes.agent_runtime_bp import router as agent_runtime_router
+    app.include_router(agent_runtime_router, prefix='/api/v1/agent',
+                       tags=['agent-runtime'])
+
+    # INT-2549：自定义 Skill（CRUD / 导入导出 / 发布 / fork / 版本），
+    # 权限码 agent:skill:read / agent:skill:manage，透明转发到 agent_service
+    from api_gateway.routes.agent_skill_bp import router as agent_skill_router
+    app.include_router(agent_skill_router, prefix='/api/v1/agent',
+                       tags=['agent-skills'])
+
+    # INT-2488：用户模型供应商（provider 管理 / 验证 / 模型目录），
+    # 权限码 agent:provider:manage；审计只记 provider_id 与操作类型
+    from api_gateway.routes.agent_provider_bp import router as agent_provider_router
+    app.include_router(agent_provider_router, prefix='/api/v1/agent',
+                       tags=['agent-providers'])
 
     # INT-766/INT-787：系统健康汇总（网关 + 认证服务），供「关于」页版本与服务状态卡真实接线
     from api_gateway.routes.system_bp import router as system_router

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from api_gateway.application.services.testcase.testcase_query_service import TestCaseQueryService
 from api_gateway.application.services.testcase.testcase_command_service import TestCaseCommandService
 from api_gateway.application.services.testcase.testcase_import_export_service import TestCaseImportExportService
-from api_gateway.routes._response import to_response, content_disposition
+from api_gateway.routes._response import to_response, stream_download_response
 from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.application.services.visibility.visibility_service import VisibilityService
 from api_gateway.schemas.visibility import VisibilityUpdateRequest
@@ -11,21 +11,6 @@ from api_gateway.infrastructure.request_adapter import request as api_request
 from shared.infrastructure.user_context import capture_identity
 
 router = APIRouter()
-
-# 异步导出产物下载的分块大小（不把文件对象直接交给 Starlette，它会按行迭代）
-EXPORT_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
-
-
-def _iter_file_chunks(stream, chunk_size=EXPORT_DOWNLOAD_CHUNK_BYTES):
-    """按固定块把存储流 yield 给 StreamingResponse，结束即关闭句柄。"""
-    try:
-        while True:
-            chunk = stream.read(chunk_size)
-            if not chunk:
-                break
-            yield chunk
-    finally:
-        stream.close()
 
 # INT-2241：批量动作 → 所需权限点。路由依赖只看得到 URL，动作在请求体里，
 # 故按中间件预解析的 body（request.state._json_body）取 action 细分校验；
@@ -117,12 +102,8 @@ def download_export_job(task_id: str,
     if err is not None:
         return to_response(err)
 
-    return StreamingResponse(
-        _iter_file_chunks(info['stream']),
-        media_type=info['media_type'],
-        headers={'Content-Disposition':
-                 content_disposition(info['filename'], fallback='testcases_export')},
-    )
+    return stream_download_response(
+        info['stream'], info['filename'], info['media_type'])
 
 
 @router.post('/import')

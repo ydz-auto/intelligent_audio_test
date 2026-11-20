@@ -402,12 +402,17 @@ class TestCaseExportJobManager:
         result = None
         if status == ExportJobStatus.DONE.value:
             result = dict(job.get('result') or {})
-            url = self._download_url(result.get('path'))
-            if url:
-                result['download_url'] = url
-            else:
-                # 本地降级时预签名不可用 → 字段省略，前端走下载端点
+            if BaseConfig.FILE_DOWNLOAD_VIA_GATEWAY:
+                # 网关直出模式：不下发预签名直链，前端走
+                # GET /testcases/export/jobs/{task_id}/download（鉴权流式下载）
                 result.pop('download_url', None)
+            else:
+                url = self._download_url(result.get('path'))
+                if url:
+                    result['download_url'] = url
+                else:
+                    # 本地降级时预签名不可用 → 字段省略，前端走下载端点
+                    result.pop('download_url', None)
 
         return {
             'task_id': job.get('task_id'),

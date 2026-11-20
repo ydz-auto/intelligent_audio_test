@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { formatDateTime } from '@/lib/date-time'
+import { formatLocalWallClock } from '@/lib/date-time'
 import type { DevicesTabKey } from '@/features/devices/constants'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
@@ -24,6 +24,7 @@ import type { ApiDevice } from '@/domain/models/apiDevice'
 import type { DeviceDetailState } from '@/features/devices/types'
 import { DeviceStatusBadge } from '@/features/devices/components/device-status-badge'
 import { connectionTypeLabel } from '@/features/devices/lib/connection-type'
+import { deviceSystemLabel } from '@/features/devices/lib/device-system'
 
 export interface DeviceDetailDialogProps {
   state: DeviceDetailState
@@ -66,6 +67,11 @@ export function DeviceDetailDialog(props: DeviceDetailDialogProps) {
   const title =
     kind === 'test' ? '测试设备详情' : kind === 'playback' ? '播放设备详情' : '测试 API 详情'
 
+  // INT-2649：系统展示走归一映射（与设备列表同源，harmony/android → HarmonyOS/Android），拼接版本号
+  const testDeviceSystem = testDevice?.system
+    ? [deviceSystemLabel(testDevice.system), testDevice.systemVersion].filter(Boolean).join(' ')
+    : null
+
   return (
     <Dialog open={state.open} onOpenChange={props.onOpenChange}>
       <DialogContent className='sm:max-w-3xl'>
@@ -92,7 +98,7 @@ export function DeviceDetailDialog(props: DeviceDetailDialogProps) {
               {kind !== 'api' && (
                 <Row label='序列号' value={testDevice?.serialNumber ?? playbackDevice?.deviceUniqueId} />
               )}
-              {kind === 'test' && <Row label='系统' value={testDevice?.system ? `${testDevice.system} ${testDevice.systemVersion ?? ''}` : null} />}
+              {kind === 'test' && <Row label='系统' value={testDeviceSystem} />}
               {kind === 'api' && <Row label='协议' value={apiDevice?.protocol} />}
               {kind === 'api' && <Row label='环境' value={apiDevice?.environment} />}
               <Row
@@ -182,11 +188,11 @@ export function DeviceDetailDialog(props: DeviceDetailDialogProps) {
               <h3 className='text-sm font-medium'>时间信息</h3>
               <Row
                 label='最后在线'
-                value={formatDateTime(testDevice?.lastOnlineAt)}
+                value={formatLocalWallClock(testDevice?.lastOnlineAt)}
               />
               <Row
                 label='更新时间'
-                value={formatDateTime(device.updatedAt)}
+                value={formatLocalWallClock(device.updatedAt)}
               />
             </section>
           </div>

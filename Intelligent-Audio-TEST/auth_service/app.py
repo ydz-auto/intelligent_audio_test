@@ -87,6 +87,18 @@ def create_app(config_name='default') -> FastAPI:
     from shared.utils.auth_mode_middleware import AuthModeHeaderMiddleware
     app.add_middleware(AuthModeHeaderMiddleware, auth_mode=Config.AUTH_MODE)
 
+    # INT-2604：HTTP 请求级 DB session scope。本服务原先只注册了
+    # AuthModeHeaderMiddleware，uvicorn 线程池线程落回线程级 session —— 只读
+    # 路由（如 GET /api/v1/auth/access-tokens）SELECT 完不 commit/rollback，
+    # 请求结束后连接滞留在 idle in transaction 并持有 access_tokens 的
+    # ACCESS SHARE（实测 4h+），把 vacuum / DDL 顶进锁队列且长期占住连接池。
+    # 中间件在请求收尾（含异常）remove 该请求的 session，事务生命周期收敛到
+    # 单次请求；与 algorithm_service(INT-1652)/evaluation_service(INT-1691)、
+    # api_gateway(INT-90) 同口径。最后添加 = 包在最外层，覆盖全部路由与内部
+    # 中间件。
+    from shared.infrastructure.db_session_middleware import DbSessionScopeMiddleware
+    app.add_middleware(DbSessionScopeMiddleware)
+
     # 注册认证路由
     from auth_service.interfaces.api.routes import router as auth_router
     from auth_service.interfaces.api.routes import (

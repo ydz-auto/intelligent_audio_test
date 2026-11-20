@@ -1,10 +1,8 @@
 /**
- * 输入区工具行（interfaces 层 ai-chat/input；08_AI对话页.md §3.5）：
- * 模型/供应商切换器 + 清空对话（Trash2 + ConfirmDialog destructive + toast「对话已清空」）；
- * 附件/搜索钮不引入（§2.2 Agent 域无对位能力）；参数面板整块移除
- * （2026-10-17 负责人口径：仅允许切换模型与供应商）。
+ * 输入区工具行（interfaces 层 ai-chat/input）：模型供应商入口 + 目标模式开关 + 清空对话。
+ * 默认普通对话；「目标模式」开启后按目标多轮推进（含预算 / 暂停继续）。
  */
-import { Trash2 } from 'lucide-react'
+import { KeyRound, PanelLeft, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -16,29 +14,37 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
-import type { ChatConfig, LlmProvider } from '@/domain/models/aiChat'
-import { ModelProviderSwitcher } from './model-provider-switcher'
+import {
+  AGENT_RUN_MODE,
+  type AgentRunMode,
+} from '@/domain/models/agent'
+import { AutoModeSwitcher } from '../auto-mode/auto-mode-switcher'
 
 type AiChatInputToolsProps = {
-  config: ChatConfig
-  providers: LlmProvider[]
   disabled?: boolean
   hasMessages?: boolean
   onClearMessages?: () => void
-  onSelectProvider: (providerId: string) => void
-  onSelectModel: (providerId: string, modelId: string) => void
-  onManageProviders: () => void
+  runMode?: AgentRunMode
+  onRunModeChange?: (mode: AgentRunMode) => void
+  /** 打开模型供应商管理（新增 / 编辑 / 自动发现模型） */
+  onManageProviders?: () => void
+  /** 对话记录面板是否展开（浮窗侧边会话：在同一窗口内切换历史会话） */
+  historyOpen?: boolean
+  onToggleHistory?: () => void
+  /** 新建会话（结束当前会话上下文，下一次发送新建） */
+  onNewConversation?: () => void
 }
 
 export function AiChatInputTools({
-  config,
-  providers,
   disabled,
   hasMessages = false,
   onClearMessages,
-  onSelectProvider,
-  onSelectModel,
+  runMode = AGENT_RUN_MODE.CHAT,
+  onRunModeChange,
   onManageProviders,
+  historyOpen = false,
+  onToggleHistory,
+  onNewConversation,
 }: AiChatInputToolsProps) {
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
 
@@ -51,15 +57,75 @@ export function AiChatInputTools({
   return (
     <>
       <PromptInputTools className='bg-background/70 border-border/60 rounded-lg border p-1 shadow-xs'>
-        <ModelProviderSwitcher
-          className='bg-transparent shadow-none'
-          config={config}
-          disabled={disabled}
-          onManageProviders={onManageProviders}
-          onSelectModel={onSelectModel}
-          onSelectProvider={onSelectProvider}
-          providers={providers}
-        />
+        {onToggleHistory && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <PromptInputButton
+                  aria-label='对话记录'
+                  aria-pressed={historyOpen}
+                  className='text-muted-foreground hover:text-foreground font-medium'
+                  onClick={onToggleHistory}
+                  variant={historyOpen ? 'secondary' : 'ghost'}
+                >
+                  <PanelLeft className='size-4' />
+                </PromptInputButton>
+              }
+            />
+            <TooltipContent>
+              <p>{historyOpen ? '收起对话记录' : '展开对话记录'}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
+        {onNewConversation && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <PromptInputButton
+                  aria-label='新建会话'
+                  className='text-muted-foreground hover:text-foreground font-medium'
+                  disabled={disabled}
+                  onClick={onNewConversation}
+                  variant='ghost'
+                >
+                  <Plus className='size-4' />
+                </PromptInputButton>
+              }
+            />
+            <TooltipContent>
+              <p>新建会话</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
+        {onManageProviders && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <PromptInputButton
+                  aria-label='模型供应商'
+                  className='text-muted-foreground hover:text-foreground font-medium'
+                  onClick={onManageProviders}
+                  variant='ghost'
+                >
+                  <KeyRound className='size-4' />
+                </PromptInputButton>
+              }
+            />
+            <TooltipContent>
+              <p>模型供应商</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
+        {onRunModeChange && (
+          <AutoModeSwitcher
+            disabled={disabled}
+            mode={runMode}
+            onModeChange={onRunModeChange}
+          />
+        )}
 
         <Tooltip>
           <TooltipTrigger

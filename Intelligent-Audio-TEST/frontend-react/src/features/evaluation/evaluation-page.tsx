@@ -51,7 +51,6 @@ import {
   EVALUATION_VIEW_TABS,
   WEIGHT_UPDATE_SUCCESS,
   WEIGHT_UPDATE_FAILURE,
-  getAlgorithmLabel,
 } from '@/features/evaluation/constants'
 import { EvaluationHeaderActions } from '@/features/evaluation/components/evaluation-header-actions'
 import { EvaluationToolbar } from '@/features/evaluation/components/evaluation-toolbar'
@@ -120,7 +119,6 @@ export function EvaluationPage() {
   const importExport = useEvaluationImportExport()
 
   const globalAlgorithmId = useAlgorithmStore((s) => s.algorithmId)
-  const setGlobalAlgorithmId = useAlgorithmStore((s) => s.setAlgorithmId)
 
   // 本地状态列表（行级操作就地回写，不依赖重拉；query 变化时同步）
   const [dimensions, setDimensions] = useState<Dimension[]>([])
@@ -133,7 +131,6 @@ export function EvaluationPage() {
     useDebouncedSearch()
   const [statusFilter, setStatusFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
-  const [algorithmFilter, setAlgorithmFilter] = useState('all')
 
   // 视图 / 选择 / 分页
   const [viewMode, setViewMode] = useState<'list' | 'group'>('list')
@@ -178,24 +175,7 @@ export function EvaluationPage() {
   const globalAlgorithmValid = Boolean(
     globalAlgorithmId && algorithmOptions.some((o) => o.value === globalAlgorithmId)
   )
-  // 全局算法中文名：优先取真实 /algorithm/options 的 label（照 Vue getAlgorithmLabel
-  // 从 algorithms 列表解析口径）；真实列表未含时回退 constants 登记表/原值，避免裸 type 码
-  const globalAlgorithmLabel = globalAlgorithmValid
-    ? algorithmOptions.find((o) => o.value === globalAlgorithmId)?.label ??
-      getAlgorithmLabel(globalAlgorithmId)
-    : null
-  const effectiveAlgorithmId =
-    algorithmFilter !== 'all'
-      ? algorithmFilter
-      : globalAlgorithmValid
-        ? globalAlgorithmId
-        : ''
-  const algorithmFacetValue =
-    algorithmFilter !== 'all'
-      ? algorithmFilter
-      : globalAlgorithmValid
-        ? globalAlgorithmId || 'all'
-        : 'all'
+  const effectiveAlgorithmId = globalAlgorithmValid ? globalAlgorithmId : ''
 
   /* ───────── 派生：筛选 → 层级 → 分组 ───────── */
 
@@ -759,24 +739,11 @@ export function EvaluationPage() {
                 setPage(1)
               }}
               categories={categories}
-              algorithmFilter={algorithmFilter}
-              onAlgorithmFilter={(value) => {
-                setAlgorithmFilter(value)
-                setPage(1)
-              }}
-              algorithmOptions={algorithmOptions}
-              algorithmFacetValue={algorithmFacetValue}
-              globalAlgorithmLabel={globalAlgorithmLabel}
-              onClearGlobalAlgorithm={() => {
-                setGlobalAlgorithmId('')
-                toast.success('已清除全局算法，显示全部算法的维度')
-              }}
               canFilter={canRead}
               onReset={() => {
                 resetSearch()
                 setStatusFilter('all')
                 setCategoryFilter('all')
-                setAlgorithmFilter('all')
                 setPage(1)
               }}
             />

@@ -19,359 +19,121 @@ For commercial licensing, please contact support@quantumnous.com
 'use client'
 
 import { ChartBar } from 'lucide-react'
-import {
-  type ComponentProps,
-  type ReactNode,
-  createElement,
-  Fragment,
-} from 'react'
+import { type ComponentProps, useMemo } from 'react'
 
+import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
-
-import { CodeBlock } from './code-block'
 
 type ResponseProps = ComponentProps<'div'> & {
   children: string
   final?: boolean
+  /** 思考过程等次要位置用紧凑版排版（小字号灰字、更紧的行距） */
+  compact?: boolean
 }
 
+/** 图表占位符行：`[chart:uuid]`（数据由后端按 ChartSpec 渲染，前端不执行模型脚本） */
+const CHART_PLACEHOLDER_LINE = /^\s*\[chart:([^\]]+)\]\s*$/
+
+type ResponseSegment =
+  | { kind: 'markdown'; text: string }
+  | { kind: 'chart'; chartId: string }
+
 /**
- * Markdown 文档面渲染（08_AI对话页.md §3.4 照 newAPI Response 组件语义；
- * 视觉稿内联实现，覆盖标题/段落/表格/列表/引用/行内格式/代码块/图表占位符）。
- * `[chart:uuid]` 占位符渲染为图表占位卡——数据由后端按 ChartSpec 渲染（§3.6，待后端立项），
- * 前端不执行模型指定脚本。
+ * 正文阅读排版（AI 回复主文档面）：
+ * 统一走 marked + DOMPurify（§3.13），表格 / 标题 / 分隔线交给标准 Markdown 解析，
+ * 不再用手写块解析器（手写版会把表格分隔行 `---` 当正文渲染、标题挤在段落里）。
  */
-export function Response({ className, children, ...props }: ResponseProps) {
+const BODY_MARKDOWN_CLASS = cn(
+  'whitespace-normal text-[0.95rem] leading-7 text-foreground/95 sm:text-[0.975rem]',
+  '[&_p]:my-2.5 [&_p]:leading-7',
+  '[&_h1]:mt-6 [&_h1]:mb-2 [&_h1]:text-lg [&_h1]:font-semibold',
+  '[&_h2]:mt-6 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold',
+  '[&_h3]:mt-4 [&_h3]:mb-1.5 [&_h3]:text-sm [&_h3]:font-semibold',
+  '[&_h4]:mt-3 [&_h4]:mb-1 [&_h4]:text-sm [&_h4]:font-semibold',
+  '[&_ul]:my-2.5 [&_ol]:my-2.5 [&_ul]:pl-5 [&_ol]:pl-5',
+  '[&_li]:my-1 [&_li]:leading-7',
+  '[&_blockquote]:my-3 [&_blockquote]:rounded-r-lg [&_blockquote]:border-l-[3px] [&_blockquote]:border-primary/60 [&_blockquote]:bg-muted/40 [&_blockquote]:py-1.5 [&_blockquote]:pl-3 [&_blockquote]:text-foreground/80',
+  '[&_table]:my-3 [&_table]:text-[0.8125rem] [&_table]:leading-6',
+  '[&_thead]:bg-muted/50',
+  '[&_th]:px-3 [&_th]:py-2 [&_th]:font-semibold [&_th]:whitespace-nowrap [&_th]:text-foreground/70',
+  '[&_td]:px-3 [&_td]:py-2 [&_td]:align-top',
+  '[&_tbody_tr:nth-child(even)]:bg-muted/20',
+  '[&_hr]:my-6 [&_hr]:border-border/60',
+  '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2',
+  '[&_code]:text-[0.85em]'
+)
+
+/** 思考过程 / 折叠区里的次要正文排版 */
+const COMPACT_MARKDOWN_CLASS = cn(
+  'whitespace-normal text-xs leading-5 text-muted-foreground',
+  '[&_p]:my-1.5 [&_p]:leading-5',
+  '[&_h1]:mt-2 [&_h1]:mb-1 [&_h1]:text-sm [&_h1]:font-semibold',
+  '[&_h2]:mt-2 [&_h2]:mb-1 [&_h2]:text-sm [&_h2]:font-semibold',
+  '[&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:text-xs [&_h3]:font-semibold',
+  '[&_h4]:mt-2 [&_h4]:mb-1 [&_h4]:text-xs [&_h4]:font-semibold',
+  '[&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_li]:leading-5',
+  '[&_table]:my-2 [&_table]:text-[11px]',
+  '[&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:pl-3'
+)
+
+/** 按 `[chart:uuid]` 行切段：其余文本照常走 Markdown，占位行渲染成图表占位卡 */
+function splitChartPlaceholders(markdown: string): ResponseSegment[] {
+  const segments: ResponseSegment[] = []
+  let buffer: string[] = []
+
+  const flush = () => {
+    const text = buffer.join('\n').trim()
+    if (text) segments.push({ kind: 'markdown', text })
+    buffer = []
+  }
+
+  for (const line of markdown.split('\n')) {
+    const chartMatch = CHART_PLACEHOLDER_LINE.exec(line)
+    if (chartMatch) {
+      flush()
+      segments.push({ kind: 'chart', chartId: chartMatch[1] })
+      continue
+    }
+    buffer.push(line)
+  }
+  flush()
+  return segments
+}
+
+function ChartPlaceholder({ chartId }: { chartId: string }) {
   return (
-    <div
-      className={cn(
-        'not-prose [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6',
-        className
-      )}
-      {...props}
-    >
-      {renderBlocks(children)}
+    <div className='border-border/70 bg-muted/40 text-muted-foreground my-2 flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-lg border'>
+      <ChartBar className='size-5' aria-hidden='true' />
+      <span className='text-xs'>图表占位符 · {chartId}</span>
+      <span className='text-[11px]'>数据按服务端校验的 ChartSpec 渲染</span>
     </div>
   )
 }
 
-/* ---------------------------------- 块级 ---------------------------------- */
-
-function renderBlocks(markdown: string): ReactNode {
-  const lines = markdown.split('\n')
-  const blocks: ReactNode[] = []
-  let buffer: string[] = []
-  let inCode = false
-  let codeLang = ''
-  let codeLines: string[] = []
-  let listType: 'ul' | 'ol' | null = null
-  let listItems: string[] = []
-  let tableLines: string[] | null = null
-
-  const flushList = () => {
-    if (listType && listItems.length > 0) {
-      const Tag = listType
-      blocks.push(
-        createElement(
-          Tag,
-          { key: `list-${blocks.length}`, className: 'my-2 pl-6 space-y-1' },
-          listItems.map((item, index) => (
-            <li key={index} className='leading-6'>
-              {parseInline(item)}
-            </li>
-          ))
-        )
-      )
-      listItems = []
-      listType = null
-    }
-  }
-
-  const flushTable = () => {
-    if (!tableLines) return
-    blocks.push(
-      <table
-        className='border-border/70 my-3 w-full border-collapse overflow-hidden rounded-lg text-sm'
-        key={`table-${blocks.length}`}
-      >
-        {renderTable(tableLines)}
-      </table>
-    )
-    tableLines = null
-  }
-
-  const flushParagraph = () => {
-    if (buffer.length > 0) {
-      const joined = buffer.join('\n')
-      // 图表占位符 [chart:uuid]（§3.6 占位卡；数据待后端按 ChartSpec 渲染）
-      const chartMatch = /^\s*\[chart:([^\]]+)\]\s*$/.exec(joined)
-      if (chartMatch) {
-        blocks.push(
-          <div
-            className='border-border/70 bg-muted/40 text-muted-foreground my-2 flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-lg border'
-            key={`chart-${blocks.length}`}
-          >
-            <ChartBar className='size-5' aria-hidden='true' />
-            <span className='text-xs'>图表占位符 · {chartMatch[1]}</span>
-            <span className='text-[11px]'>数据按服务端校验的 ChartSpec 渲染</span>
-          </div>
-        )
-      } else {
-        blocks.push(
-          <p key={`p-${blocks.length}`} className='leading-6'>
-            {parseInline(joined)}
-          </p>
-        )
-      }
-      buffer = []
-    }
-  }
-
-  for (const line of lines) {
-    // 代码块
-    if (line.trimStart().startsWith('```')) {
-      if (!inCode) {
-        flushList()
-        flushTable()
-        flushParagraph()
-        inCode = true
-        codeLang = line.trim().slice(3).trim()
-        codeLines = []
-      } else {
-        inCode = false
-        blocks.push(
-          <CodeBlock
-            code={codeLines.join('\n')}
-            key={`code-${blocks.length}`}
-            language={codeLang}
-          />
-        )
-      }
-      continue
-    }
-    if (inCode) {
-      codeLines.push(line)
-      continue
-    }
-
-    // 表格：连续含 | 的行
-    if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
-      flushList()
-      flushParagraph()
-      if (tableLines) {
-        tableLines.push(line)
-      } else {
-        tableLines = [line]
-      }
-      continue
-    } else if (tableLines) {
-      flushTable()
-    }
-
-    const trimmed = line.trim()
-
-    // 标题
-    const heading = /^(#{1,3})\s+(.*)$/.exec(trimmed)
-    if (heading) {
-      flushList()
-      flushTable()
-      flushParagraph()
-      const level = heading[1].length
-      const Tag = `h${Math.min(level + 1, 4)}` as 'h2' | 'h3' | 'h4'
-      blocks.push(
-        createElement(
-          Tag,
-          {
-            key: `h-${blocks.length}`,
-            className:
-              level === 1
-                ? 'mt-4 mb-2 text-base font-semibold'
-                : 'mt-3 mb-1.5 text-sm font-semibold',
-          },
-          parseInline(heading[2])
-        )
-      )
-      continue
-    }
-
-    // 引用
-    if (trimmed.startsWith('>')) {
-      flushList()
-      flushTable()
-      flushParagraph()
-      blocks.push(
-        <blockquote
-          className='border-border/70 text-muted-foreground my-2 border-l-2 pl-3 text-sm leading-6'
-          key={`quote-${blocks.length}`}
-        >
-          {parseInline(trimmed.slice(1).trim())}
-        </blockquote>
-      )
-      continue
-    }
-
-    // 无序列表
-    const ulItem = /^[-*+]\s+(.*)$/.exec(trimmed)
-    if (ulItem) {
-      flushTable()
-      flushParagraph()
-      if (listType !== 'ul') flushList()
-      listType = 'ul'
-      listItems.push(ulItem[1])
-      continue
-    }
-
-    // 有序列表
-    const olItem = /^\d+\.\s+(.*)$/.exec(trimmed)
-    if (olItem) {
-      flushTable()
-      flushParagraph()
-      if (listType !== 'ol') flushList()
-      listType = 'ol'
-      listItems.push(olItem[1])
-      continue
-    }
-
-    // 空行 → 落盘当前块
-    if (trimmed === '') {
-      flushList()
-      flushTable()
-      flushParagraph()
-      continue
-    }
-
-    buffer.push(line)
-  }
-
-  if (inCode) {
-    blocks.push(
-      <CodeBlock code={codeLines.join('\n')} key={`code-${blocks.length}`} />
-    )
-  }
-  flushList()
-  flushTable()
-  flushParagraph()
-
-  return blocks
-}
-
-function renderTable(lines: string[]): ReactNode {
-  const rows = lines
-    .filter((line) => line.trim() !== '')
-    .map((line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|'))
-  const header = rows[0]
-  const body = rows.slice(1).filter((row) => row.some((cell) => cell.trim() !== '—' && cell.trim() !== '-'))
-  const hasHeader = header && header.length > 0
+/**
+ * Markdown 文档面渲染（08_AI对话页.md §3.4 照 newAPI Response 组件语义）。
+ * 渲染走 `marked` + DOMPurify（`@/components/ui/markdown`），支持标题/段落/表格/列表/
+ * 引用/行内格式/代码块与 `[chart:uuid]` 图表占位符。
+ */
+export function Response({ className, children, compact = false }: ResponseProps) {
+  const segments = useMemo(() => splitChartPlaceholders(children), [children])
 
   return (
-    <Fragment>
-      {hasHeader && (
-        <thead>
-          <tr className='border-border/70 border-b'>
-            {header.map((cell, index) => (
-              <th
-                className='bg-muted/50 px-3 py-1.5 text-left text-xs font-semibold'
-                key={index}
-              >
-                {parseInline(cell.trim())}
-              </th>
-            ))}
-          </tr>
-        </thead>
-      )}
-      <tbody>
-        {body.map((row, rowIndex) => (
-          <tr className='border-border/50 border-b last:border-b-0' key={rowIndex}>
-            {row.map((cell, cellIndex) => (
-              <td className='px-3 py-1.5 text-xs leading-5' key={cellIndex}>
-                {parseInline(cell.trim())}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </Fragment>
-  )
-}
-
-/* ---------------------------------- 行内 ---------------------------------- */
-
-function parseInline(text: string): ReactNode {
-  const nodes: ReactNode[] = []
-  // 1) 行内代码
-  const codeSplit = text.split(/(`[^`]+`)/g)
-  codeSplit.forEach((part, partIndex) => {
-    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
-      nodes.push(
-        <code
-          className='bg-muted border-border/60 rounded border px-1 py-px font-mono text-[0.85em]'
-          key={`code-${partIndex}`}
-        >
-          {part.slice(1, -1)}
-        </code>
-      )
-      return
-    }
-    nodes.push(...parseInlineRich(part, partIndex))
-  })
-  return nodes
-}
-
-/** 富文本：加粗 **x** / 斜体 *x* / 链接 [label](url) */
-function parseInlineRich(text: string, keyBase: string | number): ReactNode[] {
-  if (!text) return []
-  const nodes: ReactNode[] = []
-  const regex = /(\*\*[^*]+\*\*|\*[^*\s][^*]*\*|\[[^\]]+\]\([^)]+\))/g
-  let lastIndex = 0
-  let match: RegExpExecArray | null
-  let counter = 0
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      nodes.push(
-        <Fragment key={`${keyBase}-t-${counter}`}>
-          {text.slice(lastIndex, match.index)}
-        </Fragment>
-      )
-    }
-    const token = match[0]
-    if (token.startsWith('**') && token.endsWith('**')) {
-      nodes.push(
-        <strong className='font-semibold' key={`${keyBase}-b-${counter}`}>
-          {token.slice(2, -2)}
-        </strong>
-      )
-    } else if (token.startsWith('*') && token.endsWith('*') && token.length > 2) {
-      nodes.push(
-        <em key={`${keyBase}-i-${counter}`}>{token.slice(1, -1)}</em>
-      )
-    } else {
-      const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token)
-      if (linkMatch) {
-        nodes.push(
-          <a
-            className='text-primary underline underline-offset-2'
-            href={linkMatch[2]}
-            key={`${keyBase}-a-${counter}`}
-            rel='noreferrer'
-            target='_blank'
+    <div className={cn('not-prose', className)}>
+      {segments.map((segment, index) =>
+        segment.kind === 'chart' ? (
+          <ChartPlaceholder chartId={segment.chartId} key={`chart-${index}`} />
+        ) : (
+          <Markdown
+            breaks
+            className={compact ? COMPACT_MARKDOWN_CLASS : BODY_MARKDOWN_CLASS}
+            key={`markdown-${index}`}
+            scrollableTables
           >
-            {linkMatch[1]}
-          </a>
+            {segment.text}
+          </Markdown>
         )
-      } else {
-        nodes.push(token)
-      }
-    }
-    lastIndex = match.index + token.length
-    counter += 1
-  }
-
-  if (lastIndex < text.length) {
-    nodes.push(
-      <Fragment key={`${keyBase}-t-end`}>{text.slice(lastIndex)}</Fragment>
-    )
-  }
-
-  return nodes
+      )}
+    </div>
+  )
 }

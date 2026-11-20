@@ -315,6 +315,17 @@ class ReportStatsQueryMixin:
             # INT-1116：上抛 OSS 临时桶（temp 类别，TTL 由 OSS 生命周期策略清理）
             key = f"report_logs/{report_id}/{case_id}/{_uuid.uuid4().hex}.zip"
             uploaded_path = storage.save_file(tmp_path, 'temp', key)
+            from shared.infrastructure.config import BaseConfig
+            if BaseConfig.FILE_DOWNLOAD_VIA_GATEWAY:
+                # 网关直出模式：只回对象路径，由网关鉴权流式转发（计服务器出流量，
+                # 不走桶公网下行、也不受 gRPC 4MB 上限约束）
+                return {
+                    'filename': zip_filename,
+                    'path': uploaded_path,
+                    'size': total_size,
+                    'mime_type': 'application/zip',
+                    'mode': 'gateway',
+                }
             url = storage.get_url(uploaded_path, expires=3600)
             if url:
                 return {

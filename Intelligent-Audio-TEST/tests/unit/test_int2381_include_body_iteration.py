@@ -122,11 +122,11 @@ def patch_stub(monkeypatch):
 
 
 class TestAclIteration:
-    def test_default_chunk_size_is_four(self):
-        """默认分块 = 4（设计文档 §3.9.1 实测表：4 是 B1′ 达标前提下最大的块）。"""
+    def test_default_chunk_size_is_one(self):
+        """默认分块 = 1（INT-2436 M1：cgroup <300MB 判据下唯一达标的块）。"""
         if 'REPORT_DIM_RESULT_BODY_CHUNK_SIZE' in os.environ:
             pytest.skip('运行环境显式设置了 REPORT_DIM_RESULT_BODY_CHUNK_SIZE')
-        assert acl_mod._DIM_RESULT_BODY_CHUNK_SIZE == 4
+        assert acl_mod._DIM_RESULT_BODY_CHUNK_SIZE == 1
 
     def test_yields_chunks_with_coverage(self, patch_stub, monkeypatch):
         monkeypatch.setattr(acl_mod, '_DIM_RESULT_BODY_CHUNK_SIZE', 2)

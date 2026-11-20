@@ -3,23 +3,13 @@
  * 消费 dto/ 原始 snake_case 类型，产出 domain 模型；Presentation 层不感知 snake_case。
  * 现 Vue deviceAdapter.ts 平移。
  */
-import type { Device, DeviceStatus, DeviceType } from '@/domain/models/device'
+import { toDeviceType } from '@/domain/models/device'
+import type { Device, DeviceStatus } from '@/domain/models/device'
 import type { DeviceItemDto } from '@/infrastructure/dto/device.dto'
-
-const DEVICE_TYPE_SET: ReadonlySet<string> = new Set([
-  'physical',
-  'http_api',
-  'websocket_api',
-])
 
 export function toDeviceStatus(status: string | null): DeviceStatus | null {
   if (!status) return null
   return status === 'online' ? 'online' : 'offline'
-}
-
-export function toDeviceType(type: string | null): DeviceType | null {
-  if (!type || !DEVICE_TYPE_SET.has(type)) return null
-  return type as DeviceType
 }
 
 export function deviceFromDto(dto: DeviceItemDto): Device {
@@ -37,5 +27,7 @@ export function deviceFromDto(dto: DeviceItemDto): Device {
     lastOnlineAt: dto.last_online_at,
     supportedAlgorithms: dto.supported_algorithms,
     connectionType: dto.connection_type,
+    labId: dto.lab_id,
+    labName: dto.lab_name,
   }
 }

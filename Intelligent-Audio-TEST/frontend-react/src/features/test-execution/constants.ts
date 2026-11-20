@@ -91,21 +91,6 @@ export const RESOURCE_STREAMING_OPTIONS: ResourceSelectOption[] = [
   { value: 'non_streaming', label: '非流式' },
 ]
 
-/**
- * 实验室-被测对象绑定 mock（INT-487 设备-实验室绑定待接线；本页演示过滤口径）。
- * 默认「全部实验室」不筛；选择实验室后设备/API 列表按 lab 成员过滤。
- */
-export const MOCK_RESOURCE_LABS: {
-  id: string
-  name: string
-  deviceIds: number[]
-  apiIds: number[]
-}[] = [
-  { id: 'lab-a', name: '旗舰实验室', deviceIds: [1, 2, 4, 5], apiIds: [11, 12] },
-  { id: 'lab-b', name: '车载实验室', deviceIds: [6], apiIds: [13] },
-  { id: 'lab-c', name: '入门实验室', deviceIds: [3], apiIds: [12] },
-]
-
 /** 报告模板选项（对齐 15_报告域 §5 模板清单） */
 export const REPORT_TEMPLATE_OPTIONS = [
   '标准模板',

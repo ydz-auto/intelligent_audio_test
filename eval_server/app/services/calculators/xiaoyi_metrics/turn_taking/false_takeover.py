@@ -379,7 +379,7 @@ def _format_chunks_timeline(chunks, max_items=TIMELINE_MAX_ITEMS_CHUNKS):
             lines.append(f"  [{ts[0]:.2f}-{ts[1]:.2f}] {text}")
         else:
             lines.append(f"  {text}")
-    if len(chunks) > max_items:
+    if max_items is not None and len(chunks) > max_items:
         lines.append(f"  ...（共 {len(chunks)} 条，已截断）")
     return '\n'.join(lines)
 
@@ -392,7 +392,7 @@ def _format_pause_timeline(pause_intervals, max_items=TIMELINE_MAX_ITEMS_PAUSES)
         if ts and len(ts) >= 2:
             dur = ts[1] - ts[0]
             lines.append(f"  [{ts[0]:.2f}-{ts[1]:.2f}] （停顿{dur:.2f}秒）")
-    if len(pause_intervals) > max_items:
+    if max_items is not None and len(pause_intervals) > max_items:
         lines.append(f"  ...（共 {len(pause_intervals)} 条，已截断）")
     return '\n'.join(lines)
 

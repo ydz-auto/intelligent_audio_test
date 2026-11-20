@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-逐轮话轮评估（turn_eval）维度种子数据（1 主维度 + 6 子维度，INT-192 移植）
+逐轮话轮评估（turn_eval）维度种子数据（1 主维度 + 9 子维度，INT-192 移植）
 
 蓝本：V9.7.10 backend/scripts/migrations/202606/seed_turn_eval.py（金标对齐后）。
 结构金标：运行库实查（2026-10-12，逐项比对维度行/参数/映射/关联/分类）。
@@ -14,7 +14,10 @@
     ├── 未接管率占比   (sub, turn_evaluation)
     ├── 误接管率占比   (sub, turn_evaluation)
     ├── 接管时延平均值 (sub, turn_evaluation)
-    └── 接管内容平均分 (sub, turn_evaluation)
+    ├── 接管内容平均分 (sub, turn_evaluation)
+    ├── 误接管-正常接管率占比 (sub, turn_evaluation)
+    ├── 误接管-未接管率占比 (sub, turn_evaluation)
+    └── 主动反馈-backchannel占比 (sub, turn_evaluation)
 
 主维度不配 output（只作容器）；子维度 output field_path 映射 turn_eval JSON 响应
 （turn_classification.* / tor.tor / false_takeover.* / takeover_latency.* /
@@ -435,6 +438,37 @@ SUB_DIMENSIONS = [
              '误接管-未接管率判定理由', 'text', 'output',
              'reasons.false_then_no_takeover_rate', None, 'aux', True,
              False, None, '误接管-未接管率判定理由（评估裁判输出）', 4),
+        ],
+    },
+    {
+        'task_type_code': 'turn_evaluation',
+        'name': '主动反馈-backchannel占比',
+        'keywords': 'turn_evaluation,主动反馈,backchannel,backchannel_rate,主动反馈占比',
+        'description': '子维度：主动反馈-backchannel占比 = 含至少一次backchannel的用例数 / 已评估用例数（按用例聚合，产出 %）；同一用例多次backchannel只计1次。',
+        'type': 'auto',
+        'result_type': 0,
+        'result_min': 0.0,
+        'result_max': 1.0,
+        'decimal_places': 2,
+        'weight': 1,
+        'estimated_exec_time': 60,
+        'score_unit': '',
+        'statistic_method': 'weighted_sum_ratio',
+        'agg_denominator': 'case',
+        'sort_order': 35,
+        'params': [
+            ('backchannel_rate', '主动反馈-backchannel占比', '主动反馈-backchannel占比', 'number', 'output',
+             'turn_classification.backchannel_rate', 'main', 'main', True,
+             False, None, '含至少一次backchannel的用例占比(0~1)，取每用例整体结果', 1),
+            ('backchannel_case_count', '主动反馈-backchannel命中用例数(分子)', '主动反馈-backchannel命中用例数', 'number', 'output',
+             'turn_classification.backchannel_case_count', 'numerator', 'aux', False,
+             False, None, 'weighted_sum_ratio 分子：命中backchannel的用例数，同一用例只计1次', 2),
+            ('backchannel_case_total', '已评估用例数(分母)', '已评估用例数', 'number', 'output',
+             'turn_classification.backchannel_case_total', 'denominator', 'aux', False,
+             False, None, 'weighted_sum_ratio 分母：已评估用例数', 3),
+            ('backchannel_rate_reason', '主动反馈-backchannel占比判定理由', '主动反馈-backchannel占比判定理由', 'text', 'output',
+             'reasons.backchannel_rate', None, 'aux', True,
+             False, None, '主动反馈-backchannel命中用例数、已评估用例数及对应轮次', 4),
         ],
     },
 ]
@@ -888,9 +922,10 @@ if __name__ == '__main__':
     print("此脚本将：")
     print("1. 注册/更新 turn_eval 主维度（dimension_type=main，无 output）")
     print("   配置 input params + api_settings + param_mappings")
-    print("2. 注册/更新 turn_evaluation 子维度（dimension_type=sub）6 个：")
+    print("2. 注册/更新 turn_evaluation 子维度（dimension_type=sub）9 个：")
     print("   - 逐轮三分类评估 / 接管率占比 / 未接管率占比 / 误接管率占比")
     print("   - 接管时延平均值 / 接管内容平均分")
+    print("   - 误接管-正常接管率占比 / 误接管-未接管率占比 / 主动反馈-backchannel占比")
     print("3. 注册 voice_llm → 主维度 + 子维度的关联")
     print("4. 分类分配：全族 category_id → 话轮接管")
     print()

@@ -16,7 +16,7 @@ function makeMessage(
   key: string,
   from: 'user' | 'assistant',
   content: string,
-  status = MESSAGE_STATUS.COMPLETE
+  status: ChatMessage['status'] = MESSAGE_STATUS.COMPLETE
 ): ChatMessage {
   return {
     key,
@@ -55,6 +55,62 @@ describe('useChatConversation（重新生成截断重建，P2-4 返修）', () =
       historyMessages: [messages[0], messages[1]],
       appendUserMessage: false,
     } satisfies SendChatOptions)
+  })
+
+  it('编辑并重发：只保留编辑后的 user 消息，截断旧回答且不追加新 user 气泡', () => {
+    const messages = [
+      makeMessage('u1', 'user', '第一问'),
+      makeMessage('a1', 'assistant', '第一答'),
+      makeMessage('u2', 'user', '第二问'),
+      makeMessage('a2', 'assistant', '出错了', MESSAGE_STATUS.ERROR),
+    ]
+    const sendChat = vi.fn()
+    const updateMessages = vi.fn()
+    const { result } = renderHook(() =>
+      useChatConversation({ messages, updateMessages, sendChat })
+    )
+
+    act(() => {
+      result.current.handleEditMessage(messages[2])
+    })
+    act(() => {
+      result.current.applyEdit('第二问（改）', true)
+    })
+
+    const updateFn = updateMessages.mock.calls[0][0]
+    const next = updateFn(messages)
+    // 编辑的 user 消息保留（含新版本），其后的错误气泡被截掉
+    expect(next).toHaveLength(3)
+    expect(next[2].versions.at(-1)?.content).toBe('第二问（改）')
+
+    // 重发不追加新 user 气泡，历史截止到被编辑消息之前
+    expect(sendChat).toHaveBeenCalledWith('第二问（改）', {
+      historyMessages: [messages[0], messages[1]],
+      appendUserMessage: false,
+    } satisfies SendChatOptions)
+  })
+
+  it('仅保存编辑（不提交）不重发、不截断', () => {
+    const messages = [
+      makeMessage('u1', 'user', '第一问'),
+      makeMessage('a1', 'assistant', '第一答'),
+    ]
+    const sendChat = vi.fn()
+    const updateMessages = vi.fn()
+    const { result } = renderHook(() =>
+      useChatConversation({ messages, updateMessages, sendChat })
+    )
+
+    act(() => {
+      result.current.handleEditMessage(messages[0])
+    })
+    act(() => {
+      result.current.applyEdit('第一问（改）', false)
+    })
+
+    const updateFn = updateMessages.mock.calls[0][0]
+    expect(updateFn(messages)).toHaveLength(2)
+    expect(sendChat).not.toHaveBeenCalled()
   })
 
   it('重新生成：无上一条 user 消息时不动作', () => {

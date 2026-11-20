@@ -1,6 +1,7 @@
 /**
  * 注册表单组件测试（INT-606 认证接线）：字段校验内联 / 真实注册成功引导登录 /
- * 403（注册开关关闭）切引导态 / 400、409 detail 文案 toast
+ * 403（注册开关关闭）切引导态 / 400、409 detail 文案 toast /
+ * 邀请码注册策略（开启时强制填写并随请求提交）
  * （对位 12_登录与错误页.md §3.6）。
  */
 import { render, screen } from '@testing-library/react'
@@ -28,7 +29,14 @@ vi.mock('@/infrastructure/api/authApi', async (importOriginal) => {
   }
 })
 
+const { policyMock } = vi.hoisted(() => ({ policyMock: vi.fn() }))
+
+vi.mock('@/application/auth/use-registration-policy', () => ({
+  useRegistrationPolicy: () => policyMock(),
+}))
+
 beforeEach(() => {
+  policyMock.mockReturnValue({ data: { inviteCodeRequired: false } })
   vi.spyOn(toast, 'success')
   vi.spyOn(toast, 'error')
 })
@@ -132,6 +140,50 @@ describe('UserRegisterForm（认证接线真实注册）', () => {
     await fillAndSubmit()
     await vi.waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith('注册失败：用户名已被使用')
+    )
+  })
+
+  it('邀请码注册关闭：不渲染邀请码输入', async () => {
+    render(<UserRegisterForm />)
+    expect(screen.queryByLabelText('邀请码')).not.toBeInTheDocument()
+  })
+
+  it('邀请码注册开启：未填写邀请码时字段报错且不发起注册', async () => {
+    policyMock.mockReturnValue({ data: { inviteCodeRequired: true } })
+    const user = userEvent.setup()
+    render(<UserRegisterForm />)
+    expect(await screen.findByLabelText('邀请码')).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('用户名'), 'new_user')
+    await user.type(screen.getByLabelText('邮箱'), 'new@example.com')
+    await user.type(screen.getByLabelText('密码'), 'secret1')
+    await user.type(screen.getByLabelText('确认密码'), 'secret1')
+    await user.click(screen.getByRole('button', { name: '注 册' }))
+
+    expect(await screen.findByText('请输入邀请码')).toBeInTheDocument()
+    expect(registerMock).not.toHaveBeenCalled()
+  })
+
+  it('邀请码注册开启：填写邀请码后随注册请求提交', async () => {
+    policyMock.mockReturnValue({ data: { inviteCodeRequired: true } })
+    registerMock.mockResolvedValue({ userId: 42 })
+    const user = userEvent.setup()
+    render(<UserRegisterForm />)
+
+    await user.type(screen.getByLabelText('用户名'), 'new_user')
+    await user.type(screen.getByLabelText('邮箱'), 'new@example.com')
+    await user.type(screen.getByLabelText('密码'), 'secret1')
+    await user.type(screen.getByLabelText('确认密码'), 'secret1')
+    await user.type(await screen.findByLabelText('邀请码'), 'INV-2026')
+    await user.click(screen.getByRole('button', { name: '注 册' }))
+
+    await vi.waitFor(() =>
+      expect(registerMock).toHaveBeenCalledWith({
+        username: 'new_user',
+        email: 'new@example.com',
+        password: 'secret1',
+        inviteCode: 'INV-2026',
+      })
     )
   })
 })

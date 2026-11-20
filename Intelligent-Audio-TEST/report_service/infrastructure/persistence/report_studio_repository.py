@@ -178,6 +178,30 @@ class ReportStudioRepositoryImpl(ReportStudioRepository):
         finally:
             session.close()
 
+    def find_document_by_content(self, report_id: int, source_type: str,
+                                 created_by: Optional[int],
+                                 markdown_content: str
+                                 ) -> Optional[ReportStudioDocument]:
+        """按「报告 + 来源 + 操作人 + 正文」查已有文档（起草幂等，INT-2471）。
+
+        只匹配当前正文完全一致的文档：内容变了就是新草稿（或应当走编辑生成
+        新版本）；这里不回源版本快照，避免把历史正文当成当前正文。
+        """
+        session = get_db_session()
+        try:
+            query = session.query(DocumentPO).filter(
+                DocumentPO.report_id == report_id,
+                DocumentPO.source_type == source_type,
+                DocumentPO.markdown_content == markdown_content)
+            if created_by is None:
+                query = query.filter(DocumentPO.created_by.is_(None))
+            else:
+                query = query.filter(DocumentPO.created_by == created_by)
+            po = query.order_by(DocumentPO.created_at.asc()).first()
+            return _doc_to_entity(po) if po else None
+        finally:
+            session.close()
+
     def update_document(self, doc_id: str, expected_version: int,
                         markdown: str, chart_refs: List[str], style_prefs: Dict[str, Any],
                         etag_hash: str, new_version: int,
@@ -350,6 +374,34 @@ class ReportStudioRepositoryImpl(ReportStudioRepository):
         try:
             po = session.query(ExportJobPO).filter(
                 ExportJobPO.export_id == export_id).first()
+            return _export_to_entity(po) if po else None
+        finally:
+            session.close()
+
+    def find_latest_export_job(self, doc_id: str, version: int, fmt: str,
+                               theme: Optional[str],
+                               created_by: Optional[int] = None
+                               ) -> Optional[ReportStudioExportJob]:
+        """按「文档 + 固定版本 + 格式 + 主题 + 操作人」读最近一次导出作业。
+
+        主题按落库值精确匹配（缺省主题落库为 'default'，由服务层归一后再查），
+        操作人按 ``created_by`` 精确匹配（INT-2471 复审 P2-1）：导出作业按操作人
+        归属，复用他人作业只会得到一个下载被判 403 的引用，因此只复用本人的作业，
+        与起草幂等 ``find_document_by_content`` 同一口径。
+        """
+        session = get_db_session()
+        try:
+            query = session.query(ExportJobPO).filter(
+                ExportJobPO.doc_id == doc_id,
+                ExportJobPO.version == version,
+                ExportJobPO.format == fmt,
+                ExportJobPO.theme == theme,
+            )
+            if created_by is None:
+                query = query.filter(ExportJobPO.created_by.is_(None))
+            else:
+                query = query.filter(ExportJobPO.created_by == created_by)
+            po = query.order_by(ExportJobPO.created_at.desc()).first()
             return _export_to_entity(po) if po else None
         finally:
             session.close()

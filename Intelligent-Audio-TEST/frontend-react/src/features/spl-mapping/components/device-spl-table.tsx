@@ -21,7 +21,7 @@ import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import type { SplMapping } from '@/domain/models/splMapping'
 import { DEVICE_TYPE_OPTIONS } from '@/features/spl-mapping/constants'
 import {
-  formatDateTime,
+  formatLocalWallClock,
   formatDistance,
   formatTargetSpl,
   formatTestFrequency,
@@ -216,7 +216,7 @@ export function DeviceSplTable(props: DeviceSplTableProps) {
                   <CalibrationStatusBadge status={row.calibrationStatus} />
                 </td>
                 <td className='px-3 py-2 font-mono text-xs tabular-nums'>
-                  {formatDateTime(row.updatedAt)}
+                  {formatLocalWallClock(row.updatedAt)}
                 </td>
                 <td className='px-3 py-2'>
                   <div className='flex items-center justify-end gap-0.5'>

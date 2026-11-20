@@ -5,7 +5,7 @@
 ## 1. 前置条件
 
 1. **创建 Access Token**：登录平台，在「个人配置页 → Access Token」创建访问令牌。明文格式 `at_` 开头（如 `at_9f2c…`），**仅创建时明文显示一次**，库中只存哈希；创建时可配置权限 scopes 与有效时间。
-2. **确认服务地址可达**：本包 mcp.json 已按下载时的配置预填服务地址 `{{BASE_URL}}`。多网络环境下可改为你实际可访问的地址（IP 或 http(s) 链接）。
+2. **确认服务地址可达**：本包 `assets/mcp.json` 已按下载时的配置预填服务地址 `{{BASE_URL}}`。多网络环境下可改为你实际可访问的地址（IP 或 http(s) 链接）。
 3. **权限范围**：token 生效权限 = 用户当前权限 ∩ token scopes；不勾选 scopes = 继承用户全部权限。token 不含某接口所需权限时调用返回 403。
 
 ## 2. 配置与认证
@@ -128,7 +128,7 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/v1/testcases?keyword=唤�
 | --- | --- | --- | --- |
 | audio_list | `GET /api/v1/audios` | 列出音频（keyword/page/per_page） | audio:read |
 | audio_get | `GET /api/v1/audios/{audio_id}` | 音频详情 | audio:read |
-| audio_get_by_ids | `POST /api/v1/audios/by-ids` | 按 ID 列表批量获取 | audio:read |
+| audio_get_by_ids | `POST /api/v1/audios/by-ids` | 按 ID 列表批量获取（宿主语境，不做归属校验；内部 Agent 的 `audio_query` 不暴露该动作） | audio:read |
 | audio_get_by_md5 | `POST /api/v1/audios/by-md5` | 按 MD5 查音频 | audio:read |
 | audio_list_tags | `GET /api/v1/audios/tags` | 音频标签 | audio:read |
 | audio_update_metadata | `PUT /api/v1/audios/{audio_id}/metadata` | 更新元数据（name 等） | audio:update |
@@ -158,9 +158,9 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/v1/testcases?keyword=唤�
 # 音频列表
 curl -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/v1/audios?page=1&per_page=10"
 
-# 按 MD5 定位音频
+# 按 MD5 定位音频（请求体字段是 md5_list 数组）
 curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"md5":"d41d8cd98f00b204e9800998ecf8427e"}' "$BASE_URL/api/v1/audios/by-md5"
+  -d '{"md5_list":["d41d8cd98f00b204e9800998ecf8427e"]}' "$BASE_URL/api/v1/audios/by-md5"
 ```
 
 ### 5.5 被测设备 device（`device_*`）
@@ -387,7 +387,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 
 ### 6.1 配置模板
 
-`mcp.json`（同目录）为 MCP 配置模板，URL 指向本平台 MCP 端点。在支持 MCP 的客户端（如 Claude Code / Claude Desktop）中添加远程 MCP：
+`assets/mcp.json`（包内 `assets/` 目录）为 MCP 配置模板，URL 指向本平台 MCP 端点。在支持 MCP 的客户端（如 Claude Code / Claude Desktop）中添加远程 MCP：
 
 ```json
 {

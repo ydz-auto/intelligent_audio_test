@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""唯一启动入口：Docker 栈 + 宿主 audio/device 服务。
+"""唯一启动入口：Docker 栈 + 宿主 e2e/audio/device 服务。
 
 历史上有两套并存的启动链（stack_ctl.ps1 → run_all.py 宿主全栈；docker 时代又一套
 run_stack.py + 三个 audio 启动 .cmd），端口/库地址多处手抄导致漂移（宿主
 audio_service 曾连到测试库）。本入口统一为一条命令：
 
-    python stack.py up                    # compose 起栈 + 宿主 device/audio
+    python stack.py up                    # compose 起栈 + 宿主 e2e/device/audio
     python stack.py up --audio-mode shim  # Windows 音频栈楔死时用影子 pyaudio
     python stack.py status                # 容器 + 宿主服务状态
     python stack.py health                # HTTP /health + gRPC/基础设施 TCP 探测
     python stack.py down                  # 优雅停宿主服务 → compose down
-    python stack.py restart host|audio|device|all
-    python stack.py logs [服务名] [-f]    # 容器日志；audio/device 看宿主日志
+    python stack.py restart host|audio|device|e2e|all
+    python stack.py logs [服务名] [-f]    # 容器日志；audio/device/e2e 看宿主日志
     python stack.py build [服务名...]     # 构建镜像（委托 docker/build_stack.py）
 
 端口口径不在本文件硬编码：compose 发布端口由 docker compose config 解析，
@@ -48,7 +48,8 @@ TCP_PROBES = {
     51068: 'report_service', 51069: 'auth_service', 51091: 'evaluation_service',
     5432: 'postgres', 6379: 'redis', 9000: 'rustfs',
 }
-HOST_LOGS = {'audio': 'audio_service.log', 'audio_shim': 'audio_service_shim.log',
+HOST_LOGS = {'e2e': 'e2e_test_service.log',
+             'audio': 'audio_service.log', 'audio_shim': 'audio_service_shim.log',
              'device': 'device_service.log'}
 
 
@@ -80,12 +81,20 @@ def cmd_up(args) -> int:
         return 1
     ok, msg = control.start_audio(mode=args.audio_mode, check_timeout=args.check_timeout)
     _print(msg)
+    if not ok:
+        return 1
+    ok, msg = control.start_e2e()
+    _print(msg)
     return 0 if ok else 1
 
 
 def cmd_down(args) -> int:
     rc = 0
     if not args.no_host:
+        # 先停 e2e（会经 gRPC 调 device/audio），再停硬件服务
+        ok, msg = control.stop_e2e()
+        _print(msg)
+        rc |= 0 if ok else 1
         ok, msg = control.stop_audio()
         _print(msg)
         rc |= 0 if ok else 1
@@ -106,6 +115,11 @@ def cmd_down(args) -> int:
 
 def cmd_restart(args) -> int:
     target = args.target
+    if target in ('host', 'all', 'e2e'):
+        ok, msg = control.stop_e2e()
+        _print(msg)
+        if not ok:
+            return 1
     if target in ('host', 'all', 'audio'):
         ok, msg = control.stop_audio()
         _print(msg)
@@ -131,6 +145,11 @@ def cmd_restart(args) -> int:
     if target in ('host', 'all', 'audio'):
         ok, msg = control.start_audio(mode=args.audio_mode,
                                       check_timeout=args.check_timeout)
+        _print(msg)
+        if not ok:
+            return 1
+    if target in ('host', 'all', 'e2e'):
+        ok, msg = control.start_e2e()
         _print(msg)
         if not ok:
             return 1
@@ -182,6 +201,9 @@ def cmd_health(args) -> int:
             checks.append((name, ports[container_port], _tcp_health(ports[container_port])))
     for name, port, _pid in control.status():
         checks.append((name, port, _tcp_health(port)))
+    # e2e 同进程的 gRPC 端口不在 status() 的单端口行里，单独补一条
+    checks.append(('e2e_test_service gRPC', control.E2E_GRPC_PORT,
+                   _tcp_health(control.E2E_GRPC_PORT)))
 
     failed = 0
     for name, port, ok in checks:
@@ -219,7 +241,7 @@ def cmd_build(args) -> int:
 # ---------------------------------------------------------------- CLI
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description='唯一启动入口：Docker 栈 + 宿主 audio/device')
+    parser = argparse.ArgumentParser(description='唯一启动入口：Docker 栈 + 宿主 e2e/audio/device')
     sub = parser.add_subparsers(dest='command', required=True)
 
     p_up = sub.add_parser('up', help='起 Docker 栈 + 宿主服务')
@@ -242,7 +264,7 @@ def main(argv=None) -> int:
     p_down.set_defaults(func=cmd_down)
 
     p_restart = sub.add_parser('restart', help='重启宿主服务或全栈')
-    p_restart.add_argument('target', choices=('audio', 'device', 'host', 'all'))
+    p_restart.add_argument('target', choices=('e2e', 'audio', 'device', 'host', 'all'))
     p_restart.add_argument('--audio-mode', choices=('real', 'shim'), default='real')
     p_restart.add_argument('--test-db', action='store_true')
     p_restart.add_argument('--check-timeout', type=float, default=60.0)
@@ -254,7 +276,7 @@ def main(argv=None) -> int:
     p_health = sub.add_parser('health', help='HTTP /health + gRPC/基础设施 TCP 探测')
     p_health.set_defaults(func=cmd_health)
 
-    p_logs = sub.add_parser('logs', help='容器日志；audio/device/audio_shim 看宿主日志')
+    p_logs = sub.add_parser('logs', help='容器日志；e2e/audio/device/audio_shim 看宿主日志')
     p_logs.add_argument('services', nargs='*', help='服务名（缺省全部容器）')
     p_logs.add_argument('-f', '--follow', action='store_true')
     p_logs.add_argument('--tail', type=int, default=100)

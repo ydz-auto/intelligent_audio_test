@@ -374,22 +374,56 @@ class AlgorithmParamQueryService:
             return {'success': False, 'message': f'提取失败: {e}', 'code': 500}
 
     def reload_config(self) -> Dict[str, Any]:
-        """重新加载配置（热更新）"""
+        """重新加载配置（热更新）。
+
+        INT-2568：结果必须如实反映算法服务的重载结果。上游
+        ``shared.clients.algo_reload_config`` 在 gRPC 失败（含
+        algorithm_service 返回 success=False）时返回 None；旧实现把 None
+        也组装成外层 ``success=True`` + ``data.success=True``，把缓存重建
+        失败遮蔽成成功。此处要求 ``data.success`` 与 ``reload_time`` 一致，
+        失败时外层 ``success=False`` 并给出明确业务码（502：上游失败）。
+        """
         try:
             reload_result = self.repo.algo_reload_config()
-
-            return {
-                'success': True,
-                'message': 'Config reloaded',
-                'data': {
-                    'success': True,
-                    'message': f"Config reloaded: {bool(reload_result)}",
-                    'reload_time': (reload_result or {}).get('reload_time') if isinstance(reload_result, dict) else None
-                },
-            }
         except Exception as e:
             logger.error(f"重新加载配置失败: {e}")
             return {'success': False, 'message': f'重载失败: {e}', 'code': 500}
+
+        if not isinstance(reload_result, dict) or not reload_result:
+            logger.error("重新加载配置失败: 算法服务未返回有效的重载结果")
+            return {
+                'success': False,
+                'message': '重载失败: 算法服务未返回有效的重载结果',
+                'data': {
+                    'success': False,
+                    'message': 'Config reloaded: False',
+                    'reload_time': None,
+                },
+                'code': 502,
+            }
+
+        # 以算法服务返回的 success 为准，并要求 reload_time 同时存在：
+        # 只有 success 没有时间戳说明缓存并未真正重建，不能当成功。
+        reload_time = reload_result.get('reload_time')
+        succeeded = bool(reload_result.get('success')) and bool(reload_time)
+        data = {
+            'success': succeeded,
+            'message': f"Config reloaded: {succeeded}",
+            'reload_time': reload_time,
+        }
+        if not succeeded:
+            logger.error(
+                "重新加载配置失败: 算法服务返回 success=%s, reload_time=%s",
+                reload_result.get('success'), reload_time,
+            )
+            return {
+                'success': False,
+                'message': '重载失败: 算法服务未能重建配置缓存',
+                'data': data,
+                'code': 502,
+            }
+
+        return {'success': True, 'message': 'Config reloaded', 'data': data}
 
     # ==================== 内部辅助 ====================
 

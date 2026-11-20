@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "memory_write 敏感信息扫描规则（INT-2490，方案 §8.6 第 6 条）。block=整笔拒绝；redact=脱敏后放行。可用 AGENT_MEMORY_SENSITIVE_RULES 覆盖本文件路径。",
+  "rules": [
+    {"name": "openai_style_key", "pattern": "\\bsk-[A-Za-z0-9_-]{16,}\\b", "action": "block"},
+    {"name": "aws_access_key", "pattern": "\\bAKIA[0-9A-Z]{16}\\b", "action": "block"},
+    {"name": "private_key_block", "pattern": "-----BEGIN [A-Z ]*PRIVATE KEY-----", "action": "block"},
+    {"name": "bearer_token", "pattern": "(?i)\\bbearer\\s+[A-Za-z0-9._\\-]{16,}", "action": "block"},
+    {"name": "jwt_token", "pattern": "\\beyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{4,}", "action": "block"},
+    {"name": "password_assignment", "pattern": "(?i)\\b(password|passwd|pwd)\\s*[:=]\\s*\\S+", "action": "block"},
+    {"name": "secret_assignment", "pattern": "(?i)\\b(api[_-]?key|secret[_-]?key|client[_-]?secret|access[_-]?token|access[_-]?key[_-]?id)\\s*[:=]\\s*\\S{6,}", "action": "block"},
+    {"name": "email_pii", "pattern": "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "action": "redact"},
+    {"name": "cn_mobile_pii", "pattern": "(?<!\\d)1[3-9]\\d{9}(?!\\d)", "action": "redact"},
+    {"name": "cn_id_card_pii", "pattern": "(?<!\\d)\\d{17}[\\dXx](?!\\d)", "action": "redact"}
+  ]
+}

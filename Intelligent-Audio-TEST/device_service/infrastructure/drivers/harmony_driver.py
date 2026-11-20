@@ -1,7 +1,10 @@
+import io
+import json
 import time
 import shutil
 import subprocess
 import os
+import tempfile
 import logging
 from .base_driver import BaseDeviceDriver
 from .harmony_collection_mixin import HarmonyCollectionMixin
@@ -15,7 +18,15 @@ from .utils import (
 from .driver_constants import *
 from shared.utils.config_manager import config_manager
 from shared.constants.ui_capture import (
-    UiCaptureDegradeReason, UiCaptureMode, normalize_ui_capture_mode,
+    UiActionNotAllowed,
+    UiActionType,
+    UiCaptureDegradeReason,
+    UiCaptureMode,
+    UiCapturePlatform,
+    UiCaptureUnavailable,
+    UiElementNotFound,
+    UiTreeFormat,
+    normalize_ui_capture_mode,
 )
 
 logger = logging.getLogger(__name__)
@@ -108,6 +119,211 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
 
     def get_driver(self, device_sn):
         return self._get_driver(device_sn)
+
+    # ==================== 设备 UI 探索三能力（INT-2577） ====================
+    # 树：UiTree.dump_to_file（layout JSON）→ 组件树 JSON 文本；解析在 agent 侧
+    # （parse_harmony_components）。失败一律 UiCaptureUnavailable 显式降级，不返回空树。
+
+    def _require_ui_driver(self, device_sn):
+        """取 hypium UiDriver；hypium 缺失 / 守护不可达分别给出结构化降级原因。"""
+        if not UiDriver:
+            raise UiCaptureUnavailable(
+                f'HarmonyOS 设备 {device_sn} 不可用：运行环境无 hypium（UiDriver 导入失败）',
+                reason=UiCaptureDegradeReason.HYPIUM_MISSING)
+        try:
+            driver = self._get_driver(device_sn)
+        except Exception as e:
+            raise UiCaptureUnavailable(
+                f'HarmonyOS 设备 {device_sn} UI 驱动连接失败：{e}',
+                reason=UiCaptureDegradeReason.UITEST_DAEMON_UNAVAILABLE) from e
+        if driver is None:
+            raise UiCaptureUnavailable(
+                f'HarmonyOS 设备 {device_sn} UI 驱动不可用（设备端 uitest 守护不可达）',
+                reason=UiCaptureDegradeReason.UITEST_DAEMON_UNAVAILABLE)
+        return driver
+
+    @staticmethod
+    def _flatten_layout_node(node, out) -> int:
+        """hypium layout 树（attributes/children）→ 组件数组（扁平属性 + children）。
+
+        只做结构解包：属性名原样保留，字段归一化仍由 agent 侧
+        ``parse_harmony_components`` 负责（不实现第二份归一化）。
+
+        Returns:
+            int: 本次递归处理的节点数（含子节点），用于 ``node_count`` 上报。
+        """
+        if not isinstance(node, dict):
+            return 0
+        attrs = node.get('attributes')
+        flat = dict(attrs) if isinstance(attrs, dict) else {
+            k: v for k, v in node.items() if k != 'children'}
+        count = 1
+        children = node.get('children')
+        if isinstance(children, list):
+            child_flats = []
+            for child in children:
+                count += HarmonyDriver._flatten_layout_node(child, child_flats)
+            if child_flats:
+                flat['children'] = child_flats
+        out.append(flat)
+        return count
+
+    def dump_ui_tree(self, device_sn, **kwargs) -> dict:
+        """读当前页 UI 树：``UiTree.dump_to_file`` → layout JSON → 组件树 JSON 文本。"""
+        driver = self._require_ui_driver(device_sn)
+        work_dir = tempfile.mkdtemp(prefix='device-ui-tree-')
+        tree_file = os.path.join(work_dir, 'layout.json')
+        try:
+            try:
+                driver.UiTree.dump_to_file(tree_file)
+            except Exception as e:
+                raise UiCaptureUnavailable(
+                    f'HarmonyOS 设备 {device_sn} 读取控件树失败：{e}',
+                    reason=UiCaptureDegradeReason.DRIVER_UNAVAILABLE) from e
+            try:
+                with open(tree_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    layout = json.load(f)
+            except (OSError, ValueError) as e:
+                raise UiCaptureUnavailable(
+                    f'HarmonyOS 设备 {device_sn} 控件树不可解析：{e}',
+                    reason=UiCaptureDegradeReason.TREE_UNREADABLE) from e
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
+        components = []
+        node_count = self._flatten_layout_node(layout, components)
+        if not components or node_count <= 0:
+            raise UiCaptureUnavailable(
+                f'HarmonyOS 设备 {device_sn} 控件树没有任何节点',
+                reason=UiCaptureDegradeReason.TREE_UNREADABLE)
+        return {
+            'platform': UiCapturePlatform.HARMONYOS.value,
+            'format': UiTreeFormat.HARMONY_COMPONENTS.value,
+            'payload': json.dumps(components, ensure_ascii=False),
+            'node_count': node_count,
+        }
+
+    def _resolve_ui_component(self, driver, device_sn, node):
+        """定位待操作组件：按 id / key / text 查（``find_component``）。"""
+        node = node if isinstance(node, dict) else {}
+        selector = None
+        if node.get('resource_id'):
+            selector = By.id(str(node['resource_id']))
+        elif node.get('key'):
+            selector = By.key(str(node['key']))
+        elif node.get('text'):
+            selector = By.text(str(node['text']))
+        if selector is None:
+            raise UiElementNotFound(
+                f'HarmonyOS 设备 {device_sn} 动作缺少可用定位键'
+                f'（resource_id / key / text 均为空）')
+        try:
+            component = driver.find_component(selector)
+        except Exception as e:
+            raise UiCaptureUnavailable(
+                f'HarmonyOS 设备 {device_sn} 查找目标组件失败：{e}',
+                reason=UiCaptureDegradeReason.DRIVER_UNAVAILABLE) from e
+        if component is None:
+            raise UiElementNotFound(
+                f'HarmonyOS 设备 {device_sn} 上未定位到目标组件'
+                f'（resource_id={node.get("resource_id")!r} key={node.get("key")!r}'
+                f' text={node.get("text")!r}）')
+        return component
+
+    def perform_ui_action(self, device_sn, action_type, *, node=None,
+                          params=None) -> dict:
+        """下发一个已校验的 UiActionType 动作（hypium UiDriver 原生能力）。"""
+        driver = self._require_ui_driver(device_sn)
+        params = params if isinstance(params, dict) else {}
+        action = self._normalize_action(action_type)
+        try:
+            if action is UiActionType.TAP:
+                driver.click(self._resolve_ui_component(driver, device_sn, node))
+            elif action is UiActionType.LONG_PRESS:
+                component = self._resolve_ui_component(driver, device_sn, node)
+                press_time = float(params.get('duration') or UI_EXPLORE_LONG_PRESS_SECONDS)
+                driver.long_click(component, press_time=press_time)
+            elif action is UiActionType.INPUT_TEXT:
+                component = self._resolve_ui_component(driver, device_sn, node)
+                driver.input_text(component, str(params.get('text') or ''))
+            elif action is UiActionType.SWIPE:
+                self._slide(driver, params)
+            elif action is UiActionType.BACK:
+                driver.press_back()
+            elif action is UiActionType.HOME:
+                driver.press_home()
+            elif action is UiActionType.WAIT:
+                seconds = min(float(params.get('seconds') or UI_EXPLORE_WAIT_DEFAULT_SECONDS),
+                              UI_EXPLORE_WAIT_MAX_SECONDS)
+                driver.wait(seconds)
+        except (UiElementNotFound, UiActionNotAllowed):
+            raise
+        except Exception as e:
+            raise UiCaptureUnavailable(
+                f'HarmonyOS 设备 {device_sn} 下发动作 {action.value} 失败：{e}',
+                reason=UiCaptureDegradeReason.DRIVER_UNAVAILABLE) from e
+        return {'action_type': action.value, 'performed': True}
+
+    @staticmethod
+    def _normalize_action(action_type):
+        """动作名 → UiActionType（非七枚举一律 ACTION_NOT_ALLOWED，拒绝魔法字符串）。"""
+        try:
+            return UiActionType(str(action_type or '').strip().upper())
+        except ValueError:
+            raise UiActionNotAllowed(f'不支持的 UI 动作：{action_type!r}')
+
+    def _slide(self, driver, params):
+        """按方向计算起止点并滑动（hypium ``slide``，以屏幕中心为基准）。"""
+        direction = str(params.get('direction') or 'up').lower()
+        if direction not in UI_EXPLORE_SWIPE_DIRECTIONS:
+            raise UiActionNotAllowed(f'不支持的滑动方向：{direction!r}')
+        width, height = driver.get_display_size()
+        cx, cy = width // 2, height // 2
+        span = int(params.get('distance') or min(width, height) * UI_EXPLORE_SWIPE_SPAN_RATIO)
+        half = max(1, span) // 2
+        delta = {
+            'up': (0, -half), 'down': (0, half),
+            'left': (-half, 0), 'right': (half, 0),
+        }[direction]
+        duration = float(params.get('duration') or UI_EXPLORE_SWIPE_DURATION_SECONDS)
+        driver.slide((cx - delta[0], cy - delta[1]), (cx + delta[0], cy + delta[1]),
+                     slide_time=duration)
+
+    def capture_ui_screenshot(self, device_sn, **kwargs) -> dict:
+        """截取当前屏 → PNG 字节（上传对象存储由 servicer 负责）。"""
+        driver = self._require_ui_driver(device_sn)
+        work_dir = tempfile.mkdtemp(prefix='device-ui-shot-')
+        shot_path = os.path.join(work_dir, 'screenshot.png')
+        try:
+            try:
+                driver.capture_screen(shot_path)
+            except Exception as e:
+                raise UiCaptureUnavailable(
+                    f'HarmonyOS 设备 {device_sn} 截图失败：{e}',
+                    reason=UiCaptureDegradeReason.SCREENSHOT_UNAVAILABLE) from e
+            try:
+                with open(shot_path, 'rb') as f:
+                    png = f.read()
+            except OSError as e:
+                raise UiCaptureUnavailable(
+                    f'HarmonyOS 设备 {device_sn} 截图未落盘：{e}',
+                    reason=UiCaptureDegradeReason.SCREENSHOT_UNAVAILABLE) from e
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
+        if not png:
+            raise UiCaptureUnavailable(
+                f'HarmonyOS 设备 {device_sn} 截图内容为空',
+                reason=UiCaptureDegradeReason.SCREENSHOT_UNAVAILABLE)
+        width, height = 0, 0
+        try:
+            from PIL import Image
+            with Image.open(io.BytesIO(png)) as image:
+                width, height = image.size
+        except Exception as e:
+            raise UiCaptureUnavailable(
+                f'HarmonyOS 设备 {device_sn} 截图不可解析：{e}',
+                reason=UiCaptureDegradeReason.SCREENSHOT_UNAVAILABLE) from e
+        return {'png': png, 'format': 'PNG',
+                'width': int(width), 'height': int(height)}
 
     def is_locked(self, device_sn):
         """

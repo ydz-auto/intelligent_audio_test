@@ -1,20 +1,37 @@
 /**
- * AI 对话发送/停止（interfaces 层 hooks；照 newAPI use-chat-handler/use-stream-request
- * 平移流式骨架——**Demo 态对话由用户自配 LLM 供应商驱动**（§3.8「Demo 可先行」，
- * §3.11/§3.10 红线「不做假数据回显」）。
- * 2026-10-17 审计返修（P1）：删除本地 mock 回显与杜撰工具卡/来源（通过率 92.3% 等
- * 假数值），发送真实 POST /chat/completions（llmProviderApi.sendChatCompletion），
- * 正文本地逐块渲染模拟打字机；无供应商/无模型 → 语义化错误消息；Agent 工具链待后端立项。
- * 2026-10-17 新口径：无模型参数（仅模型/供应商切换），发送体不带 parameterEnabled。
+ * AI 对话发送/停止（interfaces 层 hooks；08_AI对话页.md §3.8 + INT-2457 M0 / INT-2507）。
+ *
+ * 两条通道（§12.2，默认由配置决定 = 平台 Agent）：
+ * - platform：POST /agent/sessions/{id}/runs + GET /agent/runs/{id}/events（SSE），事件流
+ *   （message_delta / tool_call / tool_result / run_finished / error）驱动消息渲染。run 生命周期
+ *   与消息补丁收敛在 application/agent/agent-run-store 的单一实例里（INT-2507）：整页与浮窗
+ *   共用同一 sessionId / phase / 取消闸，本 hook 只下发 send / cancel 并读共享状态。
+ * - provider：保留「用户自配 LLM 供应商直连」降级模式（P0-1 拍板后二选一，不长期双轨）；
+ *   正文本地逐块渲染模拟打字机（既有行为，未接平台后端）。
+ *
+ * 红线：不写 mock、不杜撰工具卡/来源；无供应商 / Agent 未开启 / 未部署均落语义化错误。
  */
 import { useCallback, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
-import type {
-  ChatConfig,
-  ChatMessage,
-  LlmProvider,
+import {
+  isAgentRunActive,
+  useAgentRun,
+  AGENT_RUN_PHASE,
+} from '@/application/agent/use-agent-run'
+import {
+  useAgentRunStore,
+  type AgentRunStore,
+} from '@/application/agent/agent-run-store'
+import {
+  CHAT_CHANNEL,
+  type ChatChannel,
+  type ChatConfig,
+  type ChatMessage,
+  type LlmProvider,
 } from '@/domain/models/aiChat'
 import { ERROR_MESSAGES, MESSAGE_STATUS } from '@/features/ai-chat/constants'
+import { buildBoundContextPrefix } from '@/features/ai-chat/lib/context-prompt'
 import {
   sendChatCompletion,
   type ChatCompletionMessage,
@@ -30,12 +47,11 @@ export type SendChatOptions = {
   appendUserMessage?: boolean
 }
 
-/** Demo 系统提示（中文；主推全部能力——2026-10-17 08:06 负责人口径：灵犀Agent 主工作台
- * 主推全部能力、不只报告三件；不注入杜撰报告事实，数值一律由真实回复承载） */
+/** Demo 系统提示（中文；主推全部能力——2026-10-17 08:06 负责人口径；仅供应商通道使用） */
 const SYSTEM_PROMPT =
   '你是智能音频测试平台的灵犀Agent，帮助用户完成平台各类事务：报告生成/对比/分析、用例生成、音频导入、任务管理、设备驱动、日志诊断等。回答简洁专业，不确定的信息不要编造。'
 
-/** 流式合帧节奏（照 STREAM_UPDATE_FLUSH_MS=50 语义；真实回复本地逐块渲染） */
+/** 流式合帧节奏（供应商通道：真实回复本地逐块渲染） */
 const STREAM_CHUNK_MS = 40
 const STREAM_CHUNK_SIZE = 12
 
@@ -81,20 +97,36 @@ function buildLoadingMessage(key: string): ChatMessage {
 
 export function useChatHandler({
   config,
-  provider,
+  provider = null,
   messages,
   onMessageUpdate,
-  /** 系统提示覆盖（AI 复核等有界会话注入专用上下文；缺省用通用灵犀Agent 提示） */
+  /** 系统提示覆盖（AI 复核等有界会话注入专用上下文；仅供应商通道） */
   systemPrompt,
+  /** 对话通道（缺省 = 自带供应商，保持既有调用方行为；页面按配置传平台 Agent） */
+  channel = CHAT_CHANNEL.PROVIDER,
+  /**
+   * 是否把会话绑定的报告上下文注入本轮请求（仅报告工作模式打开时为 true）。
+   * 浮窗与普通聊天不注入：绑定的报告只作用于报告工作模式。
+   */
+  injectReportContext = false,
+  /** 侧边会话：把主对话最近若干条作为上下文前缀随本轮请求下发（留空不注入） */
+  requestPrefix = null,
+  /** run store（主对话 / 浮窗侧边会话各自一份；缺省=主对话） */
+  runStore = useAgentRunStore,
 }: {
   config: ChatConfig
-  /** 当前供应商（调用方从 useLlmProviders 解析：config.providerId 命中或默认） */
-  provider: LlmProvider | null
+  /** 当前供应商（供应商直连通道使用；平台 Agent 通道不依赖） */
+  provider?: LlmProvider | null
   messages: ChatMessage[]
   onMessageUpdate: UpdateMessagesFn
   systemPrompt?: string
+  channel?: ChatChannel
+  injectReportContext?: boolean
+  requestPrefix?: string | null
+  runStore?: AgentRunStore
 }) {
-  const [isGenerating, setIsGenerating] = useState(false)
+  /** 供应商通道本地生成态（平台通道的生成态由共享 store 派生，两宿主同口径） */
+  const [isProviderGenerating, setIsProviderGenerating] = useState(false)
   const runRef = useRef<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const timersRef = useRef<number[]>([])
@@ -108,6 +140,12 @@ export function useChatHandler({
   messagesRef.current = messages
   const systemPromptRef = useRef(systemPrompt)
   systemPromptRef.current = systemPrompt
+  const channelRef = useRef(channel)
+  channelRef.current = channel
+  const injectReportContextRef = useRef(injectReportContext)
+  injectReportContextRef.current = injectReportContext
+  const requestPrefixRef = useRef(requestPrefix)
+  requestPrefixRef.current = requestPrefix
 
   const schedule = useCallback((fn: () => void, delay: number) => {
     const id = window.setTimeout(fn, delay)
@@ -120,7 +158,26 @@ export function useChatHandler({
     timersRef.current = []
   }, [])
 
+  /** 平台 Agent run（主对话 / 侧边会话各一份，宿主按 runStore 注入） */
+  const agentRun = useAgentRun(runStore)
+  const platformActive = isAgentRunActive(agentRun.phase)
+  /**
+   * 通道分流（INT-2507 返工）：平台 run 是平台通道宿主的全局态，只作用于平台通道。
+   * 评估复核弹窗（application/ai-review/use-ai-review-session）不传 channel、走供应商
+   * 通道，是独立有界会话——平台 run 在跑时不得被它禁用输入区，更不得被它取消。
+   */
+  const isPlatformChannel = channelRef.current === CHAT_CHANNEL.PLATFORM
+
   const stopGeneration = useCallback(() => {
+    // 平台通道：取消只作用于共享 store 的当前 run；两宿主同时点停止也只发一次
+    // 取消请求（store 内取消闸）。供应商通道宿主绝不触碰全局平台 run。
+    if (channelRef.current === CHAT_CHANNEL.PLATFORM) {
+      if (!isAgentRunActive(agentRun.phase)) return
+      void agentRun.cancel().then((failure) => {
+        if (failure) toast.error(failure)
+      })
+      return
+    }
     if (runRef.current === null) return
     runRef.current = null
     cancelTimers()
@@ -146,13 +203,44 @@ export function useChatHandler({
         return message
       })
     )
-    setIsGenerating(false)
-  }, [cancelTimers, onMessageUpdate])
+    setIsProviderGenerating(false)
+  }, [agentRun, cancelTimers, onMessageUpdate])
 
   const sendChat = useCallback(
     (text: string, options?: SendChatOptions) => {
-      if (runRef.current !== null) return
+      const isPlatformChannel = channelRef.current === CHAT_CHANNEL.PLATFORM
+      // 单 run 纪律按通道分流（INT-2507）：平台通道由共享 run 闸拦截（两宿主同口径），
+      // 供应商通道由本地 runRef 拦截；两者互不牵连，复核弹窗可在平台 run 进行中照常发问。
+      if (
+        isPlatformChannel
+          ? isAgentRunActive(agentRun.phase)
+          : runRef.current !== null
+      ) {
+        return
+      }
 
+      if (isPlatformChannel) {
+        // 平台通道：user 气泡 + assistant 占位与后续事件补丁都在共享 store 内完成，
+        // 两个宿主看到同一份消息与同一个 run（不再各持一套补丁器）。
+        // Auto 模式与预算来自会话 config（INT-2474；普通对话不带 mode / budget；Auto 预算可上调）。
+        // 报告工作模式绑定的上下文随请求下发，避免 Agent 自行改选报告（#420 → #426）。
+        const contextPrefix =
+          requestPrefixRef.current ??
+          (injectReportContextRef.current
+            ? buildBoundContextPrefix(configRef.current)
+            : null)
+        void agentRun.send(text, {
+          appendUserMessage: options?.appendUserMessage ?? true,
+          providerId: configRef.current.providerId,
+          model: configRef.current.modelId,
+          mode: configRef.current.runMode,
+          budget: configRef.current.autoBudget,
+          requestMessage: contextPrefix ? `${contextPrefix}\n\n${text}` : undefined,
+        })
+        return
+      }
+
+      // ===== 供应商通道（降级模式，既有行为保持） =====
       const appendUserMessage = options?.appendUserMessage ?? true
       const userKey = `user-${Date.now()}`
       const assistantKey = `assistant-${Date.now()}`
@@ -168,7 +256,7 @@ export function useChatHandler({
         ...(appendUserMessage ? [...prev, userMessage] : prev),
         loadingMessage,
       ])
-      setIsGenerating(true)
+      setIsProviderGenerating(true)
 
       const runId = Date.now()
       runRef.current = runId
@@ -193,7 +281,7 @@ export function useChatHandler({
         })
         runRef.current = null
         abortRef.current = null
-        setIsGenerating(false)
+        setIsProviderGenerating(false)
       }
 
       // 前置校验：对话由用户自配 LLM 供应商驱动（§3.11）
@@ -256,7 +344,7 @@ export function useChatHandler({
               })
               runRef.current = null
               abortRef.current = null
-              setIsGenerating(false)
+              setIsProviderGenerating(false)
             }
           }
           schedule(stream, 120)
@@ -270,13 +358,53 @@ export function useChatHandler({
         }
       })()
     },
-    [onMessageUpdate, schedule]
+    [agentRun, onMessageUpdate, schedule]
   )
+
+  /** 清空对话：平台通道同时结束当前会话上下文（下次发送新建会话） */
+  const resetChat = useCallback(() => {
+    cancelTimers()
+    abortRef.current?.abort()
+    abortRef.current = null
+    runRef.current = null
+    setIsProviderGenerating(false)
+    // 只有平台通道能复位共享平台会话；供应商通道宿主的清空不得动别的宿主的 run
+    if (channelRef.current === CHAT_CHANNEL.PLATFORM) {
+      agentRun.reset()
+    }
+  }, [agentRun, cancelTimers])
 
   return {
     sendChat,
     stopGeneration,
-    isGenerating,
+    /** 生成态按通道分流（INT-2507）：平台宿主看共享 run，供应商宿主只看本地生成 */
+    isGenerating: (isPlatformChannel && platformActive) || isProviderGenerating,
+    /** 取消请求在途（仅平台通道；供应商通道的中断是本地同步的，无取消请求） */
+    isCancelling:
+      isPlatformChannel && agentRun.phase === AGENT_RUN_PHASE.CANCELLING,
+    /** 平台通道生命周期（reconnecting 时页面显示重连提示）；供应商通道无平台 run */
+    runPhase: isPlatformChannel ? agentRun.phase : AGENT_RUN_PHASE.IDLE,
+    /** 当前平台 run（终态含 CANCELLED / FAILED）；供应商通道恒为 null */
+    run: isPlatformChannel ? agentRun.run : null,
+    /** 审批卡数据与决策（INT-2472；仅平台通道有） */
+    approvals: isPlatformChannel ? agentRun.approvals : [],
+    approvalsLoading: isPlatformChannel && agentRun.approvalsLoading,
+    approvalsError: isPlatformChannel ? agentRun.approvalsError : null,
+    decidingApprovalIds: isPlatformChannel ? agentRun.decidingApprovalIds : [],
+    /** Run 时间线（INT-2472；事件流有序投影） */
+    timeline: isPlatformChannel ? agentRun.timeline : [],
+    /** Auto 进度 / 暂停 / 暂停策略（INT-2474；仅平台通道有） */
+    autoProgress: isPlatformChannel ? agentRun.autoProgress : null,
+    autoPause: isPlatformChannel ? agentRun.autoPause : null,
+    autoPausePolicy: isPlatformChannel ? agentRun.autoPausePolicy : null,
+    resumingAuto: isPlatformChannel && agentRun.resumingAuto,
+    /** 刷新恢复后继续：无事件流，正在轮询服务端终态（INT-2477 P2） */
+    autoTracking: isPlatformChannel && agentRun.autoTracking,
+    error: isPlatformChannel ? agentRun.error : null,
+    resumeAuto: agentRun.resumeAuto,
+    decideApproval: agentRun.decideApproval,
+    refreshApprovals: agentRun.refreshApprovals,
+    resetChat,
     // Demo 态对话由用户自配 LLM 供应商驱动（§3.11），无平台后端依赖
     pendingRequest: { config },
   }

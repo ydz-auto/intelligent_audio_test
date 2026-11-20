@@ -22,10 +22,21 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
-import type { ChatConfig } from '@/domain/models/aiChat'
-import { AGENT_CAPABILITY_PERMISSIONS, AI_CHAT_STORAGE_KEYS } from '@/domain/models/aiChat'
+import type { ChatConfig, ReportContextType } from '@/domain/models/aiChat'
+import {
+  AGENT_CAPABILITY_PERMISSIONS,
+  AI_CHAT_STORAGE_KEYS,
+  CHAT_CHANNEL,
+  CHAT_MESSAGE_STATUS,
+} from '@/domain/models/aiChat'
 
 export { AI_CHAT_STORAGE_KEYS as STORAGE_KEYS }
+
+/**
+ * 默认对话通道（INT-2457 §12.2：默认走平台 Agent；双通道仅过渡）。
+ * 由配置决定：P0-1（供应商与密钥归属）拍板后在这里二选一即可，不改调用方。
+ */
+export const DEFAULT_CHAT_CHANNEL: ChatConfig['chatMode'] = CHAT_CHANNEL.PLATFORM
 
 export const MESSAGE_ROLES = {
   USER: 'user',
@@ -33,19 +44,16 @@ export const MESSAGE_ROLES = {
   SYSTEM: 'system',
 } as const
 
-export const MESSAGE_STATUS = {
-  LOADING: 'loading',
-  STREAMING: 'streaming',
-  COMPLETE: 'complete',
-  ERROR: 'error',
-} as const
+/** 消息状态（单一事实源在 domain；此别名保持界面层既有调用方不变） */
+export const MESSAGE_STATUS = CHAT_MESSAGE_STATUS
 
 export const MAX_RENDERED_HISTORY_MESSAGES = 24
 
-/** 会话配置默认值（§3.5/§3.11：模型/供应商选择；无模型参数） */
+/** 会话配置默认值（§3.5/§3.11：模型/供应商选择；无模型参数；默认平台 Agent 通道） */
 export const DEFAULT_CONFIG: ChatConfig = {
   providerId: undefined,
   modelId: undefined,
+  chatMode: DEFAULT_CHAT_CHANNEL,
 }
 
 /** 空态四 starter（§3.3 区一「常用入门」表；权限过滤，隐藏而非置灰） */
@@ -106,9 +114,22 @@ export type CapabilityGroup = {
   icon: LucideIcon
   /** 在册权限码（命中即显可执行；null=无码域统一标「待接入」） */
   requiredPermission: string | null
+  /**
+   * 可见性门槛（任一命中才渲染该卡）。
+   * 用于管理员专属域（如系统设置）：普通用户不展示，避免把不可用能力摆给用户。
+   */
+  visiblePermissions?: readonly string[]
   /** 示例快捷指令（点击回填输入框、不自动发送；null=待后端立项占位） */
   prompt: string | null
 }
+
+/** 系统设置（管理员域）可见门槛：与侧栏「系统设置」入口同一组权限码 */
+export const SYSTEM_SETTINGS_AGENT_VISIBLE_PERMISSIONS = [
+  'user:read',
+  'role:read',
+  'auth:manage_provider',
+  'log:manage',
+] as const
 
 export const CAPABILITY_GROUPS: CapabilityGroup[] = [
   {
@@ -208,29 +229,32 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
     toolCount: null,
     icon: Settings,
     requiredPermission: null,
+    visiblePermissions: SYSTEM_SETTINGS_AGENT_VISIBLE_PERMISSIONS,
     prompt: null,
   },
 ]
-
-/** DSH 工具中文显示名映射（§3.4 表；待后端立项） */
-export const AGENT_TOOL_LABELS: Record<string, string> = {
-  report_get_facts: '读取报告数据',
-  report_query_metrics: '查询报告指标',
-  studio_create_draft: '创建报告草稿',
-  studio_apply_edit: '修改文档',
-  studio_insert_chart: '插入图表',
-  studio_get_versions: '查询历史版本',
-  studio_restore_version: '恢复历史版本',
-  studio_request_export: '导出文档',
-  compare_reports: '对比报告',
-  secondary_compare_reports: '二次对比',
-}
 
 export const AGENT_TOOL_STATUS_LABELS = {
   pending: '等待中',
   running: '执行中',
   completed: '已完成',
   error: '失败',
+} as const
+
+/**
+ * 「思考过程」折叠摘要（参照 Trae / Codex 的单行过程摘要）：
+ * 思考正文与工具调用统一收进一条灰字摘要行，展开才看细节，
+ * 不再为每次工具调用铺一张整宽边框卡。
+ */
+export const THINKING_PROCESS_COPY = {
+  /** 思考 / 工具执行进行中 */
+  thinking: '正在思考',
+  /** 有思考正文、已完成（{seconds} 为耗时秒数） */
+  thought: '思考了 {seconds} 秒',
+  /** 只有工具调用、已完成 */
+  toolOnly: '过程已完成',
+  /** 工具调用次数（{count} 为次数） */
+  toolCount: '调用 {count} 个工具',
 } as const
 
 /** 消息操作文案（§6） */
@@ -292,18 +316,91 @@ export const DEMO_COPY = {
     '演示版：此处仅展示本页 Agent 可做的事与快捷指令，能力接入后开放执行',
 } as const
 
+/**
+ * 绑定上下文注入文案（报告工作模式选中的报告/任务）。
+ * 选择器只写会话 config，若不随请求下发，Agent 会按任务名/最近报告自行改选
+ * （选 #420 却分析 #426），因此发送时把上下文拼进本轮 user message 前缀。
+ */
+export const BOUND_CONTEXT_COPY = {
+  kindLabels: {
+    task: '测试报告',
+    comparison: '对比报告',
+    secondary_comparison: '二次对比',
+    task_context: '任务',
+  } satisfies Record<ReportContextType, string>,
+  /** {kind} / {id} / {name} 占位由 buildBoundContextPrefix 填充（name 可能为空） */
+  prefaceTemplate:
+    '【已绑定上下文】{kind} #{id}{name}。请只基于该{kind}作答，不要改用其他{kind}。',
+} as const
+
+/** 灵犀Agent 整页路由（浮窗侧边会话判定：只有在该页浮窗才是旁路线程） */
+export const AI_CHAT_ROUTE = '/ai-chat' as const
+
 /** 模型/供应商切换器文案（§3.5/§6） */
 export const MODEL_PROVIDER_COPY = {
   selectModel: '选择模型',
   selectProvider: '选择供应商',
   noProvider: '未配置 LLM 供应商 → 点击配置',
   manageProviders: '管理供应商',
+}
+
+/**
+ * 浮窗侧边会话（照 Codex 侧边对话）：可读主对话上下文、不写主线程。
+ * 请求前缀里的条数 / 单条字符上限在这里配置，避免魔法数字散落。
+ */
+export const SIDE_CONTEXT_COPY = {
+  roleLabels: {
+    user: '用户',
+    assistant: '助手',
+  } satisfies Record<'user' | 'assistant', string>,
+  /** 取主对话最近多少条（只算 user / assistant 且已有内容的消息） */
+  maxMessages: 12,
+  /** 单条上下文最多带多少字符，超出截断 */
+  maxCharsPerMessage: 1_200,
+  preface:
+    '【侧边会话】以下是主对话的最近上下文，仅用于理解用户背景与诉求；回答时不要复述本段，也不要假设用户看到了未出现在主对话里的信息。',
 } as const
 
-/** 供应商管理弹窗文案（§3.11/§6） */
+/** Run 生命周期提示（§12.2「SSE 重连不重复渲染」+ 取消态 + 审批等待态） */
+export const AGENT_RUN_PHASE_COPY = {
+  preparing: '正在准备会话…',
+  running: 'Agent 正在处理…',
+  /** 写操作提案待审批（§9.4；审批卡在会话区下方） */
+  waitingApproval: '等待你审批写操作…',
+  reconnecting: '连接中断，正在重连…',
+  cancelling: '正在取消…',
+  /** 取消后终态提示（消息尾部徽标同文案） */
+  cancelled: '已取消',
+  failed: '运行失败',
+  budgetExceeded: '超出预算',
+} as const
+
+/** RunStatus → 中文徽标（单一事实源在 domain；运行时间线与消息终态徽标共用） */
+export { AGENT_RUN_STATUS_LABELS } from '@/domain/models/agent'
+
+/**
+ * 「沉淀为 Skill」建议卡文案（INT-2550 卡面「做」第 10 项）。
+ * 后端 skill_draft_suggested 事件只在 run 正常结束且 ≥2 个工具时下发；
+ * 卡片只做跳转预填，创建动作仍由用户在 Skill 管理页确认。
+ */
+export const SKILL_SUGGESTION_COPY = {
+  title: '沉淀为 Skill',
+  description: '本次 run 调用了 {count} 个工具，可以把这套流程固化成可复用的 Skill。',
+  suggestedNameLabel: '建议名称',
+  toolsLabel: '本次用到的工具',
+  note: '草案建议：确认后才创建草稿，不自动落库、不自动触发。',
+  createAction: '去创建草稿',
+  createdBadge: '已创建',
+  dismissAction: '忽略',
+} as const
+
+/** 供应商管理弹窗文案（§3.11/§6；INT-2493：本机供应商降级为「直连 Demo」） */
 export const PROVIDER_MANAGER_COPY = {
   title: 'LLM 供应商管理',
   description: '配置你自己的 AI 对话连接：填写供应商名称、API 地址与密钥。密钥仅保存在本机。',
+  demoBadge: '直连 Demo',
+  demoHint: '仅存本机浏览器；平台 Agent 一律使用服务端加密保存的模型供应商。',
+  demoServerLink: '去配置平台模型供应商',
   addProvider: '添加供应商',
   name: '名称',
   baseUrl: 'API Base URL',
@@ -325,7 +422,7 @@ export const PROVIDER_MANAGER_COPY = {
   fetchSuccess: '已获取 {n} 个模型',
   deleteTitle: '删除供应商？',
   deleteDesc: '该供应商的密钥将从本机移除，确定继续？',
-  footerHint: 'Demo 预览：供应商仅存本机，不上传平台；切换模型/供应商后新对话生效。',
+  footerHint: '直连 Demo：供应商仅存本机，不上传平台；切换模型/供应商后新对话生效。',
   baseUrlPlaceholder: 'https://api.openai.com/v1',
   addEditTitle: '添加供应商',
   editTitle: '编辑供应商',

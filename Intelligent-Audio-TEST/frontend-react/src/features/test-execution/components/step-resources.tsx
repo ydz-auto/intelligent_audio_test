@@ -4,6 +4,9 @@
  * 本步同屏同选设备 + API（混合执行），筛选按设备/API 维度组合）。
  * 工具行（搜索/状态/实验室/系统类型 + API 厂商/协议筛选）+ 设备网格 + 被测 API 卡片网格
  * （INT-1061 2026-10-20：API 与设备同一套卡片形态，混选同屏一眼同形；纯 API 表格保留 api-table 备用）
+ * INT-2641：实验室 facet 选项取真实 GET /laboratories，设备按 /test-devices 的 lab_id 真实绑定过滤
+ * （原 MOCK_RESOURCE_LABS 三个虚构实验室已删除）；API 资源不挂实验室（apis 无 lab_id），
+ * 实验室筛选只作用于设备区。
  * + 执行参数区（测试配置/并发/网络，照 playground-parameter-panel 参数卡形态；
  *   INT-1060 返工 / INT-1119 2026-10-21：执行模式改为**逐卡配置**——设备卡/API 卡 SegmentedControl
  *   「并行｜串行」，底部 execution-diagram 实时示意，执行参数区不再含全局执行模式开关）。
@@ -14,9 +17,10 @@
  * 设备 + API 多选 + 并发自动合计（「并发任务数」由所选 API 并发上限求和）。
  */
 import { Info, Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useAlgorithmChannel } from '@/application/test-execution/useAlgorithmChannel'
+import { useLaboratories } from '@/application/devices/use-devices'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useResourceSelection } from '@/application/test-execution/useResourceSelection'
 import { useApisCrud } from '@/application/test-execution/useApisCrud'
@@ -46,11 +50,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DeviceCard } from '@/features/test-execution/components/device-card'
 import { ApiCard } from '@/features/test-execution/components/api-card'
 import { VOICE_LLM_ALGORITHM_TYPE } from '@/features/test-execution/constants'
+import type { ResourceSelectOption } from '@/features/test-execution/constants'
 import { ParamCard } from '@/features/test-execution/components/param-card'
 import { SelectionSummary } from '@/features/test-execution/components/selection-summary'
+import { matchesSystemFilter } from '@/features/test-execution/lib/system-filter'
 import { ExecutionDiagram } from '@/features/test-execution/components/execution-diagram'
 import {
-  MOCK_RESOURCE_LABS,
   NETWORK_OPTIONS,
   RESOURCE_PROTOCOL_OPTIONS,
   RESOURCE_STATUS_OPTIONS,
@@ -61,20 +66,11 @@ import {
 import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { Device } from '@/domain/models/device'
 
-/**
- * 实验室筛选选项（INT-1633：作 Select items，关闭态才会把 'all'/lab id 映射成中文名）
- */
-const LAB_FILTER_OPTIONS = [
-  { value: 'all', label: '全部实验室' },
-  ...MOCK_RESOURCE_LABS.map((lab) => ({ value: lab.id, label: lab.name })),
-]
-
 interface StepResourcesProps {
   voiceLlmAlert: string
   readOnly: boolean
   onOpenApiEdit: (api?: ApiConfig) => void
   onOpenApiHealth: (api: ApiConfig) => void
-  onScanDevices: () => void
   onAddDevice: () => void
 }
 
@@ -83,7 +79,6 @@ export function StepResources({
   readOnly,
   onOpenApiEdit,
   onOpenApiHealth,
-  onScanDevices,
   onAddDevice,
 }: StepResourcesProps) {
   const { hasPermission } = usePermissions()
@@ -91,11 +86,12 @@ export function StepResources({
   const resources = useResourceSelection(algorithmType)
   const targetModes = useTargetModes()
   const apisCrud = useApisCrud()
+  const labsQuery = useLaboratories()
   const params = useExecutionStore((s) => s.params)
   const setParams = useExecutionStore((s) => s.setParams)
   const [keyword, setKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all')
-  // INT-486 口径 2026-10-16：实验室/系统类型筛选（INT-487 设备-实验室绑定待接线）
+  // INT-486 口径 2026-10-16：实验室/系统类型筛选；INT-2641 实验室改真实接口 + 真实 lab_id 绑定
   const [labFilter, setLabFilter] = useState('all')
   const [systemFilter, setSystemFilter] = useState<'all' | 'android' | 'harmony' | 'api'>('all')
   // INT-486 口径 2026-10-16：API 厂商/协议筛选维度；INT-1800：协议 + 流式性两维独立
@@ -111,24 +107,36 @@ export function StepResources({
   const canApiEdit = hasPermission('api_config:update')
   const canApiDelete = hasPermission('api_config:delete')
 
-  /** 实验室成员（INT-487 绑定 mock；'all' 不筛） */
-  const labDeviceIds = useMemo(() => {
-    if (labFilter === 'all') return null
-    return MOCK_RESOURCE_LABS.find((l) => l.id === labFilter)?.deviceIds ?? []
-  }, [labFilter])
-  const labApiIds = useMemo(() => {
-    if (labFilter === 'all') return null
-    return MOCK_RESOURCE_LABS.find((l) => l.id === labFilter)?.apiIds ?? []
-  }, [labFilter])
+  /**
+   * 实验室筛选选项（INT-1633：作 Select items，关闭态才会把 'all'/lab id 映射成名称）。
+   * INT-2641：选项来自真实 GET /laboratories（useLaboratories），与设备管理页同源。
+   */
+  const labOptions = useMemo<ResourceSelectOption[]>(
+    () => [
+      { value: 'all', label: '全部实验室' },
+      ...(labsQuery.data ?? []).map((lab) => ({ value: String(lab.id), label: lab.name })),
+    ],
+    [labsQuery.data]
+  )
+  /** 当前选中的真实实验室 id（'all' = 不筛） */
+  const selectedLabId = labFilter === 'all' ? null : Number(labFilter)
 
-  /** 关键词/状态/实验室/系统类型筛选（视觉稿演示；数据 mock 全量返回，前端过滤口径） */
+  // 实验室被删除/改名导致选中项失效时回到「全部实验室」，避免列表被一个已不存在的 id 过滤空
+  useEffect(() => {
+    const labs = labsQuery.data
+    if (!labs || labFilter === 'all') return
+    if (!labs.some((lab) => String(lab.id) === labFilter)) setLabFilter('all')
+  }, [labsQuery.data, labFilter])
+
+  /** 关键词/状态/实验室/系统类型筛选（设备归属取 /test-devices 的 lab_id） */
   const visibleDevices = useMemo(() => {
     const q = keyword.trim().toLowerCase()
     return resources.devices.filter((d) => {
       if (statusFilter !== 'all' && (d.status ?? 'offline') !== statusFilter) return false
-      if (labDeviceIds !== null && !labDeviceIds.includes(d.id)) return false
+      if (selectedLabId !== null && d.labId !== selectedLabId) return false
+      // INT-2650：筛选与展示同口径——system 原始值经归一器比较（harmony/HarmonyOS 都命中「鸿蒙」）
       if (systemFilter === 'android' || systemFilter === 'harmony') {
-        if ((d.system ?? '').toLowerCase() !== systemFilter) return false
+        if (!matchesSystemFilter(d.system, systemFilter)) return false
       } else if (systemFilter === 'api') {
         if (d.type !== 'http_api' && d.type !== 'websocket_api') return false
       }
@@ -138,13 +146,13 @@ export function StepResources({
       }
       return true
     })
-  }, [resources.devices, keyword, statusFilter, labDeviceIds, systemFilter])
+  }, [resources.devices, keyword, statusFilter, selectedLabId, systemFilter])
 
+  /** 被测 API 筛选（INT-2641：APIs 不挂实验室——apis 表无 lab_id，实验室 facet 不进此口径） */
   const visibleApis = useMemo(() => {
     const q = keyword.trim().toLowerCase()
     return resources.apis.filter((a) => {
       if (statusFilter !== 'all' && (a.status ?? 'offline') !== statusFilter) return false
-      if (labApiIds !== null && !labApiIds.includes(a.id)) return false
       // 系统类型 facet：API 均为网关，「仅 API 网关」命中；物理系统筛选对 API 无命中
       if (systemFilter === 'android' || systemFilter === 'harmony') return false
       if (vendorFilter !== 'all' && a.vendor !== vendorFilter) return false
@@ -157,7 +165,7 @@ export function StepResources({
       }
       return true
     })
-  }, [resources.apis, keyword, statusFilter, labApiIds, systemFilter, vendorFilter, protocolFilter, streamingFilter])
+  }, [resources.apis, keyword, statusFilter, systemFilter, vendorFilter, protocolFilter, streamingFilter])
 
   /** API 并发自动求和（§3.6.3 并发数参数卡；现 apiTest.steps.ts:154-158 口径） */
   const apiConcurrencySum = useMemo(
@@ -166,6 +174,12 @@ export function StepResources({
         .filter((a) => resources.apiIds.includes(a.id))
         .reduce((sum, a) => sum + a.maxConcurrent, 0),
     [resources.apis, resources.apiIds]
+  )
+
+  /** 当前筛选可见设备里的在线数（INT-2649：标题计数与真实在线状态一致，不再把离线算作「在线可执行」） */
+  const visibleOnlineDeviceCount = useMemo(
+    () => visibleDevices.filter((d) => d.status === 'online').length,
+    [visibleDevices]
   )
 
   /** 卡片网格「全选在线 API」控制（当前筛选可见在线集；离线不可选） */
@@ -243,17 +257,17 @@ export function StepResources({
           </SelectContent>
         </Select>
 
-        {/* 实验室 facet（INT-486 口径；INT-487 设备-实验室绑定待接线） */}
+        {/* 实验室 facet（INT-486 口径；INT-2641 选项取真实 GET /laboratories，设备按 lab_id 过滤） */}
         <Select
           value={labFilter}
           onValueChange={(v) => setLabFilter(v ?? 'all')}
-          items={LAB_FILTER_OPTIONS}
+          items={labOptions}
         >
           <SelectTrigger className='h-8 w-32 text-xs'>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {LAB_FILTER_OPTIONS.map((option) => (
+            {labOptions.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>
@@ -408,7 +422,7 @@ export function StepResources({
             <h3 className='text-sm font-semibold'>
               设备
               <span className='text-muted-foreground ms-2 text-xs font-normal'>
-                {visibleDevices.length} 台在线可执行设备
+                {visibleDevices.length} 台设备 · 在线 {visibleOnlineDeviceCount}
               </span>
             </h3>
             <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
@@ -614,10 +628,10 @@ export function StepResources({
         apis={resources.allApis}
       />
 
-      {/* 分页 */}
+      {/* 分页（INT-2641：计数与上方筛选后的网格口径一致，不再显示未筛选总数） */}
       <div className='flex items-center justify-between text-xs'>
         <span className='text-muted-foreground'>
-          共 {resources.devices.length} 台设备 · {resources.apis.length} 个 API
+          共 {visibleDevices.length} 台设备 · {visibleApis.length} 个 API
         </span>
         <span className='text-muted-foreground'>每页 10 条 · 第 1 / 1 页</span>
       </div>

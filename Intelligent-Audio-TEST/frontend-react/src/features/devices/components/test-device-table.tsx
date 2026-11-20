@@ -27,7 +27,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { formatDateTime } from '@/lib/date-time'
+import { formatLocalWallClock } from '@/lib/date-time'
 import type { TestDevice } from '@/domain/models/testDevice'
 import { isDeviceSelectable } from '@/features/devices/constants'
 import { deviceSystemLabel } from '@/features/devices/lib/device-system'
@@ -365,7 +365,7 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                     )}
                   </td>
                   <td className='px-3 py-2 font-mono text-xs tabular-nums'>
-                    {formatDateTime(row.lastOnlineAt)}
+                    {formatLocalWallClock(row.lastOnlineAt)}
                   </td>
                   <td className='px-3 py-2'>
                     <div className='flex items-center justify-end gap-0.5'>

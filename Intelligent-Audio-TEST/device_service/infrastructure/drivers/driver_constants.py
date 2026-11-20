@@ -82,3 +82,24 @@ BASE_RECORDER_STOP_VERIFY_INTERVAL = config_manager.get_value('device_timing', '
 
 # 设备路径
 DEVICE_TMP_DIR = '/data/local/tmp'
+
+# —— 设备 UI 探索动作参数（INT-2577：DeviceUiService 三 RPC 下发的动作口径）——
+# 长按时长（秒）
+UI_EXPLORE_LONG_PRESS_SECONDS = config_manager.get_value(
+    'device_timing', 'ui_explore_long_press_seconds', 0.8)
+# WAIT 动作缺省 / 上限时长（秒；模型可传更大值，按上限截断防止挂死请求）
+UI_EXPLORE_WAIT_DEFAULT_SECONDS = config_manager.get_value(
+    'device_timing', 'ui_explore_wait_default_seconds', 1.0)
+UI_EXPLORE_WAIT_MAX_SECONDS = config_manager.get_value(
+    'device_timing', 'ui_explore_wait_max_seconds', 30.0)
+# 滑动：缺省跨度占屏幕短边比例、滑动时长（秒）
+UI_EXPLORE_SWIPE_SPAN_RATIO = config_manager.get_value(
+    'device_timing', 'ui_explore_swipe_span_ratio', 0.3)
+UI_EXPLORE_SWIPE_DURATION_SECONDS = config_manager.get_value(
+    'device_timing', 'ui_explore_swipe_duration_seconds', 0.3)
+# 元素定位轮询超时（秒）：不命中即 ELEMENT_NOT_FOUND，不静默成功
+UI_EXPLORE_ELEMENT_FIND_TIMEOUT_SECONDS = config_manager.get_value(
+    'device_timing', 'ui_explore_element_find_timeout_seconds', 2.0)
+# 合法滑动方向（拒绝魔法字符串）
+UI_EXPLORE_SWIPE_DIRECTIONS = ('up', 'down', 'left', 'right')
+

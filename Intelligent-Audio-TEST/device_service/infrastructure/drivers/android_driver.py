@@ -1,7 +1,10 @@
+import io
+import re
 import time
 import shutil
 import subprocess
 import logging
+import xml.etree.ElementTree as ET
 from collections import OrderedDict
 from .base_driver import BaseDeviceDriver
 from .adb_track import parse_device_snapshot, read_device_frame
@@ -10,9 +13,35 @@ from .driver_types import DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, u2, log_and_emit
 from .driver_constants import *
-import re
+from shared.constants.ui_capture import (
+    UiActionNotAllowed,
+    UiActionType,
+    UiCaptureDegradeReason,
+    UiCapturePlatform,
+    UiCaptureUnavailable,
+    UiElementNotFound,
+    UiTreeFormat,
+)
 
 logger = logging.getLogger(__name__)
+
+_UI_BOUNDS_PATTERN = re.compile(r'\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]')
+
+
+def _bounds_center(bounds):
+    """节点 bounds → 中心点；支持 ``[x1,y1,x2,y2]`` 与 ``[x1,y1][x2,y2]`` 两种形态。"""
+    if isinstance(bounds, (list, tuple)) and len(bounds) == 4:
+        try:
+            x1, y1, x2, y2 = (int(v) for v in bounds)
+        except (TypeError, ValueError):
+            return None
+        return ((x1 + x2) // 2, (y1 + y2) // 2)
+    if isinstance(bounds, str):
+        match = _UI_BOUNDS_PATTERN.search(bounds)
+        if match:
+            x1, y1, x2, y2 = (int(v) for v in match.groups())
+            return ((x1 + x2) // 2, (y1 + y2) // 2)
+    return None
 
 
 @register_driver
@@ -87,6 +116,164 @@ class AndroidDriver(BaseDeviceDriver):
             self._log(level='DEBUG',
                       content=f"LRU 淘汰最久未用的安卓设备连接: {evicted_sn}")
         return self._drivers[device_sn]
+
+    # ==================== 设备 UI 探索三能力（INT-2577） ====================
+    # 平台原始结构透传（XML），解析在 agent 侧（INT-2569 D2）；本层只做取树 /
+    # 下发动作 / 截图，失败一律抛 UiCaptureUnavailable 显式降级，不返回空树。
+
+    def _require_ui_device(self, device_sn):
+        """取 uiautomator2 连接；拿不到即显式降级（不伪造空树）。"""
+        driver = self._get_driver(device_sn)
+        if driver is None:
+            raise UiCaptureUnavailable(
+                f'Android 设备 {device_sn} 连接不可用（uiautomator2 未就绪）',
+                reason=UiCaptureDegradeReason.DRIVER_UNAVAILABLE)
+        return driver
+
+    def _resolve_ui_target(self, driver, device_sn, node):
+        """定位待操作元素：先按节点 bounds 取中心点，再按 resource_id / text / key 查。
+
+        Returns:
+            (x, y, UiObject | None)；定位不到抛 UiCaptureUnavailable(ELEMENT_NOT_FOUND 语义
+            由调用方映射，这里只报原因)
+        """
+        node = node if isinstance(node, dict) else {}
+        center = _bounds_center(node.get('bounds'))
+        element = None
+        kwargs = {}
+        if node.get('resource_id'):
+            kwargs['resourceId'] = str(node['resource_id'])
+        elif node.get('text'):
+            kwargs['text'] = str(node['text'])
+        elif node.get('key'):
+            kwargs['description'] = str(node['key'])
+        if kwargs:
+            element = driver(**kwargs)
+            if not element.exists(timeout=UI_EXPLORE_ELEMENT_FIND_TIMEOUT_SECONDS):
+                element = None
+        if center is None and element is not None:
+            bounds = element.bounds()
+            w, h = bounds.width, bounds.height
+            center = (bounds.left + w // 2, bounds.top + h // 2)
+        if center is None:
+            raise UiElementNotFound(
+                f'Android 设备 {device_sn} 上未定位到目标元素'
+                f'（resource_id={node.get("resource_id")!r} text={node.get("text")!r}'
+                f' key={node.get("key")!r}）')
+        return center[0], center[1], element
+
+    def dump_ui_tree(self, device_sn, **kwargs) -> dict:
+        """读当前页 UI 树：``dump_hierarchy()`` → uiautomator XML。"""
+        driver = self._require_ui_device(device_sn)
+        try:
+            xml_text = driver.dump_hierarchy()
+        except Exception as e:
+            raise UiCaptureUnavailable(
+                f'Android 设备 {device_sn} 读取 UI 树失败：{e}',
+                reason=UiCaptureDegradeReason.DRIVER_UNAVAILABLE) from e
+        if not xml_text or not str(xml_text).strip():
+            raise UiCaptureUnavailable(
+                f'Android 设备 {device_sn} dump_hierarchy 未返回内容',
+                reason=UiCaptureDegradeReason.TREE_UNREADABLE)
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError as e:
+            raise UiCaptureUnavailable(
+                f'Android 设备 {device_sn} UI 树 XML 不可解析：{e}',
+                reason=UiCaptureDegradeReason.TREE_UNREADABLE) from e
+        node_count = sum(1 for _ in root.iter('node'))
+        if node_count <= 0:
+            raise UiCaptureUnavailable(
+                f'Android 设备 {device_sn} UI 树没有任何节点',
+                reason=UiCaptureDegradeReason.TREE_UNREADABLE)
+        return {
+            'platform': UiCapturePlatform.ANDROID.value,
+            'format': UiTreeFormat.ANDROID_XML.value,
+            'payload': xml_text,
+            'node_count': node_count,
+        }
+
+    def perform_ui_action(self, device_sn, action_type, *, node=None,
+                          params=None) -> dict:
+        """下发一个已校验的 UiActionType 动作（uiautomator2 原生手势 / 系统键 / 等待）。"""
+        driver = self._require_ui_device(device_sn)
+        params = params if isinstance(params, dict) else {}
+        action = self._normalize_action(action_type)
+        try:
+            if action is UiActionType.TAP:
+                x, y, _ = self._resolve_ui_target(driver, device_sn, node)
+                driver.click(x, y)
+            elif action is UiActionType.LONG_PRESS:
+                x, y, _ = self._resolve_ui_target(driver, device_sn, node)
+                duration = float(params.get('duration') or UI_EXPLORE_LONG_PRESS_SECONDS)
+                driver.long_click(x, y, duration=duration)
+            elif action is UiActionType.INPUT_TEXT:
+                x, y, _ = self._resolve_ui_target(driver, device_sn, node)
+                driver.click(x, y)
+                driver.send_keys(str(params.get('text') or ''))
+            elif action is UiActionType.SWIPE:
+                self._swipe(driver, node, params)
+            elif action is UiActionType.BACK:
+                driver.press('back')
+            elif action is UiActionType.HOME:
+                driver.press('home')
+            elif action is UiActionType.WAIT:
+                seconds = min(float(params.get('seconds') or UI_EXPLORE_WAIT_DEFAULT_SECONDS),
+                              UI_EXPLORE_WAIT_MAX_SECONDS)
+                driver.sleep(seconds)
+        except (UiElementNotFound, UiActionNotAllowed):
+            raise
+        except Exception as e:
+            raise UiCaptureUnavailable(
+                f'Android 设备 {device_sn} 下发动作 {action.value} 失败：{e}',
+                reason=UiCaptureDegradeReason.DRIVER_UNAVAILABLE) from e
+        return {'action_type': action.value, 'performed': True}
+
+    @staticmethod
+    def _normalize_action(action_type):
+        """动作名 → UiActionType（非七枚举一律 ACTION_NOT_ALLOWED，拒绝魔法字符串）。"""
+        try:
+            return UiActionType(str(action_type or '').strip().upper())
+        except ValueError:
+            raise UiActionNotAllowed(f'不支持的 UI 动作：{action_type!r}')
+
+    def _swipe(self, driver, node, params):
+        """按方向计算起止点并滑动（以屏幕中心为基准，可用节点 bounds 收窄区域）。"""
+        direction = str(params.get('direction') or 'up').lower()
+        if direction not in UI_EXPLORE_SWIPE_DIRECTIONS:
+            raise UiActionNotAllowed(f'不支持的滑动方向：{direction!r}')
+        width, height = driver.window_size()
+        center = _bounds_center((node or {}).get('bounds'))
+        cx, cy = center if center else (width // 2, height // 2)
+        span = int(params.get('distance') or min(width, height) * UI_EXPLORE_SWIPE_SPAN_RATIO)
+        span = max(1, span)
+        half = span // 2
+        delta = {
+            'up': (0, -half), 'down': (0, half),
+            'left': (-half, 0), 'right': (half, 0),
+        }[direction]
+        duration = float(params.get('duration') or UI_EXPLORE_SWIPE_DURATION_SECONDS)
+        driver.swipe(cx - delta[0], cy - delta[1], cx + delta[0], cy + delta[1],
+                     duration=duration)
+
+    def capture_ui_screenshot(self, device_sn, **kwargs) -> dict:
+        """截取当前屏 → PNG 字节（上传对象存储由 servicer 负责）。"""
+        driver = self._require_ui_device(device_sn)
+        try:
+            image = driver.screenshot(format='pillow')
+        except Exception as e:
+            raise UiCaptureUnavailable(
+                f'Android 设备 {device_sn} 截图失败：{e}',
+                reason=UiCaptureDegradeReason.SCREENSHOT_UNAVAILABLE) from e
+        if image is None:
+            raise UiCaptureUnavailable(
+                f'Android 设备 {device_sn} 截图未返回图像',
+                reason=UiCaptureDegradeReason.SCREENSHOT_UNAVAILABLE)
+        buf = io.BytesIO()
+        image.save(buf, format='PNG')
+        width, height = image.size
+        return {'png': buf.getvalue(), 'format': 'PNG',
+                'width': int(width), 'height': int(height)}
 
     def scan(self):
         """使用 adb devices -l 扫描设备"""

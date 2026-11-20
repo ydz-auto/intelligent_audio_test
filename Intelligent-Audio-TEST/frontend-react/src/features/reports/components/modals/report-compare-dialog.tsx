@@ -262,7 +262,11 @@ export function ReportCompareDialog({
                 <Label className='text-xs'>对比维度</Label>
                 <Select value={dimension} onValueChange={(v) => setDimension(v ?? 'test_cases')}>
                   <SelectTrigger className='h-9'>
-                    <SelectValue />
+                    {/* INT-2447：Base UI Select 无 items/子节点时直出 value（英文 test_cases），按选项表解析 label */}
+                    <SelectValue>
+                      {COMPARE_DIMENSIONS.find((option) => option.value === dimension)?.label ??
+                        '测试用例'}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent align='start'>
                     {COMPARE_DIMENSIONS.map((option) => (
@@ -305,7 +309,10 @@ export function ReportCompareDialog({
                 <Label className='text-xs'>对比方式</Label>
                 <Select value={mode} onValueChange={(v) => setMode(v ?? 'horizontal')}>
                   <SelectTrigger className='h-9'>
-                    <SelectValue />
+                    <SelectValue>
+                      {COMPARE_MODES.find((option) => option.value === mode)?.label ??
+                        '横向对比（同指标多主体）'}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent align='start'>
                     {COMPARE_MODES.map((option) => (

@@ -35,6 +35,7 @@ import type {
   AudioQuality,
 } from '@/domain/models/audio'
 import { request } from '@/infrastructure/api/client'
+import { resolvePlayableUrl } from '@/infrastructure/api/audio-playable-url'
 import { ApiError } from '@/infrastructure/api/api-error'
 import {
   audioFeaturesFromDto,
@@ -221,7 +222,8 @@ export async function stream(id: number): Promise<string> {
   const result = await request<{ url?: string }>('GET', `/audios/${id}/stream`)
   const url = result?.url
   if (!url) throw new ApiError({ message: '获取音频播放地址失败' })
-  return url
+  // 网关代理模式回相对地址 → 带 JWT 取 blob；预签名绝对地址原样返回
+  return resolvePlayableUrl(url)
 }
 
 /**
@@ -238,7 +240,7 @@ export async function streamByPath(path: string): Promise<string> {
   )
   const url = result?.url
   if (!url) throw new ApiError({ message: '获取音频播放地址失败' })
-  return url
+  return resolvePlayableUrl(url)
 }
 
 /** 实验室播放载荷（BatchPlaybackRequest，api_gateway/schemas/audio.py:207；

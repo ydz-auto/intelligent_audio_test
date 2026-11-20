@@ -160,6 +160,24 @@ class TestSystemOptionService:
         assert repo.get_all()['security.rate_limit'] is False
 
 
+# ==================== 服务层：首页可见性 / 注册策略 ====================
+
+class TestRegistrationAccessPolicy:
+
+    def test_home_public_by_default(self, repo):
+        assert SystemOptionService.is_home_require_registration() is False
+
+    def test_home_gated_when_configured(self, repo):
+        repo.upsert('site.home_require_registration', True)
+        assert SystemOptionService.is_home_require_registration() is True
+
+    def test_invite_registration_forces_home_gated(self, repo):
+        """邀请码注册开启时，即使首页开关关闭也强制注册后可见。"""
+        repo.upsert('site.home_require_registration', False)
+        repo.upsert('auth.invite_code_registration', True)
+        assert SystemOptionService.is_home_require_registration() is True
+
+
 # ==================== 服务层：站点状态 ====================
 
 class TestSiteStatusService:

@@ -838,13 +838,15 @@ class TestGatewayErrorMapping:
 
 class TestGatewayNotice:
 
-    def test_with_notice_injects_constant(self):
+    def test_with_notice_injects_permission_notice(self, monkeypatch):
         from api_gateway.application.services.auth.management_common import (
-            with_notice, PERMISSION_CHANGE_NOTICE,
+            with_notice, permission_change_notice,
         )
+        from api_gateway.config.config import Config
+        monkeypatch.setattr(Config, 'AUTH_PERMISSION_CACHE_TTL_SECONDS', 10)
         payload, code = with_notice(({'success': True}, 200))
-        assert payload['notice'] == PERMISSION_CHANGE_NOTICE
-        assert '24h' in payload['notice']
+        assert payload['notice'] == permission_change_notice()
+        assert '无需重新登录' in payload['notice']
 
     def test_notice_injected_on_write_response(self, monkeypatch):
         """管理写接口响应体带 notice（以 delete_role 为例）。"""

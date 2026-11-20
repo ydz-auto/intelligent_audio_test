@@ -18,7 +18,7 @@ import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import type { ApiConfigRef, ApiRmsSplMapping } from '@/domain/models/digitalSpl'
 import { DIGITAL_PROTOCOL_OPTIONS } from '@/features/spl-mapping/constants'
 import {
-  formatDateTime,
+  formatLocalWallClock,
   formatGainClamp,
   formatLinearGain,
   formatReferenceBase,
@@ -106,8 +106,8 @@ export function ApiRmsSplDetailDialog(props: ApiRmsSplDetailDialogProps) {
                   />
                   <FieldRow label='是否默认' value={isDefault ? '默认' : '-'} />
                   <FieldRow label='校准点数' value={mapping.calibrationPoints.length} />
-                  <FieldRow label='创建时间' value={formatDateTime(mapping.createdAt)} />
-                  <FieldRow label='更新时间' value={formatDateTime(mapping.updatedAt)} />
+                  <FieldRow label='创建时间' value={formatLocalWallClock(mapping.createdAt)} />
+                  <FieldRow label='更新时间' value={formatLocalWallClock(mapping.updatedAt)} />
                 </div>
               </section>
 

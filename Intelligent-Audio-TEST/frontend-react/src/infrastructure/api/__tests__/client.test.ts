@@ -151,6 +151,26 @@ describe('client 统一 fetch 封装', () => {
     expect(apiError.userMessage).toBe('操作失败，请稍后重试')
   })
 
+  it('错误码映射：非数字业务码保留在 rawCode（INT-2472 审批二次确认）', async () => {
+    queueResponses(
+      jsonResponse(
+        {
+          detail: '破坏性操作需要二次确认：请带 confirm=true 重新批准',
+          code: 'APPROVAL_CONFIRMATION_REQUIRED',
+        },
+        400
+      )
+    )
+    const error = await request('GET', '/agent/approvals/ap-1/decision').catch(
+      (e: unknown) => e
+    )
+    const apiError = error as ApiError
+    expect(apiError.code).toBeNull()
+    expect(apiError.rawCode).toBe('APPROVAL_CONFIRMATION_REQUIRED')
+    expect(apiError.httpStatus).toBe(400)
+    expect(apiError.userMessage).toContain('二次确认')
+  })
+
   it('错误码映射：106 凭证错误收敛为领域中文文案', async () => {
     queueResponses(
       jsonResponse(

@@ -15,6 +15,7 @@ import {
 import type { ReportTimeRange, ReportType } from '@/domain/models/report'
 import { cn } from '@/lib/utils'
 
+import { TIME_RANGE_OPTIONS } from '@/features/reports/constants'
 import { SearchBar } from '@/features/reports/components/search-bar'
 
 const TYPE_CHIPS: { value: ReportType | 'all'; label: string }[] = [
@@ -23,15 +24,6 @@ const TYPE_CHIPS: { value: ReportType | 'all'; label: string }[] = [
   { value: 'comparison', label: '对比报告' },
   { value: 'secondary_comparison', label: '二次对比报告' },
   { value: 'benchmark', label: 'Benchmark 报告' },
-]
-
-const TIME_RANGE_OPTIONS: { value: ReportTimeRange | 'all'; label: string }[] = [
-  { value: 'all', label: '全部时间' },
-  { value: 'today', label: '今日' },
-  { value: 'yesterday', label: '昨日' },
-  { value: 'week', label: '近7天' },
-  { value: 'month', label: '近30天' },
-  { value: 'custom', label: '自定义' },
 ]
 
 interface ReportShowcaseHeroProps {
@@ -66,7 +58,10 @@ export function ReportShowcaseHero({
       <div className='flex flex-wrap items-center gap-2'>
         <Badge variant='outline'>报告</Badge>
         {timeRange && (
-          <Badge variant='secondary'>{timeRange === 'custom' ? '自定义时间' : timeRange}</Badge>
+          <Badge variant='secondary'>
+            {/* INT-2447：同 P3-1，Badge 也不能回显英文 value（today/week…） */}
+            {TIME_RANGE_OPTIONS.find((option) => option.value === timeRange)?.label ?? '全部时间'}
+          </Badge>
         )}
         {hasActiveFilters && (
           <button
@@ -131,8 +126,13 @@ export function ReportShowcaseHero({
             onTimeRangeChange(value === 'all' ? undefined : (value as ReportTimeRange))
           }
         >
-          <SelectTrigger className='h-11 w-36'>
-            <SelectValue placeholder='全部时间' />
+          <SelectTrigger className='h-11 w-36' aria-label='时间范围'>
+            {/* INT-2447：Base UI Select 无 items/子节点时直接回显 value（英文 all），
+                按 pick-filter-bar 同款写法用选项表解析中文 label。 */}
+            <SelectValue placeholder='全部时间'>
+              {TIME_RANGE_OPTIONS.find((option) => option.value === (timeRange ?? 'all'))?.label ??
+                '全部时间'}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {TIME_RANGE_OPTIONS.map((option) => (

@@ -20,6 +20,7 @@ from .device_proxies import (
     get_device_result_reextractor,
     get_device_result_collector,
     device_config_service,
+    device_ui_proxy,
 )
 from .audio import (
     AudioService,
@@ -73,6 +74,7 @@ __all__ = [
     'get_device_result_reextractor',
     'get_device_result_collector',
     'device_config_service',
+    'device_ui_proxy',
     'AudioService',
     'audio_service',
     'spl_service',

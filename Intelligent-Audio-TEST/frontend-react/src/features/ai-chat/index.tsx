@@ -1,14 +1,14 @@
 /**
  * /ai-chat AI 对话页（Agent 工作台）（interfaces 层；08_AI对话页.md §3.1 三段式装配）。
- * 顶部条 / 全高滚动会话区 / 底部输入区；报告工作模式双栏为增强态变体，
- * Agent 后端立项前整块隐藏（§3.6，入口钮不渲染）。
- * 2026-10-17 新口径：Demo 态四落点标注（顶部条/浮窗头/空态/报告工作模式页脚）；
- * 模型参数注册表移除，仅模型/供应商切换（§3.5/§3.11）；报告上下文选择器
- * Demo 态整块不渲染（§3.5/§3.10，组件树先落，数据交互待后端立项）。
+ * 顶部条 / 全高滚动会话区 / 底部输入区；报告工作模式双栏为增强态变体（§3.6）。
+ * INT-2473 接线：报告工作模式放开，右栏为真实 Report Studio 文档面板
+ * （取数 → 起草 → 版本 → 导出）；输入区左挂报告上下文选择器，数据走真实
+ * GET /reports + GET /tasks，绑定后写入会话 config.reportContext*。
  */
 import { Badge } from '@/components/ui/badge'
-import { PanelRight } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { PanelLeft, PanelRight } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -19,17 +19,39 @@ import {
 
 import { AgentConnectButton } from '@/components/layout/components/agent-connect-button'
 
-import type { ChatConfig } from '@/domain/models/aiChat'
+import {
+  CHAT_CHANNEL,
+  type ChatConfig,
+  type ChatMessage,
+  type ReportContextOption,
+} from '@/domain/models/aiChat'
+import {
+  AGENT_RUN_MODE,
+  normalizeRunMode,
+  type AgentRunBudget,
+  type AgentRunMode,
+} from '@/domain/models/agent'
+import { useAgentBudgetDefaults } from '@/application/agent/use-agent-budget-defaults'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
+import { useAgentRunHost } from '@/application/agent/use-agent-run'
+import { useAgentRunStore } from '@/application/agent/agent-run-store'
+import { useTaskReportId } from '@/application/reports/use-report-studio'
 import { useChatConversation } from '@/features/ai-chat/hooks/use-chat-conversation'
 import { useChatState } from '@/features/ai-chat/hooks/use-chat-state'
-import { useLlmProviders } from '@/features/ai-chat/hooks/use-llm-providers'
+import { useReportContextQueries } from '@/features/ai-chat/hooks/use-report-context'
 import { AiChat } from '@/features/ai-chat/components/chat/ai-chat'
 import { AiChatInput } from '@/features/ai-chat/components/input/ai-chat-input'
-import { ProviderManager } from '@/features/ai-chat/components/input/provider-manager'
+import { ReportContextSelector, type SelectedContext } from '@/features/ai-chat/components/input/report-context-selector'
+import { ConversationHistory } from '@/features/ai-chat/components/history/conversation-history'
+import { AgentProviderManagerDialog } from '@/features/agent-providers/components/agent-provider-manager-dialog'
 import { DocumentPanel } from '@/features/ai-chat/components/studio/document-panel'
 import { DEMO_COPY } from '@/features/ai-chat/constants'
-import type { AiChatContextStatus } from '@/infrastructure/stores/aiChatSessionStore'
+import { resolveTaskReportErrorMessage } from '@/features/ai-chat/lib/task-report-error'
+import { hideAgentSessionMessage } from '@/infrastructure/api/agentApi'
+import {
+  useAiChatSession,
+  type AiChatContextStatus,
+} from '@/infrastructure/stores/aiChatSessionStore'
 
 /**
  * URL 上下文条（INT-1936）：显示 /ai-chat?report={id} / ?task={id} 绑定的上下文。
@@ -86,20 +108,14 @@ type AiChatPageProps = {
   }
 }
 
-/** 报告工作模式开关：Agent 后端（DSH + Report Studio）立项后置 true（§3.6） */
-const REPORT_WORK_MODE_ENABLED = false
-
-/** 报告工作模式右栏骨架（§3.6 Agent 后端立项前整块不渲染；组件树先落）。
- * Demo 占位不载杜撰数值（红线：不杜撰数据交互面）——翻转开关后仅显空文档骨架与演示注记。 */
-const DEMO_DOCUMENT = [
-  '# 报告文档预览',
-  '',
-  '> 仅演示占位：Agent 后端（DSH + Report Studio）立项后，此处渲染报告工作台文档。',
-  '',
-  'AI 只起草不算数：文档数值全部来自报告七表。',
-].join('\n')
+/** 报告工作模式开关（INT-2473：Report Studio 前端接线完成，默认可用） */
+const REPORT_WORK_MODE_ENABLED = true
 
 export function AiChatPage({ initialContext }: AiChatPageProps) {
+  // 宿主登记：离开 /ai-chat 路由只是暂时卸载（keep），在办 run 继续由服务端执行，
+  // 回到本页即可看到已完成的回答；只有关闭浮窗才是明确的取消语义。
+  useAgentRunHost('page', 'keep')
+
   const {
     config,
     messages,
@@ -111,21 +127,82 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     clearMessages,
   } = useChatState(initialContext)
 
+  // 平台 Agent 会话 / run（报告工作模式读待审批写操作数）
+  const agentSessionId = useAiChatSession((state) => state.agentSessionId)
+  const agentRunId = useAiChatSession((state) => state.agentRunId)
+
+  // 报告上下文选择器（真实 GET /reports + GET /tasks）
   const {
-    providers,
-    addProvider,
-    updateProvider,
-    removeProvider,
-    setDefaultProvider,
-    defaultProvider,
-    testConnection,
-    fetchModels,
-  } = useLlmProviders()
-  const [providerManagerOpen, setProviderManagerOpen] = useState(false)
+    groups: contextGroups,
+    options: contextOptions,
+    isLoading: isContextLoading,
+    isError: isContextError,
+    refetch: refetchContext,
+  } = useReportContextQueries()
+
+  /** 任务上下文 → 该任务的报告 id（Studio 文档挂在报告上） */
+  const isTaskContext = config.reportContextType === 'task_context'
+  const contextTaskId = Number(config.reportContextId)
+  const taskReportQuery = useTaskReportId(
+    isTaskContext && Number.isFinite(contextTaskId) ? contextTaskId : 0
+  )
+  const boundReportId = isTaskContext
+    ? (taskReportQuery.data ?? null)
+    : config.reportContextId && Number.isFinite(Number(config.reportContextId))
+      ? Number(config.reportContextId)
+      : null
+  /**
+   * 任务 → 报告解析态：解析中 / 接口失败要与「该任务没有报告」「未绑定上下文」
+   * 分开显示（404 = 该任务确实没有报告，由 fetchReportIdByTask 吞成 null）。
+   * 失败文案走 ApiError.userMessage：网络失败 / 只有 detail 的错误体 message 为空，
+   * 用原始 message 会让面板把「解析失败」误显示成「该任务暂无关联报告」。
+   */
+  const isTaskResolvePending = isTaskContext && taskReportQuery.isLoading
+  const taskResolveError =
+    isTaskContext && taskReportQuery.isError
+      ? resolveTaskReportErrorMessage(taskReportQuery.error)
+      : null
+
+  const selectedContextOption = contextOptions.find(
+    (option) => option.id === config.reportContextId
+  )
+  const selectedContext: SelectedContext | null = config.reportContextId
+    ? {
+        id: config.reportContextId,
+        label:
+          config.reportContextLabel ??
+          `${isTaskContext ? '任务' : '报告'} #${config.reportContextId}`,
+        badge: selectedContextOption?.badge ?? '',
+        type: config.reportContextType ?? 'task',
+      }
+    : null
+
+  /** 绑定 / 切换报告上下文：写会话 config（同一会话内的上下文，不重开会话） */
+  const handleSelectContext = (option: ReportContextOption) => {
+    updateConfig('reportContextId', option.id)
+    updateConfig('reportContextLabel', option.label)
+    updateConfig('reportContextType', option.type)
+    // 换上下文后旧的产物文档不再属于当前报告，清掉焦点让面板回到该报告的最新文档
+    setFocusDocId(null)
+  }
+
+  const contextSelector = (
+    <ReportContextSelector
+      groups={contextGroups}
+      isError={isContextError}
+      isLoading={isContextLoading}
+      onRetry={refetchContext}
+      onSelect={handleSelectContext}
+      value={selectedContext}
+    />
+  )
 
   /** 输入区受控文本（页面持有：starter 回填 / 任务 URL 预填 / 提交后清空） */
   const [draftText, setDraftText] = useState(initialPrompt ?? '')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  /** Agent 产物 / 工具结果指定的文档（面板按 docId 直接预览，不要求先绑上下文） */
+  const [focusDocId, setFocusDocId] = useState<string | null>(null)
+  const studioFocus = useAiChatSession((state) => state.studioFocus)
 
   /** 空态 starter：回填输入框并聚焦，不自动发送（§3.3） */
   const handleFillPrompt = (prompt: string) => {
@@ -133,30 +210,119 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     textareaRef.current?.focus()
   }
 
-  /** 当前会话供应商（config.providerId 命中或默认；§3.11 Demo 直连驱动对话） */
-  const currentProvider =
-    providers.find((p) => p.id === config.providerId) ??
-    defaultProvider ??
-    null
+  /** 对话通道：只保留平台 Agent（供应商由服务端密钥库托管，页面不再有「自带供应商」） */
+  const channel = CHAT_CHANNEL.PLATFORM
 
-  /** 配置即用（§3.11/INT-1032 走查）：供应商带模型而会话未选模型/所选模型已不在
-   * 清单时自动落首个模型——添加供应商后无需再手动选模型即可对话；手动切换模型后
-   * 命中校验、效果不再覆写。 */
+  /** 目标模式与预算（INT-2474）：随会话 config 持久化，两宿主同一份 */
+  const runMode = normalizeRunMode(config.runMode)
+  /** 预算默认值（仅目标模式拉取；用于展示「留空生效」口径，不作为上限） */
+  const { data: autoBudgetDefaults } = useAgentBudgetDefaults(
+    runMode === AGENT_RUN_MODE.AUTO
+  )
+  const handleRunModeChange = (next: AgentRunMode) => {
+    updateConfig('runMode', next)
+  }
+  const handleAutoBudgetChange = (budget: AgentRunBudget | undefined) => {
+    updateConfig('autoBudget', budget)
+  }
+  /** 模型下拉：写入会话 config，下一次 run 下发（供应商 / Key 不变） */
+  const handleModelChange = (next: string) => {
+    updateConfig('modelId', next)
+  }
+  /** 供应商下拉：只影响本轮 run，同时清掉模型选择（回落到该供应商默认模型） */
+  const handleProviderChange = (next: string) => {
+    updateConfig('providerId', next)
+    updateConfig('modelId', '')
+  }
+
+  /**
+   * 报告工作模式（文档面板）开关：同时决定「绑定的报告上下文是否注入本轮请求」——
+   * 选择器只在该面板内出现，聊天请求也只在工作模式打开时带上它。
+   */
+  const [workModeOpen, setWorkModeOpen] = useState(false)
+
+  // 产物卡「查看文档」/ Agent 工具结果写入焦点 → 展开右侧面板并定位文档
   useEffect(() => {
-    if (!currentProvider) return
-    const modelValid = currentProvider.models.includes(config.modelId ?? '')
-    if (currentProvider.models.length > 0 && !modelValid) {
-      updateConfig('providerId', currentProvider.id)
-      updateConfig('modelId', currentProvider.models[0])
-    }
-  }, [currentProvider, config.modelId, updateConfig])
+    if (!studioFocus) return
+    setFocusDocId(studioFocus.docId)
+    setWorkModeOpen(true)
+  }, [studioFocus])
 
-  const { sendChat, stopGeneration, isGenerating } = useChatHandler({
+  /**
+   * 最近一次「需要打开文档」的信号：导出产物优先，其次 Studio 工具结果
+   * （起草 / 编辑 / 恢复）。key 用工具调用 id，保证同一文档每次编辑后都能重新展开。
+   */
+  const latestStudioFocus = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const calls = messages[index].toolCalls ?? []
+      for (let callIndex = calls.length - 1; callIndex >= 0; callIndex -= 1) {
+        const call = calls[callIndex]
+        if (call.exportArtifact?.docId) {
+          return {
+            key: call.id,
+            docId: call.exportArtifact.docId,
+            reportId: call.exportArtifact.reportId,
+          }
+        }
+        if (call.studioFocus) {
+          return { key: call.id, ...call.studioFocus }
+        }
+      }
+    }
+    return null
+  }, [messages])
+  /**
+   * 只对「本次页面生命周期内新出现」的信号自动展开：
+   * 初始值取首帧最新信号，避免刷新后把历史会话的文档重新弹出来。
+   */
+  const autoOpenedFocusRef = useRef<string | null>(latestStudioFocus?.key ?? null)
+  useEffect(() => {
+    const focus = latestStudioFocus
+    if (!focus) return
+    if (autoOpenedFocusRef.current === focus.key) return
+    autoOpenedFocusRef.current = focus.key
+    setFocusDocId(focus.docId)
+    setWorkModeOpen(true)
+  }, [latestStudioFocus])
+
+  const {
+    sendChat,
+    stopGeneration,
+    isGenerating,
+    isCancelling,
+    runPhase,
+    run,
+    approvals,
+    approvalsLoading,
+    approvalsError,
+    decidingApprovalIds,
+    timeline,
+    autoProgress,
+    autoPause,
+    autoPausePolicy,
+    resumingAuto,
+    autoTracking,
+    error: runError,
+    resumeAuto,
+    decideApproval,
+    refreshApprovals,
+    resetChat,
+  } = useChatHandler({
+    channel,
     config,
-    provider: currentProvider,
     messages,
     onMessageUpdate: updateMessages,
+    injectReportContext: workModeOpen,
   })
+
+  /** 平台通道删除持久化：无 messageId 的本地消息（或未建会话）只删本地 */
+  const persistDeleteMessage = useCallback(
+    async (message: ChatMessage) => {
+      if (!message.messageId || !agentSessionId) return
+      await hideAgentSessionMessage(agentSessionId, message.messageId)
+    },
+    [agentSessionId]
+  )
 
   const {
     editingMessageKey,
@@ -172,30 +338,94 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     messages,
     updateMessages,
     sendChat,
+    deletePersist: persistDeleteMessage,
   })
 
-  const [workModeOpen, setWorkModeOpen] = useState(false)
-
-  /** 模型/供应商切换（§3.5/§3.11：选择写会话 config，不写全局算法 store） */
-  const handleSelectProvider = (providerId: string) => {
-    updateConfig('providerId', providerId)
-  }
-  const handleSelectModel = (providerId: string, modelId: string) => {
-    updateConfig('providerId', providerId)
-    updateConfig('modelId', modelId)
-  }
+  const [historyOpen, setHistoryOpen] = useState(false)
+  /** 模型供应商管理（输入区入口；新增 / 编辑 / 自动发现模型） */
+  const [providerManagerOpen, setProviderManagerOpen] = useState(false)
 
   const handleClearMessages = () => {
     handleEditOpenChange(false)
+    // 平台通道同时结束会话上下文（下次发送新建会话，避免服务端残留旧历史）
+    resetChat()
     clearMessages()
   }
 
+  /** 历史会话切换：读服务端最近消息回填（生成中不允许切换，避免打断在办 run） */
+  const handleSelectSession = (sessionId: string) => {
+    if (isGenerating || sessionId === agentSessionId) return
+    void useAgentRunStore.getState().openSession(sessionId)
+  }
+
+  /** 新对话：结束当前会话上下文并清空本地消息 */
+  const handleNewConversation = () => {
+    if (isGenerating) return
+    resetChat()
+    clearMessages()
+  }
+
+  /** Auto 暂停后继续：失败文案走 toast（面板按钮就地恢复为可点） */
+  const handleResumeAuto = () => {
+    void resumeAuto().then((failure) => {
+      if (failure) toast.error(failure)
+    })
+  }
+
+  /** Auto 面板 / 输入区在两处装配（宽屏双栏与普通布局）复用同一组 props */
+  const autoChatProps = {
+    autoProgress,
+    autoPause,
+    autoPausePolicy,
+    resumingAuto,
+    autoTracking,
+    isCancelling,
+    runError,
+    onResumeAuto: handleResumeAuto,
+    onStopAuto: stopGeneration,
+  } as const
+  const autoInputProps = {
+    runMode,
+    onRunModeChange: handleRunModeChange,
+    autoBudget: config.autoBudget,
+    autoBudgetDefaults,
+    onAutoBudgetChange: handleAutoBudgetChange,
+  } as const
+
   return (
-    <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
+    <div className='relative flex size-full min-h-0 overflow-hidden'>
+      {historyOpen && (
+        <ConversationHistory
+          activeSessionId={agentSessionId}
+          disabled={isGenerating}
+          onNew={handleNewConversation}
+          onSelect={handleSelectSession}
+        />
+      )}
+      <div className='flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'>
       {/* 顶部条（shrink-0，§3.1/§3.2）；Demo 徽标 §3.10 落点①；INT-1153 二轮返工：
        * 炫彩「连接你的 agent」入口落右上角（标题区右侧），点击跳转 /agent-connect */}
       <div className='border-border/60 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3 sm:px-6'>
-        <div className='min-w-0'>
+        <div className='flex min-w-0 items-center gap-2'>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  aria-label='对话记录'
+                  className='size-9 shrink-0'
+                  onClick={() => setHistoryOpen((value) => !value)}
+                  type='button'
+                  variant={historyOpen ? 'secondary' : 'ghost'}
+                >
+                  <PanelLeft className='size-4' />
+                </Button>
+              }
+            />
+            <TooltipContent>
+              <p>{historyOpen ? '收起对话记录' : '展开对话记录'}</p>
+            </TooltipContent>
+          </Tooltip>
+          <div className='min-w-0'>
           <div className='flex items-center gap-2'>
             <h1 className='text-sm font-semibold sm:text-base'>灵犀Agent</h1>
             <Tooltip>
@@ -216,6 +446,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
             用自然语言驱动平台全部能力：报告、用例、任务、设备、日志
           </p>
         </div>
+        </div>
         <div className='flex shrink-0 items-center gap-2'>
           <AgentConnectButton />
           {REPORT_WORK_MODE_ENABLED && (
@@ -234,7 +465,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
 
       {/* 会话区 + 报告工作模式双栏（§3.6：Agent 后端立项前整块不渲染） */}
       {REPORT_WORK_MODE_ENABLED && workModeOpen ? (
-        <div className='flex min-h-0 flex-1'>
+        <div className='relative flex min-h-0 flex-1'>
           <div className='grid min-h-0 min-w-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(22rem,2fr)_minmax(0,3fr)]'>
             <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
               <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
@@ -252,6 +483,16 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                   onSaveEdit={(content) => applyEdit(content, false)}
                   onSaveEditAndSubmit={(content) => applyEdit(content, true)}
                   onUndoMessage={handleUndoMessage}
+                  runPhase={runPhase}
+                  approvals={approvals}
+                  approvalsError={approvalsError}
+                  approvalsLoading={approvalsLoading}
+                  decidingApprovalIds={decidingApprovalIds}
+                  onDecideApproval={decideApproval}
+                  onRetryApprovals={() => void refreshApprovals()}
+                  run={run}
+                  timeline={timeline}
+                  {...autoChatProps}
                 />
               </div>
               <div className='shrink-0'>
@@ -259,27 +500,48 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                   compact
                   config={config}
                   disabled={isGenerating}
+                  isStopping={isCancelling}
                   hasMessages={messages.length > 0}
                   isGenerating={isGenerating}
                   onClearMessages={handleClearMessages}
                   onManageProviders={() => setProviderManagerOpen(true)}
-                  onSelectModel={handleSelectModel}
-                  onSelectProvider={handleSelectProvider}
+                  model={config.modelId}
+                  onModelChange={handleModelChange}
+                  providerId={config.providerId}
+                  onProviderChange={handleProviderChange}
                   onStop={stopGeneration}
                   onSubmit={handleSendMessage}
                   onValueChange={setDraftText}
-                  providers={providers}
                   textareaRef={textareaRef}
                   value={draftText}
+                  {...autoInputProps}
                 />
               </div>
             </div>
-            <div className='hidden min-h-0 min-w-0 lg:block'>
+            {/*
+             * lg 以下：文档面板改为覆盖式抽屉（右对齐，占宽 ≤34rem），宽屏才与会话并排。
+             * 原来 <lg 直接 hidden 右栏 → 「报告工作模式」在 <1024px 是死按钮（UX 审计 P2-1）。
+             */}
+            <div className='bg-background absolute inset-y-0 right-0 z-30 block w-full max-w-[34rem] min-h-0 min-w-0 shadow-xl lg:static lg:z-auto lg:w-auto lg:max-w-none lg:bg-transparent lg:shadow-none'>
               <DocumentPanel
-                content={DEMO_DOCUMENT}
-                documentName='报告文档预览'
+                agentSessionId={agentSessionId}
+                contextSlot={contextSelector}
+                focusDocId={focusDocId}
                 onClose={() => setWorkModeOpen(false)}
-                version={1}
+                onRetryResolve={() => void taskReportQuery.refetch()}
+                reportId={boundReportId}
+                resolveError={taskResolveError}
+                resolvePending={isTaskResolvePending}
+                runId={agentRunId}
+                sourceId={config.reportContextId ?? null}
+                sourceKind={
+                  config.reportContextId
+                    ? isTaskContext
+                      ? 'task'
+                      : 'report'
+                    : null
+                }
+                sourceLabel={config.reportContextLabel}
               />
             </div>
           </div>
@@ -301,6 +563,16 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
               onSaveEdit={(content) => applyEdit(content, false)}
               onSaveEditAndSubmit={(content) => applyEdit(content, true)}
               onUndoMessage={handleUndoMessage}
+              runPhase={runPhase}
+              approvals={approvals}
+              approvalsError={approvalsError}
+              approvalsLoading={approvalsLoading}
+              decidingApprovalIds={decidingApprovalIds}
+              onDecideApproval={decideApproval}
+              onRetryApprovals={() => void refreshApprovals()}
+              run={run}
+              timeline={timeline}
+              {...autoChatProps}
             />
           </div>
 
@@ -309,34 +581,30 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
             <AiChatInput
               config={config}
               disabled={isGenerating}
+              isStopping={isCancelling}
               hasMessages={messages.length > 0}
               isGenerating={isGenerating}
               onClearMessages={handleClearMessages}
               onManageProviders={() => setProviderManagerOpen(true)}
-              onSelectModel={handleSelectModel}
-              onSelectProvider={handleSelectProvider}
+              model={config.modelId}
+              onModelChange={handleModelChange}
+              providerId={config.providerId}
+              onProviderChange={handleProviderChange}
               onStop={stopGeneration}
               onSubmit={handleSendMessage}
               onValueChange={setDraftText}
-              providers={providers}
               textareaRef={textareaRef}
               value={draftText}
+              {...autoInputProps}
             />
           </div>
         </>
       )}
+      </div>
 
-      {/* 供应商管理弹窗（§3.11；整页与全局浮窗共用同一供应商清单） */}
-      <ProviderManager
-        onAdd={addProvider}
-        onFetchModels={fetchModels}
+      <AgentProviderManagerDialog
         onOpenChange={setProviderManagerOpen}
-        onRemove={removeProvider}
-        onSetDefault={setDefaultProvider}
-        onTestConnection={testConnection}
-        onUpdate={updateProvider}
         open={providerManagerOpen}
-        providers={providers}
       />
     </div>
   )

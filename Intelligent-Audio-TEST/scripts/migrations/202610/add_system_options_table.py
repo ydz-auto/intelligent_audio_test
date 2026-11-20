@@ -52,9 +52,12 @@ SYSTEM_OPTION_SEED = [
     ('site.notice', ''),
     ('site.navigation.show_breadcrumb', True),
     ('site.navigation.show_algorithm_switcher', True),
+    ('site.home_require_registration', False),
     ('auth.password_login', True),
     ('auth.registration', True),
     ('auth.email_verification', False),
+    ('auth.invite_code_registration', False),
+    ('auth.invite_code', ''),
     ('security.rate_limit', True),
     ('operations.log_retention_days', 30),
 ]

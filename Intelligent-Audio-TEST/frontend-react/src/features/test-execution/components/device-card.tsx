@@ -21,6 +21,8 @@ import {
   ExecutionModeControl,
 } from '@/features/test-execution/components/execution-mode-control'
 import { cn } from '@/lib/utils'
+import { deviceTypeLabel } from '@/domain/models/device'
+import { deviceSystemLabel } from '@/features/devices/lib/device-system'
 import type { Device, DeviceType } from '@/domain/models/device'
 import type { ExecutionMode } from '@/domain/models/testExecution'
 
@@ -28,12 +30,6 @@ const DEVICE_TYPE_ICON: Record<DeviceType, typeof Smartphone> = {
   physical: Smartphone,
   http_api: Server,
   websocket_api: RadioTower,
-}
-
-const DEVICE_TYPE_LABEL: Record<DeviceType, string> = {
-  physical: '真机',
-  http_api: 'HTTP API',
-  websocket_api: 'Realtime WS',
 }
 
 interface DeviceCardProps {
@@ -62,7 +58,9 @@ export function DeviceCard({
 }: DeviceCardProps) {
   const online = device.status === 'online'
   const TypeIcon = device.type ? DEVICE_TYPE_ICON[device.type] : Smartphone
-  const typeLabel = device.type ? DEVICE_TYPE_LABEL[device.type] : '未知'
+  const typeLabel = deviceTypeLabel(device.type)
+  // 系统归一（INT-2649：与设备管理列表同源，harmony/android → HarmonyOS/Android，不外露原始小写值）
+  const systemLabel = deviceSystemLabel(device.system)
   // 整卡可点选：仅非观察态且在线时生效（离线禁选口径不变）
   const selectable = !readOnly && online
 
@@ -100,9 +98,9 @@ export function DeviceCard({
         <dd className='truncate font-mono'>{device.serialNumber ?? '—'}</dd>
         <dt className='text-muted-foreground'>系统</dt>
         <dd>
-          {device.system ? (
+          {systemLabel ? (
             <Badge variant='outline' className='text-[11px]'>
-              {device.system}
+              {systemLabel}
             </Badge>
           ) : (
             '—'

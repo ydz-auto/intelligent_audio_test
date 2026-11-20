@@ -1,0 +1,132 @@
+# 腾讯云生产部署覆盖层（配合 docker-compose.yml）
+# 用法：
+#   docker compose -p intelligent-audio-test --env-file .env \
+#     -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+#
+# 拓扑（执行机分离：e2e / audio / device 都不在服务器上跑容器）：
+# - 执行机 blue（10.0.0.9）：e2e :50051、audio :50052、device :50053 常驻进程
+# - ASR：blue-eval（Tailscale 100.103.97.108:10095）
+# - eval_server：服务器容器
+# - 对象存储：腾讯云 COS（test/intelligent_audio_test 前缀，virtual-hosted style）
+# - db_bootstrap 停用：数据库由生产 dump 恢复
+
+x-backend-env: &backend-env
+  OSS_ENDPOINT: ${OSS_ENDPOINT}
+  OSS_PUBLIC_ENDPOINT: ${OSS_PUBLIC_ENDPOINT}
+  OSS_REGION: ${OSS_REGION}
+  OSS_ACCESS_KEY: ${OSS_ACCESS_KEY}
+  OSS_SECRET_KEY: ${OSS_SECRET_KEY}
+  OSS_BUCKET_NAME: ${OSS_BUCKET_NAME}
+  OSS_KEY_PREFIX: ${OSS_KEY_PREFIX}
+  STORAGE_FALLBACK_ENABLED: "false"
+  # 浏览器播放取流：true = 网关代理（服务器出流量），false = COS 预签名直连桶
+  AUDIO_STREAM_VIA_GATEWAY: ${AUDIO_STREAM_VIA_GATEWAY:-false}
+  # 文件下载（导出 ZIP / 用例日志）：true = 网关流式直出，false = 预签名直连桶
+  FILE_DOWNLOAD_VIA_GATEWAY: ${FILE_DOWNLOAD_VIA_GATEWAY:-false}
+  # 评估服务系统设置：密钥主密钥 + 服务间运行时配置通道
+  EVAL_CONFIG_MASTER_KEY: ${EVAL_CONFIG_MASTER_KEY}
+  INTERNAL_EVAL_CONFIG_TOKEN: ${INTERNAL_EVAL_CONFIG_TOKEN}
+  PLATFORM_INTERNAL_URL: http://api_gateway:5000
+  # COS 的 S3 兼容接口只接受 virtual-hosted style；配置从该文件读取
+  AWS_CONFIG_FILE: /app/.aws/config
+  LOCAL_STORAGE_ROOT: /app/storage/static
+  # 执行机（blue）地址：e2e / audio / device 均为执行机上的常驻服务，
+  # 服务器只经内网 IP 调用，不在本地起容器，也不依赖宿主 SSH 反向隧道。
+  # 换执行机只改 .env 的 EXECUTOR_HOST，不用动编排。
+  EXECUTOR_HOST: ${EXECUTOR_HOST:-10.0.0.9}
+  E2E_TEST_SERVICE_HOST: ${EXECUTOR_HOST:-10.0.0.9}
+  E2E_TEST_SERVICE_GRPC_PORT: "${EXECUTOR_E2E_PORT:-50051}"
+  AUDIO_SERVICE_HOST: ${EXECUTOR_HOST:-10.0.0.9}
+  AUDIO_SERVICE_GRPC_PORT: "${EXECUTOR_AUDIO_PORT:-50052}"
+  DEVICE_SERVICE_HOST: ${EXECUTOR_HOST:-10.0.0.9}
+  DEVICE_SERVICE_GRPC_PORT: "${EXECUTOR_DEVICE_PORT:-50053}"
+
+x-aws-volume: &aws-volume
+  - ../aws-config/config:/app/.aws/config:ro
+
+services:
+  db_bootstrap:
+    image: postgres:16-alpine
+    entrypoint: ["/bin/true"]
+    command: []
+    environment: []
+
+  agent_service:
+    profiles: ["agent"]
+
+  api_gateway:
+    environment:
+      <<: *backend-env
+      # INT-2456：总开关以 .env 为准，不在覆盖层写死关闭
+      AGENT_ENABLED: ${AGENT_ENABLED:-false}
+    volumes: *aws-volume
+
+  task_service:
+    environment:
+      <<: *backend-env
+    volumes: *aws-volume
+
+  evaluation_service:
+    environment:
+      <<: *backend-env
+      EVAL_SERVER_URL: http://eval_server:8888
+      EVAL_FALLBACK_URLS: http://eval_server:8888
+    volumes: *aws-volume
+
+  # 生产不部署 e2e：e2e 常驻在执行机（EXECUTOR_HOST:50051），
+  # 服务器侧不要带 --profile container-e2e 启动。
+
+  api_test_service:
+    environment:
+      <<: *backend-env
+    volumes: *aws-volume
+
+  report_service:
+    environment:
+      <<: *backend-env
+    volumes: *aws-volume
+
+  algorithm_service:
+    environment:
+      <<: *backend-env
+    volumes: *aws-volume
+
+  auth_service:
+    environment:
+      <<: *backend-env
+    volumes: *aws-volume
+
+  rustfs:
+    environment:
+      RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
+
+  eval_server:
+    build:
+      context: ../eval_server
+    restart: unless-stopped
+    mem_limit: ${EVAL_SERVER_MEM_LIMIT:-512m}
+    ports:
+      - "8888:8888"
+    environment:
+      ASR_SERVER_URL: http://${ASR_TAILSCALE_IP}:10095
+      ASR_TIMEOUT: "120"
+      # 系统设置（评估服务）运行时配置：网关内部端点 + 共享 token
+      PLATFORM_INTERNAL_URL: http://api_gateway:5000
+      EVAL_INTERNAL_TOKEN: ${INTERNAL_EVAL_CONFIG_TOKEN}
+      STATIC_BASE_PATH: /data/static
+      LOG_DIR: /data/static/logs/eval_server
+      AWS_CONFIG_FILE: /app/.aws/config
+      OSS_ENDPOINT: ${OSS_ENDPOINT}
+      OSS_PUBLIC_ENDPOINT: ${OSS_PUBLIC_ENDPOINT}
+      OSS_REGION: ${OSS_REGION}
+      OSS_ACCESS_KEY: ${OSS_ACCESS_KEY}
+      OSS_SECRET_KEY: ${OSS_SECRET_KEY}
+      OSS_BUCKET_NAME: ${OSS_BUCKET_NAME}
+      OSS_KEY_PREFIX: ${OSS_KEY_PREFIX}
+      LLM_JUDGE_API_KEY: ""
+    volumes:
+      - eval_static:/data/static
+      - ../aws-config/config:/app/.aws/config:ro
+
+volumes:
+  eval_static:
