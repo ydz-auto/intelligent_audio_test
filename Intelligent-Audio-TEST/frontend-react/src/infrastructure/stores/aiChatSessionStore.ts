@@ -275,12 +275,31 @@ export function createAiChatSessionStore(prefs: AiChatPrefs) {
 
   // 单写入点持久化（§3.7）：messages 500ms 防抖、config 即时；每个实例独立一份存档。
   let messageSaveTimer: number | null = null
+
+  /** 立即落盘当前消息列表，并撤掉待写的防抖定时器（INT-2665） */
+  const flushMessages = (): void => {
+    if (messageSaveTimer !== null) {
+      window.clearTimeout(messageSaveTimer)
+      messageSaveTimer = null
+    }
+    prefs.saveMessages(store.getState().messages)
+  }
+
   store.subscribe((state, prev) => {
     if (state.messages !== prev.messages) {
       if (messageSaveTimer !== null) window.clearTimeout(messageSaveTimer)
-      messageSaveTimer = window.setTimeout(() => {
+      // 列表变短（删除消息 / 编辑重发的截断重建）立即落盘（INT-2665）：500ms 防抖窗口内
+      // 刷新或关标签页，本地存档还停在旧列表；服务端已隐藏（删除）的消息被旧存档占位后，
+      // 刷新恢复只在本地消息为空时才用服务端历史回填（hydrateRestoredMessages），
+      // 于是「删了又回来」并且此后每次刷新都还在。即时写与防抖写语义一致，只是提前落盘。
+      if (state.messages.length < prev.messages.length) {
+        messageSaveTimer = null
         prefs.saveMessages(state.messages)
-      }, 500)
+      } else {
+        messageSaveTimer = window.setTimeout(() => {
+          prefs.saveMessages(state.messages)
+        }, 500)
+      }
     }
     if (state.config !== prev.config) {
       prefs.saveConfig(state.config)
@@ -297,6 +316,15 @@ export function createAiChatSessionStore(prefs: AiChatPrefs) {
       )
     }
   })
+
+  // 页面隐藏 / 卸载前冲刷待写消息（INT-2665 兜底）：防抖窗口内关闭标签页、刷新或切后台
+  // 被回收时，最新列表不会丢；侧边会话的 prefs 是内存空实现，这里天然是 no-op。
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', flushMessages)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flushMessages()
+    })
+  }
 
   return store
 }

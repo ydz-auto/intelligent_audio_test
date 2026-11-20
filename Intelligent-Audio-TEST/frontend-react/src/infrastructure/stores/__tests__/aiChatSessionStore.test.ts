@@ -226,3 +226,51 @@ describe('aiChatSessionStore 「沉淀为 Skill」建议忽略（INT-2584）', (
     expect(restored?.[0]?.skillSuggestion).toBeUndefined()
   })
 })
+
+describe('aiChatSessionStore 消息落盘时机（INT-2665 删除后立即可刷新）', () => {
+  const userMessage: ChatMessage = {
+    key: 'u1',
+    messageId: 'user:r-1',
+    from: 'user',
+    versions: [{ id: 'u1-v1', content: '删掉我' }],
+    status: 'complete',
+  }
+  const reply: ChatMessage = {
+    key: 'a1',
+    messageId: 'm-1',
+    from: 'assistant',
+    versions: [{ id: 'a1-v1', content: '收到' }],
+    status: 'complete',
+  }
+
+  beforeEach(() => {
+    resetStore()
+  })
+
+  it('删除消息后立即落盘：不必等 500ms 防抖，刷新重载的存档不含被删消息', () => {
+    useAiChatSession.setState({ messages: [userMessage, reply] })
+
+    useAiChatSession
+      .getState()
+      .updateMessages((prev) => prev.filter((item) => item.key !== 'u1'))
+
+    // 防抖窗口内同步读存档：已是删除后的列表（服务端早已隐藏该消息，旧存档会把它复活）
+    const persisted = aiChatPrefs.loadMessages()
+    expect(persisted?.map((item) => item.key)).toEqual(['a1'])
+  })
+
+  it('新增消息仍走 500ms 防抖：未到窗口不落盘（防抖策略不变）', () => {
+    useAiChatSession.setState({ messages: [userMessage] })
+
+    expect(aiChatPrefs.loadMessages()).toBeNull()
+  })
+
+  it('页面隐藏（pagehide）冲刷待写消息：防抖窗口内关标签页 / 刷新不丢最新列表', () => {
+    useAiChatSession.setState({ messages: [reply] })
+
+    expect(aiChatPrefs.loadMessages()).toBeNull()
+    window.dispatchEvent(new Event('pagehide'))
+
+    expect(aiChatPrefs.loadMessages()?.map((item) => item.key)).toEqual(['a1'])
+  })
+})

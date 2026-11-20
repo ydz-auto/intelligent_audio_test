@@ -1726,7 +1726,14 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
     }
   }
 
-  /** 本地消息为空时用服务端历史回填（并发发送过则不再覆盖） */
+  /**
+   * 本地消息为空时用服务端历史回填（并发发送过则不再覆盖）。
+   *
+   * INT-2665：这里**不**做「服务端没有的 id 一律剔除」的合并——GET session 只返回最近
+   * CONTEXT_RECENT_MESSAGES 条（跨最近 CONTEXT_MAX_RUNS 个 run），本地存档最多 100 条，
+   * 超出服务端窗口的旧消息会被误判成「已删除」而丢历史。删除后的旧存档改由持久化层
+   * 即时落盘消除（aiChatSessionStore：列表变短立即写 + pagehide 冲刷），不再占位。
+   */
   const hydrateRestoredMessages = (messages: AgentSessionMessage[]) => {
     const restored = toRestoredMessages(messages, session().sessionArtifacts)
     if (restored.length === 0) return
