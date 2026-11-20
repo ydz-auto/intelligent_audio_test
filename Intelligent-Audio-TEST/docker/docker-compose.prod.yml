@@ -1,13 +1,12 @@
 # 腾讯云生产部署覆盖层（配合 docker-compose.yml）
 # 用法：
 #   docker compose -p intelligent-audio-test --env-file .env \
-#     -f docker-compose.yml -f docker-compose.prod.yml \
-#     --profile container-e2e up -d --no-build
+#     -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
 #
-# 拓扑：
-# - audio/device：本地 Windows（Tailscale 100.123.155.32）
-# - e2e：服务器容器，经 Tailscale 调本地 audio/device
-# - eval_server：服务器容器；ASR 在 blue-eval（Tailscale 100.103.97.108:10095）
+# 拓扑（执行机分离：e2e / audio / device 都不在服务器上跑容器）：
+# - 执行机 blue（10.0.0.9）：e2e :50051、audio :50052、device :50053 常驻进程
+# - ASR：blue-eval（Tailscale 100.103.97.108:10095）
+# - eval_server：服务器容器
 # - 对象存储：腾讯云 COS（test/intelligent_audio_test 前缀，virtual-hosted style）
 # - db_bootstrap 停用：数据库由生产 dump 恢复
 
@@ -31,12 +30,16 @@ x-backend-env: &backend-env
   # COS 的 S3 兼容接口只接受 virtual-hosted style；配置从该文件读取
   AWS_CONFIG_FILE: /app/.aws/config
   LOCAL_STORAGE_ROOT: /app/storage/static
-  # 本地 audio/device 可达地址：默认 docker 网桥网关（本机 SSH 反向隧道绑定），
-  # 无反向隧道时可用 LOCAL_SERVICE_HOST=<tailscale 或局域网 IP> 覆盖
-  AUDIO_SERVICE_HOST: ${LOCAL_SERVICE_HOST:-172.18.0.1}
-  AUDIO_SERVICE_GRPC_PORT: "50052"
-  DEVICE_SERVICE_HOST: ${LOCAL_SERVICE_HOST:-172.18.0.1}
-  DEVICE_SERVICE_GRPC_PORT: "50053"
+  # 执行机（blue）地址：e2e / audio / device 均为执行机上的常驻服务，
+  # 服务器只经内网 IP 调用，不在本地起容器，也不依赖宿主 SSH 反向隧道。
+  # 换执行机只改 .env 的 EXECUTOR_HOST，不用动编排。
+  EXECUTOR_HOST: ${EXECUTOR_HOST:-10.0.0.9}
+  E2E_TEST_SERVICE_HOST: ${EXECUTOR_HOST:-10.0.0.9}
+  E2E_TEST_SERVICE_GRPC_PORT: "${EXECUTOR_E2E_PORT:-50051}"
+  AUDIO_SERVICE_HOST: ${EXECUTOR_HOST:-10.0.0.9}
+  AUDIO_SERVICE_GRPC_PORT: "${EXECUTOR_AUDIO_PORT:-50052}"
+  DEVICE_SERVICE_HOST: ${EXECUTOR_HOST:-10.0.0.9}
+  DEVICE_SERVICE_GRPC_PORT: "${EXECUTOR_DEVICE_PORT:-50053}"
 
 x-aws-volume: &aws-volume
   - ../aws-config/config:/app/.aws/config:ro
@@ -54,8 +57,6 @@ services:
   api_gateway:
     environment:
       <<: *backend-env
-      E2E_TEST_SERVICE_HOST: e2e_test_service
-      E2E_TEST_SERVICE_GRPC_PORT: "50051"
       # INT-2456：总开关以 .env 为准，不在覆盖层写死关闭
       AGENT_ENABLED: ${AGENT_ENABLED:-false}
     volumes: *aws-volume
@@ -63,8 +64,6 @@ services:
   task_service:
     environment:
       <<: *backend-env
-      E2E_TEST_SERVICE_HOST: e2e_test_service
-      E2E_TEST_SERVICE_GRPC_PORT: "50051"
     volumes: *aws-volume
 
   evaluation_service:
@@ -74,10 +73,8 @@ services:
       EVAL_FALLBACK_URLS: http://eval_server:8888
     volumes: *aws-volume
 
-  e2e_test_service:
-    environment:
-      <<: *backend-env
-    volumes: *aws-volume
+  # 生产不部署 e2e：e2e 常驻在执行机（EXECUTOR_HOST:50051），
+  # 服务器侧不要带 --profile container-e2e 启动。
 
   api_test_service:
     environment:
