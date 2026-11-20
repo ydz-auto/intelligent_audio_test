@@ -362,6 +362,132 @@ class TestRestoreFrozenCases:
 
 
 # ---------------------------------------------------------------------------
+# INT-2662：多路由（逐用例目标）快照执行不得撞 uq_task_case_route
+# ---------------------------------------------------------------------------
+
+class TestExecuteMultiRouteSnapshot:
+    """同一用例多条路由（caseDevices 多目标）的发布快照执行。
+
+    原缺陷：快照 taskSnapshot.cases 按 TaskCase 逐路由冻结（1 用例 × N 目标 =
+    N 条），执行时既按 case_id 建单值路由映射（末条覆盖），又为每条冻结体各落
+    一行 → 同一 (用例, 路由) 落多遍，撞 uq_task_case_route，执行 500。
+    """
+
+    CROSS_ROUTES = [
+        ('physical', '9'), ('physical', '10'), ('physical', '11'),
+        ('http_api', '1'), ('http_api', '2'), ('websocket_api', '3'),
+    ]
+
+    def _case_devices(self, case_id):
+        return [{'case_id': case_id, 'device_type': dt, 'device_id': did, 'lab_id': 1}
+                for dt, did in self.CROSS_ROUTES]
+
+    def _frozen_entries(self, case_id, config):
+        return [{
+            'caseId': case_id, 'name': case_id, 'description': None,
+            'config': config, 'algorithmType': 'asr', 'algorithmParams': None,
+            'referenceParams': [], 'referenceParamsSource': [], 'tags': [], 'group': None,
+            'deviceType': dt, 'deviceId': did, 'labId': 1,
+        } for dt, did in self.CROSS_ROUTES]
+
+    def _seed_cases(self, factory, case_ids):
+        session = factory()
+        for case_id in case_ids:
+            session.add(TestCase(id=case_id, name=case_id, config={'rounds': []},
+                                 algorithm_type='asr'))
+        session.commit()
+        session.close()
+
+    def _build_snapshot(self, case_ids):
+        frozen, case_devices = [], []
+        for case_id in case_ids:
+            frozen += self._frozen_entries(case_id, {'rounds': []})
+            case_devices += self._case_devices(case_id)
+        return frozen, case_devices
+
+    def test_restore_returns_one_row_per_distinct_route(self, monkeypatch):
+        """冻结体逐路由重复出现 → 每 (用例, 路由) 只还原一行。"""
+        factory = _build_session_factory(monkeypatch, _case_tables())
+        case_ids = ['tc-multi-1', 'tc-multi-2']
+        self._seed_cases(factory, case_ids)
+        frozen, case_devices = self._build_snapshot(case_ids)
+
+        restored = ptr_module.published_task_repository.restore_frozen_cases(
+            frozen, case_devices)
+
+        # 2 用例 × 6 路由 = 12 行，无重复
+        assert len(restored) == 12
+        route_keys = {(cid, dt or '', did or '') for cid, dt, did, _ in restored}
+        assert len(route_keys) == 12
+        assert {(dt, did) for _, dt, did, _ in restored} == set(self.CROSS_ROUTES)
+
+    def test_execute_snapshot_writes_one_row_per_route(self, monkeypatch):
+        """端到端：多路由快照执行落 12 条 TaskCase、total_cases 按去重用例数。"""
+        factory = _build_session_factory(monkeypatch, _case_tables())
+        case_ids = ['tc-multi-1', 'tc-multi-2']
+        self._seed_cases(factory, case_ids)
+        frozen, case_devices = self._build_snapshot(case_ids)
+        repo = ptr_module.published_task_repository
+
+        restored = repo.restore_frozen_cases(frozen, case_devices)
+        task_id = repo.create_daily_task(
+            name='INT2662执行', description=None,
+            snapshot_config={'caseIds': case_ids, 'caseDevices': case_devices,
+                             'deviceIds': [9, 10, 11], 'apiIds': [1, 2, 3],
+                             'tags': [], 'taskSnapshot': {'cases': frozen}},
+            case_ids=list(dict.fromkeys(row[0] for row in restored)),
+            restored_cases=restored)
+
+        session = factory()
+        rows = session.query(TaskCase).filter(TaskCase.task_id == task_id).all()
+        route_keys = {(row.test_case_id, row.device_type or '', row.device_id or '')
+                      for row in rows}
+        assert len(rows) == 12
+        assert len(route_keys) == 12
+        assert session.get(Task, task_id).total_cases == 2
+        session.close()
+
+    def test_create_daily_task_dedupes_duplicated_restored_routes(self, monkeypatch):
+        """落库层兜底：还原结果即便有重复路由，也只落一行。"""
+        factory = _build_session_factory(monkeypatch, _case_tables())
+        duplicated = [
+            ('tc-multi-1', 'physical', '9', 1),
+            ('tc-multi-1', 'physical', '9', 1),
+            ('tc-multi-1', 'http_api', '1', 1),
+        ]
+        task_id = ptr_module.published_task_repository.create_daily_task(
+            name='INT2662去重', description=None,
+            snapshot_config={'caseIds': ['tc-multi-1'], 'caseDevices': [],
+                             'deviceIds': [], 'apiIds': [], 'tags': []},
+            case_ids=['tc-multi-1'], restored_cases=duplicated)
+
+        session = factory()
+        rows = session.query(TaskCase).filter(TaskCase.task_id == task_id).all()
+        assert len(rows) == 2
+        assert session.get(Task, task_id).total_cases == 1
+        session.close()
+
+    def test_legacy_snapshot_expands_case_devices_routes(self, monkeypatch):
+        """存量快照（无 taskSnapshot）也按 caseDevices 全量展开路由。"""
+        factory = _build_session_factory(monkeypatch, _case_tables())
+        self._seed_cases(factory, ['tc-multi-1'])
+
+        task_id = ptr_module.published_task_repository.create_daily_task(
+            name='INT2662存量', description=None,
+            snapshot_config={'caseIds': ['tc-multi-1'],
+                             'caseDevices': self._case_devices('tc-multi-1'),
+                             'deviceIds': [9, 10, 11], 'apiIds': [1, 2, 3], 'tags': []},
+            case_ids=['tc-multi-1'])
+
+        session = factory()
+        rows = session.query(TaskCase).filter(TaskCase.task_id == task_id).all()
+        assert len(rows) == 6
+        assert {row.device_type for row in rows} == {'physical', 'http_api', 'websocket_api'}
+        assert session.get(Task, task_id).total_cases == 1
+        session.close()
+
+
+# ---------------------------------------------------------------------------
 # execute：冻结还原执行 / 存量引用轨回退
 # ---------------------------------------------------------------------------
 
