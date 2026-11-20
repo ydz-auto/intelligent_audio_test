@@ -207,15 +207,16 @@ class TaskLifecycleMixin:
             session.close()
 
     def find_retry_cases(self, task_id: int):
-        """查找需要重试的用例（execution_status != completed 或 status == failed）。
+        """查找「重新执行·全部用例」范围内的用例 = 任务下全部未移除用例。
 
-        INT-305：移除留痕行不参与重试。
+        产品口径：重新执行全部/勾选用例须覆盖已成功用例（重置并重新执行），
+        因此不再按 execution_status 过滤；完成态用例由 retry() 统一重置回
+        PENDING 后重新下发执行。INT-305：移除留痕行不参与重试。
         """
         session = get_db_session()
         try:
             return session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
-                TaskCase.execution_status != ExecutionStatus.COMPLETED,
                 task_case_not_removed(TaskCase),
             ).all()
         finally:

@@ -4,9 +4,9 @@
 覆盖四层（均纯单测，不触真实 DB/gRPC/Redis）：
 
 1. task_service 生命周期：retry(options) 范围模式——
-   - selected：仅命中 case_ids 的用例重置重执行，其余不动；
-   - failed_only：仅执行/评估失败用例；
-   - 缺省 all：整任务语义不变（沿用 find_retry_cases 旧路径）；
+   - selected：仅命中 case_ids 的用例重置重新执行，其余不动；
+   - failed_only：仅执行/评估失败用例（执行完成的评估失败走重评估）；
+   - all：全部用例（含已成功用例）一律重置重新执行；
    - selected 空 case_ids → 400 拒绝；非法 mode → 400 拒绝。
 2. evaluation_service 重评执行器：dimension_ids 维度过滤——
    - all + 选中维度：按选中集过滤（TRD 保留不清空）；
@@ -167,7 +167,7 @@ class TestTaskLifecycleRetryScoped:
         repo.find_retry_cases_scoped.assert_called_once_with(5, 'failed_only', [])
 
     def test_legacy_all_keeps_old_path(self):
-        """缺省 options：整任务语义不变（沿用 find_retry_cases 旧路径）"""
+        """缺省 options：mode=all，走 find_retry_cases（全部未移除用例）路径"""
         from task_service.application.task.task_lifecycle_service import TaskLifecycleService
         lc = TaskLifecycleService()
         legacy = [_tc('c1', ExecutionStatus.FAILED), _tc('c2', ExecutionStatus.PENDING)]
@@ -195,8 +195,8 @@ class TestTaskLifecycleRetryScoped:
         assert result['success'] is False
         assert result['code'] == 400
 
-    def test_selected_completed_case_triggers_reevaluate(self):
-        """selected 命中已完成用例：清算法结果（保留 result_data）并触发重评"""
+    def test_selected_completed_case_reexecutes(self):
+        """selected 命中已完成用例：清结果并重置执行+评估回 PENDING（重新执行，不重评）"""
         from task_service.application.task.task_lifecycle_service import TaskLifecycleService
         lc = TaskLifecycleService()
         scoped = [_tc('c1', ExecutionStatus.COMPLETED)]
@@ -208,11 +208,32 @@ class TestTaskLifecycleRetryScoped:
                 engine.start_task.return_value = (True, 'ok')
                 result = lc.retry(5, options={'mode': 'selected', 'case_ids': ['c1']})
         assert result['success'] is True
-        # 已完成用例走 preserve_test_result=True 清理（重评口径）
-        repo.cleanup_case_results.assert_called_once_with(5, ['c1'], preserve_test_result=True)
-        # 触发既有重评链路（与其他 retry 语义对齐）
-        trig.assert_called_once()
-        assert trig.call_args[0][1] == scoped
+        # 重新执行口径：不保留旧结果、不触发重评
+        repo.cleanup_case_results.assert_called_once_with(5, ['c1'], preserve_test_result=False)
+        trig.assert_not_called()
+        # 执行 + 评估均回 PENDING（重新下发设备执行）
+        assert scoped[0].execution_status == ExecutionStatus.PENDING
+        assert scoped[0].evaluation_status == ExecutionStatus.PENDING
+
+    def test_all_reexecutes_completed_cases(self):
+        """all（全部用例）：含已成功/已完成用例一并重置重新执行"""
+        from task_service.application.task.task_lifecycle_service import TaskLifecycleService
+        lc = TaskLifecycleService()
+        cases = [_tc('c1', ExecutionStatus.COMPLETED), _tc('c2', ExecutionStatus.FAILED)]
+        with patch('task_service.application.task.task_lifecycle_service.task_repository') as repo:
+            repo.get_task_orm.return_value = SimpleNamespace(id=5, status='completed')
+            repo.find_retry_cases.return_value = cases
+            with patch('task_service.core.execution_engine.execution_engine') as engine, \
+                 patch.object(lc, '_trigger_reevaluate') as trig:
+                engine.start_task.return_value = (True, 'ok')
+                result = lc.retry(5, options={'mode': 'all'})
+        assert result['success'] is True
+        assert result['data']['retry_case_count'] == 2
+        # 全部用例统一重执行：不保留结果、不触发重评
+        repo.cleanup_case_results.assert_called_once_with(5, ['c1', 'c2'], preserve_test_result=False)
+        trig.assert_not_called()
+        assert all(c.execution_status == ExecutionStatus.PENDING for c in cases)
+        assert all(c.evaluation_status == EvaluationStatus.PENDING for c in cases)
 
 
 class TestFindRetryCasesScoped:
