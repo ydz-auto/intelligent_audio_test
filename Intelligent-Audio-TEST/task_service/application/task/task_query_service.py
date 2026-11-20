@@ -522,7 +522,14 @@ class TaskQueryService:
 
                                 if raw_url:
                                     try:
-                                        presigned = storage.get_url(raw_url, expires=3600)
+                                        from shared.infrastructure.config import BaseConfig
+                                        # 取流走服务器（AUDIO_STREAM_VIA_GATEWAY=true）：回网关
+                                        # 相对地址（浏览器带 JWT 经服务器转发取字节），不直连桶；
+                                        # 否则回 OSS 预签名直连地址
+                                        if BaseConfig.AUDIO_STREAM_VIA_GATEWAY:
+                                            presigned = storage.build_download_url(raw_url)
+                                        else:
+                                            presigned = storage.get_url(raw_url, expires=3600)
                                     except Exception:
                                         presigned = raw_url
                                 else:
