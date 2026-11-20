@@ -23,6 +23,7 @@ _algo_acl = AlgorithmQueryAclRepositoryImpl()
 
 def submit_case_evaluation(*, task_id, result_id, test_case_id,
                            algorithm_result, case_algorithm_params=None,
+                           algorithm_params_col=None,
                            reference_params=None, algorithm_type=None,
                            device_type=None, api_id=None, log=None, acl=None):
     """按用例把结果提交评估队列（result_id 且全轮成功时由执行器调用）
@@ -52,6 +53,18 @@ def submit_case_evaluation(*, task_id, result_id, test_case_id,
     eval_params['algorithm_type'] = algorithm_type
     device_type = device_type or DeviceType.HTTP_API.value
     eval_params['device_type'] = device_type
+    # 按轮分组的 algorithm_params 列原样透传（与 E2E 链 _evaluate_result 同口径），
+    # 供评估侧 _build_rounds_list 的 source='case' 映射按轮取 is_reject/timing/type，
+    # 否则 rounds 缺逐轮 is_reject，拒识裁判整例跳过、报告无评估明细。
+    per_round_params = algorithm_params_col
+    if not (isinstance(per_round_params, list) and any(
+        isinstance(item, dict) and 'round_number' in item for item in per_round_params
+    )):
+        per_round_params = case_algorithm_params
+    if isinstance(per_round_params, list) and any(
+        isinstance(item, dict) and 'round_number' in item for item in per_round_params
+    ):
+        eval_params['algorithm_params_col'] = per_round_params
 
     acl.submit_evaluate_case(
         task_id=task_id,

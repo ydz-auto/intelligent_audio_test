@@ -281,6 +281,7 @@ class StreamSessionExecutor:
                 task_id=task_id, result_id=result_id, test_case_id=test_case_id,
                 algorithm_result=aggregated.get('algorithm_result', {}),
                 case_algorithm_params=(data or {}).get('case_algorithm_params'),
+                algorithm_params_col=(data or {}).get('algorithm_params_col'),
                 reference_params=(case_config or {}).get('reference_params', {}),
                 algorithm_type=algorithm_type,
                 device_type=(data or {}).get('device_type'),

@@ -21,7 +21,8 @@ class ResultsMixin:
     def _evaluate_result(self, task_id, result_id, test_case_id, algo_result,
                          case_config, case_reference_params, algorithm_type,
                          device_type=DeviceType.PHYSICAL.value, case_algorithm_params=None,
-                         reference_params_col=None, round_number=None, **kwargs):
+                         reference_params_col=None, round_number=None,
+                         algorithm_params_col=None, **kwargs):
         """评估测试结果（通过 gRPC 调用 evaluation_service.EvaluateCase）
 
         依赖通过抽象方法注入：
@@ -67,6 +68,17 @@ class ResultsMixin:
             eval_params['round_number'] = round_number
         if reference_params_col is not None:
             eval_params['reference_params_col'] = reference_params_col
+        # 按轮分组的 algorithm_params 列（[{round_number, params}]）原样透传，
+        # 供评估侧 _build_rounds_list 的 source='case' 映射按轮取 is_reject/timing/type。
+        # 不传则 rounds 缺逐轮 is_reject（空串被拒识裁判当 false），整例跳过、报告无评估明细。
+        if isinstance(algorithm_params_col, list) and any(
+            isinstance(item, dict) and 'round_number' in item for item in algorithm_params_col
+        ):
+            eval_params['algorithm_params_col'] = algorithm_params_col
+        elif isinstance(case_algorithm_params, list) and any(
+            isinstance(item, dict) and 'round_number' in item for item in case_algorithm_params
+        ):
+            eval_params['algorithm_params_col'] = case_algorithm_params
 
         self._log(
             level='DEBUG',
