@@ -698,10 +698,17 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                     category='execution',
                     content=f"上传API返回错误: {resp.status_code}, URL: {create_task_url}, 响应: {resp.text}"
                 )
+                # 4xx 时把响应体 msg 片段并入 __error__（VEGA-78 F3）：eval_server 错误体
+                # 的 msg 含 worker 拒绝原因（如 Unsupported task type），仅状态码会丢因。
+                error_msg = f"HTTP {resp.status_code}"
+                if 400 <= resp.status_code < 500:
+                    body_msg = resp_data.get('msg') if isinstance(resp_data, dict) else resp_data
+                    if isinstance(body_msg, str) and body_msg:
+                        error_msg = f"{error_msg}: {body_msg[:200]}"
                 if isinstance(resp_data, dict):
-                    resp_data['__error__'] = f"HTTP {resp.status_code}"
+                    resp_data['__error__'] = error_msg
                 else:
-                    resp_data = {'__error__': f"HTTP {resp.status_code}", '__raw_response__': resp_data}
+                    resp_data = {'__error__': error_msg, '__raw_response__': resp_data}
 
             return resp_data
         except Exception as e:

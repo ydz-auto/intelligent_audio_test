@@ -139,6 +139,12 @@ class DimensionLoaderMixin:
                         for k in ['api_endpoints', 'api_url', 'api_settings']:
                             if not dim_dict.get(k):
                                 dim_dict[k] = getattr(parent_snap, k, None)
+                    # input_params 继承：子维度参数记录常为 0 条，representative 落到
+                    # 子维度时 defaults 注入依赖此继承（VEGA-78 F1）。
+                    # 注意 :113 字面量恒写 'input_params' 键（子维度为 []），
+                    # setdefault 对已存在键是 no-op，必须显式判空赋值。
+                    if not dim_dict.get('input_params'):
+                        dim_dict['input_params'] = input_param_map.get(parent_id, [])
                     # 子维度继承主维度的 task_type_code，用于发请求时 task_type=turn_taking
                     dim_dict['parent_task_type_code'] = getattr(parent_snap, 'task_type_code', None)
 

@@ -177,7 +177,14 @@ class TaskDispatcherMixin:
         for group_key, group_items in endpoint_groups.items():
             # 合并后键为 (endpoint, 签名集, category 集) 三元组，endpoint 恒在首位
             endpoint_url = group_key[0]
-            representative_dim_data = group_items[0][0]
+            # representative 稳定化（VEGA-78 F2）：分组顺序源自 list(set(dimension_ids))
+            # 无序，组内首元素可能是子维度（input_params 为空 → defaults 不注入、
+            # audio_field_names 缺失）。组内优先取 main 维度，无 main 回落首元素。
+            representative_dim_data = next(
+                (dim_data for dim_data, _ in group_items
+                 if dim_data.get('dimension_type') == 'main'),
+                group_items[0][0],
+            )
             # task_type 用主维度的 task_type_code（parent_task_type_code），
             # 子维度各自的 task_type_code 提取为 sub_tasks 注入 payload
             task_type_code = representative_dim_data.get('parent_task_type_code') or representative_dim_data.get('task_type_code')

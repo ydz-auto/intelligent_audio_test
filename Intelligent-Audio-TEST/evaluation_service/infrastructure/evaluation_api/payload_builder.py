@@ -108,6 +108,9 @@ class PayloadBuilder(EvaluationLoggerMixin):
                 return render_body_template(body_template, processed_context)
             elif isinstance(body_template, dict):
                 result = {}
+                # 无值占位符收集（VEGA-78 F4）：渲染后统一 WARNING 留痕，不改行为——
+                # 顶层缺失仍不设字段，让 eval_server 使用自身配置兜底
+                missing_placeholders = set()
                 for k, v in body_template.items():
                     if k == 'rounds' and isinstance(v, list) and len(v) > 0:
                         # rounds 结构：body_template 里声明了每轮的字段模板
@@ -132,7 +135,16 @@ class PayloadBuilder(EvaluationLoggerMixin):
                             for rk, rv in round_template.items():
                                 if isinstance(rv, str) and rv.startswith('{{') and rv.endswith('}}'):
                                     placeholder_key = rv[2:-2]
-                                    rendered_rd[rk] = rd.get(placeholder_key, '')
+                                    # 轮内空值回落顶层同名字段（VEGA-78 F5）：
+                                    # 显式判空不用 or，避免 False/0 被吞
+                                    round_value = rd.get(placeholder_key)
+                                    if round_value not in (None, ''):
+                                        rendered_rd[rk] = round_value
+                                    else:
+                                        top_value = processed_context.get(placeholder_key, '')
+                                        rendered_rd[rk] = top_value
+                                        if top_value in (None, ''):
+                                            missing_placeholders.add(placeholder_key)
                                 elif rk in rd:
                                     rendered_rd[rk] = rd[rk]
                                 else:
@@ -145,8 +157,17 @@ class PayloadBuilder(EvaluationLoggerMixin):
                         placeholder_key = v[2:-2]
                         if placeholder_key in processed_context and processed_context[placeholder_key] not in (None, ''):
                             result[k] = processed_context[placeholder_key]
-                        # context 中无值或为空时不设该字段，让 eval_server 使用自身配置
+                        else:
+                            # context 中无值或为空时不设该字段，让 eval_server 使用自身配置
+                            missing_placeholders.add(placeholder_key)
                     else:
                         result[k] = v
+                if missing_placeholders:
+                    self._log(
+                        level='WARNING',
+                        content=f"[build_payload] body_template 占位符无值未注入（由 eval_server 兜底）: {sorted(missing_placeholders)}",
+                        task_id=task_id,
+                        test_case_id=test_case_id
+                    )
                 return result
         return processed_context
