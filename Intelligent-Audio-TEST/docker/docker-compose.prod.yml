@@ -50,15 +50,14 @@ services:
 
   agent_service:
     profiles: ["agent"]
-  agent_sandbox_runner:
-    profiles: ["agent"]
 
   api_gateway:
     environment:
       <<: *backend-env
       E2E_TEST_SERVICE_HOST: e2e_test_service
       E2E_TEST_SERVICE_GRPC_PORT: "50051"
-      AGENT_ENABLED: "false"
+      # INT-2456：总开关以 .env 为准，不在覆盖层写死关闭
+      AGENT_ENABLED: ${AGENT_ENABLED:-false}
     volumes: *aws-volume
 
   task_service:
