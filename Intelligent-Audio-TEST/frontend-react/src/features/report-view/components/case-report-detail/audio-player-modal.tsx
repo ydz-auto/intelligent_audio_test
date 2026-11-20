@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import { stream } from '@/infrastructure/api/audios-api'
+import { stream, streamByPath } from '@/infrastructure/api/audios-api'
 import { resolvePlayableUrl } from '@/infrastructure/api/audio-playable-url'
 
 /** 绝对外链（http/https）/ 已解析 blob / data 可直接作 <audio src>；
@@ -42,6 +42,8 @@ export interface AudioItemMeta {
   device_name?: string
   /** 真实音频流地址（缺省时经 GET /audios/{id}/stream 换预签名地址；取不到即失败态） */
   url?: string
+  /** 静态/对象存储路径（结果音频 audio_file 等无音频库 id；无 url 时经 stream-by-path 取流） */
+  path?: string
   /** 播放设备列表（照 V9.7.10 selectedDevices；缺省按 device_name 兜底单设备） */
   playback_devices?: PlaybackDeviceInfo[]
   /** 音频时长（秒；后端下发时用，真实流元数据加载后以媒体时长为准） */
@@ -104,8 +106,8 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
   // 媒体元数据，元数据未到或流不可用（error / readyState=0）一律显示「—」，不派生假时长。
   const duration = mediaDuration > 0 ? mediaDuration : (isRealStream ? 0 : (audio?.duration ?? 0))
   const durationLabel = duration > 0 ? formatTime(duration) : '—'
-  /** 可解析来源：网关相对地址（取流走服务器）或数字 audio_id 二者有其一 */
-  const hasPlayableSource = Boolean(audio?.url) || audioId !== null
+  /** 可解析来源：网关相对地址 / 静态路径 / 数字 audio_id 三者有其一 */
+  const hasPlayableSource = Boolean(audio?.url) || Boolean(audio?.path) || audioId !== null
   /** 待解析播放地址：有来源但尚无地址（挂载首帧 resolving 还没置位时也算，避免闪失败态） */
   const pendingStream = hasPlayableSource && !directUrl && !playError && !isRealStream
   /** 地址解析中（GET /audios/{id}/stream），既非可播也非失败 */
@@ -139,10 +141,10 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
 
   // 取流走服务器（AUDIO_STREAM_VIA_GATEWAY=true）：后端回网关相对地址
   // （/api/v1/audios/download?path=…），须带 JWT 取 blob 再播放，不直连桶；
-  // 缺 url 但有数字 audio_id 时经 GET /audios/{id}/stream 换地址；
-  // 取不到即失败态（INT-1905 P3-3：不再退化为模拟播放）。
+  // 解析顺序：url（网关相对/绝对）→ path（stream-by-path 取流）→ 数字 audio_id
+  // （GET /audios/{id}/stream）；取不到即失败态（INT-1905 P3-3：不再退化为模拟播放）。
   useEffect(() => {
-    if (!open || directUrl || (!audio?.url && audioId === null)) {
+    if (!open || directUrl || (!audio?.url && !audio?.path && audioId === null)) {
       setStreamUrl('')
       setResolving(false)
       return
@@ -153,6 +155,8 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
     let source: Promise<string>
     if (audio?.url) {
       source = resolvePlayableUrl(audio.url)
+    } else if (audio?.path) {
+      source = streamByPath(audio.path)
     } else if (audioId !== null) {
       source = stream(audioId)
     } else {
@@ -173,7 +177,7 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
     return () => {
       cancelled = true
     }
-  }, [open, directUrl, audioId, audio?.url])
+  }, [open, directUrl, audioId, audio?.url, audio?.path])
 
   // 真实流事件接线走 JSX props（见下方 <audio>，INT-1860）；无真实流不做模拟推进（INT-1905 P3-3）。
 

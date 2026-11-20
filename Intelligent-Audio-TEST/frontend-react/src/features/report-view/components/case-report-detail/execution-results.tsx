@@ -355,10 +355,14 @@ export function ExecutionResults({
   }, [caseItem.audios])
 
   const openPlayer = (value: unknown, label: string) => {
+    const raw = String(value)
     setPlayingAudio({
-      audio_id: String(value),
+      audio_id: raw,
       audio_name: label,
       audio_type: 'result',
+      // INT-1688：audio_file 字段值是存储路径（oss://case_result/...），
+      // 经 stream-by-path 走服务器网关取流，不直连桶
+      path: raw,
     })
   }
 
