@@ -33,6 +33,9 @@ import { fetchPublishedTaskDetail } from '@/infrastructure/api/tasks-list-api'
 import type { PublishedTaskDetail, PublishedTaskItem } from '@/domain/models/task'
 import { readReportSnapshot, readReportSummary, readTaskSnapshot } from '@/domain/models/task'
 import { formatDateTime } from '@/features/tasks/constants'
+// INT-2664：published_tasks 的 published_at / created_at / updated_at / archived_at
+// 由后端 `utc8now` 落库，下发的无时区串已是东八区墙钟；走 formatDateTime 会再 +8。
+import { formatLocalWallClock } from '@/lib/date-time'
 import { TaskSnapshotDialog } from '@/features/tasks/components/task-snapshot-dialog'
 import { ReportSnapshotDialog } from '@/features/tasks/components/report-snapshot-dialog'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -109,7 +112,8 @@ function PublishedExpandRow({
                     </Badge>
                   )}
                   <span className='text-muted-foreground'>
-                    {formatDateTime(version.publishedAt)}
+                    {/* INT-2664：published_at 是 +08 墙钟串，原样展示 */}
+                    {formatLocalWallClock(version.publishedAt)}
                   </span>
                   <span className='text-muted-foreground ml-auto'>
                     来源任务 #{version.sourceTaskId ?? '—'}
@@ -706,7 +710,8 @@ function ExpandedRows({
         <td className='px-3 py-2'>
           <span className='block whitespace-nowrap'>{task.publishedBy ?? '—'}</span>
           <span className='text-muted-foreground block whitespace-nowrap text-xs tabular-nums'>
-            {formatDateTime(task.publishedAt)}
+            {/* INT-2664：published_at 是 +08 墙钟串，原样展示（执行记录仍是裸 UTC，走 formatDateTime） */}
+            {formatLocalWallClock(task.publishedAt)}
           </span>
         </td>
         <td className='px-3 py-2'>
