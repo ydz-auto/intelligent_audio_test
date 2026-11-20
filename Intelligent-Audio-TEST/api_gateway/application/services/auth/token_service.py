@@ -42,11 +42,23 @@ class TokenService:
 
     @staticmethod
     def refresh(token: str) -> str:
-        """刷新 token（重新签发，保持 payload 不变）"""
+        """刷新 token（重新签发；权限按当前生效值重算，不再复制旧快照）。
+
+        JWT 里的 permissions 是登录时的快照——原实现整份复制会让续期后的
+        token 继续携带旧权限。这里经权限实时化缓存（短 TTL）取当前权限，
+        取不到时回落旧快照，保证续期不放大也不丢失既有权限。
+        """
         payload = TokenService.verify(token)
+        permissions = list(payload.get('permissions') or [])
+        try:
+            from api_gateway.infrastructure.permission_cache import resolve_permissions
+            permissions = resolve_permissions(
+                int(payload['user_id']), permissions)
+        except Exception:  # 权限服务不可用不阻断续期
+            pass
         return TokenService.create_token(
             user_id=payload['user_id'],
             username=payload['username'],
             role_id=payload['role_id'],
-            permissions=payload['permissions'],
+            permissions=permissions,
         )

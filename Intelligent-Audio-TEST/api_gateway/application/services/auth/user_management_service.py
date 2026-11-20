@@ -393,6 +393,8 @@ class UserManagementService:
         ), default_error='删除用户失败')
         if fail:
             return fail
+        from api_gateway.infrastructure.permission_cache import invalidate_permissions
+        invalidate_permissions(user_id)
         return with_notice(success_response(None, '删除成功'))
 
     # ---------- 角色分配 / 附加权限 ----------
@@ -411,6 +413,8 @@ class UserManagementService:
         ), default_error='分配角色失败')
         if fail:
             return fail
+        from api_gateway.infrastructure.permission_cache import invalidate_permissions
+        invalidate_permissions(user_id)
         return with_notice(success_response(None, '分配角色成功'))
 
     @staticmethod
@@ -427,6 +431,8 @@ class UserManagementService:
         ), default_error='授权失败')
         if fail:
             return fail
+        from api_gateway.infrastructure.permission_cache import invalidate_permissions
+        invalidate_permissions(user_id)
         return with_notice(success_response(None, '授权成功'))
 
     @staticmethod
@@ -439,6 +445,8 @@ class UserManagementService:
             ), default_error='撤销权限失败')
         if fail:
             return fail
+        from api_gateway.infrastructure.permission_cache import invalidate_permissions
+        invalidate_permissions(user_id)
         return with_notice(success_response(None, '撤销成功'))
 
 

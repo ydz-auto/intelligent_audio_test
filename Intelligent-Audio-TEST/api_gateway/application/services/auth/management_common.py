@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """用户/角色管理端点公共支撑（INT-30）。
 
-- JWT 时效提示常量（单一来源）：管理写接口响应体统一注入 notice，
-  提示权限变更对已签发令牌不即时生效；强失效（Redis 黑名单）本期未实现。
+- 权限变更提示（单一来源）：管理写接口响应体统一注入 notice。默认提示
+  「实时化已开启，最迟 TTL 秒内生效，无需重新登录」；关闭实时化
+  （AUTH_PERMISSION_CACHE_TTL_SECONDS=0）时回落 JWT 快照语义的旧文案。
 - AuthErrorCode → HTTP 状态码映射：gRPC 失败响应 data 携带
   {"error_code": "<AuthErrorCode>"}，未知/缺失一律 400。
 - auth_service gRPC 调用统一入口（经 auth_config_service ACL 代理）。
@@ -10,7 +11,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from api_gateway.infrastructure.grpc_proxies import auth_config_service
 from api_gateway.utils.error_codes import ErrorCode
@@ -20,10 +21,20 @@ from shared.utils.grpc_json import loads as _loads
 
 logger = logging.getLogger(__name__)
 
+# 实时化关闭（TTL=0）时的兜底文案：行为回退到 JWT 快照
 PERMISSION_CHANGE_NOTICE = (
-    '权限变更对已签发令牌不即时生效，最长延迟至令牌过期（24h）；'
-    '强失效（Redis 黑名单）本期未实现'
+    '权限变更对已签发令牌不即时生效，最长延迟至令牌过期；'
+    '开启 AUTH_PERMISSION_CACHE_TTL_SECONDS 可实时生效'
 )
+
+
+def permission_change_notice() -> str:
+    """权限变更提示：实时化开启时按缓存 TTL 给出自动生效时间。"""
+    from api_gateway.config.config import Config
+    ttl = Config.AUTH_PERMISSION_CACHE_TTL_SECONDS
+    if ttl <= 0:
+        return PERMISSION_CHANGE_NOTICE
+    return f'权限变更已保存，已登录用户最迟 {ttl} 秒内自动生效，无需重新登录'
 
 # 自助改密成功提示（INT-794）：JWT 无状态无黑名单，旧令牌最长 24h 仍有效，
 # 引导前端清 token 重新登录（方案 A 契约「成功返回统一信封提示重新登录」）。
@@ -57,16 +68,16 @@ _ERROR_HTTP_STATUS = {
 
 
 def with_notice(result: Tuple[Dict, int],
-                notice: str = PERMISSION_CHANGE_NOTICE) -> Tuple[Dict, int]:
+                notice: Optional[str] = None) -> Tuple[Dict, int]:
     """向 success_response/error_response 生成的 (payload, http_code) 注入 notice。
 
     Args:
         result: (payload, http_code) 元组。
-        notice: 提示文案；缺省为权限变更时效提示，自助改密等场景可传入
-            场景专属文案（如 PASSWORD_CHANGE_NOTICE）。
+        notice: 提示文案；缺省按实时化开关生成权限提示，自助改密等场景
+            可传入场景专属文案（如 PASSWORD_CHANGE_NOTICE）。
     """
     payload, http_code = result
-    payload['notice'] = notice
+    payload['notice'] = notice or permission_change_notice()
     return payload, http_code
 
 

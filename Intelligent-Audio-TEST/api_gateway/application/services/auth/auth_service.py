@@ -102,14 +102,21 @@ class AuthService:
         已删除时回退 request.state 口径（email 缺省空串），/auth/me
         保持可用不连带 5xx（现纯内存读无此依赖）。
         """
+        user_id = getattr(request_state, 'user_id', None)
+        # 权限实时化：JWT 快照 + auth_service 当前权限（短 TTL 缓存），
+        # 管理端调权后前端重新拉 /auth/me 即可拿到新权限，无需重新登录。
+        from api_gateway.infrastructure.permission_cache import resolve_permissions
+        permissions = resolve_permissions(
+            int(user_id or 0),
+            list(getattr(request_state, 'permissions', None) or []),
+        )
         result = {
-            'user_id': getattr(request_state, 'user_id', None),
+            'user_id': user_id,
             'username': getattr(request_state, 'username', ''),
             'role_id': getattr(request_state, 'role_id', None),
-            'permissions': getattr(request_state, 'permissions', []),
+            'permissions': permissions,
             'email': '',
         }
-        user_id = result['user_id']
         if not user_id:
             return result
         try:

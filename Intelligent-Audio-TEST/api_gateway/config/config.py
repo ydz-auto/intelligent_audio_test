@@ -85,6 +85,14 @@ class Config(BaseConfig):
     JWT_EXPIRE_HOURS = int(os.environ.get('JWT_EXPIRE_HOURS', '24'))
     JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
 
+    # 权限实时化（JWT 请求 → auth_service 当前权限）：
+    # 缓存秒数（0=关闭实时化，回退 JWT 快照，供回滚）；RPC 超时秒数。
+    # 权限变更入口会主动清缓存，正常路径无需等待 TTL。
+    AUTH_PERMISSION_CACHE_TTL_SECONDS = int(os.environ.get(
+        'AUTH_PERMISSION_CACHE_TTL_SECONDS', '10'))
+    AUTH_PERMISSION_RPC_TIMEOUT_SECONDS = int(os.environ.get(
+        'AUTH_PERMISSION_RPC_TIMEOUT_SECONDS', '3'))
+
     # 开发模式 - 本地 OAuth
     DEV_OAUTH_CLIENT_ID = os.environ.get('DEV_OAUTH_CLIENT_ID', 'local_dev_client')
     DEV_OAUTH_CLIENT_SECRET = os.environ.get('DEV_OAUTH_CLIENT_SECRET', 'local_dev_secret')

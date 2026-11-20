@@ -232,17 +232,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """Bearer 身份解析：JWT 优先，失败回落 access token 查证（INT-1140）。
 
         Returns: (user_id, username, role_id, permissions) 或 None（均无效）。
+
+        JWT 的 permissions 只是登录时快照；这里向 auth_service 取用户当前权限
+        （短 TTL 缓存 + 变更主动失效），避免权限调整后必须重新登录才生效。
         """
         try:
             from api_gateway.application.services.auth.token_service import TokenService
             payload = TokenService.verify(token)
         except Exception:
             return AuthMiddleware._resolve_access_token(request, token)
+        from api_gateway.infrastructure.permission_cache import resolve_permissions
+        user_id = payload.get('user_id', 0)
         return (
-            payload.get('user_id', 0),
+            user_id,
             payload.get('username', ''),
             payload.get('role_id', 0),
-            payload.get('permissions', []),
+            resolve_permissions(user_id, payload.get('permissions', [])),
         )
 
     @staticmethod
