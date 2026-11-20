@@ -54,11 +54,10 @@ JWT_ALGORITHM=HS256
 DEV_DEFAULT_USERNAME=admin
 DEV_DEFAULT_PASSWORD=admin123
 DEV_DEFAULT_ROLE=admin
-LOG_ARCHIVE_THRESHOLD=300000
-LOCAL_TAILSCALE_IP=100.123.155.32
+LOG_ARCHIVE_THRESHOLD=0
+# 执行机（e2e / audio / device 常驻所在机）；换执行机只改这一项
+EXECUTOR_HOST=10.0.0.9
 ASR_TAILSCALE_IP=100.103.97.108
-E2E_TEST_SERVICE_HOST=e2e_test_service
-E2E_TEST_SERVICE_GRPC_PORT=50051
 OSS_ENDPOINT=https://cos.ap-shanghai.myqcloud.com
 OSS_PUBLIC_ENDPOINT=https://cos.ap-shanghai.myqcloud.com
 OSS_REGION=ap-shanghai
@@ -67,7 +66,8 @@ OSS_SECRET_KEY={vals.get('COS_SECRET_KEY', '')}
 OSS_BUCKET_NAME={vals.get('COS_BUCKET', 'xiaoyi-voice-1474863084')}
 OSS_KEY_PREFIX=test/intelligent_audio_test
 STORAGE_FALLBACK_ENABLED=false
-AGENT_ENABLED=false
+# Agent 运行底座已在生产启用（供应商配置 / 会话 / Run 均经网关）
+AGENT_ENABLED=true
 '''
 
 out.parent.mkdir(parents=True, exist_ok=True)
