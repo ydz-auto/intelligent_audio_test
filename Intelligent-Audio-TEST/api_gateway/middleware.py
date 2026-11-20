@@ -157,6 +157,27 @@ class AuthMiddleware(BaseHTTPMiddleware):
         auth_header = request.headers.get('Authorization', '')
         bearer = auth_header[7:] if auth_header.startswith('Bearer ') else ''
 
+        # 媒体取流（/api/v1/audios/download）：<audio>/<video> 无法携带
+        # Authorization 头，取流 URL 内嵌短效签名 token（绑定 path + 过期）。
+        # 校验通过仅授予 audio:read，避免把用户 JWT 塞进 URL（防日志/历史泄露）。
+        if (not bearer and request.url.path == '/api/v1/audios/download'):
+            path_param = request.query_params.get('path', '')
+            token_param = request.query_params.get('token', '')
+            if path_param and token_param:
+                from shared.infrastructure.media_token import verify_media_token
+                if verify_media_token(path_param, token_param):
+                    request.state.user_id = 0
+                    request.state.username = 'media-token'
+                    request.state.role_id = 1
+                    request.state.permissions = ['audio:read']
+                    set_current_user_id(None)
+                    set_current_user_is_admin(False)
+                    try:
+                        return await call_next(request)
+                    finally:
+                        set_current_user_id(None)
+                        set_current_user_is_admin(False)
+
         # off 模式：可选认证（INT-774 方案 A，INT-751 拍板）——Bearer 有合法
         # 身份注入真实 user_id；无/无效 token 保持 None 空态。Bearer 身份优先
         # JWT，其次 access token（INT-1140）——外部 agent 持真实 token 必须先

@@ -1,6 +1,6 @@
 import logging
 import os
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response, wrap_grpc_response
@@ -36,6 +36,23 @@ _AUDIO_EXT_CONTENT_TYPES = {
     'wma': 'audio/x-ms-wma',
     'opus': 'audio/opus',
 }
+
+
+def _iter_stream(stream, chunk_size: int = 64 * 1024):
+    """分块读取可读流（本地文件 / OSS StreamingBody 通用），供流式响应边读边发。"""
+    try:
+        while True:
+            chunk = stream.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+    finally:
+        close = getattr(stream, 'close', None)
+        if close:
+            try:
+                close()
+            except Exception:
+                pass
 
 
 def _parse_query_params(model_cls, multi_keys=()):
@@ -351,14 +368,13 @@ class AudioQueryService:
                 return error_response("路径不在允许的目录范围内", code=403, http_code=403)
             if not os.path.isfile(normalized_path):
                 return error_response("音频文件不存在", code=404, http_code=404)
-            with open(normalized_path, 'rb') as f:
-                content = f.read()
+            stream = open(normalized_path, 'rb')
         else:
-            # 逻辑 key（local:// 或 oss:// 或裸 key）：走统一存储抽象，
+            # 逻辑 key（local:// 或 oss:// 或裸 key）：走统一存储抽象取流，
             # OSS 失败自动回退本地降级副本
             from shared.infrastructure.storage import storage
             try:
-                content = storage.load_bytes(
+                stream = storage.load_stream(
                     oss_key if oss_key.startswith(('oss://', 'local://'))
                     else storage.build_path('audios', oss_key))
             except FileNotFoundError:
@@ -367,7 +383,27 @@ class AudioQueryService:
                 logger.error("audio download 读取存储失败: %s, key=%s", e, oss_key)
                 return error_response("读取音频失败", code=500, http_code=500)
 
-        return Response(content=content, media_type=_AUDIO_EXT_CONTENT_TYPES[ext])
+        # 流式响应：边读边转发（浏览器 <audio> 边缓存边播），不整包读入内存；
+        # 回填 Content-Length 让播放器拿到总时长/可拖动进度条。
+        from shared.infrastructure.storage import storage
+        if os.path.isabs(oss_key):
+            size = None
+            try:
+                size = os.path.getsize(normalized_path)
+            except OSError:
+                pass
+        else:
+            storage_path = (oss_key if oss_key.startswith(('oss://', 'local://'))
+                            else storage.build_path('audios', oss_key))
+            size = storage.get_size(storage_path)
+        headers = {'Cache-Control': 'private, max-age=0'}
+        if size:
+            headers['Content-Length'] = str(size)
+        return StreamingResponse(
+            _iter_stream(stream),
+            media_type=_AUDIO_EXT_CONTENT_TYPES[ext],
+            headers=headers,
+        )
 
     # 获取音频关联的算法
     @staticmethod

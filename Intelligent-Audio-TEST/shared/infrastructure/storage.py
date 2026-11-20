@@ -494,6 +494,29 @@ class Storage:
         return (os.path.exists(self._cache_path(category, key))
                 or os.path.exists(self._local_path(category, key)))
 
+    def get_size(self, path: str) -> int | None:
+        """查询对象字节大小；不存在/异常返回 None（供流式响应回填 Content-Length）。"""
+        scheme, category, key = self._parse_path(path)
+        if scheme == 'local':
+            src = self._local_path(category, key)
+            try:
+                return os.path.getsize(src)
+            except OSError:
+                return None
+        cache = self._cache_path(category, key)
+        if self._local_cache_enabled() and os.path.isfile(cache):
+            try:
+                return os.path.getsize(cache)
+            except OSError:
+                return None
+        if self._server_fetch_base():
+            # 服务器代理回源没有本地 size；尝试直接 HEAD OSS
+            pass
+        try:
+            return self._oss.get_size(category, key)
+        except Exception:
+            return None
+
     def delete(self, path: str) -> None:
         """删除文件（OSS 和本地降级副本都会清理）。"""
         scheme, category, key = self._parse_path(path)
@@ -610,11 +633,16 @@ class Storage:
     def build_download_url(file_path: str) -> str:
         """网关音频字节流地址（AUDIO_STREAM_VIA_GATEWAY 开启时的播放 URL）。
 
-        相对地址：浏览器带 JWT 取流（前端转 blob 播放），音频由服务器从桶内网
-        读取后转发，计服务器出流量、不计桶公网下行（对照 COS 预签名直连）。
+        相对地址：内嵌短效签名 token（`<audio>` 无法带 Authorization 头），
+        浏览器直接挂到 `<audio src>` 原生流式播放（边下边播，不整包取 blob）；
+        音频由服务器从桶内网读取后转发，计服务器出流量、不计桶公网下行。
         """
-        return '/api/v1/audios/download?' + urllib.parse.urlencode(
-            {'path': file_path})
+        from shared.infrastructure.media_token import sign_media_token
+
+        return '/api/v1/audios/download?' + urllib.parse.urlencode({
+            'path': file_path,
+            'token': sign_media_token(file_path),
+        })
 
     @staticmethod
     def build_key(task_id, case_id, device_sn, filename) -> str:

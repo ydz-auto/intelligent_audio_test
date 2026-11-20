@@ -103,6 +103,11 @@ class BaseConfig:
     # true  → 不上抛预签名：导出产物由前端走 /export/jobs/{id}/download 鉴权取流，
     #         日志 ZIP 由 report_service 回对象路径、网关流式转发（计服务器出流量）。
     FILE_DOWNLOAD_VIA_GATEWAY: bool = _get_bool('FILE_DOWNLOAD_VIA_GATEWAY', False)
+    # 媒体取流短效签名 token 密钥（INT-xxxx）：<audio>/<video> 无法携带
+    # Authorization 头，取流 URL 内嵌 HMAC 签名 token；各服务（网关验签 +
+    # 任务/音频服务签发）必须用同一密钥。缺省留空时回落 OSS_SECRET_KEY 派生
+    #（各服务共享同一 OSS 凭据，无需额外部署配置）。
+    MEDIA_TOKEN_SECRET: str = _get_env('MEDIA_TOKEN_SECRET', '')
     # 历史静态根（逗号分隔）：存量绝对路径音频的旧存储根，解析时重映射到
     # LOCAL_STORAGE_ROOT 下同相对路径（存储根迁移后救活旧记录，INT-106）
     AUDIO_LEGACY_STATIC_ROOTS: str = _get_env('AUDIO_LEGACY_STATIC_ROOTS', '')
