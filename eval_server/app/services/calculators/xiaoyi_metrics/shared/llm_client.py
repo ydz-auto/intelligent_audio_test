@@ -234,8 +234,14 @@ def get_audio_format(file_path: str) -> str:
 
 
 # ─────────── 多模态 content 构建 ───────────
-def build_content(prompt: str, file_paths: Optional[List[str]] = None) -> list:
-    """构建 user message content，自动区分音频/视频。音频在前、视频在后、文本最后。"""
+def build_content(prompt: str, file_paths: Optional[List[str]] = None,
+                  model: str = '') -> list:
+    """构建 user message content，自动区分音频/视频。音频在前、视频在后、文本最后。
+
+    Qwen omni 系模型（如 qwen3.5-omni-plus）经中转代理要求音频 data 为
+    ``data:audio/{fmt};base64,...`` 形式（纯 base64 / image_url 会 400），
+    其余模型沿用 OpenAI input_audio 纯 base64 格式。
+    """
     content: list = []
     audio_parts: List[str] = []
     video_parts: List[str] = []
@@ -246,11 +252,14 @@ def build_content(prompt: str, file_paths: Optional[List[str]] = None) -> list:
             else:
                 video_parts.append(fp)
 
+    model_lower = (model or '').lower()
+    use_data_uri = 'omni' in model_lower or 'qwen' in model_lower
     for ap in audio_parts:
         b64_data, audio_fmt = _prepare_audio_data(ap)
+        audio_value = f'data:audio/{audio_fmt};base64,{b64_data}' if use_data_uri else b64_data
         content.append({
             'type': 'input_audio',
-            'input_audio': {'data': b64_data, 'format': audio_fmt},
+            'input_audio': {'data': audio_value, 'format': audio_fmt},
         })
     for vp in video_parts:
         data_uri = encode_video_to_data_uri(vp)
@@ -345,7 +354,7 @@ def call_llm(model: str,
     }
 
     if file_paths:
-        user_content = build_content(prompt, file_paths)
+        user_content = build_content(prompt, file_paths, model)
     else:
         user_content = [{'type': 'text', 'text': prompt}]
 
