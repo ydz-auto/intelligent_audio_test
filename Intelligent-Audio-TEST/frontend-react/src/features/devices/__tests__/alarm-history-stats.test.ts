@@ -115,7 +115,7 @@ describe('监控统计空态判定（契约 §1.2：无采点显示空态，不�
   })
 })
 
-describe('单日范围的线图渲染（INT-2670 打回项：「今日」两张线图不再空白）', () => {
+describe('线图渲染的点标记（INT-2670 打回项：「今日」与「多日仅一天有采点」两张线图不再空白）', () => {
   const today = {
     date: '11-21',
     isoDate: '2026-11-21',
@@ -127,15 +127,62 @@ describe('单日范围的线图渲染（INT-2670 打回项：「今日」两张�
     operations: 0,
     healthCheckSamples: 3,
   }
+  const blank = {
+    date: '11-18',
+    isoDate: '2026-11-18',
+    availability: null,
+    cpu: null,
+    memory: null,
+    battery: null,
+    errors: 0,
+    operations: 0,
+    healthCheckSamples: 0,
+  }
+  const visibleOf = (spec: Record<string, unknown>) =>
+    (spec.point as { visible: boolean }).visible
 
   it('单点（今日）可用性/性能开启点标记，当日数值可见', () => {
-    expect((buildAvailabilitySpec([today]).point as { visible: boolean }).visible).toBe(true)
-    expect((buildPerformanceSpec([today]).point as { visible: boolean }).visible).toBe(true)
+    expect(visibleOf(buildAvailabilitySpec([today]))).toBe(true)
+    expect(visibleOf(buildPerformanceSpec([today]))).toBe(true)
   })
 
   it('多点范围仍关闭点标记，避免密集噪点', () => {
     const twoPoints = [today, { ...today, date: '11-20', isoDate: '2026-11-20' }]
-    expect((buildAvailabilitySpec(twoPoints).point as { visible: boolean }).visible).toBe(false)
-    expect((buildPerformanceSpec(twoPoints).point as { visible: boolean }).visible).toBe(false)
+    expect(visibleOf(buildAvailabilitySpec(twoPoints))).toBe(false)
+    expect(visibleOf(buildPerformanceSpec(twoPoints))).toBe(false)
+  })
+
+  it('多日范围里仅一天有采点（其余天全 null）也开启点标记', () => {
+    const onlyOneDay = [blank, { ...today, date: '11-19', isoDate: '2026-11-19' }]
+    expect(visibleOf(buildAvailabilitySpec(onlyOneDay))).toBe(true)
+    expect(visibleOf(buildPerformanceSpec(onlyOneDay))).toBe(true)
+  })
+
+  it('多日区间（6 天）只有末一天有健康检查采点时，性能图同样开启点标记', () => {
+    const sixDays = [
+      { ...blank, date: '11-14', isoDate: '2026-11-14' },
+      { ...blank, date: '11-15', isoDate: '2026-11-15' },
+      { ...blank, date: '11-16', isoDate: '2026-11-16' },
+      { ...blank, date: '11-17', isoDate: '2026-11-17' },
+      { ...blank, date: '11-18', isoDate: '2026-11-18' },
+      { ...today, date: '11-19', isoDate: '2026-11-19' },
+    ]
+    expect(visibleOf(buildPerformanceSpec(sixDays))).toBe(true)
+    expect(visibleOf(buildAvailabilitySpec(sixDays))).toBe(true)
+  })
+
+  it('每个系列分别计数：三条性能指标都多点时保持关闭（个别指标全 null 不算单点）', () => {
+    const manyDays = [
+      { ...today, date: '11-19', isoDate: '2026-11-19', battery: null },
+      { ...today, date: '11-20', isoDate: '2026-11-20', battery: null },
+      { ...today, date: '11-21', isoDate: '2026-11-21', battery: null },
+    ]
+    expect(visibleOf(buildPerformanceSpec(manyDays))).toBe(false)
+  })
+
+  it('区间内无任何真实采点时不开启点标记（走空态，不画点）', () => {
+    const allBlank = [blank, { ...blank, date: '11-19', isoDate: '2026-11-19' }]
+    expect(visibleOf(buildAvailabilitySpec(allBlank))).toBe(false)
+    expect(visibleOf(buildPerformanceSpec(allBlank))).toBe(false)
   })
 })

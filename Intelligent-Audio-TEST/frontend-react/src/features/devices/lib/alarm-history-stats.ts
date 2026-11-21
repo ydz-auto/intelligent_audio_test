@@ -97,12 +97,21 @@ export function hasMonitorStatsData(points: DeviceStatsPoint[]): boolean {
   )
 }
 
+/** 非 null 的真实值个数（null 是断点，不补 0，也不参与连线） */
+function countRealValues(values: ReadonlyArray<number | null>): number {
+  return values.reduce<number>((count, value) => (value != null ? count + 1 : count), 0)
+}
+
 /**
- * 单日范围只有 1 个采点，线/面积没有可连的走向，必须用点标记把当日数值画出来；
- * 多日范围保持无点标记，避免密集点噪点。
+ * 线/面积至少要 2 个真实值才连得出走向：单日范围，或多日范围里某个指标只有一天
+ * 有采点时（如 11-18~11-19 仅 11-19 有健康检查采点），画面会只剩坐标轴。
+ * 此时开启点标记把数值画出来；真实值多于 1 个时保持关闭，避免密集点噪点。
+ * 每个系列（可用性 / 三条性能指标）分别计数取最小：任一序列只有 1 个值，该序列也连不出线。
  */
-function singlePointVisible(points: DeviceStatsPoint[]): boolean {
-  return points.length <= 1
+function singlePointVisible(series: ReadonlyArray<ReadonlyArray<number | null>>): boolean {
+  const counts = series.map(countRealValues).filter((count) => count > 0)
+  if (counts.length === 0) return false
+  return Math.min(...counts) <= 1
 }
 
 /** 可用性统计趋势（面积图） */
@@ -116,7 +125,10 @@ export function buildAvailabilitySpec(points: DeviceStatsPoint[]): Record<string
     yField: '可用率',
     area: { style: { fill: { type: 'linear', gradient: 'x1', stops: [{ color: '#00d294' }, { color: 'rgba(0,210,148,0.1)' }] } } },
     line: { style: { stroke: '#00d294', lineWidth: 2 } },
-    point: { visible: singlePointVisible(points), style: { fill: '#00d294' } },
+    point: {
+      visible: singlePointVisible([points.map((p) => p.availability)]),
+      style: { fill: '#00d294' },
+    },
     axes: [
       { orient: 'left', label: { formatMethod: (v: number) => `${v}%` } },
       { orient: 'bottom', tick: { visible: false } },
@@ -140,7 +152,13 @@ export function buildPerformanceSpec(points: DeviceStatsPoint[]): Record<string,
     yField: '值',
     seriesField: '指标',
     line: { style: { lineWidth: 2 } },
-    point: { visible: singlePointVisible(points) },
+    point: {
+      visible: singlePointVisible([
+        points.map((p) => p.cpu),
+        points.map((p) => p.memory),
+        points.map((p) => p.battery),
+      ]),
+    },
     axes: [{ orient: 'bottom', tick: { visible: false } }],
     height: 168,
   }
