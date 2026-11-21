@@ -79,6 +79,19 @@ class FakeReadRepo:
     def get_audio_by_id(self, audio_id):
         return {'id': audio_id, 'name': f'音频{audio_id}', 'duration': 2.0}
 
+    def list_audio_summaries_by_ids(self, audio_ids):
+        """详情走窄字段批量投影（单次取回全部音频）。"""
+        return {
+            int(audio_id): {
+                'id': int(audio_id),
+                'name': f'音频{audio_id}',
+                'duration': 2.0,
+                'created_by_user_id': None,
+                'visibility': 'shared',
+            }
+            for audio_id in audio_ids
+        }
+
     def list_dimensions_by_ids(self, ids):
         return [self.DIMS[i] for i in ids if i in self.DIMS]
 
