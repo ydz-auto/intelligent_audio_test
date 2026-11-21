@@ -193,21 +193,21 @@ class AudioQueryHandler:
         # 单条详情（audio_bp 直连端点）才是严格校验边界。
         audio_ids = [int(aid) if str(aid).isdigit() else aid for aid in query.ids]
         audios = self.repo.get_audios_by_ids(audio_ids)
+        if not audios:
+            return _ok(data=[])
 
-        results = []
-        for audio in audios:
-            tags = self.repo.get_audio_tag_names(audio.id)
-            annotations = [
-                {
-                    'format': ann.format,
-                    'code': ann.code,
-                    'data': ann.data,
-                    'source_language': ann.source_language,
-                    'target_language': ann.target_language,
-                }
-                for ann in self.repo.get_annotations_by_audio(audio.id)
-            ]
-            results.append(_audio_to_dict(audio, tags, annotations))
+        audio_id_list = [audio.id for audio in audios]
+        tags_map = self.repo.get_audio_tags_map(audio_id_list)
+        annotations_map = self.repo.get_annotations_map(audio_id_list)
+
+        results = [
+            _audio_to_dict(
+                audio,
+                tags_map.get(audio.id, []),
+                annotations_map.get(audio.id, []),
+            )
+            for audio in audios
+        ]
 
         return _ok(data=results)
 

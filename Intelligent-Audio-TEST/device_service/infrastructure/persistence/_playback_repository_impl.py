@@ -291,13 +291,35 @@ class PlaybackRepository(PlaybackRepositoryInterface):
         return _speaker_group_po_to_entity(group_po, items)
 
     def list_playback_speaker_groups(self, keyword: str = None) -> List[PlaybackSpeakerGroupAggregate]:
-        """逻辑音箱组列表（含组内各实验室对应设备）"""
+        """逻辑音箱组列表（含组内各实验室对应设备）。
+
+        先查组，再一次性按 group_id IN 批量取组内条目后归并，避免逐组
+        N+1 查询（组数越多原实现往返次数越多）。
+        """
         session = get_db_session()
         query = session.query(PlaybackSpeakerGroup)
         if keyword:
             query = query.filter(PlaybackSpeakerGroup.name.like(f'%{keyword}%'))
-        return [self._group_with_items(session, po)
-                for po in query.order_by(PlaybackSpeakerGroup.id.asc()).all()]
+        groups = query.order_by(PlaybackSpeakerGroup.id.asc()).all()
+        if not groups:
+            return []
+        group_ids = [po.id for po in groups]
+        items = (
+            session.query(PlaybackSpeakerGroupItem)
+            .filter(PlaybackSpeakerGroupItem.group_id.in_(group_ids))
+            .order_by(
+                PlaybackSpeakerGroupItem.group_id.asc(),
+                PlaybackSpeakerGroupItem.lab_id.asc(),
+            )
+            .all()
+        )
+        items_by_group: Dict[int, List[PlaybackSpeakerGroupItem]] = {}
+        for item in items:
+            items_by_group.setdefault(item.group_id, []).append(item)
+        return [
+            _speaker_group_po_to_entity(po, items_by_group.get(po.id, []))
+            for po in groups
+        ]
 
     def get_playback_speaker_group(self, group_id: int) -> Optional[PlaybackSpeakerGroupAggregate]:
         session = get_db_session()
