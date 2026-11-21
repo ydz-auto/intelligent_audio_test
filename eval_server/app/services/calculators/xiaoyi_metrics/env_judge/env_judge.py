@@ -28,6 +28,8 @@ from typing import Any, Dict, Optional
 
 from scipy.signal import resample_poly
 
+from app.utils.audio_source import exists
+
 from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
     call_llm as call_llm_api,
     parse_json,
@@ -437,7 +439,7 @@ def evaluate_env_judge(
         return result
 
     try:
-        query_text = get_asr_text(user_wav) if user_wav and os.path.isfile(user_wav) else ''
+        query_text = get_asr_text(user_wav) if user_wav and exists(user_wav) else ''
     except Exception as exc:
         return evaluation_error(f'query ASR获取失败: {exc}')
     result['query_asr'] = query_text or ''
@@ -445,7 +447,7 @@ def evaluate_env_judge(
         return evaluation_error('query ASR为空')
 
     # ─── 1. LLM 判定 True/False ───
-    if not ai_wav or not os.path.isfile(ai_wav):
+    if not ai_wav or not exists(ai_wav):
         return evaluation_error(f'模型回复音频为空或不存在: ai_wav={ai_wav!r}')
 
     # 从 ai_wav 提取 ASR 文本（供参考）

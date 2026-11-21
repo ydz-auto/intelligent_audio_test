@@ -40,6 +40,9 @@ class OSSClient:
                     cls._instance = super().__new__(cls)
                     cls._instance._initialized = False
                     cls._instance._client = None
+                    # 键规则相关默认值，供 _split_oss_path 在懒初始化前独立使用
+                    cls._instance._bucket = None
+                    cls._instance._key_prefix = ''
         return cls._instance
 
     @property
@@ -85,6 +88,30 @@ class OSSClient:
             )
             self._initialized = True
 
+    def _split_oss_path(self, oss_path: str):
+        """解析 oss:// 路径 → (bucket, full_key, category, key)
+
+        - 单桶模式（OSS_BUCKET_NAME 非空）：所有 category 共用该桶，
+          key = {OSS_KEY_PREFIX}/{category}/{key}
+        - 多桶模式（OSS_BUCKET_NAME 为空，RustFS 默认）：桶名即 category，
+          key = {key}（与 Intelligent-Audio-TEST shared 存储约定一致）
+
+        category/key 用于本地镜像目录结构（local_dir/category/key），
+        bucket/full_key 用于 S3 读写。
+        """
+        rest = oss_path[len(_SCHEME_OSS):]
+        category, _, key = rest.partition('/')
+        if not category or not key:
+            raise ValueError(f'非法 OSS 路径: {oss_path}')
+        if self._bucket:
+            parts = []
+            if self._key_prefix:
+                parts.append(self._key_prefix)
+            parts.append(category)
+            parts.append(key.lstrip('/'))
+            return self._bucket, '/'.join(parts), category, key
+        return category, key.lstrip('/'), category, key
+
     def download(self, oss_path: str, local_dir: str) -> str:
         """将 oss://{category}/{key} 下载到 local_dir 下的本地文件，返回本地路径。
 
@@ -92,33 +119,60 @@ class OSSClient:
         同目录存在时直接复用（幂等，避免同一任务重复下载）。
         """
         self._ensure_init()
-        rest = oss_path[len(_SCHEME_OSS):]
-        category, _, key = rest.partition('/')
-        if not category or not key:
-            raise ValueError(f'非法 OSS 路径: {oss_path}')
-
-        # 单桶模式（OSS_BUCKET_NAME 非空）：所有 category 共用该桶，
-        #   key = {OSS_KEY_PREFIX}/{category}/{key}
-        # 多桶模式（OSS_BUCKET_NAME 为空，RustFS 默认）：桶名即 category，
-        #   key = {key}（与 Intelligent-Audio-TEST shared 存储约定一致）
-        if self._bucket:
-            parts = []
-            if self._key_prefix:
-                parts.append(self._key_prefix)
-            parts.append(category)
-            parts.append(key.lstrip('/'))
-            bucket = self._bucket
-            full_key = '/'.join(parts)
-        else:
-            bucket = category
-            full_key = key.lstrip('/')
-
+        bucket, full_key, category, key = self._split_oss_path(oss_path)
         local_path = os.path.join(local_dir, category, key)
         if os.path.exists(local_path):
             return local_path
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
         self._client.download_file(bucket, full_key, local_path)
         return local_path
+
+    def exists(self, oss_path: str) -> bool:
+        """判断 oss:// 对象是否存在（head_object）。"""
+        self._ensure_init()
+        bucket, full_key, _, _ = self._split_oss_path(oss_path)
+        try:
+            self._client.head_object(Bucket=bucket, Key=full_key)
+            return True
+        except Exception:
+            return False
+
+    def get_size(self, oss_path: str) -> int:
+        """返回 oss:// 对象字节数（head_object ContentLength）。"""
+        self._ensure_init()
+        bucket, full_key, _, _ = self._split_oss_path(oss_path)
+        resp = self._client.head_object(Bucket=bucket, Key=full_key)
+        return int(resp.get('ContentLength') or 0)
+
+    def read_bytes(self, oss_path: str, limit: int = None) -> bytes:
+        """将 oss:// 对象读入内存（不落盘）。
+
+        limit 指定后只读前 limit 字节（boto3 Range 请求，用于读 wav 头等场景）。
+        """
+        self._ensure_init()
+        bucket, full_key, _, _ = self._split_oss_path(oss_path)
+        kwargs = {}
+        if limit:
+            kwargs['Range'] = f'bytes=0-{max(0, int(limit) - 1)}'
+        body = self._client.get_object(Bucket=bucket, Key=full_key, **kwargs)['Body']
+        return body.read()
+
+    def upload_bytes(self, data: bytes, oss_path: str) -> str:
+        """将字节上传为 oss://{category}/{key}，返回 oss:// 引用。
+
+        兼容单桶/多桶（RustFS）键规则：oss_path 形如 {category}/{key}。
+        """
+        self._ensure_init()
+        bucket, full_key, _, _ = self._split_oss_path(oss_path)
+        self._client.put_object(Bucket=bucket, Key=full_key, Body=data)
+        return f'{_SCHEME_OSS}{oss_path.lstrip("/")}'
+
+    def upload_file(self, local_path: str, oss_path: str) -> str:
+        """将本地文件上传为 oss://{category}/{key}，返回 oss:// 引用。"""
+        self._ensure_init()
+        bucket, full_key, _, _ = self._split_oss_path(oss_path)
+        self._client.upload_file(local_path, bucket, full_key)
+        return f'{_SCHEME_OSS}{oss_path.lstrip("/")}'
 
 
 oss_client = OSSClient()
@@ -130,9 +184,17 @@ def resolve_oss_paths(value, local_dir=None):
     - 未启用 OSS 或值不是 oss:// 前缀：原样返回（与 multipart 上传 / 本地路径并存）。
     - 嵌套结构（rounds、played_audios 等）同样会被递归处理。
     - 下载失败会抛异常，让任务快速失败并返回明确错误信息。
+    - OSS_RESOLVE_MODE=stream 时原样返回（保留 oss:// 引用），由消费方
+      （ASR / LLM 裁判 / 音频元数据等）直接内存读取对象存储，不落盘。
     """
     if not oss_client.enabled:
         return value
+    try:
+        from ..config import config as _cfg
+        if getattr(_cfg, 'OSS_RESOLVE_MODE', 'download') == 'stream':
+            return value
+    except Exception:
+        pass
 
     if isinstance(value, str):
         if value.startswith(_SCHEME_OSS):

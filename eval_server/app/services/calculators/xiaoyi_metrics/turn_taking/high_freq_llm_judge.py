@@ -16,6 +16,8 @@ import os
 import logging
 from typing import Any, Dict, List, Optional
 
+from app.utils.audio_source import exists
+
 from app.services.calculators.base import BaseCalculator
 from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
     call_llm,
@@ -432,7 +434,7 @@ def evaluate_high_freq_llm(
     else:
         # 旧模式：ai_wav 音频文件 + rounds 文本上下文
         file_paths: List[str] = []
-        if ai_wav and os.path.isfile(ai_wav):
+        if ai_wav and exists(ai_wav):
             file_paths.append(ai_wav)
         if not file_paths:
             raise FileNotFoundError(

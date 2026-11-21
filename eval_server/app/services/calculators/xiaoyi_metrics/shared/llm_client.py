@@ -141,9 +141,11 @@ def encode_file_to_base64(file_path: str) -> str:
 
     用于 OpenAI input_audio 格式的 data 字段——该字段要求纯 base64，
     不能带 ``data:;base64,`` 前缀，否则部分代理/模型会静默忽略音频。
+
+    支持本地路径与 oss:// 引用（OSS 源内存直读，不落盘）。
     """
-    with open(file_path, 'rb') as f:
-        return base64.b64encode(f.read()).decode()
+    from app.utils.audio_source import read_bytes
+    return base64.b64encode(read_bytes(file_path)).decode()
 
 
 def _compress_to_16k_mono_wav(file_path: str) -> Optional[bytes]:
@@ -153,6 +155,7 @@ def _compress_to_16k_mono_wav(file_path: str) -> Optional[bytes]:
     - 语义无损：语音内容频带 0-8kHz，16kHz 采样率完整保留；
       48kHz 立体声 → 16kHz 单声道后体积约降为 1/6，规避中转 nginx ~20MB 请求体上限。
     - 任何异常（文件损坏/库缺失等）都回退 None，绝不阻断评估。
+    - 支持本地路径与 oss:// 引用（内存读取，不落盘）。
     """
     try:
         import numpy as np
@@ -160,7 +163,9 @@ def _compress_to_16k_mono_wav(file_path: str) -> Optional[bytes]:
     except Exception:
         return None
     try:
-        with wave.open(file_path, 'rb') as w:
+        from app.utils.audio_source import read_bytes
+        data = read_bytes(file_path)
+        with wave.open(io.BytesIO(data), 'rb') as w:
             nch, sampwidth, framerate, nframes = (
                 w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes())
             raw = w.readframes(nframes)
@@ -196,8 +201,9 @@ def _prepare_audio_data(file_path: str) -> tuple:
     except Exception:
         mode = ''
     try:
-        fsize = os.path.getsize(file_path)
-    except OSError:
+        from app.utils.audio_source import get_size
+        fsize = get_size(file_path)
+    except Exception:
         fsize = 0
     if mode == '16k_mono' and os.path.splitext(file_path)[1].lower() == '.wav':
         # 小文件本就不构成超限风险，跳过压缩省 CPU
@@ -209,7 +215,11 @@ def _prepare_audio_data(file_path: str) -> tuple:
 
 
 def encode_video_to_data_uri(file_path: str) -> str:
-    """将视频文件编码为带 MIME 的 base64 data URI（用于 image_url）。"""
+    """将视频文件编码为带 MIME 的 base64 data URI（用于 image_url）。
+
+    支持本地路径与 oss:// 引用（内存读取，不落盘）。
+    """
+    from app.utils.audio_source import read_bytes
     ext = os.path.splitext(file_path)[1].lower()
     mime_map = {
         '.mp4': 'video/mp4', '.avi': 'video/x-msvideo',
@@ -219,8 +229,7 @@ def encode_video_to_data_uri(file_path: str) -> str:
         '.ts': 'video/mp2t', '.3gp': 'video/3gpp',
     }
     mime = mime_map.get(ext, 'application/octet-stream')
-    with open(file_path, 'rb') as f:
-        encoded = base64.b64encode(f.read()).decode()
+    encoded = base64.b64encode(read_bytes(file_path)).decode()
     return f'data:{mime};base64,{encoded}'
 
 
@@ -716,8 +725,11 @@ def get_asr_text(wav_path: str) -> str:
     wav_path 对应的 ASR JSON 由 asr_adapter._save_asr_json 落盘，
     路径由 _build_json_save_path(wav_path) 决定。
     若 JSON 不存在则先触发 ASR 调用生成 JSON。
+
+    支持本地路径与 oss:// 引用（引用存在性判断走对象存储 head）。
     """
-    if not wav_path or not os.path.isfile(wav_path):
+    from app.utils.audio_source import exists
+    if not wav_path or not exists(wav_path):
         return ''
     try:
         from app.utils.asr_adapter import _build_json_save_path
@@ -737,11 +749,12 @@ def get_asr_text(wav_path: str) -> str:
 
 def extract_video_paths(kwargs: dict) -> List[str]:
     """从 kwargs 中提取存在的录屏/音频文件路径（legacy：录屏模式下的额外文件）"""
+    from app.utils.audio_source import exists
     paths = []
     for value in kwargs.values():
         if not isinstance(value, str) or not value:
             continue
         ext = os.path.splitext(value)[1].lower()
-        if ext in (VIDEO_EXTS | AUDIO_EXTS) and os.path.isfile(value):
+        if ext in (VIDEO_EXTS | AUDIO_EXTS) and exists(value):
             paths.append(value)
     return paths

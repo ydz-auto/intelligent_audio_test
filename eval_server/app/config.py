@@ -73,6 +73,20 @@ class Config:
     OSS_KEY_PREFIX = _env('OSS_KEY_PREFIX', _oss.get('key_prefix', ''))
     OSS_REGION = _env('OSS_REGION', _oss.get('region', 'us-east-1'))
 
+    # ── 存储后端（音频/上传文件落位方式，可配置：本地 / OSS(COS/RustFS)） ──
+    # UPLOAD_STORAGE: multipart 上传的二进制文件去向
+    #   local —— 保存到 UPLOAD_DIR（默认，行为不变）
+    #   oss   —— 上传到对象存储（需配置 OSS_ENDPOINT；RustFS 走多桶 S3 兼容），
+    #            task_params 记为 oss:// 引用，计算时按 OSS_RESOLVE_MODE 读取
+    #   auto  —— OSS 已配置时等同 oss，否则 local
+    UPLOAD_STORAGE = (_env('UPLOAD_STORAGE', _yaml.get('upload_storage', 'local')) or 'local').strip().lower()
+    # oss 上传使用的 category（对象存储桶/key 前缀段，与 oss_client 键规则一致）
+    AUDIO_OSS_CATEGORY = _env('AUDIO_OSS_CATEGORY', _yaml.get('audio_oss_category', 'audios'))
+    # OSS_RESOLVE_MODE: 计算时对 oss:// 引用的处理
+    #   download —— 下载为本地临时文件再计算（默认，兼容所有消费方）
+    #   stream   —— 保留 oss:// 引用，ASR/LLM 裁判/音频元数据等直接内存读取，不落盘
+    OSS_RESOLVE_MODE = (_env('OSS_RESOLVE_MODE', _yaml.get('oss_resolve_mode', 'download')) or 'download').strip().lower()
+
     # 日志配置（归档到 static 目录下；.env LOG_DIR 可覆盖）
     LOG_DIR = _env('LOG_DIR', os.path.join(STATIC_BASE_PATH, 'logs', 'eval_server'))
     LOG_FILE = os.path.join(LOG_DIR, 'eval_server.log')

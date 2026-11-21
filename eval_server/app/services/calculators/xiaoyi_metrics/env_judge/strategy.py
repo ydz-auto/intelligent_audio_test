@@ -13,6 +13,7 @@
 """
 import logging
 import os
+from app.utils.audio_source import exists
 from app.services.calculators.base import BaseCalculator
 from app.services.calculators.xiaoyi_metrics.shared.llm_client import get_llm_config
 from app.services.calculators.xiaoyi_metrics.shared.constants import (
@@ -226,7 +227,7 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         之后寻找，避免重复评估更早轮次内容。结果会被 calculator 与
         evaluate_rejection_judge 复用，避免同一文件重复能量扫描。
         """
-        if not user_wav or not os.path.isfile(user_wav):
+        if not user_wav or not exists(user_wav):
             return []
         try:
             from app.services.calculators.xiaoyi_metrics.env_judge.rejection_judge import (

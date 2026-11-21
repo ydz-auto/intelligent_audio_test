@@ -194,6 +194,26 @@ def cleanup_task_local_files(eval_task_id, caller_task_id=None, caller_test_case
         logger.exception(f"[cleanup] 清理任务本地音频缓存失败: eval_task_id={eval_task_id}")
 
 
+def _upload_binary_to_oss() -> bool:
+    """multipart 二进制文件是否上传到对象存储（UPLOAD_STORAGE: local/oss/auto）。
+
+    - local: 保存到 UPLOAD_DIR（默认，行为不变）
+    - oss:   上传到对象存储（需配置 OSS_ENDPOINT；RustFS 走多桶 S3 兼容）
+    - auto:  OSS 已配置时等同 oss，否则 local
+    """
+    mode = (config.UPLOAD_STORAGE or 'local').lower()
+    if mode == 'local':
+        return False
+    from ..utils.oss_client import oss_client
+    if mode == 'auto':
+        return oss_client.enabled
+    # oss（显式）：未配置 OSS 时回退本地，避免上传静默失败
+    if not oss_client.enabled:
+        logger.warning("UPLOAD_STORAGE=oss 但未配置 OSS_ENDPOINT，multipart 上传回退本地存储")
+        return False
+    return True
+
+
 def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=None, caller_test_case_id=None, eval_task_id=None):
     """
     验证任务参数并分发到本地或远程处理。
@@ -579,15 +599,25 @@ def create_task_upload():
             content = file_storage.read().decode('utf-8', errors='replace')
             task_params[field_name] = content
         else:
-            # 二进制文件：保存到上传子目录，使用文件路径
+            # 二进制文件：按存储后端配置落位（本地路径 或 oss:// 引用）
             # 共享目录下加 12 位随机前缀防同名覆盖（设备音频槽位号每批次从头计数，
             # 不同用例会产出完全同名的录音，如 r1_100016_..._client_in.wav）
             if shared_storage:
                 filename = f"{uuid.uuid4().hex[:12]}_{filename}"
-            file_path = os.path.join(upload_dir, filename)
-            file_storage.save(file_path)
-            task_params[field_name] = file_path
-            uploaded_file_paths[field_name] = file_path
+            if _upload_binary_to_oss():
+                # 上传到对象存储：audios/{storage_id}/{filename}，task_params 记 oss:// 引用，
+                # 本地不落盘；计算时按 OSS_RESOLVE_MODE 读取（stream 直读 / download 下载）
+                from ..utils.oss_client import oss_client
+                data = file_storage.read()
+                oss_key = f"{config.AUDIO_OSS_CATEGORY}/{storage_id.replace(os.sep, '/')}/{filename}"
+                oss_ref = oss_client.upload_bytes(data, oss_key)
+                task_params[field_name] = oss_ref
+                uploaded_file_paths[field_name] = oss_ref
+            else:
+                file_path = os.path.join(upload_dir, filename)
+                file_storage.save(file_path)
+                task_params[field_name] = file_path
+                uploaded_file_paths[field_name] = file_path
 
     # 解析 rounds 及顶层结构化字段 JSON 字符串，并把 __MULTIPART__ 占位符替换为上传后的实际路径
     # 占位符可能出现在任意嵌套层级（如被播放音频 rounds[i].audios[j].audio_path，
