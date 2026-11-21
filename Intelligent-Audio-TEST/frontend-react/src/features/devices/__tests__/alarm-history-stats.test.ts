@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   HISTORY_CATEGORY_EVENT_TYPES,
+  buildAvailabilitySpec,
+  buildPerformanceSpec,
   filterByTimeRange,
   hasMonitorStatsData,
   resolveStatsDateRange,
@@ -110,5 +112,30 @@ describe('监控统计空态判定（契约 §1.2：无采点显示空态，不�
     expect(hasMonitorStatsData([{ ...blankPoint, battery: 90 }])).toBe(true)
     expect(hasMonitorStatsData([{ ...blankPoint, errors: 1 }])).toBe(true)
     expect(hasMonitorStatsData([{ ...blankPoint, operations: 2 }])).toBe(true)
+  })
+})
+
+describe('单日范围的线图渲染（INT-2670 打回项：「今日」两张线图不再空白）', () => {
+  const today = {
+    date: '11-21',
+    isoDate: '2026-11-21',
+    availability: 66.7,
+    cpu: 6.3,
+    memory: 62.9,
+    battery: 100,
+    errors: 266,
+    operations: 0,
+    healthCheckSamples: 3,
+  }
+
+  it('单点（今日）可用性/性能开启点标记，当日数值可见', () => {
+    expect((buildAvailabilitySpec([today]).point as { visible: boolean }).visible).toBe(true)
+    expect((buildPerformanceSpec([today]).point as { visible: boolean }).visible).toBe(true)
+  })
+
+  it('多点范围仍关闭点标记，避免密集噪点', () => {
+    const twoPoints = [today, { ...today, date: '11-20', isoDate: '2026-11-20' }]
+    expect((buildAvailabilitySpec(twoPoints).point as { visible: boolean }).visible).toBe(false)
+    expect((buildPerformanceSpec(twoPoints).point as { visible: boolean }).visible).toBe(false)
   })
 })

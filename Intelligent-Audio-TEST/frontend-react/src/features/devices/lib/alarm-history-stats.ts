@@ -97,7 +97,16 @@ export function hasMonitorStatsData(points: DeviceStatsPoint[]): boolean {
   )
 }
 
-/** 可用性统计趋势（面积图） */export function buildAvailabilitySpec(points: DeviceStatsPoint[]): Record<string, unknown> {
+/**
+ * 单日范围只有 1 个采点，线/面积没有可连的走向，必须用点标记把当日数值画出来；
+ * 多日范围保持无点标记，避免密集点噪点。
+ */
+function singlePointVisible(points: DeviceStatsPoint[]): boolean {
+  return points.length <= 1
+}
+
+/** 可用性统计趋势（面积图） */
+export function buildAvailabilitySpec(points: DeviceStatsPoint[]): Record<string, unknown> {
   return {
     type: 'area',
     data: {
@@ -107,7 +116,7 @@ export function hasMonitorStatsData(points: DeviceStatsPoint[]): boolean {
     yField: '可用率',
     area: { style: { fill: { type: 'linear', gradient: 'x1', stops: [{ color: '#00d294' }, { color: 'rgba(0,210,148,0.1)' }] } } },
     line: { style: { stroke: '#00d294', lineWidth: 2 } },
-    point: { visible: false },
+    point: { visible: singlePointVisible(points), style: { fill: '#00d294' } },
     axes: [
       { orient: 'left', label: { formatMethod: (v: number) => `${v}%` } },
       { orient: 'bottom', tick: { visible: false } },
@@ -131,7 +140,7 @@ export function buildPerformanceSpec(points: DeviceStatsPoint[]): Record<string,
     yField: '值',
     seriesField: '指标',
     line: { style: { lineWidth: 2 } },
-    point: { visible: false },
+    point: { visible: singlePointVisible(points) },
     axes: [{ orient: 'bottom', tick: { visible: false } }],
     height: 168,
   }
