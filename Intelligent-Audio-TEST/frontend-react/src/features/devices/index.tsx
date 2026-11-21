@@ -44,7 +44,6 @@ import {
   useDeviceMutations,
   useLaboratories,
   usePlaybackDevices,
-  useStatusHistory,
   useTestDevices,
   useAlarmMutations,
 } from '@/application/devices/use-devices'
@@ -175,7 +174,6 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   const groupsQuery = useDeviceGroups()
   const alarmsQuery = useDeviceAlarms()
   const rulesQuery = useAlarmRules()
-  const historyQuery = useStatusHistory()
   const { removeTest, removePlayback, removeApi, control, setOccupied, batch, invalidateAll } =
     useDeviceMutations()
   const { acknowledge } = useAlarmMutations()
@@ -268,6 +266,17 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   }, [algorithmId])
 
   const testDevices = testQuery.data ?? []
+  /**
+   * INT-2671：状态历史事件只带 device_id，监控告警面板按 id 关联设备名。
+   * 用未按算法收窄的全量测试设备，避免切算法后其它设备的行显示「—」。
+   */
+  const testDeviceNames = useMemo(() => {
+    const names: Record<number, string> = {}
+    for (const device of testDevices) {
+      if (device.id != null && device.name) names[device.id] = device.name
+    }
+    return names
+  }, [testDevices])
   /** 测试设备先按全局算法收窄（§2.2）；工具栏/统计/徽标/分页均基于收窄后的口径 */
   const algorithmFilteredTestDevices = useMemo(
     () => filterTestDevicesByAlgorithm(testDevices, algorithmId),
@@ -284,7 +293,6 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   const alarms = alarmsQuery.data?.alarms ?? []
   const alarmStats = alarmsQuery.data?.stats ?? null
   const rules = rulesQuery.data ?? []
-  const history = historyQuery.data ?? []
   /** P2-1：分组筛选走详情真实成员（列表 device_ids 恒空；选中分组时按需拉取） */
   const groupFilterDetail = useDeviceGroupDetailQuery(testFilters.groupId)
 
@@ -762,7 +770,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
                 onOpenChange={(alarmsOpen) => setToggles((prev) => ({ ...prev, alarmsOpen }))}
                 alarms={alarms}
                 stats={alarmStats}
-                statusHistory={history}
+                deviceNames={testDeviceNames}
                 loading={alarmsQuery.isLoading}
                 canControl={canControl}
                 canUpdate={canUpdate}

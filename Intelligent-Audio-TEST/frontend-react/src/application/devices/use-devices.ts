@@ -63,6 +63,7 @@ import {
   updateTestDevice,
   type MonitorStatsQuery,
 } from '@/infrastructure/api/devicesApi'
+import type { StatusHistoryQuery } from '@/infrastructure/api/devicesApi'
 
 /** 测试设备列表（§3.4；GET /test-devices） */
 export function useTestDevices() {
@@ -146,12 +147,22 @@ export function useAlarmRules() {
   })
 }
 
-/** 状态历史（§3.7；GET /status-history） */
-export function useStatusHistory() {
+/**
+ * 状态历史（§3.7；GET /status-history）。
+ *
+ * INT-2671：筛选（事件类型集合）下推到接口，queryKey 带上事件类型，分类切换各取各的一页；
+ * 未展开面板 / 不在历史页签时由调用方关闭 enabled，避免白拉 5 个类型的请求。
+ */
+export function useStatusHistory(
+  query: StatusHistoryQuery = {},
+  options: { enabled?: boolean } = {}
+) {
+  const eventTypes = query.eventTypes ?? []
   return useQuery({
-    queryKey: ['devices', 'status-history'],
-    queryFn: fetchStatusHistory,
+    queryKey: ['devices', 'status-history', { eventTypes, page: query.page ?? 1 }],
+    queryFn: () => fetchStatusHistory(query),
     staleTime: 60_000,
+    enabled: options.enabled ?? true,
   })
 }
 

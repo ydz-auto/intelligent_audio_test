@@ -23,6 +23,7 @@ import type {
   AlarmRule,
   AlarmStats,
   DeviceStatusEvent,
+  DeviceStatusEventType,
 } from '@/domain/models/alarm'
 import type { DeviceMonitorStats } from '@/domain/models/deviceMonitorStats'
 import type { Laboratory } from '@/domain/models/laboratory'
@@ -292,13 +293,51 @@ export async function fetchAlarmRules(options: ApiRequestOptions = {}): Promise<
   return (dto?.items ?? []).map(alarmRuleFromDto)
 }
 
+/**
+ * 状态历史查询（INT-2671）。
+ *
+ * 后端 `GET /status-history` 支持 `event_type` 单值筛选，且健康检查事件量级远大于其余类型
+ * （实测 200 条最新事件全是 health_check），只取「最新一页再前端过滤」会让状态/操作页签恒空。
+ * 因此按分类的事件类型集合分次拉取（每类一页）后合并，页面再按时间范围收窄。
+ * 时间范围仍在前端过滤：该表 created_at 是东八区墙钟串（utc8now 落库），
+ * 前端筛选与展示同一口径，避免把 +08 墙钟当 UTC 下发造成 8 小时错位。
+ */
+export interface StatusHistoryQuery {
+  /** 只拉这些事件类型；留空＝不按类型筛选（全量最新一页） */
+  eventTypes?: readonly DeviceStatusEventType[]
+  page?: number
+  perPage?: number
+}
+
+/** 单类型一页的条数（状态/操作/错误事件量级很小，200 足够覆盖近 30 天） */
+const STATUS_HISTORY_PER_PAGE = 200
+/** device_service 对 per_page 的上限（list_status_events: min(per_page, 500)） */
+const STATUS_HISTORY_MAX_PER_PAGE = 500
+
 /** 状态历史（§3.7；GET /test-devices/status-history） */
-export async function fetchStatusHistory(options: ApiRequestOptions = {}): Promise<DeviceStatusEvent[]> {
-  const dto = await request<PaginatedDto<DeviceStatusHistoryDto>>(
-    'GET', '/test-devices/status-history', undefined,
-    { ...options, params: { page: 1, per_page: 200 } }
+export async function fetchStatusHistory(
+  query: StatusHistoryQuery = {},
+  options: ApiRequestOptions = {}
+): Promise<DeviceStatusEvent[]> {
+  const page = query.page ?? 1
+  const perPage = Math.min(query.perPage ?? STATUS_HISTORY_PER_PAGE, STATUS_HISTORY_MAX_PER_PAGE)
+  const eventTypes = [...new Set(query.eventTypes ?? [])]
+  const requestedEventTypes: (DeviceStatusEventType | undefined)[] =
+    eventTypes.length > 0 ? eventTypes : [undefined]
+
+  const pages = await Promise.all(
+    requestedEventTypes.map(async (eventType) => {
+      const dto = await request<PaginatedDto<DeviceStatusHistoryDto>>(
+        'GET', '/test-devices/status-history', undefined,
+        { ...options, params: { page, per_page: perPage, event_type: eventType } }
+      )
+      return (dto?.items ?? []).map(statusEventFromDto)
+    })
   )
-  return (dto?.items ?? []).map(statusEventFromDto)
+  // 多个类型各自倒序返回，合并后再统一倒序（表格不排序，直接按下发顺序渲染）
+  return pages
+    .flat()
+    .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
 }
 
 /** 监控统计查询条件（设备管理功能设计文档 §3.7.1 / 契约 §1.1） */
