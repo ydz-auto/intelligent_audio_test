@@ -15,6 +15,7 @@
 import uuid
 import json
 import os
+import shutil
 import threading
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -175,6 +176,24 @@ def _storage_id(task_id=None, case_id=None, fallback=None):
     return fallback_seg
 
 
+def cleanup_task_local_files(eval_task_id, caller_task_id=None, caller_test_case_id=None):
+    """任务计算完毕后清理本地音频缓存（uploads/<task>/<case>/）。
+
+    oss:// 音频 / multipart 上传只是处理期临时副本，算完即删，
+    避免 eval_static 卷无限增长。task JSON / LLM 审计日志 / 应用日志不在此目录。
+    """
+    try:
+        task_dir = os.path.join(
+            config.UPLOAD_DIR,
+            _storage_id(caller_task_id, caller_test_case_id, eval_task_id),
+        )
+        if os.path.isdir(task_dir):
+            shutil.rmtree(task_dir, ignore_errors=True)
+            logger.info(f"[cleanup] 已清理任务本地音频缓存: {task_dir}")
+    except Exception:
+        logger.exception(f"[cleanup] 清理任务本地音频缓存失败: eval_task_id={eval_task_id}")
+
+
 def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=None, caller_test_case_id=None, eval_task_id=None):
     """
     验证任务参数并分发到本地或远程处理。
@@ -284,6 +303,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 caller_task_id=caller_task_id,
                 caller_test_case_id=caller_test_case_id
             )
+            # 远程转发已完成（文件已读入内存 multipart 上传），本地副本不再需要
+            cleanup_task_local_files(eval_task_id, caller_task_id, caller_test_case_id)
             base_url = request.host_url.rstrip('/')
             return success_response({
                 "eval_task_id": remote_task_id,
@@ -360,7 +381,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             ConcurrencyManager.decrement(task_type)
             raise
 
-        def process_local_task(eval_task_id, task_type, task_params, caller_task_id=None):
+        def process_local_task(eval_task_id, task_type, task_params,
+                               caller_task_id=None, caller_test_case_id=None):
             # 事件化回调：调用方传 callback_url，算完后主动通知，替代调用方轮询等待
             callback_url = task_params.get('callback_url') if isinstance(task_params, dict) else None
             # caller_task_id 由入参显式传入（task_id 在 create_task 分发前已从
@@ -426,6 +448,9 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                                 'failed', error_msg=str(e))
                 publish_eval_result(eval_task_id, task_type, caller_task_id,
                                     'failed', error_msg=str(e))
+            finally:
+                # 算完即删：清理本任务下载/上传的音频缓存，防止 eval_static 卷膨胀
+                cleanup_task_local_files(eval_task_id, caller_task_id, caller_test_case_id)
 
         def _run_with_decrement(*args, **kwargs):
             try:
@@ -434,7 +459,9 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 LocalConcurrencyManager.decrement()
                 ConcurrencyManager.decrement(task_type)
 
-        thread = threading.Thread(target=_run_with_decrement, args=(eval_task_id, task_type, task_params, caller_task_id))
+        thread = threading.Thread(target=_run_with_decrement,
+                                  args=(eval_task_id, task_type, task_params,
+                                        caller_task_id, caller_test_case_id))
         thread.daemon = True
         thread.start()
 
