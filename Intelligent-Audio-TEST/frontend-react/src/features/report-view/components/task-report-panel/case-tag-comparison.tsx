@@ -5,12 +5,13 @@
  * 「应用筛选」提交草稿条件生效（draft→applied）；标签名可点击内联重命名 → 防抖 PUT 回写
  * （useReportSummaryEdit，§3.6/验收 #3）。
  */
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Collapsible,
   CollapsibleContent,
@@ -64,6 +65,8 @@ export function CaseTagComparison({
     allTags.map((tag) => tag.tag_name)
   )
   const [collapsed, setCollapsed] = useState(false)
+  /** 标签筛选关键词（标签名/分类名命中；无命中的分类整组隐藏） */
+  const [tagKeyword, setTagKeyword] = useState('')
   const { scheduleSaveSummary } = useReportSummaryEdit(report.id)
 
   // 标签重命名本地映射（old→new；矩阵键保持原名，展示名跟随）
@@ -95,6 +98,18 @@ export function CaseTagComparison({
   )
 
   const showTags = useMemo(() => filteredTags, [filteredTags])
+
+  /** 关键词过滤标签分组（分类名整体命中保留整组；否则仅保留命中标签，无命中分类隐藏） */
+  const filteredTagGroups = useMemo(() => {
+    const kw = tagKeyword.trim().toLowerCase()
+    if (!kw) return tagGroups
+    return tagGroups.flatMap(([category, tags]) => {
+      const categoryHit = category.toLowerCase().includes(kw)
+      const matched = tags.filter((tag) => tag.tag_name.toLowerCase().includes(kw))
+      if (!categoryHit && matched.length === 0) return []
+      return [[category, categoryHit ? tags : matched] as const]
+    })
+  }, [tagGroups, tagKeyword])
 
   /** 矩阵行按分类分区（INT-504：组头=分类名，组内每标签独立均值；无分类兜底「其他」） */
   const matrixSections = useMemo(() => {
@@ -134,28 +149,51 @@ export function CaseTagComparison({
             避免留下没有输入框的空表单骨架） */}
         <div className='rounded-xl border p-3' data-export-hide>
           <p className='text-muted-foreground text-xs'>用例标签（按分类分组）：</p>
-          <div className='mt-2 space-y-2'>
-            {tagGroups.map(([category, tags]) => (
-              <div key={category}>
-                <p className='text-muted-foreground text-xs font-medium'>{category}</p>
-                <div className='mt-1 flex flex-wrap gap-x-4 gap-y-1'>
-                  {tags.map((tag) => (
-                    <label key={tag.tag_id ?? tag.tag_name} className='flex items-center gap-1.5 text-xs'>
-                      <Checkbox
-                        checked={selectedTags.includes(tag.tag_name)}
-                        onCheckedChange={(checked) => {
-                          setSelectedTags((prev) =>
-                            checked ? [...prev, tag.tag_name] : prev.filter((t) => t !== tag.tag_name)
-                          )
-                        }}
-                      />
-                      {renames[tag.tag_name] ?? tag.tag_name}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ))}
+          {/* 标签筛选搜索（长标签列表按名过滤；分类无命中整组隐藏） */}
+          <div className='mt-1.5 flex items-center gap-2'>
+            <div className='relative min-w-0 flex-1'>
+              <Search
+                aria-hidden='true'
+                className='text-muted-foreground absolute start-2 top-1/2 size-3 -translate-y-1/2'
+              />
+              <Input
+                value={tagKeyword}
+                onChange={(e) => setTagKeyword(e.target.value)}
+                placeholder='搜索用例标签'
+                aria-label='搜索用例标签'
+                className='h-7 max-w-52 ps-6 text-xs'
+              />
+            </div>
+            <span className='text-muted-foreground shrink-0 text-xs tabular-nums'>
+              已选 {selectedTags.length}
+            </span>
           </div>
+          {filteredTagGroups.length === 0 ? (
+            <p className='text-muted-foreground py-2 text-center text-xs'>无匹配标签</p>
+          ) : (
+            <div className='mt-2 space-y-2'>
+              {filteredTagGroups.map(([category, tags]) => (
+                <div key={category}>
+                  <p className='text-muted-foreground text-xs font-medium'>{category}</p>
+                  <div className='mt-1 flex flex-wrap gap-x-4 gap-y-1'>
+                    {tags.map((tag) => (
+                      <label key={tag.tag_id ?? tag.tag_name} className='flex items-center gap-1.5 text-xs'>
+                        <Checkbox
+                          checked={selectedTags.includes(tag.tag_name)}
+                          onCheckedChange={(checked) => {
+                            setSelectedTags((prev) =>
+                              checked ? [...prev, tag.tag_name] : prev.filter((t) => t !== tag.tag_name)
+                            )
+                          }}
+                        />
+                        {renames[tag.tag_name] ?? tag.tag_name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           <div className='mt-2 space-y-1.5 border-t pt-2'>
             {/* 多选组带搜索+分页（§3.3.7/3.3.8；原全铺 checkbox 无界） */}
             <MultiSelectFilter
