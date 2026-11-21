@@ -1,21 +1,27 @@
 /**
- * 重新执行 / 重新评估范围选择弹窗（09_任务域.md §5.7，Dialog sm:max-w-xl）。
+ * 重新执行 / 重新评估范围选择弹窗（09_任务域.md §5.7，Dialog sm:max-w-3xl）。
  * RadioGroup 三选项（全部用例/仅失败用例/手动选择用例）+ 手动勾选展开区
  * （工具行 = 搜索名称或 ID + 平铺/标签/分组视图 + 状态筛选，照任务详情「关联用例」口径；
- * 全选 Checkbox + 按视图分组的行 Checkbox 列表，空态「本任务暂无已执行用例」）；
+ * 全选 Checkbox + 按视图分组的行 Checkbox 列表（组头三态勾选整组全选/取消、组头可展开/收起）；
+ * 状态筛选与搜索联动「全选」= 按当前筛选条件全选（含按状态全选）；
  * 重评估追加：评估维度勾选网格（默认全选，候选=本任务用例聚合维度）+
  * 「重新提取设备输出（从存档日志）」Checkbox（默认不勾）；底栏「取消｜确认{已选 n 项}」。
  * 存在人工复核结果（task.detail.reviewCount > 0）时追加硬确认层（§5.7）：
  * 确认后先弹「该任务存在 {N} 条人工复核结果…是否继续？」主钮「覆盖并继续」（destructive）副钮「返回」。
  * 确认后经 infrastructure/api/tasks-control-api（client.ts）发起 retry / reevaluate。
  */
-import { LoaderCircle, Search } from 'lucide-react'
+import { ChevronRight, LoaderCircle, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { useTaskDetail } from '@/application/tasks/use-task-detail'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import {
   Dialog,
@@ -127,6 +133,8 @@ export function ReexecuteScopeDialog({
   const [caseView, setCaseView] = useState<CaseViewMode>('flat')
   const [caseKeyword, setCaseKeyword] = useState('')
   const [caseStatus, setCaseStatus] = useState('all')
+  /** 标签/分组视图的展开组（默认全部收起，组头可展开；照任务详情「关联用例」口径） */
+  const [openGroupKeys, setOpenGroupKeys] = useState<Set<string>>(new Set())
   const [selectedDimensionIds, setSelectedDimensionIds] = useState<number[]>([])
   const [reextractDeviceOutput, setReextractDeviceOutput] = useState(false)
   const [hardConfirmOpen, setHardConfirmOpen] = useState(false)
@@ -190,6 +198,7 @@ export function ReexecuteScopeDialog({
     setCaseView('flat')
     setCaseKeyword('')
     setCaseStatus('all')
+    setOpenGroupKeys(new Set())
     setSelectedDimensionIds([])
     setReextractDeviceOutput(false)
   }, [open])
@@ -206,8 +215,12 @@ export function ReexecuteScopeDialog({
     }
   }, [open, isReevaluate, dimensionOptions])
 
+  const selectedFilteredCount = filteredCases.filter((tc) =>
+    selectedCaseSet.has(String(tc.caseId))
+  ).length
   const isAllCasesSelected =
-    filteredCases.length > 0 && filteredCases.every((tc) => selectedCaseSet.has(String(tc.caseId)))
+    filteredCases.length > 0 && selectedFilteredCount === filteredCases.length
+  const isSomeCasesSelected = selectedFilteredCount > 0 && !isAllCasesSelected
 
   const canConfirm = (() => {
     if (isReevaluate && dimensionOptions.length > 0 && selectedDimensionIds.length === 0) {
@@ -248,6 +261,37 @@ export function ReexecuteScopeDialog({
         return Array.from(next)
       })
     }
+  }
+
+  /** 组内勾选态（组头 Checkbox 三态；照用例管理「组头全选」口径） */
+  const groupSelectionState = (groupCases: TaskCaseBrief[]) => {
+    const selectedCount = groupCases.filter((tc) =>
+      selectedCaseSet.has(String(tc.caseId))
+    ).length
+    return {
+      all: groupCases.length > 0 && selectedCount === groupCases.length,
+      some: selectedCount > 0 && selectedCount < groupCases.length,
+    }
+  }
+
+  /** 组头全选/取消全选（按分组/标签整组勾选，折叠态同样生效） */
+  const toggleGroupSelect = (groupCases: TaskCaseBrief[], checked: boolean) => {
+    const ids = groupCases.map((tc) => String(tc.caseId))
+    setSelectedCaseIds((prev) => {
+      const next = new Set(prev.map(String))
+      if (checked) ids.forEach((id) => next.add(id))
+      else ids.forEach((id) => next.delete(id))
+      return Array.from(next)
+    })
+  }
+
+  const toggleGroupOpen = (groupKey: string) => {
+    setOpenGroupKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupKey)) next.delete(groupKey)
+      else next.add(groupKey)
+      return next
+    })
   }
 
   /** 用例行（Checkbox + 名称 + 执行/评估状态徽章；平铺态补分组名，分组态由组头承载） */
@@ -343,7 +387,7 @@ export function ReexecuteScopeDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className='sm:max-w-xl'>
+        <DialogContent className='sm:max-w-3xl'>
           <DialogHeader>
             <DialogTitle>{isReevaluate ? '重新评估' : '重新执行'}</DialogTitle>
             <DialogDescription className='truncate'>
@@ -469,7 +513,11 @@ export function ReexecuteScopeDialog({
 
                 <div className='flex items-center justify-between gap-2'>
                   <label className='flex cursor-pointer items-center gap-2 text-sm'>
-                    <Checkbox checked={isAllCasesSelected} onCheckedChange={toggleSelectAll} />
+                    <Checkbox
+                      checked={isAllCasesSelected}
+                      indeterminate={isSomeCasesSelected}
+                      onCheckedChange={toggleSelectAll}
+                    />
                     全选
                   </label>
                   <span className='text-muted-foreground text-xs tabular-nums'>
@@ -502,15 +550,48 @@ export function ReexecuteScopeDialog({
                   <ScrollArea className='max-h-60'>
                     {caseGroups ? (
                       <div className='flex flex-col gap-2'>
-                        {caseGroups.map(([groupName, groupCases]) => (
-                          <div key={groupName} className='flex flex-col gap-1.5'>
-                            <p className='text-muted-foreground px-1 text-xs font-medium'>
-                              {groupName}
-                              <span className='ms-1 tabular-nums'>({groupCases.length})</span>
-                            </p>
-                            {groupCases.map(renderCaseRow)}
-                          </div>
-                        ))}
+                        {caseGroups.map(([groupName, groupCases]) => {
+                          const groupState = groupSelectionState(groupCases)
+                          const open = openGroupKeys.has(groupName)
+                          return (
+                            <Collapsible
+                              key={groupName}
+                              open={open}
+                              onOpenChange={() => toggleGroupOpen(groupName)}
+                              className='rounded-lg border bg-background'
+                            >
+                              {/* 组头：三态勾选（整组全选/取消）+ 展开/收起（照用例管理「组头全选」口径） */}
+                              <div className='flex items-center gap-1.5 px-2 py-1.5'>
+                                <Checkbox
+                                  checked={groupState.all}
+                                  indeterminate={groupState.some}
+                                  aria-label={`全选 ${groupName}`}
+                                  onCheckedChange={(checked) =>
+                                    toggleGroupSelect(groupCases, !!checked)
+                                  }
+                                />
+                                <CollapsibleTrigger className='hover:bg-muted/40 flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 pr-2 text-left text-sm font-medium transition-colors'>
+                                  <ChevronRight
+                                    aria-hidden='true'
+                                    className={cn(
+                                      'text-muted-foreground size-3.5 shrink-0 transition-transform',
+                                      open && 'rotate-90'
+                                    )}
+                                  />
+                                  <span className='truncate'>{groupName}</span>
+                                  <span className='text-muted-foreground shrink-0 text-xs tabular-nums'>
+                                    ({groupCases.length})
+                                  </span>
+                                </CollapsibleTrigger>
+                              </div>
+                              <CollapsibleContent className='border-t'>
+                                <div className='flex flex-col gap-1.5 p-1.5'>
+                                  {groupCases.map(renderCaseRow)}
+                                </div>
+                              </CollapsibleContent>
+                            </Collapsible>
+                          )
+                        })}
                       </div>
                     ) : (
                       <div className='flex flex-col gap-1.5'>{filteredCases.map(renderCaseRow)}</div>
