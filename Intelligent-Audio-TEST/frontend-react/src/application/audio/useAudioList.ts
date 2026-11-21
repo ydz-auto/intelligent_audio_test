@@ -95,12 +95,15 @@ export function useAudioTags() {
   })
 }
 
-/** 文件夹树（§5.5；左树） */
-export function useFolderTree() {
+/** 文件夹树（§5.5；左树）。
+ * 默认懒加载（enabled=false）：列表视图不展示树，folder-tree 后端每次全量扫描
+ * 音频路径构建 depth=10 树，进页面即拉会白扫全表；切到 folder 视图才请求。 */
+export function useFolderTree(enabled = false) {
   return useQuery({
     queryKey: ['audio-folder-tree'],
     queryFn: fetchFolderTree,
     staleTime: 5 * 60_000,
+    enabled,
   })
 }
 
