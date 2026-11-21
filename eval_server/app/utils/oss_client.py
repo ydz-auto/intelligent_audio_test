@@ -160,19 +160,25 @@ class OSSClient:
     def upload_bytes(self, data: bytes, oss_path: str) -> str:
         """将字节上传为 oss://{category}/{key}，返回 oss:// 引用。
 
-        兼容单桶/多桶（RustFS）键规则：oss_path 形如 {category}/{key}。
+        oss_path 可传完整 oss:// 引用或裸 {category}/{key}（自动补 scheme）。
+        兼容单桶/多桶（RustFS）键规则。
         """
         self._ensure_init()
-        bucket, full_key, _, _ = self._split_oss_path(oss_path)
+        full = oss_path if oss_path.startswith(_SCHEME_OSS) else f'{_SCHEME_OSS}{oss_path.lstrip("/")}'
+        bucket, full_key, _, _ = self._split_oss_path(full)
         self._client.put_object(Bucket=bucket, Key=full_key, Body=data)
-        return f'{_SCHEME_OSS}{oss_path.lstrip("/")}'
+        return full
 
     def upload_file(self, local_path: str, oss_path: str) -> str:
-        """将本地文件上传为 oss://{category}/{key}，返回 oss:// 引用。"""
+        """将本地文件上传为 oss://{category}/{key}，返回 oss:// 引用。
+
+        oss_path 可传完整 oss:// 引用或裸 {category}/{key}（自动补 scheme）。
+        """
         self._ensure_init()
-        bucket, full_key, _, _ = self._split_oss_path(oss_path)
+        full = oss_path if oss_path.startswith(_SCHEME_OSS) else f'{_SCHEME_OSS}{oss_path.lstrip("/")}'
+        bucket, full_key, _, _ = self._split_oss_path(full)
         self._client.upload_file(local_path, bucket, full_key)
-        return f'{_SCHEME_OSS}{oss_path.lstrip("/")}'
+        return full
 
 
 oss_client = OSSClient()
