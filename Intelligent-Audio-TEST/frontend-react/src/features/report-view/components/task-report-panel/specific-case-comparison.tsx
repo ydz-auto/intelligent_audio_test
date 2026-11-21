@@ -987,10 +987,10 @@ export function SpecificCaseComparison({
                       setFilters({ ...filters, sortResource: v === 'all' || v === null ? undefined : v })
                     }
                   >
-                    <SelectTrigger className='h-8 text-xs'>
+                    <SelectTrigger className='h-8 w-full min-w-0 text-xs'>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className='min-w-64'>
                       <SelectItem value='all'>全部资源(平均)</SelectItem>
                       {report.summary.resources.map((r) => (
                         <SelectItem key={r} value={r}>{r}</SelectItem>
@@ -1007,10 +1007,10 @@ export function SpecificCaseComparison({
                       setFilters({ ...filters, sortMetric: v === 'all' || v === null ? undefined : v })
                     }
                   >
-                    <SelectTrigger className='h-8 text-xs'>
+                    <SelectTrigger className='h-8 w-full min-w-0 text-xs'>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className='min-w-72'>
                       {taxonomy.dimensionSections.map((section) => (
                         <SelectGroup key={section.key}>
                           <SelectLabel>{section.name}</SelectLabel>
