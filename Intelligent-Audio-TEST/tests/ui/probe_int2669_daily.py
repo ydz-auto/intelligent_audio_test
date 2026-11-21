@@ -23,6 +23,7 @@ import hashlib
 import hmac
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.parse
@@ -64,6 +65,11 @@ class Probe:
         self.checks.append({'name': name, 'ok': bool(ok), 'detail': detail})
         print('[%s] %-44s %s' % ('PASS' if ok else 'FAIL', name, detail), flush=True)
 
+    def skip(self, name, detail):
+        """环境缺失导致的跳过：显式记 SKIP，不静默混进 PASS。"""
+        self.checks.append({'name': name, 'ok': True, 'skipped': True, 'detail': detail})
+        print('[SKIP] %-44s %s' % (name, detail), flush=True)
+
     def shot(self, page, name, dark=False):
         os.makedirs(ART, exist_ok=True)
         path = os.path.join(ART, '%s%s.png' % (name, '_dark' if dark else ''))
@@ -96,6 +102,30 @@ def _items(resp):
     if isinstance(data, dict):
         return data.get('items') or []
     return data if isinstance(data, list) else []
+
+
+def _resolve_media_secret():
+    """媒体 token 密钥（shared/infrastructure/media_token.py 口径）。
+
+    不落常量：优先本进程的 MEDIA_TOKEN_SECRET / OSS_SECRET_KEY；缺省时只读
+    读取运行中网关容器的 OSS_SECRET_KEY（与容器内 BaseConfig 同值）；都拿不到
+    返回 None，调用方记 SKIP 而不是让断言恒真。
+    """
+    explicit = (os.environ.get('MEDIA_TOKEN_SECRET') or '').strip()
+    if explicit:
+        return explicit.encode('utf-8')
+    oss = (os.environ.get('OSS_SECRET_KEY') or '').strip()
+    if not oss:
+        try:
+            oss = subprocess.run(
+                ['docker', 'exec', 'intelligent-audio-test-api_gateway-1',
+                 'printenv', 'OSS_SECRET_KEY'],
+                capture_output=True, text=True, timeout=20).stdout.strip()
+        except Exception:
+            oss = ''
+    if not oss:
+        return None
+    return hashlib.sha256(('iat-media|%s' % oss).encode('utf-8')).digest()
 
 
 # ── perf ───────────────────────────────────────────────────────────────
@@ -188,24 +218,28 @@ def mode_audio(p, args):
             'url=%s' % url[:120])
 
     # 网关媒体 token 流式路由（078fc72ba）：无 JWT + 签名 token → 200 流式
-    secret = hashlib.sha256(b'iat-media|intelligent_audio_test666').digest()
+    secret = _resolve_media_secret()
     path = audio.get('file_path') or ''
-    exp = int(time.time()) + 600
-    sig = hmac.new(secret, ('%s|%d' % (path, exp)).encode(), hashlib.sha256).hexdigest()
-    token = '%d.%s' % (exp, sig)
-    import httpx
-    dl = ('%s/api/v1/audios/download?' % p.api_root.rstrip('/')) + urllib.parse.urlencode(
-        {'path': path, 'token': token})
-    rr = httpx.get(dl, timeout=60, trust_env=False)
-    p.check('media_token_stream_200', rr.status_code == 200,
-            'status=%s bytes=%d ctype=%s' % (rr.status_code, len(rr.content),
-                                             rr.headers.get('content-type')))
-    p.check('media_token_content_length',
-            (rr.headers.get('content-length') or '0') == str(len(rr.content)),
-            'content-length=%s bytes=%d' % (rr.headers.get('content-length'), len(rr.content)))
-    rbad = httpx.get(dl.replace(token, '1.0'), timeout=20, trust_env=False)
-    p.check('media_token_invalid_rejected', rbad.status_code in (401, 403),
-            'bad token status=%s' % rbad.status_code)
+    if secret is None:
+        p.skip('media_token_stream_200',
+               '未提供 MEDIA_TOKEN_SECRET/OSS_SECRET_KEY（环境变量与网关容器均取不到），跳过 token 断言')
+    else:
+        exp = int(time.time()) + 600
+        sig = hmac.new(secret, ('%s|%d' % (path, exp)).encode(), hashlib.sha256).hexdigest()
+        token = '%d.%s' % (exp, sig)
+        import httpx
+        dl = ('%s/api/v1/audios/download?' % p.api_root.rstrip('/')) + urllib.parse.urlencode(
+            {'path': path, 'token': token})
+        rr = httpx.get(dl, timeout=60, trust_env=False)
+        p.check('media_token_stream_200', rr.status_code == 200,
+                'status=%s bytes=%d ctype=%s' % (rr.status_code, len(rr.content),
+                                                 rr.headers.get('content-type')))
+        p.check('media_token_content_length',
+                (rr.headers.get('content-length') or '0') == str(len(rr.content)),
+                'content-length=%s bytes=%d' % (rr.headers.get('content-length'), len(rr.content)))
+        rbad = httpx.get(dl.replace(token, '1.0'), timeout=20, trust_env=False)
+        p.check('media_token_invalid_rejected', rbad.status_code in (401, 403),
+                'bad token status=%s' % rbad.status_code)
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True,
@@ -215,9 +249,8 @@ def mode_audio(p, args):
         reqs = []
 
         def on_resp(resp):
-            u = resp.url
-            if '/audios/download' in u or '/audios/' in u and '/stream' in u:
-                reqs.append((resp.status, u[:160]))
+            # 全量收集：断言「无桶直连」必须看全部响应，只看取流白名单会让断言恒真
+            reqs.append((resp.status, resp.url[:300]))
         page.on('response', on_resp)
         p.login(page)
         page.goto(p.base + '/audio-import', wait_until='domcontentloaded')
@@ -249,10 +282,10 @@ def mode_audio(p, args):
         gw = [r_ for r_ in reqs if 'localhost:15173' in r_[1] and '/audios/download' in r_[1]]
         p.check('audio_bytes_via_gateway', len(gw) > 0 and all(s < 400 for s, _ in gw),
                 'gateway=%s' % gw[:3])
-        p.check('audio_no_public_bucket',
-                not any(('127.0.0.1:9000' in u or 'myqcloud' in u or 'cos.' in u)
-                        for _, u in reqs),
-                'reqs=%s' % [u[:60] for _, u in reqs][:5])
+        bucket = [u for _, u in reqs
+                  if '127.0.0.1:9000' in u or 'myqcloud' in u or 'cos.' in u]
+        p.check('audio_no_public_bucket', not bucket,
+                '总响应=%d 桶直连命中=%s' % (len(reqs), [u[:80] for u in bucket][:5]))
         p.shot(page, 'audio_preview_light')
         page.emulate_media(color_scheme='dark')
         page.wait_for_timeout(600)
@@ -306,9 +339,7 @@ def mode_auth(p, args):
         big_d = [j for j in js_sizes_d if j['s'] > 1_500_000]
         dash_body = page.inner_text('body').strip()
         # 当前库总览页无近期任务 → 空态「开始使用」，图表未渲染时不应拉 2MB 图表运行时
-        p.check('dashboard_empty_state_no_chart_runtime',
-                ('开始使用' in dash_body or len(big_d) > 0) and not (
-                    '开始使用' not in dash_body and not big_d),
+        p.check('dashboard_empty_state_no_chart_runtime', not big_d,
                 'body_len=%d >1.5MB js=%s' % (len(dash_body), [b['n'] for b in big_d][:3]))
         p.check('dashboard_renders_no_white', len(dash_body) > 60,
                 'body_len=%d' % len(dash_body))
