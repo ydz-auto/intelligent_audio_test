@@ -373,6 +373,8 @@ class TaskCaseResultsMixin:
 
         P1.7: TestResultDimension / Dimension 是 evaluation_service 自有 PO，
         通过 evaluation_service.EvaluationDataService.GetDimensionResultsByResultIds 获取。
+        include_body=True：用例详情「评估结果」维度明细块需从 api_raw_response
+        按维度 output 参数提取 aux 值。
         失败时返回空 dict（不影响主流程，仅日志告警）。
         """
         if not result_ids:
@@ -380,7 +382,8 @@ class TaskCaseResultsMixin:
 
         from task_service.infrastructure.acl.evaluation_config_acl_repository import evaluation_config_acl_repository
 
-        return evaluation_config_acl_repository.get_dimension_results_by_result_ids(result_ids)
+        return evaluation_config_acl_repository.get_dimension_results_by_result_ids(
+            result_ids, include_body=True)
 
     # ---- INT-340：人工复核标注（结果复核标记 / 多次复核历史） ----
 

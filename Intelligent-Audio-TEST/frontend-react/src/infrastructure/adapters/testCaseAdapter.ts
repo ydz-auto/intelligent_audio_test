@@ -334,6 +334,10 @@ export function caseDetailFromDto(
   const metricConfigs: CaseMetricConfig[] = (dto.metric_configs ?? []).map((c) => ({
     code: c.code,
     name: c.name,
+    ...(c.unit != null ? { unit: c.unit } : {}),
+    ...(c.decimal_places != null ? { decimalPlaces: c.decimal_places } : {}),
+    // 具体用例视图用维度单位（score_unit），由后端 metric_configs.unit 下发
+    ...(c.unit != null ? { scoreUnit: c.unit } : {}),
     ...(dimTypeByName.get(c.name) ?? {}),
   }))
   // /results 行按目标 id 索引（API 行 api_id / 设备行 device_id；同目标多条取首条）

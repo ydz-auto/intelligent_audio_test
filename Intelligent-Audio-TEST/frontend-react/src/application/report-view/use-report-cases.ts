@@ -25,6 +25,11 @@ export interface CaseFilters {
   categories?: string[]
   tags?: string[]
   metrics?: string[]
+  /**
+   * 结果状态（pass/fail/warning/skip/unknown；照任务详情「关联用例」口径）。
+   * 服务端 searchCases 无 status 参数，由页面在合并视图上客户端过滤。
+   */
+  status?: string
   sortBy?: ReportSearchCasesRequest['sort_by'] | 'tag'
   sortMetric?: string
   sortResource?: string

@@ -163,6 +163,8 @@ export interface CaseMetricConfig {
   /** 数值精度（后端 metric_configs 现无；下发即用于评分指标数值显示） */
   decimalPlaces?: number
   unit?: string
+  /** 维度单位（score_unit，具体用例视图用；task_service 现下发） */
+  scoreUnit?: string
 }
 
 /**

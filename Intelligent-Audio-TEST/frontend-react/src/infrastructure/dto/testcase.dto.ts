@@ -189,6 +189,9 @@ export interface CaseAlgorithmResultDto {
 export interface CaseMetricConfigDto {
   code: string
   name: string
+  /** 维度单位（score_unit；具体用例视图用） */
+  unit?: string
+  decimal_places?: number
 }
 
 /** 结果音频项（detail result_audios 实测：设备键 → [{url, filename, param_code}]） */

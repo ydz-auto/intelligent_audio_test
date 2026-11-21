@@ -10,6 +10,7 @@
  * blob URL 按原始地址做 LRU 缓存：同一音频重复播放不重复下载，淘汰时释放。
  */
 import { request } from '@/infrastructure/api/client'
+import { ApiError } from '@/infrastructure/api/api-error'
 
 /** 缓存上限（条）：试听场景同时存活的音频数远小于此值 */
 const PLAYBACK_URL_CACHE_LIMIT = 50
@@ -22,6 +23,20 @@ export async function resolvePlayableUrl(url: string): Promise<string> {
   if (!url || /^(https?:|blob:|data:)/i.test(url)) return url
   // 网关取流地址已内嵌签名 token：直接流式播放，不整包取 blob（否则要等全量下载）
   if (/[?&]token=/i.test(url)) return url
+
+  // /api/v1/audios/{id}/stream 是 JSON 预签名端点（非裸字节流），须先取 data.url 再播放
+  const streamIdMatch = url
+    .replace(/^\/api\/v1\//i, '')
+    .match(/^audios\/(\d+)\/stream$/i)
+  if (streamIdMatch) {
+    const result = await request<{ url?: string }>(
+      'GET',
+      `/audios/${streamIdMatch[1]}/stream`
+    )
+    const presigned = result?.url
+    if (!presigned) throw new ApiError({ message: '获取音频播放地址失败' })
+    return resolvePlayableUrl(presigned)
+  }
 
   const cached = playbackUrlCache.get(url)
   if (cached) return cached

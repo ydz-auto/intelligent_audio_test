@@ -106,7 +106,9 @@ export function MetricTable({
   }
   const metricUnit = (metricName: string) => {
     const base = metricName.replace(/@round:\d+$|@overall$/i, '')
-    return allMetrics.find((m) => m.name === base)?.unit
+    const config = allMetrics.find((m) => m.name === base)
+    // 具体用例视图用维度单位（score_unit）；旧报告未下发时回退聚合 unit
+    return config?.score_unit ?? config?.unit
   }
 
   const metricValue = (metricKey: string, resource?: string) => {
