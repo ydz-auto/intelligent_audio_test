@@ -24,6 +24,7 @@ import type {
   AlarmStats,
   DeviceStatusEvent,
 } from '@/domain/models/alarm'
+import type { DeviceMonitorStats } from '@/domain/models/deviceMonitorStats'
 import type { Laboratory } from '@/domain/models/laboratory'
 import type { DeviceGroup } from '@/domain/models/deviceGroup'
 import type {
@@ -44,6 +45,7 @@ import type {
   AlarmStatsDto,
   DeviceStatusHistoryDto,
 } from '@/infrastructure/dto/alarm.dto'
+import type { DeviceMonitorStatsDto } from '@/infrastructure/dto/device-monitor-stats.dto'
 import { testDeviceFromDto } from '@/infrastructure/adapters/testDeviceAdapter'
 import { playbackDeviceFromDto } from '@/infrastructure/adapters/playbackDeviceAdapter'
 import { playbackSpeakerGroupFromDto } from '@/infrastructure/adapters/playbackSpeakerGroupAdapter'
@@ -58,6 +60,7 @@ import {
   alarmRuleFromDto,
   statusEventFromDto,
 } from '@/infrastructure/adapters/alarmAdapter'
+import { deviceMonitorStatsFromDto } from '@/infrastructure/adapters/deviceMonitorStatsAdapter'
 
 /** 后端统一分页信封（api_gateway/schemas/common.py PaginatedData） */
 interface PaginatedDto<T> {
@@ -296,6 +299,43 @@ export async function fetchStatusHistory(options: ApiRequestOptions = {}): Promi
     { ...options, params: { page: 1, per_page: 200 } }
   )
   return (dto?.items ?? []).map(statusEventFromDto)
+}
+
+/** 监控统计查询条件（设备管理功能设计文档 §3.7.1 / 契约 §1.1） */
+export interface MonitorStatsQuery {
+  /** 起始日期 YYYY-MM-DD（含） */
+  startDate: string
+  /** 结束日期 YYYY-MM-DD（含） */
+  endDate: string
+  /** 限定设备 id（页面设备筛选条件）；空数组/未传 = 不限 */
+  deviceIds?: number[]
+  /** 按设备 lab_id 过滤（页面实验室筛选条件） */
+  labId?: number | null
+}
+
+/**
+ * 设备监控统计（§3.7.1 统计分析四图；GET /test-devices/monitor-stats）。
+ * 契约 INT-1573：start_date / end_date 必填、本期固定 granularity=day；
+ * device_ids 逗号分隔，服务端与其它列表接口同口径。
+ */
+export async function fetchMonitorStats(
+  query: MonitorStatsQuery,
+  options: ApiRequestOptions = {}
+): Promise<DeviceMonitorStats> {
+  const params: Record<string, unknown> = {
+    start_date: query.startDate,
+    end_date: query.endDate,
+    granularity: 'day',
+  }
+  if (query.deviceIds && query.deviceIds.length > 0) {
+    params.device_ids = query.deviceIds.join(',')
+  }
+  if (query.labId != null) params.lab_id = query.labId
+  const dto = await request<DeviceMonitorStatsDto>(
+    'GET', '/test-devices/monitor-stats', undefined,
+    { ...options, params }
+  )
+  return deviceMonitorStatsFromDto(dto)
 }
 
 /* ==================== 变更操作（camelCase Domain → snake_case 请求体，对照后端 Create/Update Schema） ==================== */

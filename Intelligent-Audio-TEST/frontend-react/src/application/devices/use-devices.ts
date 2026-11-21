@@ -2,7 +2,7 @@
  * 设备管理页 query/mutation hooks（application 层；16_设备域.md §10 组件树落位）。
  * queryKey 前缀：['devices','test'] / ['devices','playback'] / ['devices','api'] /
  * ['devices','labs'] / ['devices','groups'] / ['devices','alarms'] / ['devices','alarm-rules'] /
- * ['devices','status-history']。增删改/确认后 invalidate 自动刷新列表与统计。
+ * ['devices','status-history'] / ['devices','monitor-stats']。增删改/确认后 invalidate 自动刷新列表与统计。
  * mock 阶段列表全量返回、前端过滤分页（接线后 URL 态化）。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -44,6 +44,7 @@ import {
   fetchDeviceGroups,
   fetchDriverKeywords,
   fetchLaboratories,
+  fetchMonitorStats,
   fetchPlaybackDevices,
   fetchPlaybackSpeakerGroups,
   fetchStatusHistory,
@@ -60,6 +61,7 @@ import {
   updatePlaybackDevice,
   updatePlaybackSpeakerGroup,
   updateTestDevice,
+  type MonitorStatsQuery,
 } from '@/infrastructure/api/devicesApi'
 
 /** 测试设备列表（§3.4；GET /test-devices） */
@@ -150,6 +152,23 @@ export function useStatusHistory() {
     queryKey: ['devices', 'status-history'],
     queryFn: fetchStatusHistory,
     staleTime: 60_000,
+  })
+}
+
+/** 监控统计（§3.7.1 统计分析四图；GET /monitor-stats，契约 INT-1573） */
+export function useDeviceMonitorStats(query: MonitorStatsQuery, enabled = true) {
+  return useQuery({
+    queryKey: [
+      'devices',
+      'monitor-stats',
+      query.startDate,
+      query.endDate,
+      query.deviceIds?.join(',') ?? '',
+      query.labId ?? null,
+    ],
+    queryFn: () => fetchMonitorStats(query),
+    enabled,
+    staleTime: 30_000,
   })
 }
 

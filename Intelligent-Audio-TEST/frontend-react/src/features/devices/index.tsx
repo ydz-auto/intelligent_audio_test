@@ -755,7 +755,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
               </TabsList>
             </Tabs>
 
-            {/* 监控告警面板（仅测试设备页签，开关②） */}
+            {/* 监控告警面板（仅测试设备页签，开关②）；INT-2670：统计分析四图沿用页面现有设备 / 实验室筛选 */}
             {tab === 'test' && (
               <AlarmPanel
                 open={toggles.alarmsOpen}
@@ -771,6 +771,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
                   toast.success('告警已确认')
                 }}
                 onManageRules={() => setRuleDialogOpen(true)}
+                statsDeviceIds={filteredRows.map((row) => row.id)}
+                statsLabId={testFilters.labId ? Number(testFilters.labId) : null}
               />
             )}
 

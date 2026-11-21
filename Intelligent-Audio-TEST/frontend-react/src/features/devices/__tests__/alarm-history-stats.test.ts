@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   HISTORY_CATEGORY_EVENT_TYPES,
   filterByTimeRange,
+  hasMonitorStatsData,
+  resolveStatsDateRange,
 } from '@/features/devices/lib/alarm-history-stats'
 
 describe('历史监控时间范围筛选（16_设备域.md §3.7；P2-4 返修）', () => {
@@ -48,5 +50,65 @@ describe('历史监控时间范围筛选（16_设备域.md §3.7；P2-4 返修�
     expect(HISTORY_CATEGORY_EVENT_TYPES.performance).toContain('health_check')
     expect(HISTORY_CATEGORY_EVENT_TYPES.operation).toContain('operation')
     expect(HISTORY_CATEGORY_EVENT_TYPES.error).toEqual(['error'])
+  })
+})
+
+describe('监控统计查询区间换算（INT-2670 接 /test-devices/monitor-stats）', () => {
+  // 本地墙钟晚间，验证不因 toISOString 的 UTC 换算跨日
+  const now = new Date('2026-11-21T20:30:00')
+
+  it('今日 = 当天（起止同一天）', () => {
+    expect(resolveStatsDateRange('today', '', '', now)).toEqual({
+      startDate: '2026-11-21',
+      endDate: '2026-11-21',
+    })
+  })
+
+  it('近7天 / 近30天按含首尾的自然日计', () => {
+    expect(resolveStatsDateRange('7d', '', '', now)).toEqual({
+      startDate: '2026-11-15',
+      endDate: '2026-11-21',
+    })
+    expect(resolveStatsDateRange('30d', '', '', now)).toEqual({
+      startDate: '2026-10-23',
+      endDate: '2026-11-21',
+    })
+  })
+
+  it('自定义范围直接透传；缺任一日期返回 null（不发请求）', () => {
+    expect(resolveStatsDateRange('custom', '2026-10-01', '2026-10-07', now)).toEqual({
+      startDate: '2026-10-01',
+      endDate: '2026-10-07',
+    })
+    expect(resolveStatsDateRange('custom', '', '2026-10-07', now)).toBeNull()
+    expect(resolveStatsDateRange('custom', '2026-10-01', '', now)).toBeNull()
+  })
+})
+
+describe('监控统计空态判定（契约 §1.2：无采点显示空态，不用示例曲线充数）', () => {
+  const blankPoint = {
+    date: '11-21',
+    isoDate: '2026-11-21',
+    availability: null,
+    cpu: null,
+    memory: null,
+    battery: null,
+    errors: 0,
+    operations: 0,
+    healthCheckSamples: 0,
+  }
+
+  it('全 null 且无错误/操作为空', () => {
+    expect(hasMonitorStatsData([])).toBe(false)
+    expect(hasMonitorStatsData([blankPoint, { ...blankPoint, date: '11-20' }])).toBe(false)
+  })
+
+  it('任一真实采点 / 错误 / 操作即为有数据', () => {
+    expect(hasMonitorStatsData([{ ...blankPoint, availability: 0 }])).toBe(true)
+    expect(hasMonitorStatsData([{ ...blankPoint, cpu: 0 }])).toBe(true)
+    expect(hasMonitorStatsData([{ ...blankPoint, memory: 12 }])).toBe(true)
+    expect(hasMonitorStatsData([{ ...blankPoint, battery: 90 }])).toBe(true)
+    expect(hasMonitorStatsData([{ ...blankPoint, errors: 1 }])).toBe(true)
+    expect(hasMonitorStatsData([{ ...blankPoint, operations: 2 }])).toBe(true)
   })
 })

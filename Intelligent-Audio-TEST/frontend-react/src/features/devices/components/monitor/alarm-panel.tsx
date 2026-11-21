@@ -6,7 +6,7 @@
  *   触发值·阈值/邮件/触发时间/操作（确认钮 device:control / 已确认态显 acknowledged_by）
  * - 历史监控：事件类型 facet + 时间范围 Select（今日/近7天/近30天/自定义 start/end）+ 四类历史
  *   子页签（状态/性能/操作/错误）+ 统计分析 vChart 区（可用性/性能/错误/使用）
- * 数据 GET /alarms（含 stats）+ /status-history 实测；30s 轮询兜底（§11-4 SSE 断链）。
+ * 数据 GET /alarms（含 stats）+ /status-history + /monitor-stats 实测；30s 轮询兜底（§11-4 SSE 断链）。
  * P2-4 返修：时间范围筛选接入 createdAt；P2-12 返修：四类历史 + 统计分析区；
  * P3-27 返修：复用 StaticDataTable；P3-28 返修：复用 IconBadge。
  */
@@ -64,6 +64,10 @@ export interface AlarmPanelProps {
   canUpdate: boolean
   onAcknowledge: (alarm: Alarm) => void
   onManageRules: () => void
+  /** 统计分析四图沿用页面现有设备筛选（命中的测试设备 id，INT-2670） */
+  statsDeviceIds: number[]
+  /** 统计分析四图沿用页面现有实验室筛选（INT-2670） */
+  statsLabId: number | null
 }
 
 const SEVERITY_FILTER_OPTIONS = [
@@ -529,8 +533,14 @@ export function AlarmPanel(props: AlarmPanelProps) {
                 emptyText='暂无历史记录'
                 minWidth='760px'
               />
-              {/* P2-12：统计分析 vChart 区（可用性/性能/错误/使用） */}
-              <HistoryStatsCharts />
+              {/* P2-12：统计分析 vChart 区（可用性/性能/错误/使用；INT-2670 接真实 /monitor-stats） */}
+              <HistoryStatsCharts
+                timeRange={timeRange}
+                customStart={customStart}
+                customEnd={customEnd}
+                deviceIds={props.statsDeviceIds}
+                labId={props.statsLabId}
+              />
             </div>
           )}
         </div>
