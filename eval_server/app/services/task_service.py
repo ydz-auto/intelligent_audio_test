@@ -6,6 +6,7 @@ from datetime import datetime
 from ..models.task import TaskModel
 from ..utils.concurrency import ConcurrencyManager
 from ..utils.decorators import limit_task_concurrency
+from ..services.eval_result_publisher import publish_eval_result  # 评估结果事件化发布（Redis）
 
 logger = logging.getLogger('task_service')
 
@@ -253,6 +254,8 @@ class TaskService:
                 )
                 notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
                                 'failed', error_msg=error_msg)
+                publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                    'failed', error_msg=error_msg)
                 return
 
             TaskModel.update_task_status(
@@ -263,6 +266,8 @@ class TaskService:
             )
             notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
                             'completed', result=result)
+            publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                'completed', result=result)
 
         except Exception as e:
             TaskModel.update_task_status(
@@ -273,6 +278,8 @@ class TaskService:
             )
             notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
                             'failed', error_msg=str(e))
+            publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                'failed', error_msg=str(e))
 
 def calculate_in_process(task_type, task_params):
     """模块级函数，供 ThreadPoolExecutor 调用。

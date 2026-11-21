@@ -50,6 +50,7 @@ def _safe_filename(filename):
 from datetime import datetime
 from ..config import config  # 配置信息
 from ..services.task_service import calculate_in_process, notify_callback  # 线程池计算包装函数 / 事件化回调通知
+from ..services.eval_result_publisher import publish_eval_result  # 评估结果事件化发布（Redis）
 from ..utils.concurrency import ConcurrencyManager  # 并发管理器
 
 logger = logging.getLogger('api')
@@ -359,10 +360,11 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             ConcurrencyManager.decrement(task_type)
             raise
 
-        def process_local_task(eval_task_id, task_type, task_params):
+        def process_local_task(eval_task_id, task_type, task_params, caller_task_id=None):
             # 事件化回调：调用方传 callback_url，算完后主动通知，替代调用方轮询等待
             callback_url = task_params.get('callback_url') if isinstance(task_params, dict) else None
-            caller_task_id = task_params.get('task_id') if isinstance(task_params, dict) else None
+            # caller_task_id 由入参显式传入（task_id 在 create_task 分发前已从
+            # task_params 剥离，任务记录里的 task_id 才是调用方任务 ID 的正确来源）
 
             try:
                 pool = _get_calc_pool()
@@ -399,6 +401,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                     )
                     notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
                                     'failed', error_msg=error_msg)
+                    publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                        'failed', error_msg=error_msg)
                     return
                 TaskModel.update_task_status(
                     eval_task_id,
@@ -408,6 +412,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 )
                 notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
                                 'completed', result=result)
+                publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                    'completed', result=result)
             except Exception as e:
                 logger.exception(f"[process_local_task] 任务失败 eval_task_id={eval_task_id} task_type={task_type}: {e}")
                 TaskModel.update_task_status(
@@ -418,6 +424,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 )
                 notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
                                 'failed', error_msg=str(e))
+                publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                    'failed', error_msg=str(e))
 
         def _run_with_decrement(*args, **kwargs):
             try:
@@ -426,7 +434,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 LocalConcurrencyManager.decrement()
                 ConcurrencyManager.decrement(task_type)
 
-        thread = threading.Thread(target=_run_with_decrement, args=(eval_task_id, task_type, task_params))
+        thread = threading.Thread(target=_run_with_decrement, args=(eval_task_id, task_type, task_params, caller_task_id))
         thread.daemon = True
         thread.start()
 

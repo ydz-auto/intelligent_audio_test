@@ -224,17 +224,25 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         )
 
         # 如果有endpoints且使用api_url，添加endpoints参数用于分布式调度
+        # INT-2635：入口 api_url（本请求正打到的服务）不是「远端 worker」——
+        # 把它塞进 endpoints 会让 eval_server 自派发给自己并套上固定远程轮询上限，
+        # 长耗时 LLM 裁判（reject_judge 单例 ~100s+）被 60s 误杀成
+        # "Remote task timeout after 60s"。仅真实 worker 端点才进分布式调度；
+        # 过滤后为空则不带 endpoints，由 eval_server 本地执行。
         if endpoints and api_url:
             formatted_endpoints = []
             for endpoint_item in endpoints:
                 endpoint_url = get_endpoint_url(endpoint_item)
-                if endpoint_url:
-                    formatted_endpoints.append({
-                        "endpoint": endpoint_url,
-                        "name": endpoint_item.get('name', f"worker-{len(formatted_endpoints) + 1}"),
-                        "max_process": get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', 5),
-                        "max_timeout": get_endpoint_field(endpoint_item, 'max_timeout', 'maxTimeout', 30)
-                    })
+                if not endpoint_url:
+                    continue
+                if endpoint_url.rstrip('/') == api_url.rstrip('/'):
+                    continue
+                formatted_endpoints.append({
+                    "endpoint": endpoint_url,
+                    "name": endpoint_item.get('name', f"worker-{len(formatted_endpoints) + 1}"),
+                    "max_process": get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', 5),
+                    "max_timeout": get_endpoint_field(endpoint_item, 'max_timeout', 'maxTimeout', 30)
+                })
 
             if formatted_endpoints:
                 create_task_payload["endpoints"] = formatted_endpoints

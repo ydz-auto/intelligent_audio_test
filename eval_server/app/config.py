@@ -126,5 +126,15 @@ class Config:
         'prompt_template': _lj.get('prompt_template', ''),
     }
 
+    # 评估结果事件化（Redis Pub/Sub）：任务终态发布到 eval:result:{eval_task_id}，
+    # 平台 evaluation_service 已订阅该频道，事件先到即无需 HTTP 轮询。
+    # 未配置/Redis 不可用时静默降级（平台侧有轮询兜底），不影响评估。
+    REDIS_URL = _env('REDIS_URL', '')
+
+    # 远程端点轮询上限（秒）：长耗时 LLM 裁判（reject_judge 等单例可超 60s）需要更宽窗口，
+    # 默认 300s；fast 任务在轮询中提前 break，不受影响。
+    REMOTE_POLL_INTERVAL = _env_int('REMOTE_POLL_INTERVAL', int(_yaml.get('remote_poll_interval', 2)))
+    REMOTE_POLL_MAX_SECONDS = _env_int('REMOTE_POLL_MAX_SECONDS', int(_yaml.get('remote_poll_max_seconds', 300)))
+
 
 config = Config()
