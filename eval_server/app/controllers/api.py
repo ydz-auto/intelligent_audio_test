@@ -605,12 +605,12 @@ def create_task_upload():
             if shared_storage:
                 filename = f"{uuid.uuid4().hex[:12]}_{filename}"
             if _upload_binary_to_oss():
-                # 上传到对象存储：audios/{storage_id}/{filename}，task_params 记 oss:// 引用，
-                # 本地不落盘；计算时按 OSS_RESOLVE_MODE 读取（stream 直读 / download 下载）
+                # 流式上传到对象存储：audios/{storage_id}/{filename}，task_params 记 oss:// 引用，
+                # 本地不落盘、不整文件进内存（upload_fileobj 分块传输）；
+                # 计算时按 OSS_RESOLVE_MODE 读取（stream 直读 / download 下载）
                 from ..utils.oss_client import oss_client
-                data = file_storage.read()
                 oss_key = f"{config.AUDIO_OSS_CATEGORY}/{storage_id.replace(os.sep, '/')}/{filename}"
-                oss_ref = oss_client.upload_bytes(data, oss_key)
+                oss_ref = oss_client.upload_stream(file_storage.stream, oss_key)
                 task_params[field_name] = oss_ref
                 uploaded_file_paths[field_name] = oss_ref
             else:

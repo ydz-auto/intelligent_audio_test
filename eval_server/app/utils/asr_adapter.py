@@ -14,7 +14,6 @@ ASR 推理部署在独立的 ASR 主机上（asr_server.py），本机只负责�
                          若设置，JSON 会保存到 {ASR_JSON_OUTPUT_DIR}/pcm_case/pcm_case/{case_id}/{session_id}/ 下
 """
 import os
-import io
 import json
 import logging
 import time
@@ -123,7 +122,7 @@ def call_modelscope_asr(wav_path, language=None):
 
         为兼容老调用方，本函数返回 [result] 形式（长度 1 的列表），让 parse_result 能继续工作。
     """
-    from app.utils.audio_source import exists, read_bytes, basename
+    from app.utils.audio_source import exists, open_stream, basename
     if not wav_path or not exists(wav_path):
         logger.error(f"wav 文件不存在: {wav_path}")
         return [{'text': '', 'chunks': []}]
@@ -132,13 +131,16 @@ def call_modelscope_asr(wav_path, language=None):
     url = f"{asr_base}/asr"
     logger.info(f"调用远程 ASR: {url}  wav={wav_path}")
 
-    # 读入内存（OSS 源不落盘），以 BytesIO 流式 multipart 上传远程 ASR
-    wav_bytes = read_bytes(wav_path)
+    # 流式读取（本地 open / OSS StreamingBody），按块传入 multipart，不整文件进内存
     with _asr_semaphore:
-        files = {"file": (basename(wav_path), io.BytesIO(wav_bytes), "audio/wav")}
-        t0 = time.time()
-        resp = requests.post(url, files=files, timeout=asr_timeout)
-        elapsed = time.time() - t0
+        stream = open_stream(wav_path)
+        try:
+            files = {"file": (basename(wav_path), stream, "audio/wav")}
+            t0 = time.time()
+            resp = requests.post(url, files=files, timeout=asr_timeout)
+            elapsed = time.time() - t0
+        finally:
+            stream.close()
 
     if resp.status_code != 200:
         raise RuntimeError(
@@ -166,7 +168,7 @@ def call_modelscope_asr_word(wav_path, language=None):
     Returns:
         [result] 形式，result = {"text": "...", "chunks": [{"text": "字", "timestamp": [start_s, end_s]}, ...]}
     """
-    from app.utils.audio_source import exists, read_bytes, basename
+    from app.utils.audio_source import exists, open_stream, basename
     if not wav_path or not exists(wav_path):
         logger.error(f"wav 文件不存在: {wav_path}")
         return [{'text': '', 'chunks': []}]
@@ -175,13 +177,16 @@ def call_modelscope_asr_word(wav_path, language=None):
     url = f"{asr_base}/asr_word"
     logger.info(f"调用远程 ASR(词级): {url}  wav={wav_path}")
 
-    # 读入内存（OSS 源不落盘），以 BytesIO 流式 multipart 上传远程 ASR
-    wav_bytes = read_bytes(wav_path)
+    # 流式读取（本地 open / OSS StreamingBody），按块传入 multipart，不整文件进内存
     with _asr_semaphore:
-        files = {"file": (basename(wav_path), io.BytesIO(wav_bytes), "audio/wav")}
-        t0 = time.time()
-        resp = requests.post(url, files=files, timeout=asr_timeout)
-        elapsed = time.time() - t0
+        stream = open_stream(wav_path)
+        try:
+            files = {"file": (basename(wav_path), stream, "audio/wav")}
+            t0 = time.time()
+            resp = requests.post(url, files=files, timeout=asr_timeout)
+            elapsed = time.time() - t0
+        finally:
+            stream.close()
 
     if resp.status_code != 200:
         raise RuntimeError(

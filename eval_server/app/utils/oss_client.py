@@ -148,6 +148,7 @@ class OSSClient:
         """将 oss:// 对象读入内存（不落盘）。
 
         limit 指定后只读前 limit 字节（boto3 Range 请求，用于读 wav 头等场景）。
+        大文件请用 open_stream 流式读取，避免整对象进内存。
         """
         self._ensure_init()
         bucket, full_key, _, _ = self._split_oss_path(oss_path)
@@ -156,6 +157,19 @@ class OSSClient:
             kwargs['Range'] = f'bytes=0-{max(0, int(limit) - 1)}'
         body = self._client.get_object(Bucket=bucket, Key=full_key, **kwargs)['Body']
         return body.read()
+
+    def open_stream(self, oss_path: str, limit: int = None):
+        """打开 oss:// 对象的流式读取句柄（boto3 StreamingBody，不整对象进内存）。
+
+        可作文件对象传给 requests multipart 等按块读取的场景；
+        使用后需调用 close()。
+        """
+        self._ensure_init()
+        bucket, full_key, _, _ = self._split_oss_path(oss_path)
+        kwargs = {}
+        if limit:
+            kwargs['Range'] = f'bytes=0-{max(0, int(limit) - 1)}'
+        return self._client.get_object(Bucket=bucket, Key=full_key, **kwargs)['Body']
 
     def upload_bytes(self, data: bytes, oss_path: str) -> str:
         """将字节上传为 oss://{category}/{key}，返回 oss:// 引用。
@@ -167,6 +181,18 @@ class OSSClient:
         full = oss_path if oss_path.startswith(_SCHEME_OSS) else f'{_SCHEME_OSS}{oss_path.lstrip("/")}'
         bucket, full_key, _, _ = self._split_oss_path(full)
         self._client.put_object(Bucket=bucket, Key=full_key, Body=data)
+        return full
+
+    def upload_stream(self, fileobj, oss_path: str) -> str:
+        """将文件对象流式上传为 oss://{category}/{key}，返回 oss:// 引用。
+
+        用 boto3 upload_fileobj 分块流式传输（大对象自动 multipart），
+        不整文件进内存；小对象单次 PUT。fileobj 需支持 seek/read。
+        """
+        self._ensure_init()
+        full = oss_path if oss_path.startswith(_SCHEME_OSS) else f'{_SCHEME_OSS}{oss_path.lstrip("/")}'
+        bucket, full_key, _, _ = self._split_oss_path(full)
+        self._client.upload_fileobj(fileobj, bucket, full_key)
         return full
 
     def upload_file(self, local_path: str, oss_path: str) -> str:

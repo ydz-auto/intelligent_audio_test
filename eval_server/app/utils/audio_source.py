@@ -8,10 +8,9 @@
 
 存储后端可配置（eval_server/.env / config.yaml）：
     - UPLOAD_STORAGE: multipart 上传的二进制文件去向（local / oss / auto）
-    - OSS_RESOLVE_MODE: 计算时对 oss:// 引用的处理（download 下载到本地 / stream 内存直读）
+    - OSS_RESOLVE_MODE: 计算时对 oss:// 引用的处理（download 下载到本地 / stream 流式直读不落盘）
     - AUDIO_OSS_CATEGORY: oss 上传使用的 category（默认 audios）
 """
-import io
 import os
 import time
 import logging
@@ -71,9 +70,15 @@ def read_bytes(path, limit: int = None) -> bytes:
 
 
 def open_stream(path):
-    """返回引用内容的文件对象（oss:// → BytesIO；本地路径 → 原文件对象）。"""
+    """返回引用内容的流式文件对象（不整文件进内存）。
+
+    - 本地路径：直接 open（按块读）
+    - oss:// 引用：返回 boto3 StreamingBody（get_object 流式读）
+    使用后调用方负责 close()。
+    """
     if is_oss_ref(path):
-        return io.BytesIO(read_bytes(path))
+        from .oss_client import oss_client
+        return oss_client.open_stream(path)
     return open(path, 'rb')
 
 
