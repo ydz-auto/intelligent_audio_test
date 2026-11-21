@@ -84,12 +84,12 @@ describe('spl-api 真实接口（INT-649）', () => {
   })
 
   describe('fetchSplMappings', () => {
-    it('GET /spl 带 page=1&per_page=1000，items 映射 camelCase', async () => {
+    it('GET /spl 带 page=1&per_page=200，items 映射 camelCase', async () => {
       queueResponses(
         jsonResponse({
           success: true,
           code: 0,
-          data: { items: [SPL_ITEM], total: 1, page: 1, per_page: 1000, pages: 1 },
+          data: { items: [SPL_ITEM], total: 1, page: 1, per_page: 200, pages: 1 },
         })
       )
       const rows = await fetchSplMappings()
@@ -109,7 +109,7 @@ describe('spl-api 真实接口（INT-649）', () => {
         },
       })
       const [url, init] = lastCall()
-      expect(url).toBe(`${API_BASE_URL}/spl?page=1&per_page=1000`)
+      expect(url).toBe(`${API_BASE_URL}/spl?page=1&per_page=200`)
       expect(init.method).toBe('GET')
     })
   })
@@ -135,7 +135,7 @@ describe('spl-api 真实接口（INT-649）', () => {
   })
 
   describe('fetchPlaybackDeviceRefs', () => {
-    it('GET /playback-devices 带 per_page=1000，items 映射 PlaybackDeviceRef', async () => {
+    it('GET /playback-devices 带 per_page=200，items 映射 PlaybackDeviceRef', async () => {
       queueResponses(
         jsonResponse({
           success: true,
@@ -155,7 +155,7 @@ describe('spl-api 真实接口（INT-649）', () => {
         { id: 2, name: '音箱90°', model: 'RME Fireface 802', deviceType: 'noise' },
       ])
       const [url] = lastCall()
-      expect(url).toBe(`${API_BASE_URL}/playback-devices?page=1&per_page=1000`)
+      expect(url).toBe(`${API_BASE_URL}/playback-devices?page=1&per_page=200`)
     })
   })
 

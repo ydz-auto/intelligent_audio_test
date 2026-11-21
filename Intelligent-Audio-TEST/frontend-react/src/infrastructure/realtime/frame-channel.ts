@@ -11,7 +11,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { RealtimeFrame } from '@/domain/models/testExecution'
 import { frameFromDto } from '@/infrastructure/adapters/frameEventAdapter'
 import type { FrameEventDto } from '@/infrastructure/dto/frame.dto'
-import { SSE_EVENT_CHANNELS, subscribeSse } from '@/infrastructure/realtime/sse'
+import { SSE_EVENT_CHANNELS } from '@/infrastructure/realtime/sse'
+import { subscribeSharedSse } from '@/infrastructure/realtime/sse-bus'
 
 /**
  * 订阅 Realtime frame 增量（websocket_api 设备选中时启用）。
@@ -26,7 +27,7 @@ export function useRealtimeFrameStream(enabled: boolean, taskId: number): Realti
     setFrames([])
     seenRef.current.clear()
     if (!enabled) return
-    const unsubscribe = subscribeSse({
+    const unsubscribe = subscribeSharedSse({
       channels: [SSE_EVENT_CHANNELS.REPORT_EVENTS],
       onEvent: (event) => {
         if (event.eventType !== 'realtime_frame') return

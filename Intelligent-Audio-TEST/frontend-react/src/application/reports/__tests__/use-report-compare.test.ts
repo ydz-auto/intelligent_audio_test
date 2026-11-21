@@ -1,6 +1,6 @@
 /**
  * waitForReportGenerated 单测（INT-935 异步生成 SSE 等待）。
- * mock infrastructure/realtime/sse 的 subscribeSse，直接驱动 onEvent 断言
+ * mock infrastructure/realtime/sse-bus 的 subscribeSharedSse，直接驱动 onEvent 断言
  * 匹配/失败/超时/取消四类路径。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +11,7 @@ const sseState = vi.hoisted(() => {
   return {
     handlers,
     unsubscribe,
-    subscribeSse: vi.fn((options: { onEvent: (event: { eventType: string; data: unknown }) => void }) => {
+    subscribeSharedSse: vi.fn((options: { onEvent: (event: { eventType: string; data: unknown }) => void }) => {
       handlers.push(options.onEvent)
       return unsubscribe
     }),
@@ -28,7 +28,10 @@ vi.mock('@/infrastructure/realtime/sse', () => ({
     REPORT_EVENTS: 'report_events',
     CONFIG_EVENTS: 'config_events',
   },
-  subscribeSse: sseState.subscribeSse,
+}))
+
+vi.mock('@/infrastructure/realtime/sse-bus', () => ({
+  subscribeSharedSse: sseState.subscribeSharedSse,
 }))
 
 import { waitForReportGenerated } from '@/application/reports/use-report-compare'
@@ -42,7 +45,7 @@ function emit(eventType: string, data: unknown): void {
 describe('waitForReportGenerated', () => {
   beforeEach(() => {
     sseState.handlers.length = 0
-    sseState.subscribeSse.mockClear()
+    sseState.subscribeSharedSse.mockClear()
     unsubscribe.mockClear()
   })
 

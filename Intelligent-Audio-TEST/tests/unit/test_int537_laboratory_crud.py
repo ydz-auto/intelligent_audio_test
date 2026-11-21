@@ -320,11 +320,13 @@ class TestLaboratoryQueryService:
         repo.create({'code': 'LAB-A-01', 'name': '音频测试实验室1',
                      'building': 'A栋', 'floor': '2楼', 'room_number': '201',
                      'description': '主实验室', 'status': 'active'})
-        # counts 已就绪（INT-655 proto 落地 lab_id 过滤）→ 置零断言，避免依赖实机 gRPC
+        # 批量计数已就绪（性能热修：list 走 batch_counts，避免依赖实机 gRPC）→ 置零断言
         monkeypatch.setattr(
-            LaboratoryResourceReadModel, 'counts',
-            staticmethod(lambda lab_id_: {
-                'device_count': 0, 'playback_device_count': 0, 'test_case_count': 0}))
+            LaboratoryResourceReadModel, 'batch_counts',
+            staticmethod(lambda lab_ids: {
+                str(lab_id): {
+                    'device_count': 0, 'playback_device_count': 0, 'test_case_count': 0}
+                for lab_id in lab_ids}))
         get_db_session().commit()
         remove_db_session()
         set_current_request(_fake_request(query={'page': '1', 'per_page': '20'}))

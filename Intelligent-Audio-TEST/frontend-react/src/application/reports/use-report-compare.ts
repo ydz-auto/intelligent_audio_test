@@ -17,9 +17,9 @@ import {
   type SecondaryCompareResult,
 } from '@/infrastructure/api/reports-api'
 import {
-  subscribeSse,
   SSE_EVENT_CHANNELS,
 } from '@/infrastructure/realtime/sse'
+import { subscribeSharedSse } from '@/infrastructure/realtime/sse-bus'
 
 /** 异步生成等待键：taskId（generate-task/regenerate）或 reportKey（secondary-compare） */
 export interface ReportGeneratedWaitKey {
@@ -87,7 +87,7 @@ export function waitForReportGenerated(
 
     timeoutId = setTimeout(() => fail('报告生成超时，请稍后重试'), timeoutMs)
 
-    unsubscribe = subscribeSse({
+    unsubscribe = subscribeSharedSse({
       channels: [SSE_EVENT_CHANNELS.REPORT_EVENTS],
       onStatusChange: (status) => {
         if (status === 'open') onOpen?.()

@@ -72,8 +72,10 @@ interface PaginatedDto<T> {
   pages: number
 }
 
-/** 列表全量拉取参数（筛选/分页前端做；对照 Vue BATCH_LIST_PARAMS） */
-const LIST_ALL_PARAMS = { page: 1, per_page: 1000 }
+/** 列表全量拉取参数（筛选/分页前端做；对照 Vue BATCH_LIST_PARAMS）。
+ *  性能热修：per_page 1000→200——设备/播放设备规模远小于 200，避免整页 1000 行
+ *  请求在 HTTP/1.1 连接池中与 SSE/其他接口抢占连接（跨机 gRPC 单次往返约 300ms）。 */
+const LIST_ALL_PARAMS = { page: 1, per_page: 200 }
 
 /** 扫描结果行（device.py DeviceScanItem / playback.py PlaybackScanItem，snake_case 直出） */
 export interface ScannedDeviceRowDto {
