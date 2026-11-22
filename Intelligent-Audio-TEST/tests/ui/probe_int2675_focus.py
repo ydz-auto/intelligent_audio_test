@@ -82,7 +82,7 @@ class Probe:
         # React 深色走 html.dark / data-theme（INT-1854 smoke 口径同款按钮在设置页；这里直接置类）
         page.evaluate(
             "(d)=>{const el=document.documentElement;el.classList.toggle('dark',d);"
-            "el.setAttribute('data-theme', d?'dark':'light');", dark)
+            "el.setAttribute('data-theme', d?'dark':'light');}", dark)
         page.wait_for_timeout(600)
 
 
@@ -671,9 +671,50 @@ def run_states(p, page, ctx):
         p2.close()
 
 
+# ───────────── dark：关键页深色截图 ─────────────
+def run_dark(p, page, report_id, task_id):
+    p.toggle_theme(page, True)
+    # 报告具体用例
+    page.goto(p.base + '/report/%d' % report_id, wait_until='domcontentloaded')
+    page.wait_for_selector("text=具体用例对比", timeout=60000)
+    page.wait_for_timeout(2500)
+    p.toggle_theme(page, True)
+    page.locator("text=具体用例对比").first.scroll_into_view_if_needed()
+    page.wait_for_timeout(800)
+    page.screenshot(path=os.path.join(ART, '20_report_dark.png'))
+    # 设备监控
+    page.goto(p.base + '/devices/test', wait_until='domcontentloaded')
+    page.wait_for_timeout(3500)
+    try:
+        page.locator("button", has_text='监控告警').first.click()
+        page.wait_for_timeout(2000)
+        t = page.get_by_role('tab', name='历史监控')
+        if t.count() > 0:
+            t.first.click()
+            page.wait_for_timeout(3000)
+        p.toggle_theme(page, True)
+        page.locator("text=统计分析").first.scroll_into_view_if_needed()
+        page.wait_for_timeout(1200)
+    except Exception as e:
+        print('dark device err', e, flush=True)
+    page.screenshot(path=os.path.join(ART, '33_devices_dark.png'))
+    # 重执行弹窗
+    page.goto(p.base + '/tasks/%d' % task_id, wait_until='domcontentloaded')
+    page.wait_for_timeout(3000)
+    b = page.locator("button", has_text='重新执行')
+    if b.count() > 0:
+        b.first.click()
+        page.wait_for_timeout(1500)
+        page.get_by_text('手动选择用例', exact=True).last.click()
+        page.wait_for_timeout(2000)
+        p.toggle_theme(page, True)
+        page.screenshot(path=os.path.join(ART, '53_reexecute_dialog_dark.png'))
+    p.check('深色截图完成', True, '20_report_dark / 33_devices_dark / 53_reexecute_dialog_dark')
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('mode', choices=['report', 'device', 'perf', 'tasks', 'states'])
+    ap.add_argument('mode', choices=['report', 'device', 'perf', 'tasks', 'states', 'dark'])
     ap.add_argument('--base', default='http://localhost:15173')
     ap.add_argument('--api', default='http://127.0.0.1:15000')
     ap.add_argument('--report-id', type=int, default=426)
@@ -701,9 +742,14 @@ def main():
                 run_tasks(p, page, args.task_id)
             elif args.mode == 'states':
                 run_states(p, page, ctx)
+            elif args.mode == 'dark':
+                run_dark(p, page, args.report_id, args.task_id)
             else:
                 run_perf(p, page)
         finally:
+            import traceback
+            if sys.exc_info()[0] is not None:
+                traceback.print_exc()
             summary = {'checks': p.checks}
             with open(os.path.join(ART, 'summary_%s.json' % args.mode), 'w',
                       encoding='utf-8') as f:
