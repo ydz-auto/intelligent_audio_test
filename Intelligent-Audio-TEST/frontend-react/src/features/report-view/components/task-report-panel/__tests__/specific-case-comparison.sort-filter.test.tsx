@@ -131,4 +131,12 @@ describe('具体用例对比排序 Select 溢出策略（资源/评估维度）'
     await screen.findByRole('option', { name: '回复时拒识恢复行为数量' })
     expect(document.querySelector('[data-slot="select-content"]')).toHaveClass('min-w-72')
   })
+
+  it('排序方式/资源触发器回显中文选项名，不暴露原始 value（INT-2676）', () => {
+    renderPanel()
+    const triggers = screen.getAllByRole('combobox')
+    // sortBy='metric' → 「按评估维度」；资源未筛选 → 「全部资源(平均)」
+    expect(triggers[1]).toHaveTextContent('按评估维度')
+    expect(triggers[2]).toHaveTextContent('全部资源(平均)')
+  })
 })

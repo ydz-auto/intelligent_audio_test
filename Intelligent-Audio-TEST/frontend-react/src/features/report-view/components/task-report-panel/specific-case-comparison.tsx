@@ -52,7 +52,10 @@ import {
 } from '@/components/ui/tabs'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
-import { useReportCases } from '@/application/report-view/use-report-cases'
+import {
+  useReportCases,
+  type CaseFilters,
+} from '@/application/report-view/use-report-cases'
 import {
   caseResourceKeys,
   resultTypeText,
@@ -146,6 +149,22 @@ const VIEW_LABELS: Record<ReportCaseView, string> = {
 /** 状态筛选哨兵值（照任务详情「关联用例」全部状态口径） */
 const STATUS_FILTER_ALL = 'all'
 
+/** 资源排序哨兵值：全部资源（平均） */
+const SORT_RESOURCE_ALL = 'all'
+
+/**
+ * 排序方式选项：Select 根 items 与弹层共用同一份，
+ * 让 Base UI SelectValue 用中文 label 回显（否则回退显示 name/createdat/metric 原始 value）。
+ */
+const SORT_BY_OPTIONS: Array<{
+  value: NonNullable<CaseFilters['sortBy']>
+  label: string
+}> = [
+  { value: 'name', label: '按名称' },
+  { value: 'createdat', label: '按创建时间' },
+  { value: 'metric', label: '按评估维度' },
+]
+
 /** 结果状态筛选选项（匹配 overallStatusOf 归一值） */
 const CASE_RESULT_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: STATUS_FILTER_ALL, label: '全部状态' },
@@ -171,6 +190,14 @@ export function SpecificCaseComparison({
   isExporting?: boolean
 }) {
   const fallbackCases = report.summary.cases ?? []
+  /** 资源下拉选项（首项「全部资源(平均)」+ 报告实际资源）：items 与弹层共用，保证触发器中文回显 */
+  const sortResourceOptions = useMemo(
+    () => [
+      { value: SORT_RESOURCE_ALL, label: '全部资源(平均)' },
+      ...report.summary.resources.map((r) => ({ value: r, label: r })),
+    ],
+    [report.summary.resources]
+  )
   const {
     filters,
     setFilters,
@@ -946,14 +973,17 @@ export function SpecificCaseComparison({
                   onValueChange={(v) =>
                     setFilters({ ...filters, sortBy: v as typeof filters.sortBy })
                   }
+                  items={SORT_BY_OPTIONS}
                 >
                   <SelectTrigger className='h-8 flex-1 text-xs'>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='name'>按名称</SelectItem>
-                    <SelectItem value='createdat'>按创建时间</SelectItem>
-                    <SelectItem value='metric'>按评估维度</SelectItem>
+                    {SORT_BY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Button
@@ -982,18 +1012,20 @@ export function SpecificCaseComparison({
                 <div>
                   <label className='text-muted-foreground mb-1 block text-xs'>资源</label>
                   <Select
-                    value={filters.sortResource ?? 'all'}
+                    value={filters.sortResource ?? SORT_RESOURCE_ALL}
                     onValueChange={(v) =>
-                      setFilters({ ...filters, sortResource: v === 'all' || v === null ? undefined : v })
+                      setFilters({ ...filters, sortResource: v === SORT_RESOURCE_ALL || v === null ? undefined : v })
                     }
+                    items={sortResourceOptions}
                   >
                     <SelectTrigger className='h-8 w-full min-w-0 text-xs'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className='min-w-64'>
-                      <SelectItem value='all'>全部资源(平均)</SelectItem>
-                      {report.summary.resources.map((r) => (
-                        <SelectItem key={r} value={r}>{r}</SelectItem>
+                      {sortResourceOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

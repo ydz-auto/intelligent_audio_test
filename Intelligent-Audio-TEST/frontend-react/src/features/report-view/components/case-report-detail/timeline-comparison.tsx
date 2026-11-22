@@ -49,6 +49,11 @@ export function TimelineComparison({
       ...timeline.resultSegments.map((s) => s.resource ?? '').filter(Boolean),
     ]),
   ]
+  /** 资源选项：value 保持「全部」哨兵，label 用中文「全部资源」，items 与弹层共用保证触发器回显 */
+  const resourceOptions = resources.map((r) => ({
+    value: r,
+    label: r === '全部' ? '全部资源' : r,
+  }))
 
   const maxDuration = timeline.effectiveDuration * scale
 
@@ -71,13 +76,13 @@ export function TimelineComparison({
       </div>
 
       <div className='flex flex-wrap items-center gap-2'>
-        <Select value={resource} onValueChange={(v) => setResource(v ?? '')}>
+        <Select value={resource} onValueChange={(v) => setResource(v ?? '')} items={resourceOptions}>
           <SelectTrigger className='h-8 w-44 text-xs'>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {resources.map((r) => (
-              <SelectItem key={r} value={r}>{r === '全部' ? '全部资源' : r}</SelectItem>
+            {resourceOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
