@@ -163,8 +163,16 @@ function buildRoundTabs(
   extraRounds: Array<number | null | undefined>
 ): CaseRoundTab[] {
   const allPoints = devices.flatMap((d) => d.metrics)
-  const hasRoundTag = allPoints.some((p) => p.round != null)
-  if (!hasRoundTag) {
+  // 维度逐轮评估的轮次（round_number 非空）
+  const metricRounds = [
+    ...new Set(allPoints.filter((p) => p.round != null).map((p) => p.round as number)),
+  ].sort((a, b) => a - b)
+  // 轮次轴 = 维度轮次 ∪ 结果字段/参考音频/algorithm_results 的轮次标记
+  // （多轮用例的维度可能是整体评估，此时轮次只能从结果字段提取，不能退化成单「指标」Tab）
+  const rounds = [
+    ...new Set([...metricRounds, ...extraRounds.filter((r): r is number => r != null)]),
+  ].sort((a, b) => a - b)
+  if (rounds.length === 0) {
     return [
       {
         key: 'all',
@@ -176,25 +184,23 @@ function buildRoundTabs(
     ]
   }
 
-  const rounds = [
-    ...new Set([
-      ...allPoints.filter((p) => p.round != null).map((p) => p.round as number),
-      ...extraRounds.filter((r): r is number => r != null),
-    ]),
-  ].sort((a, b) => a - b)
-
   const tabs: CaseRoundTab[] = rounds.map((round) => ({
     key: `round:${round}`,
     label: `第${round}轮`,
     round,
     kind: 'round',
-    rows: buildMetricRows(devices, metricConfigs, (r) => r === round),
+    // 维度无逐轮数据时（整体评估），各轮 Tab 复用同一份整体指标行，避免空表
+    rows: buildMetricRows(
+      devices,
+      metricConfigs,
+      metricRounds.length > 0 ? (r) => r === round : () => true
+    ),
   }))
 
-  // 「整体」无评估数据时不显示（照 V9.7.10 tabHasMetricData）
+  // 「整体」仅在维度确有整体评估值、且存在逐轮维度时出现（照 V9.7.10 tabHasMetricData）
   const overallPoints = allPoints.filter((p) => p.round == null)
   const hasOverallData = overallPoints.some((p) => p.value !== '—')
-  if (hasOverallData) {
+  if (hasOverallData && metricRounds.length > 0) {
     tabs.push({
       key: 'overall',
       label: '整体',
@@ -204,6 +210,12 @@ function buildRoundTabs(
     })
   }
   return tabs
+}
+
+/** param_code 的 `@round:{n}` 后缀 → 轮次（1 起）；无后缀返回 null */
+function roundFromParamCode(code: string | null | undefined): number | null {
+  const matched = code?.match(/@round:(\d+)$/i)
+  return matched ? Number(matched[1]) : null
 }
 
 /**
@@ -437,6 +449,16 @@ export function caseDetailFromDto(
   const resultAudios = buildResultAudios(dto, resultRows)
   const resultAudioFields = buildResultAudioFields(dto, resultRows)
   const referenceAudios = buildReferenceAudios(dto)
+  const algorithmResults = (dto.algorithm_results ?? []).map((r) => ({
+    paramCode: r.param_code,
+    paramType: r.param_type ?? undefined,
+    label: r.label ?? undefined,
+    roundNumber: r.round_number ?? undefined,
+    dimensionName: r.dimension_name ?? undefined,
+    device: r.device ?? undefined,
+    value: r.value,
+    rounds: r.rounds,
+  }))
 
   return {
     caseId: dto.test_case_id,
@@ -449,22 +471,15 @@ export function caseDetailFromDto(
     duration: dto.duration ?? null,
     score: dto.score,
     algorithmType: dto.algorithm_type ?? null,
-    algorithmResults: (dto.algorithm_results ?? []).map((r) => ({
-      paramCode: r.param_code,
-      paramType: r.param_type ?? undefined,
-      label: r.label ?? undefined,
-      roundNumber: r.round_number ?? undefined,
-      dimensionName: r.dimension_name ?? undefined,
-      device: r.device ?? undefined,
-      value: r.value,
-      rounds: r.rounds,
-    })),
+    algorithmResults,
     metricConfigs,
-    // 轮次 Tab 也吸收结果字段（algorithm_results 的 audio_file 项）/ 参考音频出现的轮次
-    // （照 V9.7.10 roundTabs 从指标 key + 字段提取轮次）
+    // 轮次 Tab 吸收结果字段（algorithm_results 的 @round 标记）/ 参考音频 / 参考参数的轮次
+    // （照 V9.7.10 roundTabs 从指标 key + 字段提取轮次；多轮用例维度可能整体评估）
     roundTabs: buildRoundTabs(devices, metricConfigs, [
       ...resultAudioFields.map((a) => a.round),
       ...referenceAudios.map((a) => a.round),
+      ...algorithmResults.flatMap((r) => [r.roundNumber ?? null, roundFromParamCode(r.paramCode)]),
+      ...Object.keys(dto.reference_params ?? {}).map(roundFromParamCode),
     ]),
     devices,
     targets,

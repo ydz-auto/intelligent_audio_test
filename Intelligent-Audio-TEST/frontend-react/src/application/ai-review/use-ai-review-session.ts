@@ -1,23 +1,27 @@
 /**
  * 复核会话编排 hook（application/ai-review，19 规范 §5.2/§5.4/§5.9，INT-1064）。
- * 灵犀Agent 复核会话（内嵌 Dialog）：复用 ai-chat 会话引擎（模型/供应商切换 + 消息渲染 +
- * 流式/追问），但**独立会话 scope**——数据存 agentReviewSessionStore（键
- * `iatp:ai-chat:v1:review:{taskId}:{caseId}`），不写入全局主会话；关闭即释放。
- * 打开时预填复核上下文（§5.3：首条 assistant 摘要卡）+ 首条用户指令（预填可编辑）；
+ * 灵犀Agent 复核会话（内嵌 Dialog）：与 /ai-chat 同一条平台 Agent 通道、同一份服务端
+ * 模型供应商配置（模型/供应商切换器同源），但**独立有界会话**——每个用例一份内存态
+ * 会话（ephemeral chat session + 独立 run store），不写主会话、关闭重开即新会话。
+ * 打开时以「复核上下文摘要卡」呈现上下文（§5.3）+ 首条用户指令预填（可编辑）；
  * 多轮追问 →「保存复核结论」落位 ai_reviews（真实端点）→ 采纳/驳回闭环（§5.5）。
  */
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
-import { useAiChatSession } from '@/infrastructure/stores/aiChatSessionStore'
 import {
-  agentReviewSessionKey,
-  useAgentReviewSessionStore,
-} from '@/infrastructure/stores/agentReviewSessionStore'
-import { useLlmProviders } from '@/features/ai-chat/hooks/use-llm-providers'
+  createAgentRunStore,
+  type AgentRunStore,
+} from '@/application/agent/agent-run-store'
+import { CHAT_CHANNEL } from '@/domain/models/aiChat'
+import { createEphemeralAiChatPrefs } from '@/infrastructure/storage/aiChatPrefs'
+import {
+  createAiChatSessionStore,
+  useAiChatSession,
+  type AiChatSessionStore,
+} from '@/infrastructure/stores/aiChatSessionStore'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
 import { useChatConversation } from '@/features/ai-chat/hooks/use-chat-conversation'
-import { DEFAULT_CONFIG } from '@/features/ai-chat/constants'
 
 import { useAiReview } from '@/application/ai-review/use-ai-review'
 import { useAiReviewContext } from '@/application/ai-review/use-ai-review-context'
@@ -26,6 +30,25 @@ import {
   buildReviewSystemPrompt,
   REVIEW_INITIAL_PROMPT,
 } from '@/features/ai-review/constants'
+
+/** 单个复核 scope 的运行态（内存态；关窗即弃，不落 localStorage） */
+type ReviewSessionStores = {
+  chat: AiChatSessionStore
+  run: AgentRunStore
+}
+
+/** scope（taskId:caseId）→ 会话；同 scope 的多次打开共用一份（打开边沿再清空） */
+const reviewSessionStores = new Map<string, ReviewSessionStores>()
+
+function getReviewSessionStores(scopeKey: string): ReviewSessionStores {
+  let stores = reviewSessionStores.get(scopeKey)
+  if (!stores) {
+    const chat = createAiChatSessionStore(createEphemeralAiChatPrefs())
+    stores = { chat, run: createAgentRunStore(chat) }
+    reviewSessionStores.set(scopeKey, stores)
+  }
+  return stores
+}
 
 export function useAiReviewSession({
   taskId,
@@ -36,28 +59,13 @@ export function useAiReviewSession({
   taskId: number
   caseId: string
   open: boolean
-  /** INT-1279：用例评估维度 id（保存复核结论显式传 dimension_ids，真实库无 LLM 判分维度时不 400） */
+  /** INT-1279：用例评估维度 id（保存复核结论显式传 dimension_ids，真实库结果无 LLM 判分维度时不 400） */
   dimensionIds?: number[]
 }) {
   const navigate = useNavigate()
-  const scopeKey = agentReviewSessionKey(taskId, caseId)
-  const session = useAgentReviewSessionStore((s) => s.sessions[scopeKey])
-  const config = session?.config ?? DEFAULT_CONFIG
-  const messages = session?.messages ?? []
-  const updateMessages = useAgentReviewSessionStore((s) => s.updateMessages)
-  const updateConfig = useAgentReviewSessionStore((s) => s.updateConfig)
-  const resetSession = useAgentReviewSessionStore((s) => s.resetSession)
-
-  const {
-    providers,
-    addProvider,
-    updateProvider,
-    removeProvider,
-    setDefaultProvider,
-    defaultProvider,
-    testConnection,
-    fetchModels,
-  } = useLlmProviders()
+  const stores = getReviewSessionStores(`${taskId}:${caseId}`)
+  const config = stores.chat((s) => s.config)
+  const messages = stores.chat((s) => s.messages)
   const [providerManagerOpen, setProviderManagerOpen] = useState(false)
   const [draftText, setDraftText] = useState('')
 
@@ -65,44 +73,28 @@ export function useAiReviewSession({
   const ai = useAiReview(taskId, caseId)
   const context = contextQuery.context
 
-  /** 当前会话供应商（config.providerId 命中或默认；§3.11 Demo 直连驱动对话） */
-  const currentProvider =
-    providers.find((p) => p.id === config.providerId) ??
-    defaultProvider ??
-    null
-
-  /** 打开时重置状态机 + 每次打开为全新有界会话（§5.2 关闭即释放；scope 独立不残留）。
-   * 必须先于配置即用 effect：打开瞬间清空该 scope，再由配置 effect 落位模型/供应商。 */
+  /** 打开时重置状态机 + 每次打开为全新有界会话（§5.2 关闭即释放；scope 独立不残留）。 */
   const wasOpenRef = useRef(open)
   useEffect(() => {
     if (open && !wasOpenRef.current) {
-      resetSession(taskId, caseId)
+      stores.chat.getState().clearMessages()
+      stores.run.getState().reset()
       ai.reset()
       setDraftText('')
     }
     wasOpenRef.current = open
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, taskId, caseId])
+  }, [open, stores])
 
-  /** 配置即用（§3.11/INT-1032 走查口径）：供应商带模型而会话未选模型/所选模型已不在
-   * 清单时自动落首个模型——与 /ai-chat 整页同口径。仅在会话打开且 scope 就绪后生效。 */
-  useEffect(() => {
-    if (!open || !caseId) return
-    if (!currentProvider) return
-    const modelValid = currentProvider.models.includes(config.modelId ?? '')
-    if (currentProvider.models.length > 0 && !modelValid) {
-      updateConfig(taskId, caseId, 'providerId', currentProvider.id)
-      updateConfig(taskId, caseId, 'modelId', currentProvider.models[0])
-    }
-  }, [currentProvider, config.modelId, taskId, caseId, updateConfig, open])
-
-  const { sendChat, stopGeneration, isGenerating } = useChatHandler({
+  const { sendChat, stopGeneration, isGenerating, resetChat } = useChatHandler({
     config,
-    provider: currentProvider,
     messages,
-    // §5.3 复核上下文作为系统提示注入（首条 assistant 摘要卡由 AiReviewContextCard 结构化渲染）
-    systemPrompt: context ? buildReviewSystemPrompt(context) : undefined,
-    onMessageUpdate: (updater) => updateMessages(taskId, caseId, updater),
+    // 平台 Agent 通道：模型/供应商走服务端「模型供应商」（与 /ai-chat 统一），
+    // 复核上下文按本轮请求前缀注入（平台通道无 system 消息位）。
+    channel: CHAT_CHANNEL.PLATFORM,
+    runStore: stores.run,
+    requestPrefix: context ? buildReviewSystemPrompt(context) : null,
+    onMessageUpdate: (updater) => stores.chat.getState().updateMessages(updater),
   })
   const {
     editingMessageKey,
@@ -116,7 +108,7 @@ export function useAiReviewSession({
     handleUndoMessage,
   } = useChatConversation({
     messages,
-    updateMessages: (updater) => updateMessages(taskId, caseId, updater),
+    updateMessages: (updater) => stores.chat.getState().updateMessages(updater),
     sendChat,
   })
 
@@ -179,7 +171,8 @@ export function useAiReviewSession({
       }
       return [contextMsg, ...prev, ...messages.filter((m) => !existingKeys.has(m.key))]
     })
-    resetSession(taskId, caseId)
+    stores.chat.getState().clearMessages()
+    stores.run.getState().reset()
     ai.reset()
     // 预填指令由 ai-chat 整页按 URL 契约生成（§3.7 reviewTask/reviewCase）
     void navigate({
@@ -191,16 +184,20 @@ export function useAiReviewSession({
     })
   }
 
+  /** 供应商/模型切换写入有界会话 config（下一次 run 下发；与 /ai-chat 同口径） */
   const handleSelectProvider = (providerId: string) => {
-    updateConfig(taskId, caseId, 'providerId', providerId)
+    const chat = stores.chat.getState()
+    chat.updateConfig('providerId', providerId)
+    // 换供应商后清空模型：由新供应商的默认模型生效，避免沿用上一家的模型名
+    chat.updateConfig('modelId', undefined)
   }
-  const handleSelectModel = (providerId: string, modelId: string) => {
-    updateConfig(taskId, caseId, 'providerId', providerId)
-    updateConfig(taskId, caseId, 'modelId', modelId)
+  const handleSelectModel = (modelId: string) => {
+    stores.chat.getState().updateConfig('modelId', modelId)
   }
   const handleClearMessages = () => {
     handleEditOpenChange(false)
-    updateMessages(taskId, caseId, () => [])
+    resetChat()
+    stores.chat.getState().clearMessages()
   }
 
   return {
@@ -208,13 +205,6 @@ export function useAiReviewSession({
     messages,
     draftText,
     setDraftText,
-    providers,
-    addProvider,
-    updateProvider,
-    removeProvider,
-    setDefaultProvider,
-    testConnection,
-    fetchModels,
     providerManagerOpen,
     setProviderManagerOpen,
     contextQuery,

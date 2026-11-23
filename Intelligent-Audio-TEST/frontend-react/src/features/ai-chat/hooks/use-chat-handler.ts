@@ -163,8 +163,8 @@ export function useChatHandler({
   const platformActive = isAgentRunActive(agentRun.phase)
   /**
    * 通道分流（INT-2507 返工）：平台 run 是平台通道宿主的全局态，只作用于平台通道。
-   * 评估复核弹窗（application/ai-review/use-ai-review-session）不传 channel、走供应商
-   * 通道，是独立有界会话——平台 run 在跑时不得被它禁用输入区，更不得被它取消。
+   * 评估复核弹窗（application/ai-review/use-ai-review-session）使用**自己的 run store**
+   * （独立有界会话，不注册宿主），与主对话的平台 run 互不牵连。
    */
   const isPlatformChannel = channelRef.current === CHAT_CHANNEL.PLATFORM
 

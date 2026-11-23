@@ -38,17 +38,15 @@ import type { CaseDisplaySettings } from '@/application/report-view/use-case-dis
 import { useTimelineComparison, hasTimelineData } from '@/application/report-view/use-timeline-comparison'
 import { MultiRoundResult } from '@/features/report-view/components/case-report-detail/multi-round-result'
 import { ExecutionResults } from '@/features/report-view/components/case-report-detail/execution-results'
-import { AudioTimeline } from '@/features/report-view/components/case-report-detail/audio-timeline'
 import { ALL_TARGETS } from '@/features/report-view/components/case-report-detail/target-tab-bar'
 import type { RoundTab } from '@/features/report-view/components/case-report-detail/case-report-utils'
 import { cn } from '@/lib/utils'
 
-/** ExecutionResults 子项裁剪：音频时间轴/结果音频与时间轴对比由本弹窗自行渲染
- *  （report 块内置 TimelineComparison/AudioTimeline 不重复渲染）；轮次 Tab 也由弹窗层
- *  RoundTabBar 单一轴驱动（ExecutionResults 内部轮次 Tab 条隐藏，避免双 Tab 条） */
+/** ExecutionResults 子项裁剪：时间轴对比由本弹窗自行渲染（避免双份）；音频时间轴不再隐藏，
+ *  与「报告具体用例」同源（输入音频可点击播放）；轮次 Tab 也由弹窗层 RoundTabBar 单一轴驱动 */
 const HIDE_AUDIO_DISPLAY: CaseDisplaySettings = {
   hiddenBlocks: [],
-  hiddenExecution: ['audio', 'timeline'],
+  hiddenExecution: ['timeline'],
   hiddenMetrics: [],
   hiddenRounds: [],
   hiddenResources: [],
@@ -66,12 +64,8 @@ interface CaseDetailExecutionResultsProps {
   targetDetail?: CaseExecutionDetail
   /** 用例级执行目标全量（含未执行目标）→ 设备/API 执行结果逐目标状态行 */
   targets?: CaseExecutionTarget[]
-  /** 设备/API 一级 Tab（透传给执行结果块，渲染在「执行结果」之上） */
-  targetTab?: {
-    names: string[]
-    active: string
-    onSelect: (target: string) => void
-  }
+  /** 当前选中的设备/API 目标（弹窗层 sticky Tab 已切换；用于结果块作用域收窄） */
+  activeTargetName?: string
   /** 当前轮次 Tab（弹窗既有状态；null = 数据未就绪） */
   currentTab: CaseRoundTab | null
   /** 轮次 Tab 选择（label → 弹窗 tabChoice 更新；INT-1861 复位语义在弹窗层） */
@@ -375,16 +369,19 @@ function toReportCaseItem(
   detail: CaseExecutionDetail,
   targets: CaseExecutionTarget[] = []
 ): ReportCaseItem {
-  const isMultiRound = (detail.roundTabs ?? []).some((t) => t.kind === 'round')
+  // 维度是否逐轮评估（round 非空）：仅此时指标键带轮次后缀；整体评估维度保持基础键，
+  // 避免多轮用例（轮次仅来自结果字段）把整体分误标成 @overall 后在轮次 Tab 下被过滤掉
+  const hasRoundedMetricPoints = detail.devices.some((device) =>
+    device.metrics.some((point) => point.round != null)
+  )
   const metrics: Record<string, Record<string, number>> = {}
   for (const device of detail.devices) {
     const deviceMetrics: Record<string, number> = {}
     for (const point of device.metrics) {
-      const key = isMultiRound
-        ? point.round == null
-          ? `${point.dimension}@overall`
-          : `${point.dimension}@round:${point.round}`
-        : point.dimension
+      const key =
+        hasRoundedMetricPoints && point.round != null
+          ? `${point.dimension}@round:${point.round}`
+          : point.dimension
       const num = Number(point.value)
       if (Number.isFinite(num)) deviceMetrics[key] = num
     }
@@ -408,8 +405,8 @@ function toReportCaseItem(
             resource: r.deviceName ?? r.apiName ?? `结果 ${r.id}`,
             status: r.executionStatus ?? undefined,
           })),
-    audios: (detail.resultAudios ?? []).map((a) => ({
-      audio_id: a.audioName ?? '',
+    audios: (detail.referenceAudios ?? []).map((a) => ({
+      audio_id: a.audioId ?? a.url ?? a.audioName ?? '',
       audio_name: a.audioName,
       url: a.url ?? undefined,
     })),
@@ -467,27 +464,18 @@ function toReportDetailData(detail: CaseExecutionDetail): ReportDetailData {
   }
 }
 
-/** 音频时间轴输入（用例输入音频 audio_list；V9.7.10 音频时间轴 §3.5.7 同源） */
-function toTimelineAudioItems(detail: CaseExecutionDetail) {
-  return (detail.referenceAudios ?? []).map((a) => ({
-    audio_id: a.audioName ?? '',
-    audio_name: a.audioName,
-    url: a.url ?? undefined,
-  }))
-}
-
 export function CaseDetailExecutionResults({
   detail,
   targetDetail,
   targets = [],
-  targetTab,
+  activeTargetName,
   currentTab,
   onRoundTabLabelSelect,
 }: CaseDetailExecutionResultsProps) {
   /** 评分指标以下模块的取数作用域（目标切换）；评分指标本身恒用全量 detail */
   const scoped = targetDetail ?? detail
   /** 目标切换后只留当前目标的状态行（全部对比 = 全量） */
-  const activeTarget = targetTab?.active
+  const activeTarget = activeTargetName
   const scopedTargets = useMemo(
     () =>
       activeTarget && activeTarget !== ALL_TARGETS
@@ -529,7 +517,6 @@ export function CaseDetailExecutionResults({
   }, [reportRoundTabs])
 
   const hasTimeline = useMemo(() => hasTimelineEvidence(scoped), [scoped])
-  const hasInputAudio = (scoped.referenceAudios ?? []).length > 0
 
   return (
     <div className='space-y-3'>
@@ -560,7 +547,6 @@ export function CaseDetailExecutionResults({
           setActiveRoundTab={onRoundTabLabelSelect}
           activeRoundTag={activeRoundTag}
           display={display}
-          targetTab={targetTab}
         />
 
         {/* 用例参数块由上方 ExecutionResults 独占渲染（含无数据时的块内「暂无数据」空态，
@@ -568,9 +554,6 @@ export function CaseDetailExecutionResults({
 
         {/* 时间轴对比（§3.3.9；随目标切换收窄） */}
         {hasTimeline && <TimelineCompare detail={scoped} />}
-
-        {/* 音频时间轴（§3.5.7；用例输入音频；随目标切换收窄） */}
-        {hasInputAudio && <AudioTimeline audioList={toTimelineAudioItems(scoped)} />}
       </div>
     </div>
   )

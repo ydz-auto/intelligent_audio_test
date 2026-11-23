@@ -52,6 +52,7 @@ import {
   type AudioItemMeta,
 } from '@/features/report-view/components/case-report-detail/audio-player-modal'
 import { formatResultValue } from '@/features/report-view/components/case-report-detail/case-report-utils'
+import { TargetTabBar } from '@/features/report-view/components/case-report-detail/target-tab-bar'
 import { AiReviewSessionDialog } from '@/features/ai-review/ai-review-session-dialog'
 import { ManualReviewDialog } from '@/features/tasks/components/manual-review-dialog'
 import {
@@ -494,28 +495,32 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
               </div>
               {hasExecutionData ? (
                 <div className='space-y-2'>
-                  {/* 轮次 Tab（第1轮…第N轮 + 整体）；单轮「指标」Tab 不渲染 Tab 栏；仅设备列场景 */}
-                  {hasDeviceTable && (
-                    <RoundTabBar
-                      roundTabs={roundTabs}
-                      activeTabKey={activeTabKey}
-                      onTabKeySelect={(tabKey) => setTabChoice({ caseId, tabKey })}
-                    />
+                  {/* 轮次 / 设备·API 切换条：吸顶常驻视口（sticky），滚动查看下方长内容时仍可切换；
+                      两个轴都只有单值时 Tab 栏自身不渲染，外层不占位 */}
+                  {(roundTabs.length > 1 || targetNames.length > 1) && (
+                    <div className='bg-background/95 sticky top-0 z-20 -mx-1 space-y-1 rounded-md px-1 py-1.5 backdrop-blur'>
+                      {/* 轮次 Tab（第1轮…第N轮 + 整体）；单轮「指标」Tab 不渲染 Tab 栏 */}
+                      <RoundTabBar
+                        roundTabs={roundTabs}
+                        activeTabKey={activeTabKey}
+                        onTabKeySelect={(tabKey) => setTabChoice({ caseId, tabKey })}
+                      />
+                      <TargetTabBar
+                        targetNames={targetNames}
+                        activeTarget={activeTarget}
+                        onSelect={(target) => setTargetChoice({ caseId, target })}
+                      />
+                    </div>
                   )}
                   {/* 评分指标 / 多轮对话结果 / 执行结果（参考数据、用例参数、评估结果、
                       设备·API 执行结果、时间轴对比、音频时间轴）——V9.7.10 全块（INT-2088）；
-                      评分指标恒按全量设备/API 列对比；设备/API Tab 在执行结果块之上渲染，
-                      targetDetail 收窄其下模块 */}
+                      评分指标恒按全量设备/API 列对比；targetDetail 收窄其下模块 */}
                   {scopedDetail && (
                     <CaseDetailExecutionResults
                       detail={detail}
                       targetDetail={scopedDetail}
                       targets={detail.targets}
-                      targetTab={{
-                        names: targetNames,
-                        active: activeTarget,
-                        onSelect: (target) => setTargetChoice({ caseId, target }),
-                      }}
+                      activeTargetName={activeTarget}
                       currentTab={currentTab}
                       onRoundTabLabelSelect={handleRoundLabelSelect}
                     />

@@ -1,12 +1,12 @@
 /**
  * AI 复核会话 Dialog（interfaces 层 features/ai-review；19 规范 §5.2，INT-1064）。
  * 内嵌灵犀Agent 复核会话（Dialog sm:max-w-2xl，h-[min(70dvh,640px)] 内滚）：
- * 头行 Sparkles +「AI 复核」+ Demo 徽标 +「展开到 /ai-chat」+ 关闭；
+ * 头行 Sparkles +「AI 复核」+「灵犀Agent」徽标 +「展开到 /ai-chat」+ 关闭；
  * 头行下复核上下文摘要条（§5.3）；会话区复用 AiChat compact（有界会话 scope，
- * 独立 localStorage 键 iatp:ai-chat:v1:review:{taskId}:{caseId}，不污染主会话）；
+ * 内存态不落盘、不污染主会话）；
  * 结论卡（§5.4）/ AI 复核记录卡（§5.5）+ 底栏「稍后处理」「保存复核结论」。
- * 对话走用户自配 LLM 供应商（Demo）；「保存复核结论」落位走真实后端端点
- * （POST /tasks/results/ai-review，INT-800 done）——两者分离（§3.10/§5.6）。
+ * 对话走平台统一 Agent 通道与「模型供应商」配置（与 /ai-chat 同源）；
+ * 「保存复核结论」落位走真实后端端点（POST /tasks/results/ai-review，INT-800 done）。
  */
 import { Maximize2, Sparkles, X } from 'lucide-react'
 import {
@@ -27,8 +27,7 @@ import {
 } from '@/components/ui/tooltip'
 import { AiChat } from '@/features/ai-chat/components/chat/ai-chat'
 import { AiChatInput } from '@/features/ai-chat/components/input/ai-chat-input'
-import { ProviderManager } from '@/features/ai-chat/components/input/provider-manager'
-import { DEMO_COPY } from '@/features/ai-chat/constants'
+import { AgentProviderManagerDialog } from '@/features/agent-providers/components/agent-provider-manager-dialog'
 
 import { useAiReviewSession } from '@/application/ai-review/use-ai-review-session'
 import { AiReviewContextCard } from '@/features/ai-review/ai-review-context-card'
@@ -95,13 +94,13 @@ export function AiReviewSessionDialog({
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <Badge variant='warning' className='cursor-help'>
-                      {DEMO_COPY.badge}
+                    <Badge variant='secondary' className='cursor-help'>
+                      灵犀Agent
                     </Badge>
                   }
                 />
                 <TooltipContent>
-                  <p>对话为 Demo 预览，使用你配置的 LLM 供应商；「保存复核结论」为真实 AI 复核记录</p>
+                  <p>复用平台统一「模型供应商」配置（与 /ai-chat 同源）；「保存复核结论」为真实 AI 复核记录</p>
                 </TooltipContent>
               </Tooltip>
               <div className='ms-auto flex items-center gap-0.5'>
@@ -134,7 +133,7 @@ export function AiReviewSessionDialog({
               </div>
             </div>
             <p className='text-muted-foreground text-xs'>
-              由灵犀Agent 对当前评估结果进行复核，可追问；结论供人工确认，不直接修改统计
+              由灵犀Agent 对当前评估结果进行复核，可追问；模型供应商与 /ai-chat 共用平台统一配置
             </p>
           </DialogHeader>
 
@@ -229,7 +228,7 @@ export function AiReviewSessionDialog({
             </div>
           </div>
 
-          {/* 输入区（AiChatInput compact；模型/供应商切换复用，无参数面板） */}
+          {/* 输入区（AiChatInput compact；供应商/模型切换走平台统一「模型供应商」） */}
           <div className='shrink-0 px-1 pb-1'>
             <AiChatInput
               compact
@@ -237,14 +236,15 @@ export function AiReviewSessionDialog({
               disabled={s.isGenerating}
               hasMessages={s.messages.length > 0}
               isGenerating={s.isGenerating}
+              model={s.config.modelId}
               onClearMessages={s.handleClearMessages}
               onManageProviders={() => s.setProviderManagerOpen(true)}
-              onSelectModel={s.handleSelectModel}
-              onSelectProvider={s.handleSelectProvider}
+              onModelChange={s.handleSelectModel}
+              onProviderChange={s.handleSelectProvider}
               onStop={s.stopGeneration}
               onSubmit={s.handleSendMessage}
               onValueChange={s.setDraftText}
-              providers={s.providers}
+              providerId={s.config.providerId}
               value={s.draftText}
             />
           </div>
@@ -278,17 +278,10 @@ export function AiReviewSessionDialog({
           </DialogFooter>
         </div>
 
-        {/* LLM 供应商管理（§3.11；复核会话与主会话共用同一供应商清单） */}
-        <ProviderManager
-          onAdd={s.addProvider}
-          onFetchModels={s.fetchModels}
-          onOpenChange={s.setProviderManagerOpen}
-          onRemove={s.removeProvider}
-          onSetDefault={s.setDefaultProvider}
-          onTestConnection={s.testConnection}
-          onUpdate={s.updateProvider}
+        {/* 模型供应商管理：与 /ai-chat 共用服务端统一配置（/agent-providers） */}
+        <AgentProviderManagerDialog
           open={s.providerManagerOpen}
-          providers={s.providers}
+          onOpenChange={s.setProviderManagerOpen}
         />
       </DialogContent>
     </Dialog>

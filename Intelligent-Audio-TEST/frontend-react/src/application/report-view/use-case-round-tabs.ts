@@ -190,11 +190,13 @@ export function useCaseRoundTabs(
 
   // 唯一可用轮次（Tab 栏不渲染时仍按该轮次后缀取值；无轮次标记 → null 按基础维度键）
   const activeRoundTag = useMemo(() => {
-    // 单轮用例：指标键没有任何轮次后缀 → 一律按基础维度键取值（§3.3.7「单轮用例直接展示」）
-    if (!hasRoundedMetricKeys) return null
+    // Tab 栏已渲染 → 用户所选 Tab 即当前轮次（即使该用例维度是整体评估、指标键无轮次后缀，
+    // 执行结果块仍须按所选轮次过滤，否则「第1轮/第2轮」结果字段会混在一起）
     if (roundTabs.length > 0) {
       return roundTabs.find((tab) => tab.label === activeRoundTab)?.roundTag ?? null
     }
+    // 单轮用例：指标键没有任何轮次后缀 → 一律按基础维度键取值（§3.3.7「单轮用例直接展示」）
+    if (!hasRoundedMetricKeys) return null
     if (noRoundSelected) return null
     return candidateTabs[0]?.roundTag ?? null
   }, [hasRoundedMetricKeys, roundTabs, activeRoundTab, noRoundSelected, candidateTabs])
