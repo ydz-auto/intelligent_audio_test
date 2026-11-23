@@ -14,6 +14,7 @@
 纯逻辑，不触 DB/gRPC；report_service 查询链（report_aggregation.stats_mixin）与
 报告主生成链（report_utils.metrics_mixin）共用本模块，保证两条链口径一致。
 """
+from shared.utils.number_utils import to_finite_float
 
 
 def resolve_exclude_rounds(result_id, dim_id, dim_results_map: dict, exclude_set) -> set:
@@ -46,21 +47,26 @@ def get_round_value_samples(result_id, dim_id, dim_results_map: dict, exclude_se
     """按轮次口径取样本：各轮 dimension_value（排除轮次过滤），无轮次记录回退 [fallback_score]。"""
     exclude_set = resolve_exclude_rounds(result_id, dim_id, dim_results_map, exclude_set)
     if not dim_results_map or result_id not in dim_results_map:
-        return [fallback_score]
+        fallback_value = to_finite_float(fallback_score)
+        return [] if fallback_value is None else [fallback_value]
     vals = []
     for dr in dim_results_map.get(result_id, []):
         if not isinstance(dr, dict):
             continue
         if dr.get('dimension_id') != dim_id:
             continue
-        dr_val = dr.get('dimension_value')
+        # 只丢 None/NaN/Inf，保留合法 0
+        dr_val = to_finite_float(dr.get('dimension_value'))
         dr_round = dr.get('round_number')
         if dr_val is None or dr_round is None:
             continue
         if exclude_set and dr_round in exclude_set:
             continue
         vals.append(dr_val)
-    return vals if vals else [fallback_score]
+    if vals:
+        return vals
+    fallback_value = to_finite_float(fallback_score)
+    return [] if fallback_value is None else [fallback_value]
 
 
 def collect_dim_items(result_id, dim_id, dim_results_map: dict, exclude_set) -> list:
@@ -89,7 +95,7 @@ def collect_dim_items(result_id, dim_id, dim_results_map: dict, exclude_set) -> 
             continue
         if dr.get('dimension_id') != dim_id:
             continue
-        dr_val = dr.get('dimension_value')
+        dr_val = to_finite_float(dr.get('dimension_value'))
         dr_round = dr.get('round_number')
         if dr_val is None:
             continue

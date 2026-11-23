@@ -309,6 +309,10 @@ export interface ReportAudioItem {
   url?: string
   /** 音频时长（秒；report_service audios[].duration 实测回传，播放器进度基准） */
   duration?: number
+  /** 时间轴起点（秒；report_service 按播放口径算好的 timeline_start，缺省时前端等分兜底） */
+  timelineStart?: number
+  /** 时间轴终点（秒；timeline_start + duration） */
+  timelineEnd?: number
 }
 
 /** §1.3 用例执行结果行 */

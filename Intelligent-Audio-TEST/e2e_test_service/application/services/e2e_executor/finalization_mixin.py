@@ -3,9 +3,12 @@ import copy
 
 from shared.infrastructure.base_executor import TaskStopSignal, EvaluationSubmitError
 from shared.utils.result_data_store import write_result_data_file
-from shared.utils.status_constants import ExecutionStatus
+from shared.utils.status_constants import ExecutionStatus, RESULT_TYPE_FINAL
 from e2e_test_service.domain.services import E2ECalculationService
-from e2e_test_service.infrastructure.acl import DeviceAclRepositoryImpl
+from e2e_test_service.infrastructure.acl import (
+    DeviceAclRepositoryImpl,
+    DeviceResultAclRepositoryImpl,
+)
 from shared.utils.dto_utils import dto_to_dict
 from shared.models.common_enums import DeviceType
 
@@ -41,21 +44,24 @@ class FinalizationMixin:
                           task_id=task_id, test_case_id=test_case_id)
                 continue
             device_info = device_info_by_id.get(device_key)
+            # 逐轮原始结果：保持独立，仅用于持久化 raw_results_list / 逐轮评估 / 状态收口
             device_results = list(grouped_results.get(device_key, []))
             # 该设备本轮无结果 → 该设备失败（不能沿用组级 success 强判成功）
             device_success = bool(execution_success and device_results)
             row_id = tc_rel_ids.get(device_key, tc_rel_id)
             is_last_device = device_index == len(device_keys) - 1
 
-            # 多轮且有配置多轮评估维度时，获取该设备的最终聚合结果
-            device_results = self._maybe_fetch_final_results(
+            # 多轮 + 多轮评估维度且驱动覆写 get_final_results 时，按 (device_sn, 'final')
+            # 独立取最终聚合结果；命中则替代逐轮结果构建最终 algo_result（不改动原始逐轮数据）
+            build_results = self._maybe_fetch_final_results(
                 task_id, data, case_config, device_results, test_case_id,
                 [device_info] if device_info else None,
+                algorithm_type=algorithm_type,
             )
 
             # 构建该设备的最终 algo_result
             final_algo_result = self._aggregator.build_algorithm_result(
-                task_id, device_results, case_config, algorithm_type)
+                task_id, build_results, case_config, algorithm_type)
 
             # INT-296：UI 抓取层降级（explicit_degrade）留痕合并到最终记录各轮
             #（build_algorithm_result 从原始结果重建，不含 round_data 上的标记），严禁无痕跳过
@@ -202,17 +208,24 @@ class FinalizationMixin:
         return super()._process_results(**kwargs)
 
     def _maybe_fetch_final_results(self, task_id, data, case_config,
-                                    all_round_results, test_case_id,
-                                    device_info_list=None):
-        """多轮且配置了多轮评估维度时，调用驱动层获取最终聚合结果并合并
+                                    device_results, test_case_id,
+                                    device_info_list=None,
+                                    algorithm_type=None):
+        """多轮且配置了多轮评估维度时，按 (device_sn, 'final') 独立获取驱动最终聚合结果
 
         条件：rounds 数量 > 1 且 case_config.dimensions 中存在 round_scope='multi' 的维度。
-        满足条件时，对每个设备调用 driver.get_final_results，将返回的最终结果
-        追加到 all_round_results 中（result_type 标记为 'final'）。
-        不满足条件或无结果时直接返回原 all_round_results。
+        满足条件时对每台设备调用 driver.get_final_results：
+        - 返回非空 → 按文档 23 §6「以驱动最终结果替代逐轮聚合」返回最终结果列表；
+          每条补齐 device_sn / device_id / 整数 round_number / result_type='final'，
+          并走 convert_results 字段映射（失败回退原始结构），保证
+          build_algorithm_result 与整体评估可用；
+        - 返回空 / 异常 → 该设备沿用逐轮结果。
+        逐轮原始结果不在本方法内修改（调用方单独持久化到 raw_results_list），
+        避免最终结果覆盖逐轮数据，也避免 round_number=None 混入逐轮列表
+        导致 build_algorithm_result 排序/索引异常。
         """
         if not case_config:
-            return all_round_results
+            return device_results
 
         rounds = case_config.get('rounds', [])
         multi_dims = [
@@ -220,10 +233,10 @@ class FinalizationMixin:
             if isinstance(d, dict) and d.get('round_scope') == 'multi'
         ]
         if len(rounds) <= 1 or not multi_dims:
-            return all_round_results
+            return device_results
 
         if not device_info_list:
-            return all_round_results
+            return device_results
 
         self._log(
             level='INFO',
@@ -234,6 +247,7 @@ class FinalizationMixin:
         )
 
         device_repo = DeviceAclRepositoryImpl()
+        final_results = []
         for info in device_info_list:
             device_sn = info.get('device_sn')
             if not device_sn:
@@ -246,28 +260,67 @@ class FinalizationMixin:
                 'keywords': info.get('keywords'),
                 'kwargs': {
                     'round_count': len(rounds),
-                    'all_round_results': all_round_results,
+                    'all_round_results': device_results,
                 },
             }
             try:
-                final_results = device_repo.get_final_results(task_id, device_config)
-                if final_results:
-                    self._log(
-                        level='INFO',
-                        content=f"设备 {device_sn} 最终结果获取成功: {len(final_results)} 条",
-                        task_id=task_id, test_case_id=test_case_id,
-                    )
-                    for fr in final_results:
-                        fr_dict = dto_to_dict(fr)
-                        if fr_dict:
-                            fr_dict.setdefault('device_sn', device_sn)
-                            fr_dict.setdefault('round_number', None)
-                            all_round_results.append(fr_dict)
+                fetched = device_repo.get_final_results(task_id, device_config)
             except Exception as e:
                 self._log(
                     level='WARNING',
-                    content=f"设备 {device_sn} 获取最终结果失败（忽略）: {e}",
+                    content=f"设备 {device_sn} 获取最终结果失败（沿用逐轮结果）: {e}",
                     task_id=task_id, test_case_id=test_case_id,
                 )
+                continue
+            if not fetched:
+                continue
 
-        return all_round_results
+            normalized = [dto_to_dict(fr) for fr in fetched]
+            normalized = [item for item in normalized if item]
+            if not normalized:
+                continue
+            if algorithm_type:
+                try:
+                    converted = DeviceResultAclRepositoryImpl().convert_results(
+                        normalized, algorithm_type)
+                    converted_dicts = [dto_to_dict(item) for item in (converted or [])]
+                    converted_dicts = [item for item in converted_dicts if item]
+                    if converted_dicts:
+                        normalized = converted_dicts
+                except Exception as e:
+                    self._log(
+                        level='WARNING',
+                        content=f"设备 {device_sn} 最终结果字段映射失败（沿用原始结构）: {e}",
+                        task_id=task_id, test_case_id=test_case_id,
+                    )
+
+            for idx, fr_dict in enumerate(normalized):
+                fr_dict.setdefault('device_sn', device_sn)
+                fr_dict.setdefault('device_id', info.get('device_id'))
+                fr_dict['round_number'] = self._safe_round_index(
+                    fr_dict.get('round_number'), idx)
+                fr_dict.setdefault('result_type', RESULT_TYPE_FINAL)
+
+            self._log(
+                level='INFO',
+                content=f"设备 {device_sn} 最终结果获取成功: {len(normalized)} 条（替代逐轮聚合）",
+                task_id=task_id, test_case_id=test_case_id,
+            )
+            final_results.extend(normalized)
+
+        return final_results or device_results
+
+    @staticmethod
+    def _safe_round_index(value, default):
+        """把驱动返回的 round_number 规整为非负整数（None/非法 → 默认序号）。
+
+        build_algorithm_result 按 round_number 分组并排序，None/字符串会与整数
+        混排抛 TypeError，因此这里统一收口。
+        """
+        if isinstance(value, bool):
+            return default
+        try:
+            index = int(value)
+        except (TypeError, ValueError):
+            return default
+        return index if index >= 0 else default

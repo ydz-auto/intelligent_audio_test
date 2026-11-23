@@ -94,12 +94,19 @@ class _AggregationResourceMixin:
         )
 
         resource_headers = []
-        for idx, d in enumerate(devices):
-            key = resources[idx] if idx < len(resources) else _AggregationResourceMixin._fallback_key(d)
-            resource_headers.append(_AggregationResourceMixin._build_device_resource_header(task, key, d))
-        for idx, a in enumerate(apis):
-            key = resources[len(devices) + idx] if len(devices) + idx < len(resources) else _AggregationResourceMixin._fallback_key(a)
-            resource_headers.append(_AggregationResourceMixin._build_api_resource_header(task, key, a))
+        idx = 0
+        for d in devices:
+            d_id = d.get('id') if isinstance(d, dict) else getattr(d, 'id', None)
+            for _ in ReportDataResourceMixin._iter_result_types(device_result_types, d_id):
+                key = resources[idx] if idx < len(resources) else _AggregationResourceMixin._fallback_key(d)
+                resource_headers.append(_AggregationResourceMixin._build_device_resource_header(task, key, d))
+                idx += 1
+        for a in apis:
+            a_id = a.get('id') if isinstance(a, dict) else getattr(a, 'id', None)
+            for _ in ReportDataResourceMixin._iter_result_types(api_result_types, a_id):
+                key = resources[idx] if idx < len(resources) else _AggregationResourceMixin._fallback_key(a)
+                resource_headers.append(_AggregationResourceMixin._build_api_resource_header(task, key, a))
+                idx += 1
 
         return resources, resource_headers
 
@@ -194,9 +201,13 @@ class _AggregationResourceMixin:
                     continue
                 result_type = ReportDataTaskMixin._extract_result_type(full_data)
             if r_device_id and r_device_id in dev_id_set:
-                device_result_types[r_device_id] = result_type
+                types = device_result_types.setdefault(r_device_id, [])
+                if result_type and result_type not in types:
+                    types.append(result_type)
             if r_api_id and r_api_id in api_id_set:
-                api_result_types[r_api_id] = result_type
+                types = api_result_types.setdefault(r_api_id, [])
+                if result_type and result_type not in types:
+                    types.append(result_type)
         return device_result_types, api_result_types
 
     @staticmethod

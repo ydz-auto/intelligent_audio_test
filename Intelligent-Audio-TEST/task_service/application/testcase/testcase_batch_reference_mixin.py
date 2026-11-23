@@ -17,6 +17,7 @@ from shared.utils.query_utils import now_cst
 from shared.utils.testcase_helpers import (
     ROUND_NUMBER_KEYS,
     build_ref_params_key,
+    get_algorithm_params_dict_for_columns,
     resolve_round_number,
 )
 
@@ -77,7 +78,15 @@ def _apply_reference_params_to_config(test_case) -> None:
             _log_invalid_round(case_id, round_item)
             continue
 
-        round_params = _algo_repo.algo_generate_reference_params(test_case_config, round_item)
+        # 新数据的 algorithm_params 在独立列（按轮分组），rounds[] 不再携带；
+        # 不按轮回填会导致 overlap_rate/overlap_time 恒为 0，参考时间轴退化成顺序播放。
+        round_input = dict(round_item)
+        round_algo_params = get_algorithm_params_dict_for_columns(
+            getattr(test_case, 'algorithm_params', None), round_number)
+        if round_algo_params:
+            round_input['algorithm_params'] = round_algo_params
+
+        round_params = _algo_repo.algo_generate_reference_params(test_case_config, round_input)
         if not round_params:
             continue
 

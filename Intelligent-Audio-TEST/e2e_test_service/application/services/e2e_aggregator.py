@@ -11,6 +11,7 @@ from shared.utils.json_utils import deserialize_algorithm_result
 from shared.utils.status_utils import derive_task_case_status
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
 from shared.utils.query_utils import now_cst
+from shared.utils.number_utils import to_finite_float
 from shared.models.common_enums import DeviceType
 from e2e_test_service.domain.services import E2ECalculationService
 from e2e_test_service.infrastructure.acl import TaskDataAclRepositoryImpl
@@ -89,16 +90,13 @@ class E2EAggregator:
             all_llm_judge = []
             for rd in rounds_list:
                 ev = rd.get('evaluation', {})
-                if 'wer' in ev and ev['wer'] is not None:
-                    try:
-                        all_wer.append(float(ev['wer']))
-                    except (ValueError, TypeError):
-                        logger.debug("WER 值无法转换为 float，已跳过 value=%r", ev['wer'], exc_info=True)
-                if 'llm_judge' in ev and ev['llm_judge'] is not None:
-                    try:
-                        all_llm_judge.append(float(ev['llm_judge']))
-                    except (ValueError, TypeError):
-                        logger.debug("llm_judge 值无法转换为 float，已跳过 value=%r", ev['llm_judge'], exc_info=True)
+                # 只丢 None/NaN/Inf，保留合法 0（WER=0%、LLM 评分=0）
+                wer_value = to_finite_float(ev.get('wer')) if 'wer' in ev else None
+                if wer_value is not None:
+                    all_wer.append(wer_value)
+                llm_value = to_finite_float(ev.get('llm_judge')) if 'llm_judge' in ev else None
+                if llm_value is not None:
+                    all_llm_judge.append(llm_value)
 
             aggregated = algo_result.get('aggregated', {})
             aggregated['avg_wer'] = round(sum(all_wer) / len(all_wer), 4) if all_wer else None
@@ -267,12 +265,11 @@ class E2EAggregator:
 
                 if execution_success:
                     # INT-2285：未提交评估（评测关闭 / 无评估维度）时补写评估终态。
-                    # 与评估入口「无维度跳过」的收尾口径一致（_post_evaluate_updates
-                    # 写 COMPLETED）：执行已完成、评估不会发生，用例必须是终态，
-                    # 否则 status 推导为 evaluating，task_service 等待循环把
-                    # evaluation_status=pending 计入活跃评估集合，任务永挂 running。
+                    # 执行已完成但没有任何评估维度可提交 → evaluation_status=failed，
+                    # 保留 execution_status=completed：既保证任务收敛（不留在活跃评估
+                    # 集合），又让「重新评估失败用例」通道可用（补配维度后可重评）。
                     eval_status = (EvaluationStatus.PENDING if evaluation_expected
-                                   else EvaluationStatus.COMPLETED)
+                                   else EvaluationStatus.FAILED)
                     if not evaluation_expected:
                         self._log(
                             level='INFO',
@@ -319,7 +316,9 @@ class E2EAggregator:
 
                 # 通过 ACL 仓储更新 TaskCase 状态
                 if execution_success:
-                    eval_status = EvaluationStatus.COMPLETED if not all_eval_items else ''
+                    # 无评估项可提交：评估状态置 failed（执行成功但未评估），
+                    # 保留 execution_status=completed，便于补配维度后走失败重评。
+                    eval_status = EvaluationStatus.FAILED if not all_eval_items else ''
                     self._task_data_repo.update_task_case_status(
                         task_id, str(test_case_id),
                         status=derive_task_case_status(ExecutionStatus.COMPLETED, eval_status or EvaluationStatus.PENDING),

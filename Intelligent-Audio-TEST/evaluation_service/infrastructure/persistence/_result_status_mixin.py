@@ -227,10 +227,12 @@ class ResultStatusMixin:
         for res in all_results:
             device_id = getattr(res, 'device_id', None)
             api_id = getattr(res, 'api_id', None)
+            # 一台设备/API 可能产出多种 result_type 的结果，必须全部纳入判定，
+            # 不能后采集的覆盖先采集的（否则少评/漏评会被当成已覆盖）。
             if device_id:
-                results_by_device[str(device_id)] = res
+                results_by_device.setdefault(str(device_id), []).append(res)
             if api_id:
-                results_by_api[str(api_id)] = res
+                results_by_api.setdefault(str(api_id), []).append(res)
 
         case_all_finished = True
         failed_row_ids = set()
@@ -252,49 +254,60 @@ class ResultStatusMixin:
                 row_type = getattr(row, 'device_type', '') or DeviceType.PHYSICAL.value
                 row_bind = str(getattr(row, 'device_id', '') or '')
                 if row_type == DeviceType.PHYSICAL.value:
-                    res = results_by_device.get(row_bind)
+                    row_results = results_by_device.get(row_bind) or []
                 else:
-                    res = results_by_api.get(row_bind)
-                if res is None:
+                    row_results = results_by_api.get(row_bind) or []
+                if not row_results:
+                    # 执行已 completed 却没有归属结果 = 覆盖不全（少采集/漏评）。
+                    # 不能无限等待，否则用例被静默判成 completed；按该路由行
+                    # 评估失败收口，暴露覆盖缺口。
                     self._log(
-                        level='DEBUG',
+                        level='WARNING',
                         category='database',
-                        content=f"用例 {test_case_id} 路由行 {row.id} 结果未采集，暂不更新状态",
+                        content=(f"用例 {test_case_id} 路由行 {row.id} 执行已完成但未采集到结果，"
+                                 f"按覆盖不全判评估失败"),
                         task_id=task_id,
                         test_case_id=test_case_id
                     )
-                    case_all_finished = False
-                    break
+                    failed_row_ids.add(row.id)
+                    failed_reasons.append(f"路由 {row_bind or row.id} 执行完成但未采集到结果")
+                    continue
 
-                dims = local_db_session.query(TestResultDimension).filter_by(
-                    test_result_id=res.id).all()
-                if len(dims) < expected_dim_count:
-                    self._log(
-                        level='DEBUG',
-                        category='database',
-                        content=(f"用例 {test_case_id} 结果 {res.id} 维度未全 "
-                                 f"({len(dims)}/{expected_dim_count})，继续等待"),
-                        task_id=task_id,
-                        test_case_id=test_case_id
-                    )
-                    case_all_finished = False
-                    break
-
-                res_finished = True
-                res_failed = False
-                for dim in dims:
-                    if dim.evaluation_status in ACTIVE_EVALUATION_STATUSES:
-                        res_finished = False
+                row_waiting = False
+                row_failed = False
+                for res in row_results:
+                    dims = local_db_session.query(TestResultDimension).filter_by(
+                        test_result_id=res.id).all()
+                    if len(dims) < expected_dim_count:
+                        self._log(
+                            level='DEBUG',
+                            category='database',
+                            content=(f"用例 {test_case_id} 结果 {res.id} 维度未全 "
+                                     f"({len(dims)}/{expected_dim_count})，继续等待"),
+                            task_id=task_id,
+                            test_case_id=test_case_id
+                        )
+                        row_waiting = True
                         break
-                    if dim.evaluation_status == EvaluationStatus.FAILED:
-                        res_failed = True
-                        if dim.error_message:
-                            failed_reasons.append(f"{dim.error_message}")
 
-                if not res_finished:
+                    res_finished = True
+                    for dim in dims:
+                        if dim.evaluation_status in ACTIVE_EVALUATION_STATUSES:
+                            res_finished = False
+                            break
+                        if dim.evaluation_status == EvaluationStatus.FAILED:
+                            row_failed = True
+                            if dim.error_message:
+                                failed_reasons.append(f"{dim.error_message}")
+
+                    if not res_finished:
+                        row_waiting = True
+                        break
+
+                if row_waiting:
                     case_all_finished = False
                     break
-                if res_failed:
+                if row_failed:
                     failed_row_ids.add(row.id)
         finally:
             local_db_session.close()

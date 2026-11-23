@@ -24,8 +24,8 @@ export const DEFAULT_TAG_COLOR = '#10b981'
 /** 新建分类默认色（现 TagCategoryModal 实测默认） */
 export const DEFAULT_CATEGORY_COLOR = '#6366f1'
 
-/** 分类/标签名称最大长度（§5.4 maxlength 50） */
-export const TAG_NAME_MAX_LENGTH = 50
+/** 分类/标签名称最大长度（§5.4 maxlength 100） */
+export const TAG_NAME_MAX_LENGTH = 100
 
 /** 分类/标签描述最大长度（§5.4 maxlength 500） */
 export const TAG_DESC_MAX_LENGTH = 500

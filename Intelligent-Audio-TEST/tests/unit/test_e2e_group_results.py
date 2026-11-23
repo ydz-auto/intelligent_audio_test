@@ -14,6 +14,7 @@ os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 from e2e_test_service.application.services.e2e_executor.executor import E2EExecutor
+import e2e_test_service.application.services.e2e_executor.finalization_mixin as fin_mod
 
 _CASE_CONFIG = {'rounds': [{'round_number': 1, 'audios': []}]}
 
@@ -84,6 +85,58 @@ class TestPrepareRoundResults:
         assert ex._save_result.call_args_list[0].kwargs['result_data']['ui_capture_degraded'] == [
             {'device_name': 'd1', 'degrade_reason': 'hypium_missing'}]
         assert 'ui_capture_degraded' not in ex._save_result.call_args_list[1].kwargs['result_data']
+
+
+class TestFinalResultsIsolation:
+    """驱动最终聚合结果按 (device_sn, 'final') 独立维护，不污染逐轮结果。"""
+
+    _CFG = {
+        'rounds': [{'round_number': 1}, {'round_number': 2}],
+        'dimensions': [{'id': 1, 'round_scope': 'multi'}],
+    }
+
+    def test_not_multi_round_keeps_round_results(self):
+        """非多轮 / 无多轮维度：原样返回逐轮结果，不请求驱动。"""
+        ex = _host()
+        raw = [{'device_id': 1, 'round_number': 1}]
+        with patch.object(fin_mod, 'DeviceAclRepositoryImpl') as repo_cls:
+            out = ex._maybe_fetch_final_results(
+                't1', {}, {'rounds': [{'round_number': 1}]}, raw, 'c1',
+                [{'device_id': 1, 'device_sn': 'SN-A'}], algorithm_type='voice_llm')
+        assert out is raw
+        repo_cls.return_value.get_final_results.assert_not_called()
+
+    def test_final_results_replace_build_input_without_touching_rounds(self):
+        """最终结果替代逐轮聚合：补齐整数 round_number / result_type=final，
+        且逐轮原始结果保持原样（由调用方单独持久化）。"""
+        ex = _host()
+        raw = [{'device_id': 1, 'round_number': 0, 'output_text': 'r0'},
+               {'device_id': 1, 'round_number': 1, 'output_text': 'r1'}]
+        with patch.object(fin_mod, 'DeviceAclRepositoryImpl') as repo_cls, \
+                patch.object(fin_mod, 'DeviceResultAclRepositoryImpl') as conv_cls:
+            repo_cls.return_value.get_final_results.return_value = [
+                {'output_text': 'merged-0'}, {'output_text': 'merged-1'}]
+            conv_cls.return_value.convert_results.side_effect = lambda items, algo: items
+            out = ex._maybe_fetch_final_results(
+                't1', {}, self._CFG, raw, 'c1',
+                [{'device_id': 1, 'device_sn': 'SN-A'}], algorithm_type='voice_llm')
+
+        # 缺失 round_number 的最终结果按序号补齐整数，避免与逐轮混合排序失败
+        assert [item['round_number'] for item in out] == [0, 1]
+        assert {item['result_type'] for item in out} == {'final'}
+        assert {item['device_sn'] for item in out} == {'SN-A'}
+        assert [item['output_text'] for item in raw] == ['r0', 'r1']
+
+    def test_final_results_absent_falls_back_to_rounds(self):
+        """驱动未返回最终结果：沿用逐轮结果。"""
+        ex = _host()
+        raw = [{'device_id': 1, 'round_number': 0}]
+        with patch.object(fin_mod, 'DeviceAclRepositoryImpl') as repo_cls:
+            repo_cls.return_value.get_final_results.return_value = []
+            out = ex._maybe_fetch_final_results(
+                't1', {}, self._CFG, raw, 'c1',
+                [{'device_id': 1, 'device_sn': 'SN-A'}], algorithm_type='voice_llm')
+        assert out is raw
 
 
 class TestGroupResultsMapping:

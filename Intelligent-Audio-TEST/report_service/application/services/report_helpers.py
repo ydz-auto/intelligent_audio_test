@@ -15,6 +15,7 @@ import logging
 
 from shared.models.common_enums import FieldType, TaskStatus
 from shared.utils.log_handler import log_not_emit
+from shared.utils.number_utils import to_finite_float
 from report_service.application.services.report_utils import ReportUtils
 from report_service.application.services.report_query_builder import ReportQueryBuilder
 
@@ -79,11 +80,20 @@ class ReportHelpers:
         - mode='compare': 使用 device_id / device_name / audio_type
         """
         from report_service.infrastructure.clients.grpc_clients import _grpc_algo_normalize_algorithm_params
+        from shared.utils.testcase_helpers import get_algorithm_params_dict_for_columns
 
         config = (test_case.get('config') if isinstance(test_case, dict) else test_case.config) or {}
         rounds = config.get('rounds', [])
         if not rounds:
             return []
+
+        # 算法参数：新数据在 algorithm_params 独立列（按轮分组），
+        # 旧数据回退 rounds[0].algorithmParams。交叠参数必须与播放侧同口径。
+        algorithm_params_col = (test_case.get('algorithm_params') if isinstance(test_case, dict)
+                                else getattr(test_case, 'algorithm_params', None))
+        legacy_algo_params = {}
+        if isinstance(rounds[0], dict):
+            legacy_algo_params = rounds[0].get('algorithmParams') or {}
 
         audios_list = []
         is_compare = (mode == 'compare')
@@ -125,6 +135,8 @@ class ReportHelpers:
                 dev_map = _grpc_get_playback_devices_by_ids(list(all_device_ids))
                 devices = {k: v.get('name') for k, v in dev_map.items()}
 
+        # speaker 感知时间轴：{audio_id: set(speakers)}（与播放侧同口径）
+        speakers_map = {}
         per_round_dry = []
         noise_audios = []
         for round_item in rounds:
@@ -138,6 +150,7 @@ class ReportHelpers:
                 if audio_id:
                     audio = _grpc_get_audio(audio_id)
                     if audio:
+                        speakers_map[audio.get('id')] = ReportHelpers._collect_audio_speakers(audio)
                         dev_id = audio_cfg.get(dev_id_key)
                         if dev_id == '':
                             dev_id = None
@@ -181,42 +194,59 @@ class ReportHelpers:
 
             # INT-134：compare 模式不再 extend(round_dry)——音频项已在上方
             # 无条件 append 过一次，再 extend 会同一音频重复入列
-            per_round_dry.append(round_dry)
+            per_round_dry.append((round_number, round_dry))
 
-        # 每轮内部排序
+        # 每轮内部排序：playOrder=0 必须排最前（旧实现 `or 999` 把 0 当成假值）。
         sort_key = play_order_key if is_compare else 'playOrder'
-        for round_dry in per_round_dry:
-            round_dry.sort(key=lambda x: (x.get(sort_key) is None, x.get(sort_key) or 999))
 
-        # 获取 overlap 参数（取首轮配置）
-        first_round = rounds[0] if rounds else {}
-        overlap_config = {
-            'algorithm_params': first_round.get('algorithmParams', {}) if isinstance(first_round, dict) else {}
-        }
-        _overlap_params = _grpc_algo_normalize_algorithm_params(overlap_config.get('algorithm_params', {})) if overlap_config else {}
-        try:
-            overlap_time = max(0.0, float(_overlap_params.get('overlap_time', 0))) if overlap_config else 0
-        except (ValueError, TypeError):
-            overlap_time = 0
-        try:
-            overlap_rate = max(0.0, min(1.0, float(_overlap_params.get('overlap_rate', 0)))) if overlap_config else 0
-        except (ValueError, TypeError):
-            overlap_rate = 0
+        def _play_order_sort_key(item):
+            value = item.get(sort_key)
+            if value is None:
+                return (1, 0.0)
+            try:
+                return (0, float(value))
+            except (TypeError, ValueError):
+                return (1, 0.0)
 
-        # 按轮次计算 timeline
+        for _, round_dry in per_round_dry:
+            round_dry.sort(key=_play_order_sort_key)
+
+        # 按轮次计算 timeline：交叠参数按轮取（优先独立列，旧数据回退首轮 algorithmParams）
         global_offset = 0
-        for round_dry in per_round_dry:
+        for round_number, round_dry in per_round_dry:
+            round_algo_params = get_algorithm_params_dict_for_columns(
+                algorithm_params_col, round_number)
+            if not round_algo_params:
+                round_algo_params = legacy_algo_params
+            _overlap_params = (
+                _grpc_algo_normalize_algorithm_params(round_algo_params)
+                if round_algo_params else {}
+            )
+            try:
+                overlap_time = max(0.0, float(_overlap_params.get('overlap_time', 0) or 0))
+            except (ValueError, TypeError):
+                overlap_time = 0.0
+            try:
+                overlap_rate = max(0.0, min(1.0, float(_overlap_params.get('overlap_rate', 0) or 0)))
+            except (ValueError, TypeError):
+                overlap_rate = 0.0
+
             prev_end_time = 0
             for i, audio_item in enumerate(round_dry):
                 duration = audio_item.get('duration') or 0
                 if i == 0:
                     timeline_start = global_offset
                 else:
-                    if overlap_time and overlap_time > 0:
+                    prev_speakers = speakers_map.get(round_dry[i - 1].get('id')) or set()
+                    curr_speakers = speakers_map.get(audio_item.get('id')) or set()
+                    if curr_speakers & prev_speakers:
+                        # 相邻音频有共同 speaker → 顺序播放（与播放侧规则一致）
+                        timeline_start = prev_end_time
+                    elif overlap_time > 0:
                         timeline_start = prev_end_time - overlap_time
                         if timeline_start < global_offset:
                             timeline_start = global_offset
-                    elif overlap_rate is not None and overlap_rate > 0:
+                    elif overlap_rate > 0:
                         elapsed = prev_end_time - global_offset
                         timeline_start = global_offset + elapsed * (1 - overlap_rate)
                     else:
@@ -232,6 +262,29 @@ class ReportHelpers:
 
         audios_list.extend(noise_audios)
         return audios_list
+
+    @staticmethod
+    def _collect_audio_speakers(audio):
+        """从音频 gRPC 详情的 annotations 提取 speaker 集合。
+
+        与播放侧 audio_service.infrastructure.audio.audio_timeline
+        .speakers_from_annotation_data 同口径：只看 segments[].speaker。
+        """
+        speakers = set()
+        for ann in (audio or {}).get('annotations') or []:
+            if not isinstance(ann, dict):
+                continue
+            data = ann.get('data')
+            if isinstance(data, dict):
+                segments = data.get('segments') or []
+            elif isinstance(data, list):
+                segments = data
+            else:
+                segments = []
+            for seg in segments:
+                if isinstance(seg, dict) and seg.get('speaker'):
+                    speakers.add(seg['speaker'])
+        return speakers
 
     # 公共函数：解析API请求体JSON
     @staticmethod
@@ -293,10 +346,14 @@ class ReportHelpers:
                 dim_round = getattr(dr, 'round_number', None)
 
             if dim_id and dim_id in dim_id_to_name:
+                # 只丢 None/NaN/Inf，保留合法 0（WER=0、混淆率=0 等）
+                finite_value = to_finite_float(dim_val)
+                if finite_value is None:
+                    continue
                 if dim_round is None:
-                    dim_overall[dim_id] = dim_val
-                elif dim_val is not None:
-                    dim_rounds.setdefault(dim_id, []).append(dim_val)
+                    dim_overall[dim_id] = finite_value
+                else:
+                    dim_rounds.setdefault(dim_id, []).append(finite_value)
 
         for dim_id, dim_name in dim_id_to_name.items():
             if dim_overall.get(dim_id) is not None:

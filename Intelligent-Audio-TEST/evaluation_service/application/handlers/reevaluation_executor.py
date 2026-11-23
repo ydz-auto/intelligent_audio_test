@@ -527,8 +527,9 @@ class ReevaluationExecutor:
         # 未选维度 TRD 保留不动——不清空 TRD，评估入口按 dimension_filter_ids 收敛）
         selection_dims = None
         if reevaluate_type == REEVALUATE_TYPE_FAILED:
+            all_scores = evaluation_dimension_repository.list_scores_by_result_id(result)
             failed_dims_by_round = {}
-            for score in evaluation_dimension_repository.list_scores_by_result_id(result):
+            for score in all_scores:
                 if (score.evaluation_status == EvaluationStatus.FAILED
                         or score.evaluation_status in ACTIVE_EVALUATION_STATUSES):
                     failed_dims_by_round.setdefault(score.round_number, set()).add(score.dimension_id)
@@ -540,31 +541,41 @@ class ReevaluationExecutor:
                 }
                 failed_dims_by_round = {rnd: dims for rnd, dims in failed_dims_by_round.items() if dims}
             if not failed_dims_by_round:
-                # 没有失败的维度，无需重新评估；用例保持既有评估终态，
-                # 不置 queued（防悬挂）
-                log_and_emit('INFO', 'reevaluator',
-                             f"用例无失败维度，跳过重新评估: test_case_id={test_case_id}, result_id={result}",
-                             task_id=task_id, test_case_id=test_case_id)
-                return False
-
-            # 清空待重评维度的历史失败逐轮行（幽灵行，对齐 V9.7.10 f02ba75e）：
-            # E2E 用例每轮未配置评估维度时，逐轮 TRD 行只是整体评估 per_round 投影
-            # 的产物；某轮无有效值（如无接管/打断事件）时 per_round 投影不覆盖该轮，
-            # 历史残留的 failed 逐轮行会永久保留，update_task_case_status 统计到
-            # 失败维度把用例永久判为 failed。删除后由本次重新评估的 per_round 投影
-            # 重新入库；整体行（round_number IS NULL）由评估入口
-            # _create_dimension_results 复用重置为 pending，不在此删除。
-            reeval_dim_ids = set()
-            for _dims in failed_dims_by_round.values():
-                reeval_dim_ids |= _dims
-            if reeval_dim_ids:
-                stale_count = evaluation_dimension_repository.delete_failed_round_scores(
-                    result, reeval_dim_ids)
-                if stale_count:
+                if all_scores:
+                    # 已有维度评估记录但没有失败维度，无需重新评估；用例保持既有
+                    # 评估终态，不置 queued（防悬挂）
                     log_and_emit('INFO', 'reevaluator',
-                                 f"清空待重评维度的历史失败逐轮行: test_case_id={test_case_id}, "
-                                 f"dims={sorted(reeval_dim_ids)}, 删除 {stale_count} 条",
+                                 f"用例无失败维度，跳过重新评估: test_case_id={test_case_id}, result_id={result}",
                                  task_id=task_id, test_case_id=test_case_id)
+                    return False
+                # 没有任何 TaskResultDimension 记录（历史未评估 / 维度被删）：
+                # 失败重评退化为全量重评，不能静默跳过，否则补配维度后也无法重评。
+                log_and_emit('INFO', 'reevaluator',
+                             f"用例无维度评估记录，失败重评退化为全量重评: "
+                             f"test_case_id={test_case_id}, result_id={result}",
+                             task_id=task_id, test_case_id=test_case_id)
+                evaluation_dimension_repository.delete_scores_by_result_id(result)
+                failed_dims_by_round = None
+
+            if failed_dims_by_round is not None:
+                # 清空待重评维度的历史失败逐轮行（幽灵行，对齐 V9.7.10 f02ba75e）：
+                # E2E 用例每轮未配置评估维度时，逐轮 TRD 行只是整体评估 per_round 投影
+                # 的产物；某轮无有效值（如无接管/打断事件）时 per_round 投影不覆盖该轮，
+                # 历史残留的 failed 逐轮行会永久保留，update_task_case_status 统计到
+                # 失败维度把用例永久判为 failed。删除后由本次重新评估的 per_round 投影
+                # 重新入库；整体行（round_number IS NULL）由评估入口
+                # _create_dimension_results 复用重置为 pending，不在此删除。
+                reeval_dim_ids = set()
+                for _dims in failed_dims_by_round.values():
+                    reeval_dim_ids |= _dims
+                if reeval_dim_ids:
+                    stale_count = evaluation_dimension_repository.delete_failed_round_scores(
+                        result, reeval_dim_ids)
+                    if stale_count:
+                        log_and_emit('INFO', 'reevaluator',
+                                     f"清空待重评维度的历史失败逐轮行: test_case_id={test_case_id}, "
+                                     f"dims={sorted(reeval_dim_ids)}, 删除 {stale_count} 条",
+                                     task_id=task_id, test_case_id=test_case_id)
         elif dimension_filter_ids:
             # INT-302：全量重评但指定了维度——逐轮/整体按选中集过滤；
             # 不清空 TRD（未选维度结果保留），选中维度由评估入口
@@ -992,9 +1003,10 @@ class ReevaluationExecutor:
         # 维度一并纳入，见 _reevaluate_multi_round 同款说明），已完成维度的 TRD 保留不动
         failed_dim_ids = None
         if reevaluate_type == REEVALUATE_TYPE_FAILED:
+            all_scores = evaluation_dimension_repository.list_scores_by_result_id(result_id)
             failed_dim_ids = {
                 score.dimension_id
-                for score in evaluation_dimension_repository.list_scores_by_result_id(result_id)
+                for score in all_scores
                 if (score.evaluation_status == EvaluationStatus.FAILED
                     or score.evaluation_status in ACTIVE_EVALUATION_STATUSES)
             }
@@ -1002,11 +1014,18 @@ class ReevaluationExecutor:
             if dimension_filter_ids:
                 failed_dim_ids &= set(int(d) for d in dimension_filter_ids)
             if not failed_dim_ids:
-                # 没有失败的维度，无需重新评估
+                if all_scores:
+                    # 已有维度评估记录但没有失败维度，无需重新评估
+                    log_and_emit('INFO', 'reevaluator',
+                                 f"用例无失败维度，跳过重新评估: test_case_id={test_case_id}, result_id={result_id}",
+                                 task_id=task_id, test_case_id=test_case_id)
+                    return False
+                # 无任何 TRD 记录 → 退化为全量重评（补配维度后仍可重评）
                 log_and_emit('INFO', 'reevaluator',
-                             f"用例无失败维度，跳过重新评估: test_case_id={test_case_id}, result_id={result_id}",
+                             f"用例无维度评估记录，失败重评退化为全量重评: "
+                             f"test_case_id={test_case_id}, result_id={result_id}",
                              task_id=task_id, test_case_id=test_case_id)
-                return False
+                evaluation_dimension_repository.delete_scores_by_result_id(result_id)
         elif dimension_filter_ids:
             # INT-302：全量重评但指定了维度——按选中集过滤（TRD 保留，不清空）
             failed_dim_ids = set(int(d) for d in dimension_filter_ids)

@@ -13,6 +13,7 @@ P0-2 DDD 改造：从 application/handlers/reevaluation_executor.py 下沉的业
 from typing import Any, Dict, List, Optional
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
 from shared.utils.json_utils import deserialize_algorithm_result
+from shared.utils.testcase_helpers import select_adjusted_reference_params
 
 
 class ReevaluationService:
@@ -58,9 +59,10 @@ class ReevaluationService:
                 result.algorithm_result or {}
             )
             full_data = full_data_map.get(str(test_case_id), {})
+            result_type = full_data.get('result_type') if full_data else None
 
             case_info = ReevaluationService._build_case_info(
-                result, algo_result, full_data, reextract_device_output, tc_rel
+                result, algo_result, full_data, reextract_device_output, tc_rel, result_type
             )
             cases.append(case_info)
         return cases
@@ -111,7 +113,8 @@ class ReevaluationService:
         result_type: Optional[str] = None,
     ) -> dict:
         """构建 case_info 字典（纯业务逻辑）。"""
-        reference_params = full_data.get('adjusted_reference_params', []) if full_data else []
+        # adjusted_reference_params 按 result_type 分组，必须取当前结果的类型
+        reference_params = select_adjusted_reference_params(full_data, result_type)
         case_info = {
             'test_case_id': result.test_case_id,
             'result_id': result.id,

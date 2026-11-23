@@ -32,34 +32,52 @@ class ReportDataResourceMixin:
     """资源列表与汇总级维度/指标构建。"""
 
     @staticmethod
+    def _iter_result_types(result_type_map, obj_id):
+        """取某设备/API 的全部结果类型（保持采集顺序，去重）。
+
+        一台设备/API 可能产出多种 result_type（如实时/非实时），资源列必须按
+        (设备/API, result_type) 展开，不能只保留最后采集的一种。
+        """
+        raw = result_type_map.get(obj_id) if result_type_map else None
+        if isinstance(raw, str):
+            return [raw] if raw else ['default']
+        if isinstance(raw, (list, tuple, set)):
+            ordered = []
+            for item in raw:
+                if item and item not in ordered:
+                    ordered.append(item)
+            return ordered or ['default']
+        return ['default']
+
+    @staticmethod
     def _build_resources_list(devices, apis, task, device_result_types, api_result_types):
         resources = []
 
         for d in devices:
             d_id = d.get('id') if isinstance(d, dict) else d.id
-            result_type = device_result_types.get(d_id, 'default')
+            for result_type in ReportDataResourceMixin._iter_result_types(device_result_types, d_id):
 
-            class TempResult:
-                def __init__(self, device_id, result_type):
-                    self.device_id = device_id
-                    self.api_id = None
-                    self.result_data = {"result_type": result_type}
+                class TempResult:
+                    def __init__(self, device_id, result_type):
+                        self.device_id = device_id
+                        self.api_id = None
+                        self.result_data = {"result_type": result_type}
 
-            resource = ReportUtils.get_resource_name(TempResult(d_id, result_type), task, use_time_prefix=False)
-            resources.append(resource)
+                resource = ReportUtils.get_resource_name(TempResult(d_id, result_type), task, use_time_prefix=False)
+                resources.append(resource)
 
         for a in apis:
             a_id = a.get('id') if isinstance(a, dict) else a.id
-            result_type = api_result_types.get(a_id, 'default')
+            for result_type in ReportDataResourceMixin._iter_result_types(api_result_types, a_id):
 
-            class TempResult:
-                def __init__(self, api_id, result_type):
-                    self.api_id = api_id
-                    self.device_id = None
-                    self.result_data = {"result_type": result_type}
+                class TempResult:
+                    def __init__(self, api_id, result_type):
+                        self.api_id = api_id
+                        self.device_id = None
+                        self.result_data = {"result_type": result_type}
 
-            resource = ReportUtils.get_resource_name(TempResult(a_id, result_type), task, use_time_prefix=False)
-            resources.append(resource)
+                resource = ReportUtils.get_resource_name(TempResult(a_id, result_type), task, use_time_prefix=False)
+                resources.append(resource)
 
         return resources
 

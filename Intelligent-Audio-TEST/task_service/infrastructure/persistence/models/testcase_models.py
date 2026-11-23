@@ -21,7 +21,7 @@ class TagCategory(Base):
     """
     __tablename__ = 'tag_categories'
     id = Column(Integer, primary_key=True, autoincrement=True, comment='分类唯一ID')
-    name = Column(String(50), nullable=False, comment='分类名称')
+    name = Column(String(100), nullable=False, comment='分类名称')
     description = Column(Text, comment='分类描述')
     color = Column(String(20), comment='分类颜色标识 (Hex或名称)')
     sort_order = Column(Integer, default=0, comment='排序顺序 (数值越小越靠前)')
@@ -43,7 +43,7 @@ class Tag(Base):
     """
     __tablename__ = 'tags'
     id = Column(Integer, primary_key=True, autoincrement=True, comment='标签唯一ID')
-    name = Column(String(50), nullable=False, comment='标签名称')
+    name = Column(String(100), nullable=False, comment='标签名称')
     description = Column(Text, comment='标签描述')
     color = Column(String(20), comment='标签颜色标识 (Hex或名称)')
     category_id = Column(Integer, ForeignKey('tag_categories.id'), comment='所属分类ID')

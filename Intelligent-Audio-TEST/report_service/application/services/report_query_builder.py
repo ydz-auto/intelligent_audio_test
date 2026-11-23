@@ -198,7 +198,9 @@ class ReportQueryBuilder:
                         result_type = result_data.get('result_type', 'default') if isinstance(result_data, dict) else 'default'
                     except Exception:
                         result_type = 'default'
-                    device_result_types[result.get('device_id')] = result_type
+                    types = device_result_types.setdefault(result.get('device_id'), [])
+                    if result_type and result_type not in types:
+                        types.append(result_type)
 
         if api_ids:
             api_id_set = set(api_ids)
@@ -217,7 +219,9 @@ class ReportQueryBuilder:
                         result_type = result_data.get('result_type', 'default') if isinstance(result_data, dict) else 'default'
                     except Exception:
                         result_type = 'default'
-                    api_result_types[result.get('api_id')] = result_type
+                    types = api_result_types.setdefault(result.get('api_id'), [])
+                    if result_type and result_type not in types:
+                        types.append(result_type)
 
         return device_result_types, api_result_types
 

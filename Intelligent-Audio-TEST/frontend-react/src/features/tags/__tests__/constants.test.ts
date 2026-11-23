@@ -27,10 +27,10 @@ describe('tags constants', () => {
     expect(UNCATEGORIZED_COLOR).toBe('#94a3b8')
   })
 
-  it('交互常量：搜索 300ms / 触底 100px / 名称 50 / 描述 500', () => {
+  it('交互常量：搜索 300ms / 触底 100px / 名称 100 / 描述 500', () => {
     expect(TAG_SEARCH_DEBOUNCE_MS).toBe(300)
     expect(SCROLL_LOAD_MORE_THRESHOLD).toBe(100)
-    expect(TAG_NAME_MAX_LENGTH).toBe(50)
+    expect(TAG_NAME_MAX_LENGTH).toBe(100)
     expect(TAG_DESC_MAX_LENGTH).toBe(500)
   })
 

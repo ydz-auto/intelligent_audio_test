@@ -59,6 +59,7 @@ def _tc(exec_st=ExecutionStatus.COMPLETED, eval_st=EvaluationStatus.COMPLETED,
         status=TaskCaseStatus.COMPLETED, device_type='physical', case_id='c1'):
     """TaskCaseDTO 形状的对象"""
     return SimpleNamespace(
+        id=1,
         test_case_id=case_id,
         execution_status=exec_st,
         evaluation_status=eval_st,

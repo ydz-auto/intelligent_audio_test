@@ -26,7 +26,7 @@ from task_service.infrastructure.persistence.testcase_repository import testcase
 logger = logging.getLogger(__name__)
 
 BATCH_OPERATION_LIMIT = 100
-NAME_MAX_LENGTH = 50
+NAME_MAX_LENGTH = 100
 DESCRIPTION_MAX_LENGTH = 500
 
 

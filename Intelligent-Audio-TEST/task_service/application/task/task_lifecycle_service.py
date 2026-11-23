@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 
 from shared.utils.result_data_store import load_full_result_data
 from shared.utils.json_utils import deserialize_algorithm_result
+from shared.utils.testcase_helpers import select_adjusted_reference_params
 from shared.utils.status_utils import derive_task_case_status
 # INT-302 重执行范围模式（枚举化，拒绝魔法字符串）：缺省 all 保持整任务语义
 from shared.models.common_enums import RetryScopeMode
@@ -623,7 +624,10 @@ class TaskLifecycleService:
                     full_data = load_full_result_data(
                         result.result_data, getattr(result, 'result_data_path', None)
                     )
-                    reference_params = full_data.get('adjusted_reference_params', []) if full_data else []
+                    # adjusted_reference_params 按 result_type 分组，必须取当前结果类型
+                    result_type = (getattr(result, 'result_type', None)
+                                   or (full_data.get('result_type') if full_data else None))
+                    reference_params = select_adjusted_reference_params(full_data, result_type)
 
                     # 跨域查询 TestCase（后续 gRPC 改造）
                     test_case = task_repository.get_test_case_orm(test_case_id)

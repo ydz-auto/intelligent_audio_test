@@ -734,6 +734,9 @@ function toReportAudioItem(raw: unknown): import('@/domain/models/report').Repor
     device_name: str(rec.device_name ?? rec.playback_device_name) ?? undefined,
     url: str(rec.url) ?? undefined,
     duration: num(rec.duration),
+    // 后端按播放口径输出 timeline_start/timeline_end（兼容 camelCase 序列化）
+    timelineStart: num(rec.timeline_start ?? rec.timelineStart),
+    timelineEnd: num(rec.timeline_end ?? rec.timelineEnd),
   }
 }
 

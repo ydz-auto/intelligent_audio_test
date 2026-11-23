@@ -134,11 +134,11 @@ class TestProcessResultsNoEvaluationConvergence:
         return agg._task_data_repo.update_task_case_status.call_args_list[-1].kwargs
 
     def test_no_evaluation_writes_terminal_evaluation_status(self):
-        """评测关闭 / 无维度：多轮收口就地写 evaluation_status=completed、status=completed。"""
+        """评测关闭 / 无维度：执行 completed、评估 failed，用例终态 failed。"""
         written = self._process(evaluation_expected=False)
         assert written['execution_status'] == ExecutionStatus.COMPLETED
-        assert written['evaluation_status'] == EvaluationStatus.COMPLETED
-        assert written['status'] == TaskCaseStatus.COMPLETED
+        assert written['evaluation_status'] == EvaluationStatus.FAILED
+        assert written['status'] == TaskCaseStatus.FAILED
 
     def test_terminal_values_satisfy_task_convergence(self):
         """写入值必须同时满足 task_service 收敛判定：终态 status 且不在活跃评估集合。"""

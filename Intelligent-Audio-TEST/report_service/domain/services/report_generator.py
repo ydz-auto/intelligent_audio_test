@@ -30,6 +30,17 @@ class ReportGenerator:
             包含 avg/min/max/std_dev/sample_count 的统计字典；
             空列表返回零值统计。
         """
+        # 只丢 None/NaN/Inf，保留合法 0（0 是有效指标值，不能当缺失）
+        finite_values = []
+        for value in metric_values:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(number):
+                finite_values.append(number)
+        metric_values = finite_values
+
         if not metric_values:
             return {
                 'avg': 0.0,

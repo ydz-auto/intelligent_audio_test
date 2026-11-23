@@ -39,6 +39,18 @@ from report_service.infrastructure.clients.grpc_clients import (
 logger = logging.getLogger(__name__)
 
 
+def _append_result_type(type_map, obj_id, result_type):
+    """把 result_type 追加到 id 对应的有序列表（去重，保留采集顺序）。
+
+    同一设备/API 可能有多条不同 result_type 的结果，不能后者覆盖前者。
+    """
+    if not obj_id:
+        return
+    types = type_map.setdefault(obj_id, [])
+    if result_type and result_type not in types:
+        types.append(result_type)
+
+
 class ReportDataTaskMixin:
     """任务数据收集：任务校验、维度结果/aux 参数批量查询、结果类型提取。"""
 
@@ -74,12 +86,15 @@ class ReportDataTaskMixin:
             source_task_ids = [r.get('source_task_id') for r in merge_relations]
 
         elif task_status == TaskStatus.MERGED.value:
-            # 源任务被合并后重新生成报告：取最新的合并任务，结果取自其全部原始源任务
-            merge_relations = _grpc_get_task_merge_relations_by_source(task_id)
-            if merge_relations:
-                latest_merged_id = merge_relations[0].get('merged_task_id')
-                source_relations = _grpc_get_task_merge_relations(latest_merged_id)
-                source_task_ids = [r.get('source_task_id') for r in source_relations]
+            # 源任务被合并后重新生成报告：优先使用自身结果（合并时通常未清理），
+            # 否则会把源任务的报告串成合并任务所有源任务的合并结果。
+            # 只有自身结果已被清理（取不到）时才回退到最新合并任务的全部源任务。
+            if not _grpc_get_test_results_by_task_ids([task_id]):
+                merge_relations = _grpc_get_task_merge_relations_by_source(task_id)
+                if merge_relations:
+                    latest_merged_id = merge_relations[0].get('merged_task_id')
+                    source_relations = _grpc_get_task_merge_relations(latest_merged_id)
+                    source_task_ids = [r.get('source_task_id') for r in source_relations]
 
         elif task_status not in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]:
             return None, None, error_response("只有任务状态为completed、failed或merged时才能生成报告")
@@ -287,7 +302,7 @@ class ReportDataTaskMixin:
                 if result.get('device_id') and result.get('result_data'):
                     full_data = load_full_result_data(result.get('result_data'), result.get('result_data_path'))
                     result_type = ReportDataTaskMixin._extract_result_type(full_data)
-                    device_result_types[result.get('device_id')] = result_type
+                    _append_result_type(device_result_types, result.get('device_id'), result_type)
 
         if api_ids:
             api_id_set = set(api_ids)
@@ -296,7 +311,7 @@ class ReportDataTaskMixin:
                 if result.get('api_id') and result.get('result_data'):
                     full_data = load_full_result_data(result.get('result_data'), result.get('result_data_path'))
                     result_type = ReportDataTaskMixin._extract_result_type(full_data)
-                    api_result_types[result.get('api_id')] = result_type
+                    _append_result_type(api_result_types, result.get('api_id'), result_type)
 
         return device_result_types, api_result_types
 

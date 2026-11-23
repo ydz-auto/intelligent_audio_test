@@ -215,6 +215,27 @@ def get_algorithm_params_dict_for_columns(algorithm_params_col, round_number=1):
     return result
 
 
+def select_adjusted_reference_params(full_data: dict, result_type=None) -> list:
+    """从 result_data 取当前结果类型对应的「对齐后的参考参数」。
+
+    E2E 采集按 result_type 存成 {result_type: [params]}（一台设备可能产出多种
+    结果类型）；历史单类型数据是列表。直接拿整个 dict 当列表用会导致重评时
+    参考参数错乱。
+    """
+    if not isinstance(full_data, dict):
+        return []
+    raw = full_data.get('adjusted_reference_params')
+    if isinstance(raw, dict):
+        key = result_type or full_data.get('result_type') or 'e2e'
+        params = raw.get(key)
+        if params is None and len(raw) == 1:
+            params = next(iter(raw.values()))
+        return params or []
+    if isinstance(raw, list):
+        return raw
+    return []
+
+
 def has_rounds(config: dict) -> bool:
     """判断 config 是否为 rounds-as-top-level 格式"""
     return bool(config and isinstance(config.get('rounds'), list) and len(config['rounds']) > 0)
@@ -308,13 +329,44 @@ def collect_dimensions(config: dict) -> list:
     return result
 
 
+def _play_order_sort_value(audio: dict):
+    """play_order 归一为可排序值：缺失/非法排最后，0 是合法值（不能当假值）。"""
+    value = audio.get('play_order')
+    if value is None:
+        return (1, 0.0)
+    try:
+        return (0, float(value))
+    except (TypeError, ValueError):
+        return (1, 0.0)
+
+
+def _audio_play_signature(config: dict) -> list:
+    """音频配置签名：按轮次记录 (轮次号, audio_id, play_order) 的播放序列。
+
+    play_order 决定参考参数里的时间轴，必须进入签名；仅比较 audio_id 集合
+    会漏掉「换了播放顺序但音频未变」的变更，导致继续沿用旧顺序的参考参数。
+    """
+    signature = []
+    for index, round_item in enumerate(iter_dict_rounds(config)):
+        round_number = resolve_round_number(round_item, default=index + 1)
+        round_audios = round_item.get('audios')
+        if not isinstance(round_audios, list):
+            continue
+        ordered = [a for a in round_audios
+                   if isinstance(a, dict) and a.get('audio_id')]
+        ordered.sort(key=lambda a: (_play_order_sort_value(a), str(a.get('audio_id'))))
+        for audio in ordered:
+            signature.append((
+                round_number,
+                str(audio.get('audio_id')),
+                _play_order_sort_value(audio),
+            ))
+    return signature
+
+
 def audios_changed(old_config: dict, new_config: dict) -> bool:
-    """比较两个 config 中的音频配置是否发生变化"""
-    old_audios = collect_audios(old_config)
-    new_audios = collect_audios(new_config)
-    old_ids = sorted([str(a.get('audio_id')) for a in old_audios if isinstance(a, dict) and a.get('audio_id')])
-    new_ids = sorted([str(a.get('audio_id')) for a in new_audios if isinstance(a, dict) and a.get('audio_id')])
-    return old_ids != new_ids
+    """比较两个 config 中的音频配置是否发生变化（含播放顺序）"""
+    return _audio_play_signature(old_config) != _audio_play_signature(new_config)
 
 
 def get_algorithm_params_dict_for_executor(config: dict) -> dict:
