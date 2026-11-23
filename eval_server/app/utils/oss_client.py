@@ -80,6 +80,10 @@ class OSSClient:
                 aws_access_key_id=config.OSS_ACCESS_KEY,
                 aws_secret_access_key=config.OSS_SECRET_KEY,
                 config=BotoConfig(
+                    # botocore>=1.36 默认按 aws-chunked 流式校验和上传，COS/RustFS 不支持，
+                    # 分块上传会因缺 Content-Length 报 MissingContentLength；按需校验即可。
+                    request_checksum_calculation='when_required',
+                    response_checksum_validation='when_required',
                     retries={'max_attempts': 3, 'mode': 'standard'},
                     connect_timeout=5,
                     read_timeout=120,
