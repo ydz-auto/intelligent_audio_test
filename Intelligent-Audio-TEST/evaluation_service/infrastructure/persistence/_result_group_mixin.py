@@ -124,15 +124,39 @@ class GroupResultMixin:
                 device_id = test_result.device_id
                 test_case_id = test_case_id or test_result.test_case_id
 
+        # VEGA-85（F2）：零产出收口——先整组解析，组内全部维度主路径提取与兜底均
+        # 无值，且逐轮 per_round 投影（与 _overwrite_round_results 同款 strict 解析）
+        # 亦无任何产出时，零产出不是合法评估结论（如裁判服务上游 ASR 失败、全轮
+        # 非拒识整例跳过），逐维写 completed 会让用例/任务假通过（叠加首值兜底缺陷
+        # 即假满分 1.0，VEGA-83）。此时改走既有组失败路径（同 endpoint_worker
+        # __error__ 分支先例）统一落 TRD failed 并推进用例终态；整体或逐轮任一
+        # 有值则维持现状逐维写（原生投影流整体行无聚合值属正常形态，不误伤）。
+        parsed = []
+        for dim_data, dimension_result_id in group_items:
+            raw_value, score = self.parse_dimension_result(resp_data, dim_data)
+            parsed.append((dim_data, dimension_result_id, raw_value, score))
+        if parsed and all(raw_value is None for _d, _r, raw_value, _s in parsed) \
+                and not self._per_round_has_output(per_round, group_items):
+            resp_message = self._unwrap_calc_result(resp_data).get('message')
+            error_message = (
+                f'评估响应无可提取指标值: {resp_message}' if resp_message
+                else '评估响应无可提取指标值')
+            self.update_all_dimensions_in_group_failed(
+                group_items=group_items,
+                error_message=error_message,
+                task_id=task_id,
+                test_case_id=test_case_id,
+                api_raw_response=resp_data,
+                api_request_body=api_request_body,
+                result_id=result_id,
+            )
+            return
+
         # 本地写：整组 TestResultDimension 更新，事务内只做本地 DB，提交即释放连接
         local_db_session = get_db_session()
         try:
-            for dim_data, dimension_result_id in group_items:
-                dim_id = dim_data['id']
+            for dim_data, dimension_result_id, raw_value, score in parsed:
                 dim_name = dim_data['name']
-
-                # 解析结果并打分
-                raw_value, score = self.parse_dimension_result(resp_data, dim_data)
 
                 # 记录维度评估详细结果到日志
                 self._log(
@@ -213,6 +237,25 @@ class GroupResultMixin:
         标记缺失（旧版子服务 / 切片重跑 fallback）→ False，保证绝不误触发清理。
         """
         return cls._unwrap_calc_result(resp_data).get('per_round_native') is True
+
+    def _per_round_has_output(self, per_round, group_items):
+        """逐轮投影是否有可产出值（VEGA-85：与 _overwrite_round_results 同款 strict 判定）。
+
+        整体无聚合值但逐轮有值（原生 per_round 投影流）时本组并非零产出，
+        不得走组失败收口；判据与逐轮落库的 strict 解析保持同一口径
+        （无 round_number 的条目、strict 解析无值的条目均不产出）。
+        """
+        for per_round_item in per_round or []:
+            if not isinstance(per_round_item, dict):
+                continue
+            if per_round_item.get('round_number') is None:
+                continue
+            for dim_data, _ in group_items:
+                raw_value, _score = self.parse_dimension_result(
+                    per_round_item, dim_data, strict=True)
+                if raw_value is not None:
+                    return True
+        return False
 
     def _build_and_store_algorithm_results(self, result_id, task_id, test_case_id, device_type=DeviceType.HTTP_API.value, payload_context=None):
         """预提取 algorithm_results 扁平列表并存入 result_data['algorithm_results']。

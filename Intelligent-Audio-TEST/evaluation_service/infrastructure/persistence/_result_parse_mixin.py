@@ -94,8 +94,14 @@ class ParseDimensionMixin:
             return resp_data.get(dim_name)
         if isinstance(resp_data, dict) and 'results' in resp_data:
             return resp_data['results'].get(dim_name, {}).get('value')
-        # 尝试直接使用响应值
-        return list(resp_data.values())[0] if resp_data and isinstance(resp_data, dict) else None
+        # 尝试直接使用响应值：仅限单键标量简单响应（更老的 WER/SER 形态）。
+        # 多键复杂响应（裁判族 enabled/message/per_round…）首值可能是布尔/嵌套控制位，
+        # float(True)=1.0 会把「零产出」伪装成满分（VEGA-83 假通过），不取首值。
+        if resp_data and isinstance(resp_data, dict) and len(resp_data) == 1:
+            first = next(iter(resp_data.values()))
+            if isinstance(first, (str, int, float)) and not isinstance(first, bool):
+                return first
+        return None
 
     def check_all_dimensions_completed(self, result_id, task_id=None):
         """
