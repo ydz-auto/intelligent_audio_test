@@ -1,8 +1,8 @@
 FROM python:3.11-slim
 
-ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+ARG APT_MIRROR=mirrors.cloud.tencent.com
 ENV PYTHONUNBUFFERED=1 \
-    PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+    PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 RUN for f in /etc/apt/sources.list /etc/apt/sources.list.d/*; do \
