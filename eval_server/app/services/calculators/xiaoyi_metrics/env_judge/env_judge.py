@@ -34,6 +34,7 @@ from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
     call_llm as call_llm_api,
     parse_json,
     get_asr_text,
+    get_asr_text_with_status,
     get_asr_chunks,
     get_llm_config,
     resolve_model,
@@ -50,6 +51,15 @@ from app.services.calculators.xiaoyi_metrics.env_judge.env_response_latency impo
 )
 
 logger = logging.getLogger(__name__)
+
+# query ASR 为空时的细分原因（避免把 ASR 调用失败误报成“静音”）
+_QUERY_ASR_EMPTY_REASONS = {
+    'missing_file': '用户音频文件缺失或不可读',
+    'failed': 'query ASR 调用失败（ASR 服务超时或远端断开）',
+    'silent': '用户音频未识别到有效语音（静音或仅噪声）',
+    'json_missing': 'query ASR 结果未生成',
+    'error': 'query ASR 读取异常',
+}
 
 
 # ─────────── 场景定义 ───────────
@@ -439,12 +449,13 @@ def evaluate_env_judge(
         return result
 
     try:
-        query_text = get_asr_text(user_wav) if user_wav and exists(user_wav) else ''
+        query_text, query_status = get_asr_text_with_status(user_wav)
     except Exception as exc:
         return evaluation_error(f'query ASR获取失败: {exc}')
     result['query_asr'] = query_text or ''
     if not result['query_asr'].strip():
-        return evaluation_error('query ASR为空')
+        return evaluation_error(
+            _QUERY_ASR_EMPTY_REASONS.get(query_status, 'query ASR为空'))
 
     # ─── 1. LLM 判定 True/False ───
     if not ai_wav or not exists(ai_wav):

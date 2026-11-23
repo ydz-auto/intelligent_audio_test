@@ -747,6 +747,47 @@ def get_asr_text(wav_path: str) -> str:
     return ''
 
 
+def get_asr_text_with_status(wav_path: str):
+    """同 get_asr_text，但额外返回状态，用于区分“ASR 为空”的真实原因。
+
+    返回 (text, status)，status 取值：
+      ok / silent / failed / missing_file / json_missing / error
+    """
+    from app.utils.audio_source import exists
+    from .constants import AsrStatus
+
+    if not wav_path or not exists(wav_path):
+        return '', 'missing_file'
+    try:
+        from app.utils.asr_adapter import _build_json_save_path
+        json_path = _build_json_save_path(wav_path)
+        asr_status = None
+        if not os.path.isfile(json_path):
+            logger.info(f'[llm_client] ASR JSON 不存在，触发 ASR 生成: {wav_path}')
+            from app.services.calculators.xiaoyi_metrics.turn_taking import (
+                _get_asr_chunks_with_status,
+            )
+            _chunks, asr_status = _get_asr_chunks_with_status(wav_path)
+
+        if os.path.isfile(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            text = data.get('text', '') or ''
+            return text, ('ok' if text.strip() else 'silent')
+
+        if asr_status == AsrStatus.FAILED:
+            return '', 'failed'
+        if asr_status == AsrStatus.EMPTY:
+            return '', 'silent'
+        if asr_status == AsrStatus.FILE_MISSING:
+            return '', 'missing_file'
+        logger.warning(f'[llm_client] ASR JSON 仍不存在: {json_path}')
+        return '', 'json_missing'
+    except Exception as e:
+        logger.warning(f'[llm_client] 读取 ASR JSON 失败: {wav_path}: {e}')
+        return '', 'error'
+
+
 def extract_video_paths(kwargs: dict) -> List[str]:
     """从 kwargs 中提取存在的录屏/音频文件路径（legacy：录屏模式下的额外文件）"""
     from app.utils.audio_source import exists

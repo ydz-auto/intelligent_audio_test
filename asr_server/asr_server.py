@@ -120,6 +120,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger("asr_server")
 
+# 落盘日志：Windows 计划任务下 stdout 不可见，加滚动文件便于回溯卡死/重启
+ASR_LOG_FILE = os.environ.get(
+    "ASR_LOG_FILE", str(Path(__file__).resolve().parent / "logs" / "asr_server.log"))
+try:
+    from logging.handlers import RotatingFileHandler
+    os.makedirs(os.path.dirname(os.path.abspath(ASR_LOG_FILE)), exist_ok=True)
+    _fh = RotatingFileHandler(
+        ASR_LOG_FILE, maxBytes=20 * 1024 * 1024, backupCount=5, encoding="utf-8")
+    _fh.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    logging.getLogger().addHandler(_fh)
+    logger.info("日志落盘: %s", ASR_LOG_FILE)
+except Exception as _e:
+    logger.warning("日志文件初始化失败: %s", _e)
+
 # ─────────── 模型懒加载 ───────────
 _silero_model = None    # Silero VAD
 _sv_model = None        # SenseVoice
