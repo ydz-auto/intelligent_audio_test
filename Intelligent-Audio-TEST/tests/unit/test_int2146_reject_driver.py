@@ -21,13 +21,13 @@ import time
 
 import pytest
 
-from device_service.infrastructure.drivers.harmony_xiaoyichat import Xiaoyilivechat
-from device_service.infrastructure.drivers.harmony_xiaoyi_reject import (
+from device_service.infrastructure.drivers.harmony.xiaoyi_livechat.v1 import Xiaoyilivechat
+from device_service.infrastructure.drivers.harmony.xiaoyi_livechat_reject.v1 import (
     XiaoyiLivechatReject,
 )
 from device_service.infrastructure.drivers.driver_types import DevicePlatform
-from device_service.infrastructure.drivers import harmony_xiaoyi_reject as reject_mod
-from device_service.infrastructure.drivers import harmony_xiaoyichat as xiaoyichat_mod
+from device_service.infrastructure.drivers.harmony.xiaoyi_livechat_reject import v1 as reject_mod
+from device_service.infrastructure.drivers.harmony.xiaoyi_livechat import v1 as xiaoyichat_mod
 
 
 # ──────────────────────────── 公共构造 ────────────────────────────

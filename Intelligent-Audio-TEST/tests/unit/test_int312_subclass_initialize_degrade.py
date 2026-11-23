@@ -29,25 +29,27 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 import pytest
 
 from shared.constants.ui_capture import UiCaptureDegradeReason
-from device_service.infrastructure.drivers.harmony_xiaoyichat import Xiaoyilivechat
-from device_service.infrastructure.drivers.harmony_xiaoyilivechat import XiaoyilivechatV2
-from device_service.infrastructure.drivers.harmony_doubaochat import DoubaoChat
-from device_service.infrastructure.drivers.harmony_chatgpt import ChatGptVoiceChat
-from device_service.infrastructure.drivers.harmony_xiaoyihuiji_driver import (
+from device_service.infrastructure.drivers.harmony.xiaoyi_livechat.v1 import Xiaoyilivechat
+from device_service.infrastructure.drivers.harmony.xiaoyi_livechat.v2 import XiaoyilivechatV2
+from device_service.infrastructure.drivers.harmony.doubao.v1 import DoubaoChat
+from device_service.infrastructure.drivers.harmony.chatgpt.v1 import ChatGptVoiceChat
+from device_service.infrastructure.drivers.harmony.xiaoyi_huiji.v1 import (
     HarmonyHardenXiaoyiHuiJiDriver,
 )
-from device_service.infrastructure.drivers.harmony_translation_driver import (
+from device_service.infrastructure.drivers.harmony.xiaoyi_translation import (
     HarmonyXiaoyiTranslationDriver,
-    XiaoyiFace2FaceDriver,
+)
+from device_service.infrastructure.drivers.harmony.xiaoyi_face2face.v1 import XiaoyiFace2FaceDriver
+from device_service.infrastructure.drivers.harmony.xiaoyi_simultaneous.v1 import (
     XiaoyiSimultaneousInterpretationDriver,
 )
 
-HD = 'device_service.infrastructure.drivers.harmony_driver'
-DOUBAO_MOD = 'device_service.infrastructure.drivers.harmony_doubaochat'
-CHATGPT_MOD = 'device_service.infrastructure.drivers.harmony_chatgpt'
-XIAOYICHAT_MOD = 'device_service.infrastructure.drivers.harmony_xiaoyichat'
+HD = 'device_service.infrastructure.drivers.harmony.base.v1'
+DOUBAO_MOD = 'device_service.infrastructure.drivers.harmony.doubao.v1'
+CHATGPT_MOD = 'device_service.infrastructure.drivers.harmony.chatgpt.v1'
+XIAOYICHAT_MOD = 'device_service.infrastructure.drivers.harmony.xiaoyi_livechat.v1'
 HUIJI_LIFECYCLE_MOD = \
-    'device_service.infrastructure.drivers.harmony_xiaoyihuiji_driver._lifecycle_mixin'
+    'device_service.infrastructure.drivers.harmony.xiaoyi_huiji._lifecycle_mixin'
 SN = '5SM0125613000197'
 
 
@@ -65,6 +67,10 @@ def _base_host(cls):
     d._drivers = {}
     d._close_buttons = []
     d._popup_keywords = []
+    # base.initialize 走 unlock() 时会读这些 __init__ 默认字段，绕过构造需补齐
+    d._unlock_password = '000000'
+    d._exclude_list = []
+    d._abnormal_keywords = []
     d.ui_capture_available = True
     d.ui_degrade_reason = None
     d.logs = []

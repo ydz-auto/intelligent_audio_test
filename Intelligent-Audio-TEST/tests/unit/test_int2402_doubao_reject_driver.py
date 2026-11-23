@@ -23,11 +23,11 @@ import time
 
 import pytest
 
-from device_service.infrastructure.drivers.harmony_doubaochat import DoubaoChat
-from device_service.infrastructure.drivers.harmony_doubaolivechat import DoubaoReject
-from device_service.infrastructure.drivers.reject_timing import RejectTimingMixin
+from device_service.infrastructure.drivers.harmony.doubao.v1 import DoubaoChat
+from device_service.infrastructure.drivers.harmony.doubao_reject.v1 import DoubaoReject
+from device_service.infrastructure.drivers.common.reject_timing import RejectTimingMixin
 from device_service.infrastructure.drivers.driver_types import DevicePlatform
-from device_service.infrastructure.drivers import harmony_doubaolivechat as reject_mod
+from device_service.infrastructure.drivers.harmony.doubao_reject import v1 as reject_mod
 
 KEYWORDS = 'harmony.doubao_reject.v1'
 
@@ -114,7 +114,7 @@ class TestRegistration:
     def test_driver_module_stays_in_infrastructure_layer(self):
         """驱动落点在 infrastructure/drivers，无 application/interfaces/gateway 依赖。"""
         assert DoubaoReject.__module__ == (
-            'device_service.infrastructure.drivers.harmony_doubaolivechat')
+            'device_service.infrastructure.drivers.harmony.doubao_reject.v1')
         source = inspect.getsource(reject_mod)
         for forbidden in ('device_service.application', 'device_service.interfaces',
                           'api_gateway', 'e2e_test_service'):
@@ -151,7 +151,7 @@ class TestTimingMapping:
 
     def test_vocabulary_shared_with_xiaoyi_reject_driver(self):
         """两个拒识驱动共用同一份词表对象，不产生第三份口径。"""
-        from device_service.infrastructure.drivers.harmony_xiaoyi_reject import (
+        from device_service.infrastructure.drivers.harmony.xiaoyi_livechat_reject.v1 import (
             XiaoyiLivechatReject,
         )
         assert (DoubaoReject.INTERRUPTION_TIMING_VALUES

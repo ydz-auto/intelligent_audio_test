@@ -1,0 +1,22 @@
+from device_service.infrastructure.drivers.harmony.base.v1 import HarmonyDriver
+from device_service.infrastructure.drivers.driver_types import DevicePlatform
+from device_service.infrastructure.drivers.registry import register_driver
+from .._lock_mixin import LockMixin
+from .._lifecycle_mixin import LifecycleMixin
+from .._results_mixin import ResultsMixin
+from .._constants import LOG_DEVICE_PATH
+
+__all__ = ["HarmonyHardenXiaoyiHuiJiDriver", "LOG_DEVICE_PATH"]
+
+
+@register_driver
+class HarmonyHardenXiaoyiHuiJiDriver(LockMixin, LifecycleMixin, ResultsMixin, HarmonyDriver):
+    """鸿蒙harden小艺慧记驱动"""
+
+    # —— 驱动元数据 ——
+    app_type = "xiaoyi_huiji"
+    version = "v1"
+    platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.xiaoyi_huiji.v1"
+    display_name = "鸿蒙小艺慧记 v1"
+    dependencies = ["hypium"]

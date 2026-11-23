@@ -392,7 +392,7 @@ class FakeHdcResult:
 
 def _make_chatgpt():
     """实例化移植驱动 ChatGptVoiceChat（hypium 缺失仍可构造，UiDriver=None）"""
-    from device_service.infrastructure.drivers.harmony_chatgpt import ChatGptVoiceChat
+    from device_service.infrastructure.drivers.harmony.chatgpt.v1 import ChatGptVoiceChat
     return ChatGptVoiceChat()
 
 
@@ -407,13 +407,13 @@ class TestPortedDriverMetadata:
         assert d.app_name == 'com.openai.chatgpt'   # 覆盖父类 app_name
 
     def test_other_ported_drivers_metadata(self):
-        from device_service.infrastructure.drivers.harmony_doubaochat import DoubaoChat
+        from device_service.infrastructure.drivers.harmony.doubao.v1 import DoubaoChat
         db = DoubaoChat()
         assert db.app_type == 'doubao'
         assert db.platform is DevicePlatform.HARMONYOS
 
-        from device_service.infrastructure.drivers.harmony_translation_driver import (
-            XiaoyiFace2FaceDriver,
+        from device_service.infrastructure.drivers.harmony.xiaoyi_face2face.v1 import XiaoyiFace2FaceDriver
+        from device_service.infrastructure.drivers.harmony.xiaoyi_simultaneous.v1 import (
             XiaoyiSimultaneousInterpretationDriver,
         )
         assert XiaoyiFace2FaceDriver().app_type == 'xiaoyi_face2face'
@@ -425,9 +425,9 @@ class TestChatGptLifecycleMockDevice:
 
     @pytest.fixture(autouse=True)
     def _fast_and_mock_hdc(self, monkeypatch):
-        from device_service.infrastructure.drivers import harmony_chatgpt as hc
-        from device_service.infrastructure.drivers import harmony_driver as hd
-        from device_service.infrastructure.drivers import harmony_collection_mixin as hcm
+        from device_service.infrastructure.drivers.harmony.chatgpt import v1 as hc
+        from device_service.infrastructure.drivers.harmony.base import v1 as hd
+        from device_service.infrastructure.drivers.common import harmony_collection_mixin as hcm
         monkeypatch.setattr(hc.time, 'sleep', lambda *a, **k: None)
         monkeypatch.setattr(hd.time, 'sleep', lambda *a, **k: None)
         monkeypatch.setattr(hcm.time, 'sleep', lambda *a, **k: None)
@@ -458,7 +458,7 @@ class TestChatGptLifecycleMockDevice:
     def test_initialize_strict_without_hypium_fails_fast(self, monkeypatch):
         """strict（默认）：hypium 缺失 → UI 层不可用 → 显式失败（不半初始化）"""
         d = _make_chatgpt()
-        from device_service.infrastructure.drivers.harmony_driver import HarmonyDriver
+        from device_service.infrastructure.drivers.harmony.base.v1 import HarmonyDriver
         monkeypatch.setattr(
             HarmonyDriver, '_degrade_ui_capture', lambda self, reason: False)
         monkeypatch.setattr(d, 'unlock', lambda *a, **k: None)
@@ -483,7 +483,7 @@ class TestChatGptLifecycleMockDevice:
     def test_teardown_force_stops_app_via_hdc(self, monkeypatch):
         """teardown：HDC 替身执行 aa force-stop + 清 PCM（假设备不触真机）"""
         import subprocess as _sp
-        from device_service.infrastructure.drivers import harmony_chatgpt as hc
+        from device_service.infrastructure.drivers.harmony.chatgpt import v1 as hc
         d = _make_chatgpt()
         d._recording = False
         d._record_mode = 'case'

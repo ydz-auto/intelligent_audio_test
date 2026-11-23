@@ -28,7 +28,7 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 import pytest
 
-from device_service.infrastructure.drivers.harmony_driver import HarmonyDriver
+from device_service.infrastructure.drivers.harmony.base.v1 import HarmonyDriver
 from device_service.interfaces.grpc.device_runtime_servicers import DeviceServiceServicer
 from e2e_test_service.application.services.e2e_device_manager import E2EDeviceManager
 from e2e_test_service.application.services.e2e_executor.executor import E2EExecutor
@@ -39,7 +39,7 @@ from shared.constants.ui_capture import (
     normalize_ui_capture_mode,
 )
 
-HD = 'device_service.infrastructure.drivers.harmony_driver'
+HD = 'device_service.infrastructure.drivers.harmony.base.v1'
 FACTORY_TARGET = 'device_service.infrastructure.drivers.driver_factory.device_driver_factory'
 SN = '5SM0125613000197'
 

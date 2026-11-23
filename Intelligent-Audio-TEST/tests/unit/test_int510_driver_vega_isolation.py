@@ -19,8 +19,8 @@ import pytest
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
-from device_service.infrastructure.drivers.harmony_xiaoyichat import Xiaoyilivechat
-from device_service.infrastructure.drivers.harmony_doubaochat import DoubaoChat
+from device_service.infrastructure.drivers.harmony.xiaoyi_livechat.v1 import Xiaoyilivechat
+from device_service.infrastructure.drivers.harmony.doubao.v1 import DoubaoChat
 
 
 # ──────────────────────────────────────────────
@@ -62,7 +62,7 @@ def test_as_bool_falsy_forms(value):
 # ──────────────────────────────────────────────
 
 def _fake_hdc_recv(monkeypatch, driver, mutate_epoch_to=None, content=b'PCM-DATA'):
-    import device_service.infrastructure.drivers.harmony_xiaoyichat as hxc
+    import device_service.infrastructure.drivers.harmony.xiaoyi_livechat.v1 as hxc
 
     def fake_run(args, **kwargs):
         target = args[-1]
@@ -111,7 +111,7 @@ def test_recv_pcm_discards_write_when_case_switched(tmp_path, monkeypatch):
 
 def test_pull_record_file_rejects_foreign_case_record(tmp_path, monkeypatch):
     """滞留 teardown 兜底：驱动录屏名已属于新用例，旧用例参数的拉取必须被拒绝"""
-    import device_service.infrastructure.drivers.harmony_xiaoyichat as hxc
+    import device_service.infrastructure.drivers.harmony.xiaoyi_livechat.v1 as hxc
 
     driver = _make_xiaoyi_driver()
     # 驱动单例状态已被下个用例污染：录屏名是 case-B 的

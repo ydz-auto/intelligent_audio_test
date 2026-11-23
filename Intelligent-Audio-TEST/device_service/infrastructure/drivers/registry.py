@@ -13,7 +13,7 @@
     driver_cls = driver_registry.resolve("plaud", "v1", DevicePlatform.ANDROID)
 
 热更新:
-    driver_registry.reload_module('device_service.infrastructure.drivers.android_plaud')
+    driver_registry.reload_module('device_service.infrastructure.drivers.android.plaud.v1')
     driver_registry.unregister("plaud", "v1", DevicePlatform.ANDROID)
     driver_registry.register(NewDriverClass)
 """

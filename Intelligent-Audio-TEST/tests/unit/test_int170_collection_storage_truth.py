@@ -22,11 +22,11 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 import pytest
 
-from device_service.infrastructure.drivers.harmony_collection_mixin import (
+from device_service.infrastructure.drivers.common.harmony_collection_mixin import (
     HarmonyCollectionMixin,
 )
 
-MIXIN = 'device_service.infrastructure.drivers.harmony_collection_mixin'
+MIXIN = 'device_service.infrastructure.drivers.common.harmony_collection_mixin'
 
 
 class StubCollectionDriver(HarmonyCollectionMixin):
@@ -197,7 +197,7 @@ def test_pull_returns_error_without_record_file_name():
 # ---------------- get_results：降级口径外溢到 message ----------------
 
 def _make_harmony_driver():
-    from device_service.infrastructure.drivers.harmony_driver import HarmonyDriver
+    from device_service.infrastructure.drivers.harmony.base.v1 import HarmonyDriver
     driver = HarmonyDriver()
     driver.logs = []
     driver._log = lambda *args, **kwargs: driver.logs.append(

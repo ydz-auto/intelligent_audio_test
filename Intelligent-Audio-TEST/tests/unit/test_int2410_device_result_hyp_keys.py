@@ -24,8 +24,8 @@ import pytest
 from device_service.infrastructure.acl.algorithm_query_acl_repository import (
     AlgorithmQueryACLRepository,
 )
-from device_service.infrastructure.drivers import android_plaud
-from device_service.infrastructure.drivers.android_plaud import PlaudDriver
+from device_service.infrastructure.drivers.android.plaud import v1 as android_plaud
+from device_service.infrastructure.drivers.android.plaud.v1 import PlaudDriver
 from device_service.domain.services.rttm_stm_utils import RttmStmUtils
 from report_service.application.services.report_helpers import ReportHelpers
 

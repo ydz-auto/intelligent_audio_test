@@ -146,7 +146,7 @@ def test_base_driver_defaults_explicitly_unsupported():
 
 
 def _android_driver(monkeypatch, u2_device):
-    from device_service.infrastructure.drivers.android_driver import AndroidDriver
+    from device_service.infrastructure.drivers.android.base.v1 import AndroidDriver
     driver = AndroidDriver()
     monkeypatch.setattr(driver, '_get_driver', lambda sn: u2_device)
     return driver
@@ -218,7 +218,7 @@ def test_android_driver_screenshot_png(monkeypatch):
 
 
 def _harmony_driver(monkeypatch, ui_driver):
-    from device_service.infrastructure.drivers import harmony_driver as hd
+    from device_service.infrastructure.drivers.harmony.base import v1 as hd
     driver = hd.HarmonyDriver()
     monkeypatch.setattr(hd, 'UiDriver', object())  # 视为 hypium 可用
     monkeypatch.setattr(driver, '_get_driver', lambda sn: ui_driver)
@@ -244,7 +244,7 @@ def test_harmony_driver_dump_tree_flattens_layout(monkeypatch):
 
 
 def test_harmony_driver_missing_hypium_is_explicit(monkeypatch):
-    from device_service.infrastructure.drivers import harmony_driver as hd
+    from device_service.infrastructure.drivers.harmony.base import v1 as hd
     driver = hd.HarmonyDriver()
     monkeypatch.setattr(hd, 'UiDriver', None)
     with pytest.raises(UiCaptureUnavailable) as excinfo:
@@ -271,7 +271,7 @@ def test_harmony_driver_seven_actions_dispatched(monkeypatch):
 
 def test_flatten_layout_keeps_attribute_names():
     """只做结构解包：属性名原样保留，归一化留给 agent 侧 parse_harmony_components。"""
-    from device_service.infrastructure.drivers.harmony_driver import HarmonyDriver
+    from device_service.infrastructure.drivers.harmony.base.v1 import HarmonyDriver
     out = []
     HarmonyDriver._flatten_layout_node(
         {'attributes': {'type': 'Button', 'text': 'ok', 'clickable': 'true'},

@@ -19,8 +19,8 @@ import pytest
 
 from shared.proto import device_service_pb2 as pb
 from device_service.interfaces.grpc.device_runtime_servicers import DeviceServiceServicer
-from device_service.infrastructure.drivers.harmony_xiaoyichat import Xiaoyilivechat
-from device_service.infrastructure.drivers.harmony_xiaoyi_reject import XiaoyiLivechatReject
+from device_service.infrastructure.drivers.harmony.xiaoyi_livechat.v1 import Xiaoyilivechat
+from device_service.infrastructure.drivers.harmony.xiaoyi_livechat_reject.v1 import XiaoyiLivechatReject
 
 SN = '5SM0125701000448'
 

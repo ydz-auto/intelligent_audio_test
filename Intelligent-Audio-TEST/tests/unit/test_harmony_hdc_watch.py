@@ -10,7 +10,7 @@ import threading
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
-from device_service.infrastructure.drivers import harmony_driver  # noqa: E402
+from device_service.infrastructure.drivers.harmony.base import v1 as harmony_driver  # noqa: E402
 
 
 def fake_check_output(output):

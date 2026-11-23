@@ -25,15 +25,15 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 import pytest
 
-from device_service.infrastructure.drivers.harmony_collection_mixin import (
+from device_service.infrastructure.drivers.common.harmony_collection_mixin import (
     HarmonyCollectionMixin,
 )
-from device_service.infrastructure.drivers.harmony_driver import HarmonyDriver
+from device_service.infrastructure.drivers.harmony.base.v1 import HarmonyDriver
 from device_service.interfaces.grpc.device_runtime_servicers import DeviceServiceServicer
 from e2e_test_service.application.services.e2e_device_manager import E2EDeviceManager
 
-MIXIN = 'device_service.infrastructure.drivers.harmony_collection_mixin'
-HD = 'device_service.infrastructure.drivers.harmony_driver'
+MIXIN = 'device_service.infrastructure.drivers.common.harmony_collection_mixin'
+HD = 'device_service.infrastructure.drivers.harmony.base.v1'
 FACTORY_TARGET = 'device_service.infrastructure.drivers.driver_factory.device_driver_factory'
 
 SN = '5SM0125613000197'
@@ -416,7 +416,8 @@ class TestServicerPassthrough:
         factory = MagicMock()
         driver = MagicMock()
         driver.pre_process.return_value = False
-        factory.get_driver_by_sn.return_value = driver
+        # servicer 经 resolve_driver 按 system+keywords 定位驱动（缺省回落同 SN）
+        factory.resolve_driver.return_value = driver
         s, p = self._servicer(factory)
         with p:
             resp = s.CreateDriver(_req({
@@ -429,7 +430,7 @@ class TestServicerPassthrough:
         factory = MagicMock()
         driver = MagicMock()
         driver.pre_process.return_value = None
-        factory.get_driver_by_sn.return_value = driver
+        factory.resolve_driver.return_value = driver
         s, p = self._servicer(factory)
         with p:
             resp = s.CreateDriver(_req({
@@ -440,7 +441,7 @@ class TestServicerPassthrough:
         factory = MagicMock()
         driver = MagicMock()
         driver.post_process.return_value = False
-        factory.get_driver_by_sn.return_value = driver
+        factory.resolve_driver.return_value = driver
         s, p = self._servicer(factory)
         with p:
             resp = s.CreateDriver(_req({
@@ -450,7 +451,7 @@ class TestServicerPassthrough:
 
     def test_pre_process_driver_missing_fails(self):
         factory = MagicMock()
-        factory.get_driver_by_sn.return_value = None
+        factory.resolve_driver.return_value = None
         s, p = self._servicer(factory)
         with p:
             resp = s.CreateDriver(_req({

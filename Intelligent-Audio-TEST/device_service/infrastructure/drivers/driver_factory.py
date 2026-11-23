@@ -1,6 +1,4 @@
-from .android_driver import AndroidDriver
-from .android_plaud import PlaudDriver
-from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
+from .android.base.v1 import AndroidDriver
 from .utils import log_and_emit
 from .driver_types import DevicePlatform
 from .registry import driver_registry
@@ -14,7 +12,7 @@ _PLATFORM_BY_SYSTEM_NAME = {
 }
 
 # HarmonyDriver 的 scan() 仅依赖 hdc 命令，不需要 hypium，始终可用
-from .harmony_driver import HarmonyDriver
+from .harmony.base.v1 import HarmonyDriver
 
 # 专用驱动依赖 hypium（华为内部测试框架，非 PyPI 包）。
 # 驱动模块自身对 hypium 做防御式导入，注册表始终可用；这里只探测依赖是否存在，
@@ -228,7 +226,7 @@ class DeviceDriverFactory:
         """按系统名返回基础驱动实例（Android / HarmonyOS）。
 
         扫描设备、在线状态检测只关心物理设备本身，应始终使用基础驱动
-        （android_driver.AndroidDriver / harmony_driver.HarmonyDriver），
+        （android.base.v1.AndroidDriver / harmony.base.v1.HarmonyDriver），
         不走 keywords → 专用驱动（子类）的解析路径。
         """
         key = {
