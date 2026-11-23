@@ -59,6 +59,13 @@ class TurnTakingBase(BaseCalculator):
         return _get_asr_chunks(wav_path, filter_punct=filter_punct)
 
     @staticmethod
+    def _get_asr_chunks_with_status(wav_path, filter_punct=True):
+        from app.services.calculators.xiaoyi_metrics.turn_taking import (
+            _get_asr_chunks_with_status,
+        )
+        return _get_asr_chunks_with_status(wav_path, filter_punct=filter_punct)
+
+    @staticmethod
     def _compute_pause_intervals(user_chunks):
         """从 user_wav ASR 结果自动计算停顿区间（复用 shared.asr_utils）"""
         return compute_pause_intervals(user_chunks or [])

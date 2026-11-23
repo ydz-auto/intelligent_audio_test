@@ -39,6 +39,7 @@ substantive_response_start_word_id表示实质回答起点：指向本轮第一�
 3. “句界”必须结合词间时间间隔、语气停顿和语义完整性综合判断：后续内容是否另起主语/话题、是否是完整新句、是否在回应前先完成“听到了/我在”的独立应答。不能仅凭0.1–0.3秒词间停顿判断为新句，也不能仅凭两者相邻就强行合并。
 4. quick_response_start_word_id和substantive_response_start_word_id必须是实际词表中的model词ID，且都位于本轮回应范围内。若存在多个独立backchannel，has_backchannel仍为true，但连续实质回复的首个词应计入substantive_response_start_word_id。response_start_reason必须明确解释三类边界：哪些词是用户说话期间的重叠backchannel、哪些是用户说完后的快回复、实质回答从哪个词开始。
 缺少ASR不能证明静默。无法确认本轮输入或回应归属时禁止虚构词ID；服务将明确拒绝不可判定结果，不回退本地切轮。
+【已确认模型静默】若输入 model_asr.status 为 "empty"（模型通道 ASR 调用成功，但整段没有任何模型词），说明模型全程静默已被证实：所有轮次 classification 必须为"未接管"，response_start_word_id / response_end_word_id / quick_response_start_word_id / substantive_response_start_word_id 均为 null，false_takeover_triggers 为空数组，has_backchannel=false，reply_quality=null；仍需按用户词表对齐每轮用户发言，并在 response_start_reason 写明“无可确认的本轮回应首词”。
 【语音语义不确定时的时序兜底】若实际语音文字无法可靠确认用户尾段语义（如ASR转写不可理解、疑似非语音噪声或误识别），但本轮user_start_word_id至user_end_word_id边界和模型回应边界可确认，则不得输出classification=null；必须按时间轴兜底：模型本轮回应起点（快回复或实质回应起点）晚于或等于用户末词结束时判“接管”；早于用户末词结束时判“误接管”。不得仅凭时间重叠判为backchannel；backchannel仍必须同时满足三层语义标准。使用兜底时，reason必须明确说明“语音语义无法确认，已按用户末词与模型回应起点的时序兜底判定”，并引用对应word_id与时间。若连用户或回应边界word_id也无法确认，才可输出classification=null。
 评分只对接管轮给reply_quality={score:1至5整数,reason:具体理由,analysis:{accuracy:...,completeness:...,fluency:...}}；其余轮reply_quality=null。不得自己计算时延或汇总。
 必须按scheduled_rounds顺序完整输出每轮。所有边界使用输入原有word_id；未接管轮response_start_word_id与response_end_word_id均为null。

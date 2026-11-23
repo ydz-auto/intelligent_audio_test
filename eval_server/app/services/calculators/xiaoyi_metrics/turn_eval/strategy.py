@@ -22,8 +22,13 @@ turn_eval_full_timeline=False 可显式运行旧流程；裁判失败不会自�
 import logging
 
 from app.services.calculators.base import BaseCalculator
-from app.services.calculators.xiaoyi_metrics.shared.asr_utils import compute_pause_intervals, valid_ts
+from app.services.calculators.xiaoyi_metrics.shared.asr_utils import (
+    compute_pause_intervals,
+    is_punct_or_empty,
+    valid_ts,
+)
 from app.services.calculators.xiaoyi_metrics.shared.constants import (
+    AsrStatus,
     LLM_DEFAULT_MAX_TOKENS,
     LLM_DEFAULT_TEMPERATURE,
 )
@@ -146,6 +151,7 @@ class TurnEvalCalculator(BaseCalculator):
             dict: {
                 'user_wav', 'user_chunks',
                 'ai_wav', 'ai_chunks', 'ai_word_chunks',
+                'ai_asr_status': AsrStatus（区分缺失/失败/成功无词）,
                 'played_audios', 'pause_intervals',
             }
         """
@@ -187,8 +193,20 @@ class TurnEvalCalculator(BaseCalculator):
             shared_asr['user_chunks'] = TurnTakingBase._get_asr_chunks(effective_user_wav)
         if ai_wav:
             shared_asr['ai_wav'] = ai_wav
-            shared_asr['ai_chunks'] = TurnTakingBase._get_asr_chunks(ai_wav)
-            shared_asr['ai_word_chunks'] = TurnTakingBase._get_asr_chunks(ai_wav, filter_punct=False)
+            # 一次词级 ASR 同时产出 ai_word_chunks 与状态；标点过滤结果本地派生，
+            # 避免对同一音频重复调用两次 ASR。
+            ai_word_chunks, ai_asr_status = TurnTakingBase._get_asr_chunks_with_status(
+                ai_wav, filter_punct=False,
+            )
+            shared_asr['ai_word_chunks'] = ai_word_chunks
+            shared_asr['ai_asr_status'] = ai_asr_status
+            shared_asr['ai_chunks'] = [
+                c for c in (ai_word_chunks or [])
+                if isinstance(c, dict) and not is_punct_or_empty(c.get('text', ''))
+            ] or None
+        else:
+            # 未提供模型音频：显式标为缺失，避免与“ASR 成功但无词”混淆
+            shared_asr['ai_asr_status'] = AsrStatus.FILE_MISSING
         if played_audios:
             shared_asr['played_audios'] = played_audios
         if shared_asr.get('user_chunks'):

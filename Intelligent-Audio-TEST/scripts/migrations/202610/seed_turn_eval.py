@@ -127,9 +127,12 @@ MAIN_DIMENSION = {
         # 主维度不配 output 参数
     ],
     'param_mappings': [
-        # 与库真实运行状态一致：主维度 query 取参考参数，其余为 case_config 轮次音频映射
-        # （音频路径运行时按维度注入，无需 device 映射）
+        # query 取参考参数；双路音频取设备输出（与 xiaoyi 族一致）——
+        # 缺 device→user_wav/ai_wav 映射时评估 rounds 不含模型音频，
+        # eval_server 拿不到模型 ASR，整例会被判不可判定。
         ('reference', 'output', 'query', 'query', 'none'),
+        ('device', 'output', 'user_wav', 'user_wav', 'none'),
+        ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
         ('case_config', 'output', 'audios', 'played_audios', 'none'),
         ('case_config', 'output', 'background_noise', 'background_noise', 'none'),
         ('case_config', 'output', 'interferers', 'interferers', 'none'),
