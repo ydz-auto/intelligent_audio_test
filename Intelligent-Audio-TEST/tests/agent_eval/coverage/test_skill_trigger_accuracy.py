@@ -112,7 +112,9 @@ def test_skill_registry_loads_without_errors():
     registry = trigger.load_skills()
     # 13 = platform-reference + 12 个 M1；INT-2491 追加 app-api-onboarding
     # （M2，触发评测不在本汇总口径内，单独在 onboarding 域测试校验结构）。
-    assert len(registry.skills) == 14
+    # 另加 work-report-ppt（汇报 / PPT 交付口径，复用 report-studio 的
+    # 取数与导出链路），同样不进触发词评测的 14 个受评 Skill 集合。
+    assert len(registry.skills) == 15
     assert registry.issues == ()
 
 
