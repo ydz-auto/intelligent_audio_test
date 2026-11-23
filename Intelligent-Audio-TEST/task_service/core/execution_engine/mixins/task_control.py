@@ -138,6 +138,13 @@ class TaskControlMixin:
         finally:
             local_db_session.close()
 
+        # 清除上一次停止残留的分布式停止信号。停止任务时 control_task 会置位
+        # task:stop:{id}（TTL 24h），此前启动链路从不清理；停止后重新执行业务
+        # 起的新线程虽持有未置位的本地 Event，但各服务执行器 _handle_control
+        # 优先读 Redis 标志位，读到后立即抛 TaskStopSignal —— 表现为「停止后
+        # 重新执行，用例一个都没跑」。须在注册事件/起线程前清除。
+        _dc.clear_task_stop(task_id)
+
         # 注册任务控制事件（通过 gRPC 同步到 e2e_test_service；
         # CAS 成功后注册，失败分支不残留无主事件）
         _register_task_events_via_grpc(task_id, stop_event, pause_event)
@@ -244,6 +251,10 @@ class TaskControlMixin:
 
             for task_info in tasks_to_start:
                 task_id = task_info['task_id']
+
+                # 排队任务被停止后重新执行时同样会残留 task:stop:{id}，
+                # 起线程前必须清除，否则执行器读到后立即中断（同 start_task）
+                _dc.clear_task_stop(task_id)
 
                 stop_event = threading.Event()
                 pause_event = threading.Event()
