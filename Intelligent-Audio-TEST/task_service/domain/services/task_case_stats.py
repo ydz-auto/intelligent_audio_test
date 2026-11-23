@@ -14,7 +14,6 @@
 from typing import Dict, Iterable, List, Optional
 
 from shared.utils.status_constants import (
-    ACTIVE_EVALUATION_STATUSES,
     ACTIVE_EXECUTION_STATUSES,
     EvaluationStatus,
     ExecutionStatus,
@@ -55,9 +54,18 @@ def _aggregate_execution(exec_statuses: List[str]) -> str:
     return ExecutionStatus.PENDING
 
 
+# 评估进行中集合（queued/running/calculating；pending=评估未提交不计入，
+# 与任务级 task_dual_status_expr._EVAL_IN_PROGRESS 同口径）
+_EVAL_IN_PROGRESS = (
+    EvaluationStatus.QUEUED,
+    EvaluationStatus.RUNNING,
+    EvaluationStatus.CALCULATING,
+)
+
+
 def _aggregate_evaluation(eval_statuses: List[str]) -> str:
     """多行评估状态 → 用例级评估状态"""
-    if any(s in ACTIVE_EVALUATION_STATUSES for s in eval_statuses):
+    if any(s in _EVAL_IN_PROGRESS for s in eval_statuses):
         return EvaluationStatus.RUNNING
     if all(s in (EvaluationStatus.COMPLETED, EvaluationStatus.SKIPPED) for s in eval_statuses):
         return EvaluationStatus.COMPLETED
