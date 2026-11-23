@@ -268,9 +268,9 @@ class BaseConfig:
     # 审计落文件总开关（关 = emit 路径退回仅服务文件、不落 DB；task_service 内
     # S4 直写路径无服务文件兜底，关闭即不落审计——旁路记录不阻塞主流程）
     LOG_AUDIT_ENABLED: bool = _get_bool('LOG_AUDIT_ENABLED', True)
-    # 故障回退：True 时审计事件同时入库一份（仅 emit 路径，读侧不感知，非口径开关；
-    # task_service 内 S4 直写路径只落文件）
-    LOG_AUDIT_DB_ENABLED: bool = _get_bool('LOG_AUDIT_DB_ENABLED', False)
+    # 注：LOG_AUDIT_DB_ENABLED 回滚开关按契约 §Q7 的 30 天清理窗口，
+    # 已由 INT-1904 于 2026-11-24 删除（同日核验：栈内无容器设置该键、
+    # logs 表审计类行 0 行），不再提供审计双写回退。
     # 单审计文件切分阈值（MB）
     LOG_AUDIT_MAX_MB: int = _get_int('LOG_AUDIT_MAX_MB', 50)
     # 审计文件保留天数：继承统一文件保留期，显式设置才覆盖

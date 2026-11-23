@@ -26,8 +26,8 @@ class _EmitMixin:
     - 业务日志（有 task_id）→ 业务日志文件（logs/business/...，去库化），
       可经 LOG_BUSINESS_DB_ENABLED 回退开关恢复入库；需实时查看的推 WebSocket
     - 审计事件（显式携带 `audit_event`）→ 审计文件（logs/audit/...），
-      经 task_service 的 BatchCreateLogs 单写者落盘（H4）；
-      可经 LOG_AUDIT_DB_ENABLED 故障回退双写入库
+      经 task_service 的 BatchCreateLogs 单写者落盘（H4）；只落文件、不再入库
+      （原 `LOG_AUDIT_DB_ENABLED` 故障回退双写已按契约 §Q7 由 INT-1904 删除）
     - 其余（同 category 的运维日志、预览日志、审计开关关闭）→ 只写本地服务文件
 
     「一条事件恰好一行」靠分流顺序保证：审计身份只看 `audit_event` 实参
@@ -40,8 +40,7 @@ class _EmitMixin:
         分流处理日志（三分支互斥）：
         - 有 task_id → 业务日志文件（+ WebSocket）；
           LOG_BUSINESS_DB_ENABLED=True 时兼容性双写入库队列
-        - audit_event → 审计文件（BatchCreateLogs 单写者落盘）；
-          LOG_AUDIT_DB_ENABLED=True 时故障回退双写入库
+        - audit_event → 审计文件（BatchCreateLogs 单写者落盘，只落文件不入库）
         - 其余 → 只写本地服务文件（删除原 S2 入库路径）
         """
         try:
@@ -87,9 +86,6 @@ class _EmitMixin:
             # === 分支 2：审计事件 → 审计文件（task_service 单写者落盘，H4）===
             if audit_event and self._settings.audit_enabled:
                 self._enqueue_audit_log(record, audit_event, category, log_message)
-                if self._settings.audit_db_enabled:
-                    # 故障回退：同一事件再入 DB 一次（读侧不感知）
-                    self._enqueue_db_log(record, None, test_case_id, category, log_message)
                 return
 
             # === 分支 3：其余（含审计开关关闭、D2 预览日志、同 category 运维日志）
@@ -108,7 +104,7 @@ class _EmitMixin:
             safe_console_print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - ERROR - emit failed: {str(e)}", file=sys.stderr)
 
     def _enqueue_db_log(self, record, task_id, test_case_id, category, log_message):
-        """入库路径（仅回滚开关可达）：业务回滚双写 / 审计故障回退双写。
+        """入库路径（仅业务日志回滚开关 LOG_BUSINESS_DB_ENABLED 可达）。
 
         与历史入库行为一致：TTL 去重（审计类别除外）+ 截断 + 入 DB 队列。
         条目 sink='db' 告知 task_service 走原 batch_create 实现。

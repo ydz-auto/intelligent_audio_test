@@ -520,7 +520,7 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
         按条目 `sink` 分流（INT-1793 契约 §3.3）：
         - `audit_file` → 审计 JSONL 追加（task_service 单写者落盘，H4），
           返回每条事件的 cursor（= 事件时间 epoch 微秒，H3）
-        - `db`（默认，仅 LOG_AUDIT_DB_ENABLED / LOG_BUSINESS_DB_ENABLED 回滚开关可达）
+        - `db`（默认，仅 LOG_BUSINESS_DB_ENABLED 业务日志回滚开关可达）
           → 原实现：逐条构造 Log PO 并批量 commit
 
         返回 id 列表（DB 行 id / 审计 cursor），顺序与请求一致。

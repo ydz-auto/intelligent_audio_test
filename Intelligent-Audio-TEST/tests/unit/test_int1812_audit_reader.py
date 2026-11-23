@@ -56,7 +56,6 @@ def _make_settings(root, **overrides):
         business_retention_days=30,
         business_max_scan_entries=100_000,
         audit_enabled=True,
-        audit_db_enabled=False,
         audit_max_bytes=50 * 1024 * 1024,
         audit_retention_days=30,
         audit_archive_enabled=True,

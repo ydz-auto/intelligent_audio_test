@@ -9,7 +9,7 @@
 - 字段白名单（不落 mark / id，拒绝任意 kwargs）
 - 按天切换目录、超限切分 -NNN.jsonl
 - BatchCreateLogs 按 sink 分流（audit_file → 审计文件并返回 cursor；db → 原仓储实现）
-- LOG_AUDIT_DB_ENABLED=True 时同一事件文件一行 + DB 一行
+- 审计双写回退开关 LOG_AUDIT_DB_ENABLED 已按契约 §Q7 由 INT-1904 删除（本文件不再覆盖双写）
 - 保留清扫：审计子树按目录日期、到期先归档后删除、归档失败保留本地、单清扫者、
   统一 30 天（不得出现 180 天默认值）
 """
@@ -61,7 +61,6 @@ def _make_settings(root, **overrides):
         business_retention_days=30,
         business_max_scan_entries=100_000,
         audit_enabled=True,
-        audit_db_enabled=False,
         audit_max_bytes=50 * 1024 * 1024,
         audit_retention_days=30,
         audit_archive_enabled=True,
@@ -277,6 +276,10 @@ class TestEmitThreeBranches:
         assert _wait_for(lambda: len(captured) >= 1), '审计事件未进入 gRPC 批次'
         item = captured[0]
         assert item['sink'] == 'audit_file'
+        # 反向断言：双写回退分支已随 LOG_AUDIT_DB_ENABLED 删除（INT-1904），
+        # 审计事件只能落文件，不得再出现 sink='db' 的同事件副本
+        assert all(entry['sink'] == 'audit_file' for entry in captured), \
+            f'审计事件出现了 DB 副本（双写分支复活）: {[e["sink"] for e in captured]}'
         assert item['event'] == 'AUTH_USER_CREATED'
         assert item['service'], '审计条目必须携带产生进程名（H4 路径段）'
         assert item['content']  # 原 content 字符串原样透传
@@ -322,49 +325,6 @@ class TestEmitThreeBranches:
                      task_id=77, device_id=3, round=1)
         assert not _wait_for(lambda: len(captured) >= 1, timeout=1.5)
         assert _wait_for(lambda: any((logs_root / BUSINESS_DIR / '77').rglob('*.log')))
-
-    def test_audit_db_fallback_writes_two_entries(self, tmp_path, monkeypatch):
-        """LOG_AUDIT_DB_ENABLED=True：同一事件审计文件一行 + DB 一行。"""
-        import shared.clients.grpc_clients as grpc_clients_mod
-        import shared.utils.log_handler._state as lh_state
-        from shared.utils.log_handler import DatabaseLogHandler, log_not_emit
-
-        prev = lh_state._global_db_handler
-        if prev is not None:
-            prev.queue.put(None)
-            prev_worker = getattr(prev, 'worker_thread', None)
-            if prev_worker is not None:
-                prev_worker.join(timeout=2.0)
-
-        captured = []
-
-        def _fake_batch_create(logs_payload):
-            captured.extend(logs_payload)
-            return list(range(len(logs_payload)))
-
-        monkeypatch.setattr(grpc_clients_mod, 'batch_create_logs', _fake_batch_create)
-        monkeypatch.setattr(grpc_clients_mod, 'get_log_count', lambda: {'total': 0})
-        monkeypatch.setattr(
-            grpc_clients_mod, 'archive_logs',
-            lambda days=30, dry_run=False: {'groups': {}, 'remaining_count': 0})
-        import shared.clients.oss_client as oss_client_mod
-        monkeypatch.setattr(oss_client_mod.oss, 'is_available', lambda: False)
-        monkeypatch.setattr('shared.logging.config._SETTINGS',
-                            _make_settings(tmp_path / 'logs', audit_db_enabled=True))
-        monkeypatch.chdir(tmp_path)
-        handler = DatabaseLogHandler()
-        handler._batch_size = 2
-        handler.set_console_log(False)
-        monkeypatch.setattr(lh_state, '_global_db_handler', handler)
-        try:
-            log_not_emit('INFO', 'auth_login', json.dumps({'operator_id': 5}),
-                         category='auth', source='api_gateway',
-                         audit_event=AuditEvent.AUTH_LOGIN)
-            assert _wait_for(lambda: len(captured) >= 2), '双写未产生两条载荷'
-            sinks = sorted(item['sink'] for item in captured)
-            assert sinks == ['audit_file', 'db'], f'期望审计 + DB 各一条: {sinks}'
-        finally:
-            handler.queue.put(None)
 
 
 def _process_identity():

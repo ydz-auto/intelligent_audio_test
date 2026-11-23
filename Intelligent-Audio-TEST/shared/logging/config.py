@@ -45,8 +45,6 @@ class LogSettings:
     # 审计事件落审计 JSONL 总开关（关 = emit 路径退回仅服务文件、不落 DB；
     # S4 直写路径（task_service 内 write_audit_event）无服务文件兜底，关闭即不落）
     audit_enabled: bool = True
-    # 故障回退：True 时审计事件同时入库一份（仅 emit 路径，读侧不感知，30 天后清理开关）
-    audit_db_enabled: bool = False
     audit_max_bytes: int = 50 * 1024 * 1024
     # 审计文件保留天数（统一文件保留期，负责人 2026-10-24 裁定 30 天）
     audit_retention_days: int = 30
@@ -80,7 +78,6 @@ def _build_settings() -> LogSettings:
         business_scan_cache_entry_max_entries=max(
             0, BaseConfig.LOG_BUSINESS_SCAN_CACHE_ENTRY_MAX_ENTRIES),
         audit_enabled=BaseConfig.LOG_AUDIT_ENABLED,
-        audit_db_enabled=BaseConfig.LOG_AUDIT_DB_ENABLED,
         audit_max_bytes=max(1, BaseConfig.LOG_AUDIT_MAX_MB) * 1024 * 1024,
         audit_retention_days=max(1, BaseConfig.LOG_AUDIT_RETENTION_DAYS),
         audit_archive_enabled=BaseConfig.LOG_AUDIT_ARCHIVE_ENABLED,
