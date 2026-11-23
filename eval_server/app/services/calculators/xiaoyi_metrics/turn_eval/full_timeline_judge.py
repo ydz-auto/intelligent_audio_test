@@ -5,11 +5,27 @@ import logging
 import math
 from pathlib import Path
 
+from ..shared.constants import AsrStatus
+
 LABELS = ('接管', '误接管', '未接管', '误接管-正常接管', '误接管-未接管', '主动反馈-backchannel')
 FALSE_TAKEOVER_LABELS = ('误接管', '误接管-正常接管', '误接管-未接管')
 BACKCHANNEL_LABEL = '主动反馈-backchannel'
 BACKCHANNEL_MAX_CHARS = 6
 BACKCHANNEL_MAX_DURATION_S = 1.5
+
+# 模型通道 ASR 成功但整段无词时，可确认模型全程静默；此时全部轮次只能判未接管。
+SILENT_CLASSIFICATION_REASON = '模型通道ASR成功且整段无模型词，本例模型全程未发声，本轮判未接管；'
+SILENT_RESPONSE_REASON = '模型通道ASR成功但整段无任何模型词，确认全程静默，无可确认的本轮回应首词'
+SILENT_ALIGNMENT_FALLBACK = '模型全程静默；按输入词表对齐本轮用户发言'
+
+
+def _asr_status(value):
+    """兼容枚举/字符串入参，无法识别时返回 None。"""
+    try:
+        return AsrStatus(value)
+    except (TypeError, ValueError):
+        return None
+
 
 
 def collect_backchannel_feedback(packet, turns):
@@ -110,7 +126,7 @@ def _validate_backchannel_form(words):
     raise ValueError('Backchannel must be <=6 Chinese chars or <=1.5s')
 
 
-def build_input(user_chunks, model_chunks, rounds):
+def build_input(user_chunks, model_chunks, rounds, model_asr_status=None):
     words = []
     for prefix, speaker, chunks in [('U', 'user', user_chunks), ('M', 'model', model_chunks)]:
         for i, chunk in enumerate(chunks or []):
@@ -120,8 +136,18 @@ def build_input(user_chunks, model_chunks, rounds):
             if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in ts) or ts[1] < ts[0]:
                 raise ValueError('Invalid ASR word interval')
             words.append(dict(word_id=f'{prefix}{i:05d}', speaker=speaker, text=str(chunk.get('text') or ''), start=ts[0], end=ts[1]))
-    if not any(w['speaker'] == 'model' for w in words):
-        raise ValueError('Model ASR absent; absence alone cannot prove silence')
+    model_words = [w for w in words if w['speaker'] == 'model']
+    status = _asr_status(model_asr_status)
+    if not model_words:
+        if status == AsrStatus.EMPTY:
+            # ASR 调用成功且整段无词 → 已证实模型静默，允许继续判定（全部轮次未接管）。
+            pass
+        elif status == AsrStatus.FILE_MISSING:
+            raise ValueError('ai_wav missing or unreadable; model ASR unavailable (absence alone cannot prove silence)')
+        elif status == AsrStatus.FAILED:
+            raise ValueError('Model ASR call failed; absence alone cannot prove silence')
+        else:
+            raise ValueError('Model ASR absent; absence alone cannot prove silence')
     if not any(w['speaker'] == 'user' for w in words):
         raise ValueError('User ASR missing; cannot align scheduled questions')
     scheduled = []
@@ -132,7 +158,41 @@ def build_input(user_chunks, model_chunks, rounds):
         scheduled.append(dict(round_number=i, script_text=str(q)))
     if not scheduled:
         raise ValueError('Scheduled rounds required')
-    return dict(full_word_timeline=sorted(words, key=lambda w: (w['start'], w['end'], w['word_id'])), scheduled_rounds=scheduled)
+    return dict(
+        full_word_timeline=sorted(words, key=lambda w: (w['start'], w['end'], w['word_id'])),
+        scheduled_rounds=scheduled,
+        model_asr=dict(
+            status=AsrStatus.OK.value if model_words else AsrStatus.EMPTY.value,
+            word_count=len(model_words),
+        ),
+    )
+
+
+def _coerce_confirmed_silent_rounds(parsed):
+    """模型通道已确认静默时，忽略 LLM 给出的任何回应/触发证据，全部轮次纠正为未接管。
+
+    模型整段无词意味着不可能存在接管、误接管或 backchannel，只有“未接管”成立。
+    用户轮次对齐仍采用 LLM 结果；理由缺失时补通用说明，避免因理由为空而废掉整例。
+    """
+    for row in parsed.get('rounds') or []:
+        if not isinstance(row, dict):
+            continue
+        row.update(
+            classification='未接管',
+            response_start_word_id=None,
+            response_end_word_id=None,
+            quick_response_start_word_id=None,
+            substantive_response_start_word_id=None,
+            has_backchannel=False,
+            false_takeover_triggers=[],
+            false_takeover_start_word_id=None,
+            false_takeover_end_word_id=None,
+            reply_quality=None,
+            reason=SILENT_CLASSIFICATION_REASON,
+            response_start_reason=SILENT_RESPONSE_REASON,
+        )
+        if not isinstance(row.get('alignment_reason'), str) or not row['alignment_reason'].strip():
+            row['alignment_reason'] = SILENT_ALIGNMENT_FALLBACK
 
 
 def validate_and_derive(packet, parsed):
@@ -486,6 +546,9 @@ def judge(packet, task_params, call=None):
         try:
             parsed, parse_info = _parse_judge_content(content)
             record.update(parse_info)
+            if (packet.get('model_asr') or {}).get('status') == AsrStatus.EMPTY.value:
+                _coerce_confirmed_silent_rounds(parsed)
+                record['confirmed_silent_coerced'] = True
             turns = validate_and_derive(packet, parsed)
         except ValueError as exc:
             record.update(validation_passed=False, error=str(exc))
@@ -515,7 +578,7 @@ def evaluate(calculator, task_params):
     )
     user = shared.get('user_chunks') or []
     model = shared.get('ai_word_chunks') or []
-    packet = build_input(user, model, rounds)
+    packet = build_input(user, model, rounds, shared.get('ai_asr_status'))
     turns, tokens = judge(packet, task_params)
     backchannel_feedback = collect_backchannel_feedback(packet, turns)
     # Reuse the existing pure projection contract, not the old segmentation/classifier.

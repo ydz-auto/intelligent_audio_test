@@ -5,6 +5,7 @@
 各子包可自行覆盖默认值。
 """
 import os
+from enum import Enum
 
 # ─────────── LLM 配置 ───────────
 LLM_DEFAULT_TIMEOUT = 300
@@ -21,6 +22,18 @@ ASR_USER_SEG_MERGE_GAP_S = 1.5
 ASR_MODEL_SEG_MERGE_GAP_S = 0.7
 ASR_HIGH_FREQ_SEG_MERGE_GAP_S = 0.7
 ASR_NON_INTERACTIVE_SEG_MERGE_GAP_S = 0.7
+
+
+class AsrStatus(str, Enum):
+    """单路 ASR 取词结果状态。
+
+    区分「没有音频」「ASR 调用失败」与「ASR 成功但整段无词」，
+    后者才能作为“模型全程静默”的判定依据。
+    """
+    OK = 'ok'
+    EMPTY = 'empty'                # ASR 调用成功，但整段没有任何词（静音/无可识别语音）
+    FILE_MISSING = 'file_missing'  # 音频缺失或不可读，未执行 ASR
+    FAILED = 'failed'              # ASR 调用异常，结果不可信
 
 # ─────────── 时序阈值 ───────────
 TURN_DURATION_THRESHOLD = 1.0  # tor 命中词时长阈值(秒)

@@ -4,6 +4,21 @@ import pytest
 from app.services.calculators.xiaoyi_metrics.turn_eval import full_timeline_judge as f
 from app.services.calculators.xiaoyi_metrics.turn_eval.strategy import TurnEvalCalculator
 from app.services.calculators.xiaoyi_metrics.turn_taking.strategy import TurnTakingBase
+from app.services.calculators.xiaoyi_metrics.shared.constants import AsrStatus
+
+
+def _patch_asr(monkeypatch, path_map):
+    """同时打桩普通 ASR 与带状态 ASR（turn_eval 走带状态入口）。"""
+    def asr(path, **kwargs):
+        chunks = path_map.get(path)
+        return chunks
+
+    def asr_with_status(path, **kwargs):
+        chunks = asr(path, **kwargs)
+        return chunks, (AsrStatus.OK if chunks else AsrStatus.EMPTY)
+
+    monkeypatch.setattr(TurnTakingBase, '_get_asr_chunks', staticmethod(asr))
+    monkeypatch.setattr(TurnTakingBase, '_get_asr_chunks_with_status', staticmethod(asr_with_status))
 
 @pytest.fixture
 def example():
@@ -197,8 +212,7 @@ def test_quick_response_after_user_end_sets_latency_start_but_is_not_backchannel
 
 def test_whole_case_bypasses_local_segmentation_and_projects_contract(example,monkeypatch):
     data,rounds,_,parsed=example
-    def asr(path,**kwargs):return data['user'] if path=='raw_user.wav' else data['model']
-    monkeypatch.setattr(TurnTakingBase,'_get_asr_chunks',staticmethod(asr))
+    _patch_asr(monkeypatch, {'raw_user.wav': data['user'], 'raw_model.wav': data['model']})
     monkeypatch.setattr(f,'judge',lambda packet,params:(f.validate_and_derive(packet,parsed),123))
     calc=TurnEvalCalculator()
     monkeypatch.setattr(calc,'_eval_one_round',lambda *a,**kw:pytest.fail('old segmentation used'))
@@ -213,7 +227,7 @@ def test_whole_case_bypasses_local_segmentation_and_projects_contract(example,mo
 
 def test_invalid_full_case_does_not_fallback(example,monkeypatch):
     data,rounds,_,_=example
-    monkeypatch.setattr(TurnTakingBase,'_get_asr_chunks',staticmethod(lambda path,**kw:data['user'] if 'user' in path else data['model']))
+    _patch_asr(monkeypatch, {'raw_user.wav': data['user'], 'raw_model.wav': data['model']})
     def invalid(*args):raise ValueError('word overlap')
     monkeypatch.setattr(f,'judge',invalid)
     with pytest.raises(ValueError,match='word overlap'):TurnEvalCalculator().calculate({'task_params':{'rounds':rounds}})
@@ -243,8 +257,13 @@ def test_full_case_uses_aligned_user_asr_with_safe_fallback(example, monkeypatch
         assert path == expected
         return data['user']
 
+    def asr_with_status(path, **kwargs):
+        chunks = asr(path, **kwargs)
+        return chunks, (AsrStatus.OK if chunks else AsrStatus.EMPTY)
+
     monkeypatch.setattr(audio_alignment, 'generate_aligned_clean_audio', align)
     monkeypatch.setattr(TurnTakingBase, '_get_asr_chunks', staticmethod(asr))
+    monkeypatch.setattr(TurnTakingBase, '_get_asr_chunks_with_status', staticmethod(asr_with_status))
 
     def judge(packet, params):
         user_words = [w for w in packet['full_word_timeline'] if w['speaker'] == 'user']
@@ -304,7 +323,7 @@ def test_false_takeover_and_no_takeover_project_without_fake_quality(example,mon
     parsed['rounds'][0]['classification']='误接管'
     parsed['rounds'][0]['reply_quality']=None
     parsed['rounds'][2].update(classification='未接管',response_start_word_id=None,response_end_word_id=None,reply_quality=None)
-    monkeypatch.setattr(TurnTakingBase,'_get_asr_chunks',staticmethod(lambda path,**kw:data['user'] if 'user' in path else data['model']))
+    _patch_asr(monkeypatch, {'raw_user.wav': data['user'], 'raw_model.wav': data['model']})
     monkeypatch.setattr(f,'judge',lambda p,params:(f.validate_and_derive(p,parsed),1))
     result=TurnEvalCalculator().calculate({'task_params':{'rounds':rounds}})
     tc=result['turn_classification']
@@ -312,3 +331,58 @@ def test_false_takeover_and_no_takeover_project_without_fake_quality(example,mon
     assert result['per_round'][0]['reply_quality']['score'] is None
     assert result['per_round'][2]['takeover_latency']['takeover_latency_ms'] is None
     assert result['takeover_latency']['takeover_latency_avg_ms']==tc['turns'][1]['takeover_latency']['takeover_latency_ms']
+
+
+def test_confirmed_silent_model_asr_is_allowed_but_missing_or_failed_is_rejected():
+    user=[{'text':'你','timestamp':[0.0,0.4]}]
+    rounds=[{'query':'你叫什么'}]
+    packet=f.build_input(user,[],rounds,AsrStatus.EMPTY)
+    assert packet['model_asr']=={'status':'empty','word_count':0}
+    with pytest.raises(ValueError,match='ai_wav missing'):
+        f.build_input(user,[],rounds,AsrStatus.FILE_MISSING)
+    with pytest.raises(ValueError,match='ASR call failed'):
+        f.build_input(user,[],rounds,AsrStatus.FAILED)
+    with pytest.raises(ValueError,match='Model ASR absent'):
+        f.build_input(user,[],rounds)
+
+
+def test_confirmed_silence_coerces_llm_rows_to_no_takeover():
+    user=[{'text':'你','timestamp':[0.0,0.3]},{'text':'叫什么','timestamp':[0.3,1.0]}]
+    packet=f.build_input(user,[],[{'query':'你叫什么'}],AsrStatus.EMPTY)
+    llm_row={
+        'round_number':0,'user_start_word_id':'U00000','user_end_word_id':'U00001',
+        'response_start_word_id':'M00000','response_end_word_id':'M00000',
+        'classification':'接管','has_backchannel':True,
+        'alignment_reason':'用户完整提问','response_start_reason':'模型作答','reason':'模型回答了问题',
+        'reply_quality':{'score':5,'reason':'完整回答'},
+    }
+    content=json.dumps({'rounds':[llm_row]},ensure_ascii=False)
+    turns,_=f.judge(packet,{'model':'offline'},call=lambda **kw:{'content':content,'tokens_used':1})
+    assert turns[0]['classification']=='未接管'
+    assert turns[0]['has_ai_reply'] is False
+    assert turns[0]['has_backchannel'] is False
+    assert turns[0]['false_takeover']['false_takeover']==0
+    assert turns[0]['response_start_word_id'] is None
+
+
+def test_silent_model_projects_no_takeover_rates(monkeypatch):
+    user=[{'text':'你','timestamp':[0.0,0.4]},{'text':'叫什么','timestamp':[0.4,1.2]}]
+    rounds=[{'query':'你叫什么','user_wav':'raw_user.wav','ai_wav':'raw_model.wav'}]
+    _patch_asr(monkeypatch,{'raw_user.wav':user,'raw_model.wav':[]})
+
+    def judge(packet,params):
+        parsed={'rounds':[{
+            'round_number':0,'user_start_word_id':'U00000','user_end_word_id':'U00001',
+            'classification':'未接管','has_backchannel':False,
+            'alignment_reason':'用户完整提问','response_start_reason':'无可确认的本轮回应首词',
+            'reason':'模型通道ASR成功但整段无模型词','false_takeover_triggers':[],
+        }]}
+        return f.validate_and_derive(packet,parsed),1
+
+    monkeypatch.setattr(f,'judge',judge)
+    result=TurnEvalCalculator().calculate({'task_params':{'rounds':rounds}})
+    tc=result['turn_classification']
+    assert tc['no_takeover_count']==1
+    assert tc['no_takeover_rate']==1.0
+    assert tc['takeover_rate']==0
+    assert tc['total_turns']==1
