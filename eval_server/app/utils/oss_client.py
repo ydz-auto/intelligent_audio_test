@@ -26,9 +26,6 @@ logger = logging.getLogger(__name__)
 
 _SCHEME_OSS = 'oss://'
 
-# upload_stream 落盘中转的拷贝块大小（避免一次性读入大文件）
-_UPLOAD_COPY_CHUNK = 1024 * 1024
-
 
 class OSSClient:
     """S3 兼容对象存储客户端（单例，懒初始化）。"""
@@ -83,6 +80,10 @@ class OSSClient:
                 aws_access_key_id=config.OSS_ACCESS_KEY,
                 aws_secret_access_key=config.OSS_SECRET_KEY,
                 config=BotoConfig(
+                    # botocore>=1.36 默认按 aws-chunked 流式校验和上传，COS/RustFS 不支持，
+                    # 分块上传会因缺 Content-Length 报 MissingContentLength；按需校验即可。
+                    request_checksum_calculation='when_required',
+                    response_checksum_validation='when_required',
                     retries={'max_attempts': 3, 'mode': 'standard'},
                     connect_timeout=5,
                     read_timeout=120,
@@ -189,32 +190,13 @@ class OSSClient:
     def upload_stream(self, fileobj, oss_path: str) -> str:
         """将文件对象流式上传为 oss://{category}/{key}，返回 oss:// 引用。
 
-        boto3 1.4x 对来源不可寻址/无 fileno 的流（如 Flask 上传的 SpooledTemporaryFile）
-        走 multipart 分块上传时不会携带 Content-Length，COS/RustFS 会直接拒绝
-        UploadPart(MissingContentLength)。这里先分块落临时文件，再用 upload_file
-        按真实文件大小上传，保证大文件分段的 Content-Length 可靠；
-        临时文件在 finally 中清理，不会长期占用磁盘。
+        用 boto3 upload_fileobj 分块流式传输（大对象自动 multipart），
+        不整文件进内存；小对象单次 PUT。fileobj 需支持 seek/read。
         """
         self._ensure_init()
         full = oss_path if oss_path.startswith(_SCHEME_OSS) else f'{_SCHEME_OSS}{oss_path.lstrip("/")}'
         bucket, full_key, _, _ = self._split_oss_path(full)
-        import shutil
-        import tempfile
-
-        tmp = tempfile.NamedTemporaryFile(delete=False)
-        try:
-            try:
-                fileobj.seek(0)
-            except (AttributeError, OSError):
-                pass
-            with tmp:
-                shutil.copyfileobj(fileobj, tmp, length=_UPLOAD_COPY_CHUNK)
-            self._client.upload_file(tmp.name, bucket, full_key)
-        finally:
-            try:
-                os.unlink(tmp.name)
-            except OSError:
-                pass
+        self._client.upload_fileobj(fileobj, bucket, full_key)
         return full
 
     def upload_file(self, local_path: str, oss_path: str) -> str:
