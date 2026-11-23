@@ -12,8 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useDeviceStatusStream } from '@/application/devices/use-device-status-stream'
 import { DEVICE_STATUS_CHANGED_EVENT } from '@/domain/models/device'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
-import { SSE_EVENT_CHANNELS, subscribeSse } from '@/infrastructure/realtime/sse'
+import { SSE_EVENT_CHANNELS } from '@/infrastructure/realtime/sse'
 import type { SseEvent } from '@/infrastructure/realtime/sse'
+import { subscribeSharedSse } from '@/infrastructure/realtime/sse-bus'
 
 vi.mock('@/infrastructure/realtime/sse', () => ({
   SSE_EVENT_CHANNELS: {
@@ -23,10 +24,13 @@ vi.mock('@/infrastructure/realtime/sse', () => ({
     REPORT_EVENTS: 'report_events',
     CONFIG_EVENTS: 'config_events',
   },
-  subscribeSse: vi.fn(),
 }))
 
-const subscribeMock = vi.mocked(subscribeSse)
+vi.mock('@/infrastructure/realtime/sse-bus', () => ({
+  subscribeSharedSse: vi.fn(),
+}))
+
+const subscribeMock = vi.mocked(subscribeSharedSse)
 
 function makeUser(permissions: string[]) {
   return {

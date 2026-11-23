@@ -115,7 +115,7 @@ export function AudioImportPage() {
     allRows: view === 'folder' || (filters.tags.length > 0 && filters.tagMode === 'or'),
   })
   const tagsQuery = useAudioTags()
-  const folderTreeQuery = useFolderTree()
+  const folderTreeQuery = useFolderTree(view === 'folder')
   const { remove, batch, invalidate } = useAudioMutations()
 
   const tags = tagsQuery.data ?? []

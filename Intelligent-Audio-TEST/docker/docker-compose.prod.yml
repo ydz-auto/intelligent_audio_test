@@ -124,6 +124,8 @@ services:
       OSS_BUCKET_NAME: ${OSS_BUCKET_NAME}
       OSS_KEY_PREFIX: ${OSS_KEY_PREFIX}
       LLM_JUDGE_API_KEY: ""
+      # 评估结果事件化：任务终态发布到 Redis eval:result 频道（平台订阅）
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - eval_static:/data/static
       - ../aws-config/config:/app/.aws/config:ro

@@ -6,6 +6,7 @@ import os
 from typing import List, Dict, Optional
 from ..models.task import TaskModel
 from ..config import config
+from .eval_result_publisher import publish_eval_result
 from datetime import datetime
 
 class RemoteService:
@@ -171,7 +172,7 @@ class RemoteService:
 
             thread = threading.Thread(
                 target=self._poll_task_status,
-                args=(selected_endpoint, remote_eval_task_id, task_type)
+                args=(selected_endpoint, remote_eval_task_id, task_type, caller_task_id)
             )
             thread.daemon = True
             thread.start()
@@ -197,10 +198,17 @@ class RemoteService:
         with self._lock:
             return self._endpoint_concurrency.copy()
 
-    def _poll_task_status(self, endpoint_url: str, eval_task_id: str, task_type: str):
-        """轮询任务状态，完成后释放并发并同步结果"""
-        poll_interval = 2
-        max_attempts = 30
+    def _poll_task_status(self, endpoint_url: str, eval_task_id: str, task_type: str,
+                          caller_task_id: str = None):
+        """轮询任务状态，完成后释放并发并同步结果
+
+        轮询窗口可配置（REMOTE_POLL_INTERVAL / REMOTE_POLL_MAX_SECONDS，默认 2s × 300s）：
+        长耗时 LLM 裁判（如 reject_judge 单例可超 60s）不再被固定 60s 上限误杀。
+        终态同步后发布 Redis 事件（eval:result:{eval_task_id}），平台可事件化消费。
+        """
+        poll_interval = max(1, int(getattr(config, 'REMOTE_POLL_INTERVAL', 2) or 2))
+        max_seconds = max(poll_interval, int(getattr(config, 'REMOTE_POLL_MAX_SECONDS', 300) or 300))
+        max_attempts = max(1, max_seconds // poll_interval)
 
         try:
             status_url = f"{endpoint_url.rstrip('/')}/api/get_status/{eval_task_id}"
@@ -225,24 +233,36 @@ class RemoteService:
                                             completed_at=datetime.now().isoformat(),
                                             result=res_data.get('result')
                                         )
+                                        publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                                            'completed', result=res_data.get('result'))
                                     else:
                                         TaskModel.update_task_status(eval_task_id, 'failed', error_msg="无法获取远程结果")
+                                        publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                                            'failed', error_msg="无法获取远程结果")
                                 except Exception as e:
                                     TaskModel.update_task_status(eval_task_id, 'failed', error_msg=f"同步结果失败: {str(e)}")
+                                    publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                                        'failed', error_msg=f"同步结果失败: {str(e)}")
                             else:
                                 error_msg = data.get('data', {}).get('error_msg', '远程任务失败')
                                 TaskModel.update_task_status(eval_task_id, 'failed', error_msg=error_msg)
+                                publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                                    'failed', error_msg=error_msg)
                             break
                     elif resp.status_code == 404:
                         TaskModel.update_task_status(eval_task_id, 'failed', error_msg="任务在远程端点不存在")
+                        publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                            'failed', error_msg="任务在远程端点不存在")
                         break
                 except Exception as e:
                     print(f"Polling error for {eval_task_id}: {e}")
             else:
+                error_msg = f"Remote task timeout after {max_attempts * poll_interval}s"
                 TaskModel.update_task_status(
-                    eval_task_id, 'failed',
-                    error_msg=f"Remote task timeout after {max_attempts * poll_interval}s"
+                    eval_task_id, 'failed', error_msg=error_msg
                 )
+                publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                    'failed', error_msg=error_msg)
                     
         finally:
             self._decrement_concurrency(endpoint_url, task_type)

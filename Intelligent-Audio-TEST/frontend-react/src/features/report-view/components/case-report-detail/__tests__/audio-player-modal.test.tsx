@@ -11,6 +11,11 @@ import { AudioPlayerModal, type AudioItemMeta } from '../audio-player-modal'
 
 vi.mock('@/infrastructure/api/audios-api', () => ({
   stream: vi.fn(async () => 'https://rustfs.local/iat/case_pcm/402/user_wav.wav?sign=x'),
+  streamByPath: vi.fn(async (path: string) => `blob:${path}`),
+}))
+
+vi.mock('@/infrastructure/api/audio-playable-url', () => ({
+  resolvePlayableUrl: vi.fn(async (url: string) => `blob:${url}`),
 }))
 
 const PRESIGNED_URL = 'https://rustfs.local/iat/case_pcm/402/user_wav.wav?sign=x'
@@ -88,6 +93,36 @@ describe('AudioPlayerModal 总时长（INT-1860）', () => {
     expect(screen.getByText('音频暂不可播放')).toBeTruthy()
     expect(screen.queryByTestId('audio-duration')).toBeNull()
     expect(screen.queryByText('0:36')).toBeNull()
+  })
+
+  it('网关相对地址（取流走服务器）经服务器取流转 blob 后渲染播放器，不落入失败态', async () => {
+    const gatewayUrl = '/api/v1/audios/download?path=oss://case_result/473/6YF0126211000225/user_wav.wav'
+    renderOpened({
+      audio_id: 'oss://case_result/473/6YF0126211000225/user_wav.wav',
+      audio_name: 'user_wav',
+      audio_type: 'result',
+      url: gatewayUrl,
+    })
+
+    await waitFor(() =>
+      expect(audioElement().getAttribute('src')).toBe(`blob:${gatewayUrl}`)
+    )
+    expect(screen.queryByText('音频暂不可播放')).toBeNull()
+    expect(screen.getByRole('button', { name: '播放' })).toBeTruthy()
+  })
+
+  it('静态路径（结果音频 audio_file）经 stream-by-path 取流后渲染播放器，不落入失败态', async () => {
+    const p = 'oss://case_result/473/37683790-2a01-41e7-a4a7-30f473ddc6d6/6YF0126211000225/r0_in_raw1.wav'
+    renderOpened({
+      audio_id: p,
+      audio_name: 'r0_in_raw1',
+      audio_type: 'result',
+      path: p,
+    })
+
+    await waitFor(() => expect(audioElement().getAttribute('src')).toBe(`blob:${p}`))
+    expect(screen.queryByText('音频暂不可播放')).toBeNull()
+    expect(screen.getByRole('button', { name: '播放' })).toBeTruthy()
   })
 })
 

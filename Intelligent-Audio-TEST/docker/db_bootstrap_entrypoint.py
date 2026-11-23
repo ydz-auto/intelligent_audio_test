@@ -493,6 +493,15 @@ BOOTSTRAP_STEPS = [
     #     必须带 --apply。须排在 ㊾-12 之后、㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/add_agent_skill_review_table.py',
      '--apply'),
+    # ㊾-14 核心查询路径补索引（查询性能，2026-11-21）：test_results(task_id) /
+    #     test_result_dimensions(dimension_id) / test_cases(algorithm_type) 局部索引 /
+    #     dimensions(parent_dimension_id) —— 用例结果按任务拉取、评估维度批量反查、
+    #     用例列表按算法类型过滤、维度树 BFS 此前均无索引可命中。脚本用 autocommit
+    #     连接逐条 CREATE INDEX CONCURRENTLY（不在事务块内、不长时间阻塞写），索引
+    #     已存在即 SKIP；CONCURRENTLY 中途失败留下的 invalid 索引会被检出并以非零码
+    #     退出并打印 DROP 命令。默认 dry-run，引导链必须带 --apply。须排在
+    #     ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_query_perf_indexes.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器

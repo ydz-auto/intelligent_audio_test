@@ -113,12 +113,13 @@ export function statusEventFromDto(dto: DeviceStatusHistoryDto): DeviceStatusEve
   return {
     id: dto.id,
     deviceId: dto.device_id,
-    deviceName: dto.device_name,
     eventType,
     fromStatus: dto.from_status,
     toStatus: dto.to_status,
     source: dto.source,
-    result: dto.result === 'success' || dto.result === 'failed' ? dto.result : null,
+    // INT-2671：后端只有布尔 success（无 result 字段），域侧统一成 success/failed/null；
+    // 设备名同理不在事件行里（只有 device_id），由应用层关联测试设备列表。
+    result: dto.success === true ? 'success' : dto.success === false ? 'failed' : null,
     detail: formatStatusDetail(dto.detail),
     createdAt: dto.created_at,
   }

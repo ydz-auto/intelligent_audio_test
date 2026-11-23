@@ -15,7 +15,8 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { DEVICE_STATUS_CHANGED_EVENT } from '@/domain/models/device'
 import { hasPermission } from '@/domain/models/user'
-import { SSE_EVENT_CHANNELS, subscribeSse } from '@/infrastructure/realtime/sse'
+import { SSE_EVENT_CHANNELS } from '@/infrastructure/realtime/sse'
+import { subscribeSharedSse } from '@/infrastructure/realtime/sse-bus'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
 
 /** 同批设备状态事件的合并窗口（ms） */
@@ -41,7 +42,7 @@ export function useDeviceStatusStream(): void {
         timerRef.current = null
       }
     }
-    const off = subscribeSse({
+    const off = subscribeSharedSse({
       channels: [SSE_EVENT_CHANNELS.DEVICE_EVENTS],
       onEvent: (event) => {
         if (event.eventType !== DEVICE_STATUS_CHANGED_EVENT) return

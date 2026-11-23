@@ -359,6 +359,7 @@ class E2EAggregator:
                             algorithm_type=algorithm_type,
                             device_type=DeviceType.PHYSICAL.value,
                             case_algorithm_params=case_algorithm_params,
+                            algorithm_params_col=kwargs.get('algorithm_params_col'),
                             round_number=item.get('round_number')
                         )
 

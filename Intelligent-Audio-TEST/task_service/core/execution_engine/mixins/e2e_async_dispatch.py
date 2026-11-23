@@ -83,6 +83,49 @@ class E2EAsyncDispatchMixin:
             else:
                 self.e2e_dispatch_inflight.pop(task_id, None)
 
+    # ---- 同 SN 串行（按物理 SN 在途计数） ----
+    #
+    # 单设备任务并发派发时（TASK_E2E_DISPATCH_WORKERS>1），多个 worker 抢同一把
+    # SN 物理锁，后到者线程内阻塞等锁（retry_timeout=900s），慢用例一来就集体
+    # 等锁超时被误判「物理设备被占用」整批失败。这里在派发前按 SN 排队：同一
+    # 台物理设备同一时刻只允许一个在途批次，不同 SN 之间不受影响仍可并行。
+
+    def _get_e2e_dispatch_sn_inflight(self):
+        # 只在持有 e2e_dispatch_lock 时调用（threading.Lock 不可重入，勿在此加锁）
+        inflight = getattr(self, 'e2e_dispatch_sn_inflight', None)
+        if inflight is None:
+            inflight = {}
+            self.e2e_dispatch_sn_inflight = inflight
+        return inflight
+
+    def _bump_e2e_dispatch_sn(self, task_id, sn_keys, delta):
+        """按物理 SN 增/减在途计数（空键直接返回）。"""
+        if not sn_keys:
+            return
+        with self.e2e_dispatch_lock:
+            sn_map = self._get_e2e_dispatch_sn_inflight()
+            per_task = sn_map.setdefault(task_id, {})
+            for sn in sn_keys:
+                per_task[sn] = max(0, int(per_task.get(sn, 0)) + delta)
+            if not per_task:
+                sn_map.pop(task_id, None)
+
+    def _await_e2e_dispatch_sn_capacity(self, task_id, sn_keys, stop_event=None):
+        """同 SN 有在途批次时等待其结束（主循环派发前调用，行保持 PENDING）。"""
+        if not sn_keys:
+            return True
+        while True:
+            with self.e2e_dispatch_lock:
+                per_task = (self._get_e2e_dispatch_sn_inflight()
+                            .get(task_id) or {})
+                busy = any(int(per_task.get(sn, 0)) > 0 for sn in sn_keys)
+            if not busy:
+                return True
+            if stop_event is not None and stop_event.is_set():
+                return False
+            time.sleep(self.E2E_DISPATCH_POLL_SECONDS)
+
+
     def _get_e2e_dispatch_pool(self, task_id):
         """取（或按需创建）任务级派发线程池。"""
         with self.e2e_dispatch_lock:
@@ -119,6 +162,14 @@ class E2EAsyncDispatchMixin:
 
         row_ids = [int(row_id) for row_id in row_ids]
         device_ids = [int(device_id) for device_id in device_ids if device_id]
+        # 同 SN 串行：先等该批设备无在途执行，再登记在途，避免并发 worker 抢
+        # 同一把 SN 锁、等锁 900s 超时被误判「物理设备被占用」整批失败
+        sn_keys = sorted({
+            self._resolve_physical_lock_key(task_id, device_id)
+            for device_id in device_ids if device_id
+        })
+        self._await_e2e_dispatch_sn_capacity(task_id, sn_keys, stop_event=None)
+        self._bump_e2e_dispatch_sn(task_id, sn_keys, 1)
         with self.e2e_dispatch_lock:
             self.e2e_dispatch_user_ids[task_id] = get_current_user_id()
         try:
@@ -127,20 +178,25 @@ class E2EAsyncDispatchMixin:
             self._log(level='ERROR',
                       content=f"E2E 派发线程池不可用，回退同步执行: {e}",
                       task_id=task_id)
-            self._run_e2e_execution(task_id, row_ids, device_ids)
+            try:
+                self._run_e2e_execution(task_id, row_ids, device_ids)
+            finally:
+                self._bump_e2e_dispatch_sn(task_id, sn_keys, -1)
             return
 
         self._bump_e2e_dispatch_inflight(task_id, 1)
         try:
-            pool.submit(self._e2e_execution_entry, task_id, row_ids, device_ids)
+            pool.submit(self._e2e_execution_entry,
+                        task_id, row_ids, device_ids, sn_keys)
         except Exception as e:
             self._bump_e2e_dispatch_inflight(task_id, -1)
+            self._bump_e2e_dispatch_sn(task_id, sn_keys, -1)
             self._log(level='ERROR',
                       content=f"E2E 异步派发提交失败，回退同步执行: {e}",
                       task_id=task_id)
             self._run_e2e_execution(task_id, row_ids, device_ids)
 
-    def _e2e_execution_entry(self, task_id, row_ids, device_ids):
+    def _e2e_execution_entry(self, task_id, row_ids, device_ids, sn_keys=()):
         """派发线程入口：绑定执行上下文后运行执行阶段，结束归还空位。"""
         from shared.infrastructure.worker_context import set_worker_instance_id
         from shared.infrastructure.user_context import set_current_user_id
@@ -158,6 +214,7 @@ class E2EAsyncDispatchMixin:
                       content=f"E2E 异步派发线程异常: {e}",
                       task_id=task_id)
         finally:
+            self._bump_e2e_dispatch_sn(task_id, sn_keys, -1)
             self._bump_e2e_dispatch_inflight(task_id, -1)
             try:
                 remove_db_session()
@@ -303,6 +360,7 @@ class E2EAsyncDispatchMixin:
             pool = self.e2e_dispatch_pools.pop(task_id, None)
             remaining = self.e2e_dispatch_inflight.pop(task_id, 0)
             self.e2e_dispatch_user_ids.pop(task_id, None)
+            self._get_e2e_dispatch_sn_inflight().pop(task_id, None)
         if remaining:
             self._log(level='ERROR',
                       content=f"任务结束时仍有 {remaining} 个异步派发在执行，已强制回收线程池",

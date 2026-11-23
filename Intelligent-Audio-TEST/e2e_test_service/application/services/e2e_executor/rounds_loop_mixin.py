@@ -421,6 +421,7 @@ class RoundsLoopMixin:
                     case_reference_params=case_reference_params,
                     algorithm_type=algorithm_type, device_type=DeviceType.PHYSICAL.value,
                     case_algorithm_params=data.get('case_algorithm_params'),
+                    algorithm_params_col=data.get('algorithm_params_col'),
                     round_number=round_idx,
                     reference_params_col=data.get('reference_params_col')
                 )

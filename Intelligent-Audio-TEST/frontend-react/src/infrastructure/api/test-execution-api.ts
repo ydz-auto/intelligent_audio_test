@@ -107,13 +107,13 @@ export async function fetchCaseTags(): Promise<string[]> {
   return dto?.items ?? []
 }
 
-/** 评估维度 facet（GET /evaluation/dimensions，per_page=1000；TestCaseDimensionBrief 主/子平铺） */
+/** 评估维度 facet（GET /evaluation/dimensions，per_page=200；TestCaseDimensionBrief 主/子平铺） */
 export async function fetchEvaluationDimensions(): Promise<EvaluationDimension[]> {
   const dto = await request<{ items: Array<{ id: number; name: string; dimension_type: string | null }> }>(
     'GET',
     '/evaluation/dimensions',
     undefined,
-    { params: { per_page: 1000 } }
+    { params: { per_page: 200 } }
   )
   return (dto?.items ?? []).map((item) => ({
     id: item.id,
@@ -125,7 +125,7 @@ export async function fetchEvaluationDimensions(): Promise<EvaluationDimension[]
 /** 设备列表（步骤三；GET /test-devices，device:read） */
 export async function fetchDevices(): Promise<Device[]> {
   const dto = await request<{ items: DeviceItemDto[] }>('GET', '/test-devices', undefined, {
-    params: { per_page: 1000 },
+    params: { per_page: 200 },
   })
   return (dto?.items ?? []).map(deviceFromDto)
 }
@@ -133,7 +133,7 @@ export async function fetchDevices(): Promise<Device[]> {
 /** 被测 API 列表（步骤三；GET /apis 实测无后端门槛，前端 api_config:read 判定） */
 export async function fetchApis(): Promise<ApiConfig[]> {
   const dto = await request<{ items: ApiItemDto[] }>('GET', '/apis', undefined, {
-    params: { per_page: 1000 },
+    params: { per_page: 200 },
   })
   return (dto?.items ?? []).map(apiConfigFromDto)
 }

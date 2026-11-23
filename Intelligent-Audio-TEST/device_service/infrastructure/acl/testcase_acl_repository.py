@@ -69,6 +69,27 @@ class TestcaseAclRepository:
                 return count
             page += 1
 
+    def get_testcase_stats(self, group_by: str = '') -> dict:
+        """聚合统计测试用例（TaskDataService.GetTestCaseStats）。
+
+        group_by='lab_id' 时返回 [{key: lab_id, count}]，供实验室列表一次
+        聚合计数，替代逐页拉全量用例再解析 config 的慢路径。
+        失败返回空 dict（调用方按「无计数」降级）。
+        """
+        from shared.clients.grpc_clients import get_task_data_service_stub
+        from shared.proto import task_service_pb2 as task_pb
+        from shared.utils.grpc_json import loads as _loads
+        try:
+            stub = get_task_data_service_stub()
+            resp = stub.GetTestCaseStats(
+                task_pb.TestCaseAggStatsRequest(group_by=group_by))
+            if not resp.success:
+                return {}
+            return _loads(resp.data, {}) or {}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('GetTestCaseStats gRPC 调用失败: %s', exc)
+            return {}
+
     def get_testcase_detail(self, test_case_id):
         """查询测试用例详情（含 config / algorithm_params / reference_params）
 

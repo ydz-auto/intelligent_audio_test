@@ -554,7 +554,8 @@ class APIExecutor(BaseExecutor):
                 case_reference_params=case_config.get('reference_params', {}) if case_config else {},
                 algorithm_type=algorithm_type,
                 device_type=device_type or DeviceType.HTTP_API.value,
-                case_algorithm_params=case_algorithm_params
+                case_algorithm_params=case_algorithm_params,
+                algorithm_params_col=data.get('algorithm_params_col'),
             )
             self._log(level='INFO', category='evaluation',
                       content=f"API {api_config.id} 用例 {case_name} 采集完成，已提交评估队列",
@@ -760,11 +761,22 @@ class APIExecutor(BaseExecutor):
         # 重新加载 case_config 以获取 algorithm_params
         case_config2 = case_config
         algorithm_params = {}
+        algorithm_params_col = None
         rounds = case_config2.get('rounds', [])
         if rounds and isinstance(rounds[0], dict):
             ap_dict = rounds[0].get('algorithm_params', {})
             if ap_dict and isinstance(ap_dict, dict):
                 algorithm_params = ap_dict
+            # 按轮分组列：供评估侧 _build_rounds_list 按轮取 is_reject/timing/type
+            col = []
+            for _i, _rd in enumerate(rounds):
+                if isinstance(_rd, dict) and _rd.get('algorithm_params'):
+                    col.append({
+                        'round_number': _rd.get('round_number', _i + 1),
+                        'params': _rd.get('algorithm_params'),
+                    })
+            if col:
+                algorithm_params_col = col
 
         api_specific_config = case_config2.get('api', {})
         if not api_specific_config and case_device_type != DeviceType.PHYSICAL.value:
@@ -786,7 +798,8 @@ class APIExecutor(BaseExecutor):
             'audio': audio_data,
             'api_specific_config': api_specific_config,
             'total_audio_duration': total_audio_duration,
-            'case_algorithm_params': algorithm_params
+            'case_algorithm_params': algorithm_params,
+            'algorithm_params_col': algorithm_params_col
         }
 
     def _get_api_configs(self, task_id, api_id=None):

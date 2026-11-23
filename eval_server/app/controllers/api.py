@@ -15,6 +15,7 @@
 import uuid
 import json
 import os
+import shutil
 import threading
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -50,6 +51,7 @@ def _safe_filename(filename):
 from datetime import datetime
 from ..config import config  # 配置信息
 from ..services.task_service import calculate_in_process, notify_callback  # 线程池计算包装函数 / 事件化回调通知
+from ..services.eval_result_publisher import publish_eval_result  # 评估结果事件化发布（Redis）
 from ..utils.concurrency import ConcurrencyManager  # 并发管理器
 
 logger = logging.getLogger('api')
@@ -174,6 +176,44 @@ def _storage_id(task_id=None, case_id=None, fallback=None):
     return fallback_seg
 
 
+def cleanup_task_local_files(eval_task_id, caller_task_id=None, caller_test_case_id=None):
+    """任务计算完毕后清理本地音频缓存（uploads/<task>/<case>/）。
+
+    oss:// 音频 / multipart 上传只是处理期临时副本，算完即删，
+    避免 eval_static 卷无限增长。task JSON / LLM 审计日志 / 应用日志不在此目录。
+    """
+    try:
+        task_dir = os.path.join(
+            config.UPLOAD_DIR,
+            _storage_id(caller_task_id, caller_test_case_id, eval_task_id),
+        )
+        if os.path.isdir(task_dir):
+            shutil.rmtree(task_dir, ignore_errors=True)
+            logger.info(f"[cleanup] 已清理任务本地音频缓存: {task_dir}")
+    except Exception:
+        logger.exception(f"[cleanup] 清理任务本地音频缓存失败: eval_task_id={eval_task_id}")
+
+
+def _upload_binary_to_oss() -> bool:
+    """multipart 二进制文件是否上传到对象存储（UPLOAD_STORAGE: local/oss/auto）。
+
+    - local: 保存到 UPLOAD_DIR（默认，行为不变）
+    - oss:   上传到对象存储（需配置 OSS_ENDPOINT；RustFS 走多桶 S3 兼容）
+    - auto:  OSS 已配置时等同 oss，否则 local
+    """
+    mode = (config.UPLOAD_STORAGE or 'local').lower()
+    if mode == 'local':
+        return False
+    from ..utils.oss_client import oss_client
+    if mode == 'auto':
+        return oss_client.enabled
+    # oss（显式）：未配置 OSS 时回退本地，避免上传静默失败
+    if not oss_client.enabled:
+        logger.warning("UPLOAD_STORAGE=oss 但未配置 OSS_ENDPOINT，multipart 上传回退本地存储")
+        return False
+    return True
+
+
 def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=None, caller_test_case_id=None, eval_task_id=None):
     """
     验证任务参数并分发到本地或远程处理。
@@ -283,6 +323,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 caller_task_id=caller_task_id,
                 caller_test_case_id=caller_test_case_id
             )
+            # 远程转发已完成（文件已读入内存 multipart 上传），本地副本不再需要
+            cleanup_task_local_files(eval_task_id, caller_task_id, caller_test_case_id)
             base_url = request.host_url.rstrip('/')
             return success_response({
                 "eval_task_id": remote_task_id,
@@ -359,10 +401,12 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             ConcurrencyManager.decrement(task_type)
             raise
 
-        def process_local_task(eval_task_id, task_type, task_params):
+        def process_local_task(eval_task_id, task_type, task_params,
+                               caller_task_id=None, caller_test_case_id=None):
             # 事件化回调：调用方传 callback_url，算完后主动通知，替代调用方轮询等待
             callback_url = task_params.get('callback_url') if isinstance(task_params, dict) else None
-            caller_task_id = task_params.get('task_id') if isinstance(task_params, dict) else None
+            # caller_task_id 由入参显式传入（task_id 在 create_task 分发前已从
+            # task_params 剥离，任务记录里的 task_id 才是调用方任务 ID 的正确来源）
 
             try:
                 pool = _get_calc_pool()
@@ -399,6 +443,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                     )
                     notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
                                     'failed', error_msg=error_msg)
+                    publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                        'failed', error_msg=error_msg)
                     return
                 TaskModel.update_task_status(
                     eval_task_id,
@@ -408,6 +454,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 )
                 notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
                                 'completed', result=result)
+                publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                    'completed', result=result)
             except Exception as e:
                 logger.exception(f"[process_local_task] 任务失败 eval_task_id={eval_task_id} task_type={task_type}: {e}")
                 TaskModel.update_task_status(
@@ -418,6 +466,11 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 )
                 notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
                                 'failed', error_msg=str(e))
+                publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                    'failed', error_msg=str(e))
+            finally:
+                # 算完即删：清理本任务下载/上传的音频缓存，防止 eval_static 卷膨胀
+                cleanup_task_local_files(eval_task_id, caller_task_id, caller_test_case_id)
 
         def _run_with_decrement(*args, **kwargs):
             try:
@@ -426,7 +479,9 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 LocalConcurrencyManager.decrement()
                 ConcurrencyManager.decrement(task_type)
 
-        thread = threading.Thread(target=_run_with_decrement, args=(eval_task_id, task_type, task_params))
+        thread = threading.Thread(target=_run_with_decrement,
+                                  args=(eval_task_id, task_type, task_params,
+                                        caller_task_id, caller_test_case_id))
         thread.daemon = True
         thread.start()
 
@@ -544,15 +599,25 @@ def create_task_upload():
             content = file_storage.read().decode('utf-8', errors='replace')
             task_params[field_name] = content
         else:
-            # 二进制文件：保存到上传子目录，使用文件路径
+            # 二进制文件：按存储后端配置落位（本地路径 或 oss:// 引用）
             # 共享目录下加 12 位随机前缀防同名覆盖（设备音频槽位号每批次从头计数，
             # 不同用例会产出完全同名的录音，如 r1_100016_..._client_in.wav）
             if shared_storage:
                 filename = f"{uuid.uuid4().hex[:12]}_{filename}"
-            file_path = os.path.join(upload_dir, filename)
-            file_storage.save(file_path)
-            task_params[field_name] = file_path
-            uploaded_file_paths[field_name] = file_path
+            if _upload_binary_to_oss():
+                # 流式上传到对象存储：audios/{storage_id}/{filename}，task_params 记 oss:// 引用，
+                # 本地不落盘、不整文件进内存（upload_fileobj 分块传输）；
+                # 计算时按 OSS_RESOLVE_MODE 读取（stream 直读 / download 下载）
+                from ..utils.oss_client import oss_client
+                oss_key = f"{config.AUDIO_OSS_CATEGORY}/{storage_id.replace(os.sep, '/')}/{filename}"
+                oss_ref = oss_client.upload_stream(file_storage.stream, oss_key)
+                task_params[field_name] = oss_ref
+                uploaded_file_paths[field_name] = oss_ref
+            else:
+                file_path = os.path.join(upload_dir, filename)
+                file_storage.save(file_path)
+                task_params[field_name] = file_path
+                uploaded_file_paths[field_name] = file_path
 
     # 解析 rounds 及顶层结构化字段 JSON 字符串，并把 __MULTIPART__ 占位符替换为上传后的实际路径
     # 占位符可能出现在任意嵌套层级（如被播放音频 rounds[i].audios[j].audio_path，

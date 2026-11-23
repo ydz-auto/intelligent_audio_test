@@ -6,9 +6,12 @@
  *   触发值·阈值/邮件/触发时间/操作（确认钮 device:control / 已确认态显 acknowledged_by）
  * - 历史监控：事件类型 facet + 时间范围 Select（今日/近7天/近30天/自定义 start/end）+ 四类历史
  *   子页签（状态/性能/操作/错误）+ 统计分析 vChart 区（可用性/性能/错误/使用）
- * 数据 GET /alarms（含 stats）+ /status-history 实测；30s 轮询兜底（§11-4 SSE 断链）。
+ * 数据 GET /alarms（含 stats）+ /status-history + /monitor-stats 实测；30s 轮询兜底（§11-4 SSE 断链）。
  * P2-4 返修：时间范围筛选接入 createdAt；P2-12 返修：四类历史 + 统计分析区；
  * P3-27 返修：复用 StaticDataTable；P3-28 返修：复用 IconBadge。
+ * INT-2671：历史监控按当前分类/事件类型向接口传 event_type 取数（不再只拉最新 200 条后
+ * 前端过滤，否则健康检查把其余类型挤出窗口 → 状态/操作页签恒空）；设备列按 device_id
+ * 关联测试设备名，结果列按后端 success 布尔映射。
  */
 import { Bell, ChevronDown, Circle, CircleCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -33,12 +36,14 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { StaticDataTable } from '@/features/system-settings/components/static-data-table'
+import { useStatusHistory } from '@/application/devices/use-devices'
 import { cn } from '@/lib/utils'
 import { formatLocalWallClock } from '@/lib/date-time'
 import type {
   Alarm,
   AlarmStats,
   DeviceStatusEvent,
+  DeviceStatusEventType,
 } from '@/domain/models/alarm'
 import {
   ALARM_METRIC_META,
@@ -58,12 +63,17 @@ export interface AlarmPanelProps {
   onOpenChange: (open: boolean) => void
   alarms: Alarm[]
   stats: AlarmStats | null
-  statusHistory: DeviceStatusEvent[]
+  /** 事件行只有 device_id，设备名由调用方按测试设备列表建索引（INT-2671） */
+  deviceNames: Record<number, string>
   loading: boolean
   canControl: boolean
   canUpdate: boolean
   onAcknowledge: (alarm: Alarm) => void
   onManageRules: () => void
+  /** 统计分析四图沿用页面现有设备筛选（命中的测试设备 id，INT-2670） */
+  statsDeviceIds: number[]
+  /** 统计分析四图沿用页面现有实验室筛选（INT-2670） */
+  statsLabId: number | null
 }
 
 const SEVERITY_FILTER_OPTIONS = [
@@ -149,16 +159,31 @@ export function AlarmPanel(props: AlarmPanelProps) {
     [props.alarms, severity, alarmStatus]
   )
 
-  // P2-4：时间范围筛选接入 createdAt（今日/近7天/近30天/自定义）
+  /**
+   * INT-2671：事件类型筛选下推到接口——后端 status-history 支持单值 event_type，
+   * 分类是多类型集合（状态=online/offline/connecting/disconnecting/error）时按类型分次拉取；
+   * 未选具体事件时请求整类，选了则只请求该类型。面板未展开 / 不在历史页签时不请求。
+   */
+  const historyEventTypes = useMemo<DeviceStatusEventType[]>(() => {
+    if (eventType !== 'all') return [eventType as DeviceStatusEventType]
+    return [...(HISTORY_CATEGORY_EVENT_TYPES[historyCategory] ?? [])]
+  }, [eventType, historyCategory])
+
+  const historyQuery = useStatusHistory(
+    { eventTypes: historyEventTypes },
+    { enabled: props.open && view === 'history' }
+  )
+
+  // P2-4：时间范围筛选接入 createdAt（今日/近7天/近30天/自定义）；分类过滤为兜底
   const filteredHistory = useMemo(() => {
     const categoryTypes = HISTORY_CATEGORY_EVENT_TYPES[historyCategory]
-    return props.statusHistory.filter((event) => {
+    return (historyQuery.data ?? []).filter((event) => {
       if (categoryTypes && !categoryTypes.includes(event.eventType)) return false
       if (eventType !== 'all' && event.eventType !== eventType) return false
       if (!filterByTimeRange(event.createdAt, timeRange, customStart, customEnd)) return false
       return true
     })
-  }, [props.statusHistory, historyCategory, eventType, timeRange, customStart, customEnd])
+  }, [historyQuery.data, historyCategory, eventType, timeRange, customStart, customEnd])
 
   const alarmColumns = [
     {
@@ -251,8 +276,16 @@ export function AlarmPanel(props: AlarmPanelProps) {
       key: 'device',
       header: '设备',
       className: 'max-w-36',
+      // INT-2671：事件行只带 device_id，按 id 关联测试设备名（同告警列的口径：名称 + #id）
       render: (event: DeviceStatusEvent) => (
-        <span className='min-w-0 block truncate'>{event.deviceName ?? '—'}</span>
+        <>
+          <span className='min-w-0 block truncate'>
+            {(event.deviceId != null && props.deviceNames[event.deviceId]) || '—'}
+          </span>
+          {event.deviceId != null && (
+            <span className='text-muted-foreground font-mono text-[11px]'>#{event.deviceId}</span>
+          )}
+        </>
       ),
     },
     {
@@ -521,16 +554,34 @@ export function AlarmPanel(props: AlarmPanelProps) {
                   ))}
                 </TabsList>
               </Tabs>
-              {/* P3-27：历史表复用 StaticDataTable */}
-              <StaticDataTable
-                columns={historyColumns}
-                rows={filteredHistory}
-                rowKey={(event) => String(event.id)}
-                emptyText='暂无历史记录'
-                minWidth='760px'
+              {/* P3-27：历史表复用 StaticDataTable（INT-2671：加载中/失败不落「暂无历史记录」空态） */}
+              {historyQuery.isLoading ? (
+                <div className='flex flex-col gap-1.5' aria-busy='true'>
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className='h-10 w-full rounded-md' />
+                  ))}
+                </div>
+              ) : historyQuery.isError ? (
+                <div className='border-border/60 text-muted-foreground rounded-lg border border-dashed px-3 py-10 text-center text-sm'>
+                  历史记录加载失败，请稍后重试
+                </div>
+              ) : (
+                <StaticDataTable
+                  columns={historyColumns}
+                  rows={filteredHistory}
+                  rowKey={(event) => String(event.id)}
+                  emptyText='暂无历史记录'
+                  minWidth='760px'
+                />
+              )}
+              {/* P2-12：统计分析 vChart 区（可用性/性能/错误/使用；INT-2670 接真实 /monitor-stats） */}
+              <HistoryStatsCharts
+                timeRange={timeRange}
+                customStart={customStart}
+                customEnd={customEnd}
+                deviceIds={props.statsDeviceIds}
+                labId={props.statsLabId}
               />
-              {/* P2-12：统计分析 vChart 区（可用性/性能/错误/使用） */}
-              <HistoryStatsCharts />
             </div>
           )}
         </div>

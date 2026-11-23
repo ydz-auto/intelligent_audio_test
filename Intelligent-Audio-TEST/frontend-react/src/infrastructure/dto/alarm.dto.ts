@@ -45,16 +45,23 @@ export interface AlarmRuleDto {
   updated_at: string | null
 }
 
-/** GET /status-history 状态历史项（device.py DeviceStatusHistoryQuery 字段集） */
+/**
+ * GET /status-history 状态历史项（device_service `_event_to_dict` 实响应字段集）。
+ *
+ * INT-2671：与后端实响应对齐——后端**不返回** `device_name`（只有 `device_id`），
+ * 成功与否也是布尔 `success` 而非 `result`。设备名由应用层按 device_id 关联测试设备列表。
+ */
 export interface DeviceStatusHistoryDto {
   id: number
   device_id: number | null
-  device_name: string | null
+  /** 设备种类（test / playback；全量端点只返回 test） */
+  device_kind?: string | null
   event_type: string | null
   from_status: string | null
   to_status: string | null
   source: string | null
-  result: string | null
+  /** 检查/操作是否成功（device_status_events.success，可空） */
+  success: boolean | null
   /** P2-5：detail 为自由 JSON——部分事件是字符串，更多是对象（{"serial_number": "..."} /
    *  {"operation": "install_app", "error": "..."}），按对象声明，由适配器归一为可读文本 */
   detail: string | Record<string, unknown> | null

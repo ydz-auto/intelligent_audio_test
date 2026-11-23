@@ -6,6 +6,7 @@ from datetime import datetime
 from ..models.task import TaskModel
 from ..utils.concurrency import ConcurrencyManager
 from ..utils.decorators import limit_task_concurrency
+from ..services.eval_result_publisher import publish_eval_result  # 评估结果事件化发布（Redis）
 
 logger = logging.getLogger('task_service')
 
@@ -253,6 +254,8 @@ class TaskService:
                 )
                 notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
                                 'failed', error_msg=error_msg)
+                publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                    'failed', error_msg=error_msg)
                 return
 
             TaskModel.update_task_status(
@@ -263,6 +266,8 @@ class TaskService:
             )
             notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
                             'completed', result=result)
+            publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                'completed', result=result)
 
         except Exception as e:
             TaskModel.update_task_status(
@@ -273,6 +278,15 @@ class TaskService:
             )
             notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
                             'failed', error_msg=str(e))
+            publish_eval_result(eval_task_id, task_type, caller_task_id,
+                                'failed', error_msg=str(e))
+        finally:
+            # 算完即删：清理本任务下载/上传的音频缓存（排队 worker 路径）
+            try:
+                from ..controllers.api import cleanup_task_local_files
+                cleanup_task_local_files(eval_task_id, task.get('task_id'), task.get('test_case_id'))
+            except Exception:
+                logger.exception(f"[cleanup] 排队任务本地音频缓存清理失败: {eval_task_id}")
 
 def calculate_in_process(task_type, task_params):
     """模块级函数，供 ThreadPoolExecutor 调用。

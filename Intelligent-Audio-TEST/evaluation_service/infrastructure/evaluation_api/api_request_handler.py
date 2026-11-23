@@ -744,6 +744,26 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         except Exception:
             return None
 
+    def _subscribe_eval_result(self, eval_task_id, task_id=None, test_case_id=None, api_id=None):
+        """订阅评估结果事件频道 eval:result:{eval_task_id}；Redis 不可用返回 None。
+
+        事件优先消费的前提：eval_server 在任务终态时向该频道发布结果
+        （completed/failed 同 get_final_result 口径）。订阅成功后由调用方
+        在等待循环里持续 drain；未发布/订阅失败时降级为 HTTP 轮询。
+        """
+        redis_client = self._get_redis_client()
+        if redis_client is None:
+            return None
+        callback_channel = f"{RedisKeyPrefix.EVAL_RESULT.value}:{eval_task_id}"
+        try:
+            pubsub = redis_client.pubsub()
+            pubsub.subscribe(callback_channel)
+            return pubsub
+        except Exception as e:
+            self._log('warning', f'Redis 回调订阅失败，降级为 HTTP 轮询: {e}',
+                      task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+            return None
+
     def _wait_for_redis_callback(self, eval_task_id, max_wait_time, task_id=None, test_case_id=None, api_id=None):
         """通过 Redis Pub/Sub 回调消费评估结果
 
@@ -753,19 +773,16 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         Returns:
             dict 或 None: 收到结果则返回，超时返回 None
         """
-        redis_client = self._get_redis_client()
-        if redis_client is None:
+        pubsub = self._subscribe_eval_result(eval_task_id, task_id=task_id,
+                                             test_case_id=test_case_id, api_id=api_id)
+        if pubsub is None:
             return None
 
         callback_channel = f"{RedisKeyPrefix.EVAL_RESULT.value}:{eval_task_id}"
         self._log('info', f'尝试 Redis 回调消费: channel={callback_channel}, timeout={max_wait_time}秒',
                   task_id=task_id, test_case_id=test_case_id, api_id=api_id)
 
-        pubsub = None
         try:
-            pubsub = redis_client.pubsub()
-            pubsub.subscribe(callback_channel)
-
             # 消费已有的订阅消息，带超时
             deadline = time.time() + max_wait_time
             while time.time() < deadline:
@@ -808,11 +825,12 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                     pass
 
     def wait_for_task_completion(self, url, eval_task_id, max_wait_time=None, poll_interval=None, test_case_id=None, api_id=None, task_id=None):
-        """等待评估任务完成
+        """等待评估任务完成（事件优先 + HTTP 轮询兜底）
 
-        优先使用 Redis Pub/Sub 回调消费模式（Phase 3.2）：
-        - 提交任务时 eval_server 完成后会推送结果到 eval:result:{eval_task_id} 频道
-        - 如果 Redis 不可用或回调超时，降级为 HTTP 轮询
+        - 事件优先：订阅 eval:result:{eval_task_id} 频道；eval_server 在任务终态时
+          推送结果（与 get_final_result 同口径）。事件先到即返回，无需等满轮询间隔。
+        - 轮询兜底：Redis 未配置/不可用/未发布时，按 poll_interval 查询任务状态，
+          保留 INT-2250 失败分类快速失败与 INT-174/INT-308 取消检查。
 
         Args:
             url: eval_server 地址
@@ -826,34 +844,25 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         # 配置化：参数从 config_manager 读取
         effective_max_wait = max_wait_time or config_manager.get_value('evaluation_service', 'eval_max_wait_time', 600)
         effective_poll_interval = poll_interval or config_manager.get_value('evaluation_service', 'poll_interval', 5)
-        redis_callback_timeout = config_manager.get_value('evaluation_service', 'redis_result_callback_timeout', 5)
 
-        self._log('info', f'开始等待评估任务完成: eval_task_id={eval_task_id}, max_wait_time={effective_max_wait}秒',
-                  task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+        # 事件优先：订阅结果频道；Redis 不可用/订阅失败 → pubsub=None，纯轮询
+        pubsub = None
+        subscribe = getattr(self, '_subscribe_eval_result', None)
+        if callable(subscribe):
+            try:
+                pubsub = subscribe(eval_task_id, task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+            except Exception as e:
+                self._log('warning', f'Redis 回调订阅异常，降级为 HTTP 轮询: {e}',
+                          task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                pubsub = None
 
-        # 1. 优先尝试 Redis 回调消费模式
-        redis_result = self._wait_for_redis_callback(
-            eval_task_id, redis_callback_timeout,
-            task_id=task_id, test_case_id=test_case_id, api_id=api_id
-        )
-        if redis_result is not None:
-            # Redis 回调收到结果
-            if isinstance(redis_result, dict):
-                if redis_result.get('status') == EvalTaskStatus.FAILED.value:
-                    error_msg = redis_result.get('error_msg', 'Task failed')
-                    self._log('error', f'评估任务失败(Redis回调): eval_task_id={eval_task_id}, error={error_msg}',
-                              task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-                    return {'__error__': error_msg}
-                # 成功结果直接返回
-                return redis_result
-            return redis_result
-
-        # 2. Redis 不可用或回调超时，降级为 HTTP 轮询
-        self._log('info', f'降级为 HTTP 轮询模式: eval_task_id={eval_task_id}, poll_interval={effective_poll_interval}秒',
+        mode = '事件优先(Redis) + HTTP 轮询兜底' if pubsub is not None else 'HTTP 轮询'
+        self._log('info', f'开始等待评估任务完成: eval_task_id={eval_task_id}, max_wait_time={effective_max_wait}秒, mode={mode}',
                   task_id=task_id, test_case_id=test_case_id, api_id=api_id)
 
         start_time = time.time()
         poll_count = 0
+        last_poll_at = 0.0
 
         # INT-2250：轮询期失败分类与快速失败阈值（配置化，拒绝魔法数字）。
         # 端点中途挂掉时，原先只打 WARNING 一直轮询到 eval_max_wait_time（缺省 72000s=20h），
@@ -869,101 +878,141 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         timeout_streak = 0    # 连续端点超时（结果未知）
         business_streak = 0   # 连续业务级失败（HTTP 错误/状态查询被拒）
 
-        while time.time() - start_time < effective_max_wait:
-            poll_count += 1
+        try:
+            while time.time() - start_time < effective_max_wait:
+                poll_count += 1
 
-            # INT-174：该评估任务已被重新评估提交摘除（方案A）——立即退出等待，
-            # 结果由消费方按取消隔离，不再继续轮询
-            if eval_task_registry.is_cancelled(eval_task_id):
-                self._log('info', f'评估任务已被重新评估取消，停止等待: eval_task_id={eval_task_id}',
-                          task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-                return {'__cancelled__': True, '__error__': '评估任务已被重新评估取消'}
-
-            status_response = self.get_task_status(url, eval_task_id)
-
-            if isinstance(status_response, dict) and status_response.get('code') == 0:
-                # 状态查询成功即清零连续失败计数（只看连续失败，容忍偶发抖动）
-                conn_streak = timeout_streak = business_streak = 0
-                data = status_response.get('data') or {}
-                status = data.get('status', '')
-                elapsed_time = int(time.time() - start_time)
-
-                if status == EvalTaskStatus.COMPLETED.value:
-                    self._log('info', f'评估任务完成: eval_task_id={eval_task_id}, 耗时={elapsed_time}秒',
+                # INT-174：该评估任务已被重新评估提交摘除（方案A）——立即退出等待，
+                # 结果由消费方按取消隔离，不再继续轮询
+                if eval_task_registry.is_cancelled(eval_task_id):
+                    self._log('info', f'评估任务已被重新评估取消，停止等待: eval_task_id={eval_task_id}',
                               task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-                    result_response = self.get_task_result(url, eval_task_id)
-                    return result_response
-                elif status == EvalTaskStatus.FAILED.value:
-                    error_msg = data.get('error_msg', 'Task failed')
-                    self._log('error', f'评估任务失败: eval_task_id={eval_task_id}, error={error_msg}',
-                              task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-                    # 业务级失败（任务执行失败）：不带 __error_kind__，与既有兜底契约一致
-                    # （不切换端点，避免重复计分）
-                    return {'__error__': error_msg}
-                elif status == 'canceled':
-                    # INT-174：子服务 cancel_task（方案B）已生效，任务不会产生结果与回调
-                    self._log('info', f'评估任务已被子服务取消: eval_task_id={eval_task_id}',
-                              task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-                    return {'__cancelled__': True, '__error__': '评估任务已被取消'}
-                else:
-                    self._log('info', f'等待评估任务: eval_task_id={eval_task_id}, status={status}, 已等待={elapsed_time}秒, 第{poll_count}次查询',
-                              task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-            else:
-                # INT-2250：按错误类别累计连续失败；达到阈值立即收敛为可定位的失败原因
-                kind = status_response.get('__error_kind__') if isinstance(status_response, dict) else None
-                if isinstance(status_response, dict):
-                    failure_text = str(status_response.get('__error__')
-                                       or status_response.get('msg') or status_response)
-                else:
-                    failure_text = str(status_response)
-                if kind == EvalErrorKind.CONNECTION.value:
-                    conn_streak += 1
-                    timeout_streak = business_streak = 0
-                    streak, limit = conn_streak, max_conn_failures
-                elif kind == EvalErrorKind.TIMEOUT.value:
-                    timeout_streak += 1
-                    conn_streak = business_streak = 0
-                    streak, limit = timeout_streak, max_timeout_failures
-                else:
-                    business_streak += 1
-                    conn_streak = timeout_streak = 0
-                    streak, limit = business_streak, max_business_failures
+                    return {'__cancelled__': True, '__error__': '评估任务已被重新评估取消'}
 
-                self._log('warning',
-                          f'查询评估任务状态失败: eval_task_id={eval_task_id}, kind={kind or "unclassified"}, '
-                          f'连续失败={streak}/{limit}, response={status_response}',
-                          task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                # 1) Redis 事件优先：事件到达即返回（成功带 code/data.result，失败带 error_msg）
+                if pubsub is not None:
+                    try:
+                        message = pubsub.get_message(timeout=0.0)
+                    except Exception as e:
+                        self._log('warning', f'Redis 回调消费异常，改走 HTTP 轮询: {e}',
+                                  task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                        pubsub = None
+                        message = None
+                    if message and message.get('type') == 'message':
+                        data = message.get('data')
+                        if isinstance(data, bytes):
+                            data = data.decode('utf-8')
+                        try:
+                            event = json.loads(data)
+                        except (json.JSONDecodeError, TypeError):
+                            self._log('warning', f'Redis 回调消息解析失败: {data}',
+                                      task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                            event = None
+                        if isinstance(event, dict):
+                            if event.get('status') == EvalTaskStatus.FAILED.value:
+                                error_msg = event.get('error_msg', 'Task failed')
+                                self._log('error', f'评估任务失败(Redis回调): eval_task_id={eval_task_id}, error={error_msg}',
+                                          task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                                return {'__error__': error_msg}
+                            self._log('info', f'Redis 回调收到评估结果: eval_task_id={eval_task_id}',
+                                      task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                            return event
 
-                if streak >= limit:
-                    elapsed_time = int(time.time() - start_time)
-                    if kind == EvalErrorKind.CONNECTION.value:
-                        fail_msg = (f'评估端点不可达: 端点 {url} 连续 {streak} 次查询状态失败'
-                                    f'（eval_task_id={eval_task_id}, 已等待={elapsed_time}秒），'
-                                    f'放弃等待: {failure_text}')
-                        fail_kind = EvalErrorKind.CONNECTION.value
-                    elif kind == EvalErrorKind.TIMEOUT.value:
-                        fail_msg = (f'评估端点响应超时: 端点 {url} 连续 {streak} 次查询无响应'
-                                    f'（eval_task_id={eval_task_id}, 已等待={elapsed_time}秒），'
-                                    f'评估结果未知: {failure_text}')
-                        fail_kind = EvalErrorKind.TIMEOUT.value
+                # 2) HTTP 轮询兜底（按 poll_interval 节流；事件通道存在时同样兜底，防事件丢失）
+                now = time.time()
+                if now - last_poll_at >= effective_poll_interval:
+                    last_poll_at = now
+                    status_response = self.get_task_status(url, eval_task_id)
+
+                    if isinstance(status_response, dict) and status_response.get('code') == 0:
+                        # 状态查询成功即清零连续失败计数（只看连续失败，容忍偶发抖动）
+                        conn_streak = timeout_streak = business_streak = 0
+                        data = status_response.get('data') or {}
+                        status = data.get('status', '')
+                        elapsed_time = int(time.time() - start_time)
+
+                        if status == EvalTaskStatus.COMPLETED.value:
+                            self._log('info', f'评估任务完成: eval_task_id={eval_task_id}, 耗时={elapsed_time}秒',
+                                      task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                            result_response = self.get_task_result(url, eval_task_id)
+                            return result_response
+                        elif status == EvalTaskStatus.FAILED.value:
+                            error_msg = data.get('error_msg', 'Task failed')
+                            self._log('error', f'评估任务失败: eval_task_id={eval_task_id}, error={error_msg}',
+                                      task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                            # 业务级失败（任务执行失败）：不带 __error_kind__，与既有兜底契约一致
+                            # （不切换端点，避免重复计分）
+                            return {'__error__': error_msg}
+                        elif status == 'canceled':
+                            # INT-174：子服务 cancel_task（方案B）已生效，任务不会产生结果与回调
+                            self._log('info', f'评估任务已被子服务取消: eval_task_id={eval_task_id}',
+                                      task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                            return {'__cancelled__': True, '__error__': '评估任务已被取消'}
+                        else:
+                            self._log('info', f'等待评估任务: eval_task_id={eval_task_id}, status={status}, 已等待={elapsed_time}秒, 第{poll_count}次查询',
+                                      task_id=task_id, test_case_id=test_case_id, api_id=api_id)
                     else:
-                        fail_msg = (f'评估任务状态查询连续失败: 端点 {url} 连续 {streak} 次返回错误'
-                                    f'（eval_task_id={eval_task_id}, 已等待={elapsed_time}秒）: {failure_text}')
-                        fail_kind = EvalErrorKind.BUSINESS.value
-                    self._log('error', fail_msg, task_id=task_id,
-                              test_case_id=test_case_id, api_id=api_id)
-                    return {'__error__': fail_msg, '__error_kind__': fail_kind}
+                        # INT-2250：按错误类别累计连续失败；达到阈值立即收敛为可定位的失败原因
+                        kind = status_response.get('__error_kind__') if isinstance(status_response, dict) else None
+                        if isinstance(status_response, dict):
+                            failure_text = str(status_response.get('__error__')
+                                               or status_response.get('msg') or status_response)
+                        else:
+                            failure_text = str(status_response)
+                        if kind == EvalErrorKind.CONNECTION.value:
+                            conn_streak += 1
+                            timeout_streak = business_streak = 0
+                            streak, limit = conn_streak, max_conn_failures
+                        elif kind == EvalErrorKind.TIMEOUT.value:
+                            timeout_streak += 1
+                            conn_streak = business_streak = 0
+                            streak, limit = timeout_streak, max_timeout_failures
+                        else:
+                            business_streak += 1
+                            conn_streak = timeout_streak = 0
+                            streak, limit = business_streak, max_business_failures
 
-            # INT-308 停止传播：轮询间隔 sleep 拆片，片间检查 case 级取消标记——
-            # 用例删除/任务停止取消评估时 ≤1s 退出等待，不再睡满整个 poll_interval
-            sleep_remaining = effective_poll_interval
-            while sleep_remaining > 0:
-                if isinstance(task_id, (int, str)) and test_case_id and \
-                        eval_task_registry.is_case_cancelled(task_id, str(test_case_id)):
-                    return {'__cancelled__': True, '__error__': '评估任务已随用例删除/任务停止取消'}
-                slice_wait = min(1.0, sleep_remaining)
-                time.sleep(slice_wait)
-                sleep_remaining -= slice_wait
+                        self._log('warning',
+                                  f'查询评估任务状态失败: eval_task_id={eval_task_id}, kind={kind or "unclassified"}, '
+                                  f'连续失败={streak}/{limit}, response={status_response}',
+                                  task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+
+                        if streak >= limit:
+                            elapsed_time = int(time.time() - start_time)
+                            if kind == EvalErrorKind.CONNECTION.value:
+                                fail_msg = (f'评估端点不可达: 端点 {url} 连续 {streak} 次查询状态失败'
+                                            f'（eval_task_id={eval_task_id}, 已等待={elapsed_time}秒），'
+                                            f'放弃等待: {failure_text}')
+                                fail_kind = EvalErrorKind.CONNECTION.value
+                            elif kind == EvalErrorKind.TIMEOUT.value:
+                                fail_msg = (f'评估端点响应超时: 端点 {url} 连续 {streak} 次查询无响应'
+                                            f'（eval_task_id={eval_task_id}, 已等待={elapsed_time}秒），'
+                                            f'评估结果未知: {failure_text}')
+                                fail_kind = EvalErrorKind.TIMEOUT.value
+                            else:
+                                fail_msg = (f'评估任务状态查询连续失败: 端点 {url} 连续 {streak} 次返回错误'
+                                            f'（eval_task_id={eval_task_id}, 已等待={elapsed_time}秒）: {failure_text}')
+                                fail_kind = EvalErrorKind.BUSINESS.value
+                            self._log('error', fail_msg, task_id=task_id,
+                                      test_case_id=test_case_id, api_id=api_id)
+                            return {'__error__': fail_msg, '__error_kind__': fail_kind}
+
+                # INT-308 停止传播 + 事件响应粒度：sleep 拆片（≤1s），片间检查 case 级取消标记
+                sleep_remaining = min(1.0, effective_poll_interval)
+                while sleep_remaining > 0:
+                    if isinstance(task_id, (int, str)) and test_case_id and \
+                            eval_task_registry.is_case_cancelled(task_id, str(test_case_id)):
+                        return {'__cancelled__': True, '__error__': '评估任务已随用例删除/任务停止取消'}
+                    slice_wait = min(1.0, sleep_remaining)
+                    time.sleep(slice_wait)
+                    sleep_remaining -= slice_wait
+        finally:
+            if pubsub is not None:
+                try:
+                    pubsub.unsubscribe()
+                    pubsub.close()
+                except Exception:
+                    pass
 
         # INT-2250：等待上限耗尽属「结果未知」——带 timeout 类别，提示端点/配置可定位项
         timeout_msg = (f"评估任务超时: eval_task_id={eval_task_id}, 端点 {url} 在 "

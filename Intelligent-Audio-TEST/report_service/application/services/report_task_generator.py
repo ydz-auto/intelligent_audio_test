@@ -367,17 +367,25 @@ def _submit_generation(task_id, lock, name, description, submit_log_message):
         })
         return False
     pool = _executor_status()
-    if pool['queued']:
+    # 误报修复：submit 后立刻读 qsize 会把刚提交的任务自己算进队列深度——
+    # 空闲池首次提交时 worker 尚未取走任务，必然误报"工作线程已占满"。改以
+    # 轨迹注册表中真实执行中（stage != QUEUED）的生成数判定：仅当执行中数
+    # 达到容量上限时，本次提交才真的会排队等待。
+    max_workers = pool['max_workers'] or Config.REPORT_GEN_MAX_WORKERS
+    executing = sum(
+        1 for e in _generation_tracker.snapshot()
+        if e.get('stage') != GenerationStage.QUEUED.value)
+    if executing >= max_workers:
         log_and_emit(
             'WARNING', 'report',
-            f'{submit_log_message} 已提交，但线程池待执行队列深度={pool["queued"]}'
-            f'（max_workers={pool["max_workers"]} 工作线程已占满，本次生成将排队等待）',
+            f'{submit_log_message} 已提交，但线程池执行中={executing} 已达上限'
+            f' max_workers={max_workers}（本次生成将排队等待，队列深度={pool["queued"]}）',
             task_id=task_id)
     else:
         log_and_emit(
             'DEBUG', 'report',
-            f'{submit_log_message} 已提交（线程池 max_workers={pool["max_workers"]}，'
-            f'存活工作线程={pool["workers"]}，队列深度=0）',
+            f'{submit_log_message} 已提交（线程池 max_workers={max_workers}，'
+            f'存活工作线程={pool["workers"]}，执行中={executing}，队列深度={pool["queued"]}）',
             task_id=task_id)
     return True
 

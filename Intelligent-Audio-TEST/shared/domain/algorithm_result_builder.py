@@ -48,6 +48,162 @@ def collect_aux_values(resp_data, aux_entries):
     return values
 
 
+def apply_audio_file_fallback(algorithm_results):
+    """ai_wav 空值回退 wav_path（无录屏驱动把 ai_wav 塞进 wav_path）。
+
+    对已构建的 algorithm_results 做后处理：轮内 ai_wav 音频字段为空时，
+    用同轮 wav_path 的值（承载 AI 回复音频 OSS 路径）填充，使执行结果
+    「AI 回复音频」可播放；user_wav 等确无音频来源的字段保持空值，
+    由前端以「—」呈现（不渲染失效播放按钮）。
+    """
+    wav_by_pc = {}
+    for item in algorithm_results:
+        if not isinstance(item, dict):
+            continue
+        pc = item.get('param_code') or ''
+        if pc == 'wav_path' or pc.startswith('wav_path@'):
+            wav_by_pc[pc] = item.get('value')
+    if not wav_by_pc:
+        return
+    for item in algorithm_results:
+        if not isinstance(item, dict):
+            continue
+        pc = item.get('param_code') or ''
+        if (pc != 'ai_wav' and not pc.startswith('ai_wav@')) or item.get('value'):
+            continue
+        wav_pc = 'wav_path' if '@' not in pc else 'wav_path@' + pc.split('@', 1)[1]
+        fallback = wav_by_pc.get(wav_pc)
+        if fallback:
+            item['value'] = fallback
+
+
+def collect_dimension_aux_entries(
+    aux_params_map, dim_result_rows, result_data=None, resource='',
+):
+    """从维度结果行（可带 api_raw_response）提取 aux 参数明细条目。
+
+    供报告用例详情 / 任务用例详情在「快照已有 algorithm_results 但缺维度明细」时
+    补充提取（条目带 dimension_name，前端据此渲染「评估结果」维度分组块）。
+
+    与 ``build_algorithm_results_for_result`` 的 aux 提取步骤共用同一实现。
+
+    Args:
+        aux_params_map: {dimension_id: [{param, dimension_name}, ...]}
+        dim_result_rows: 该 TestResult 的维度结果行列表（dict 或 ORM；行内可含 api_raw_response）
+        result_data: 完整 result_data（供 evaluation_data 兜底）
+        resource: 设备/API 名称（写入条目的 device 字段）
+
+    Returns:
+        list[dict]: aux 参数条目（含 dimension_name；多轮场景带 @round:N / @overall 后缀）
+    """
+    entries_out = []
+    if not aux_params_map or not dim_result_rows:
+        return entries_out
+
+    # ── 1. 构建 param_code → (dimension_name, field_type) / dimension_id 映射 ──
+    param_to_dim = {}
+    param_to_type = {}
+    param_to_dim_id = {}
+    # dim_id → 维度名（条目按「产出该值的维度行」标注，多个维度共用 param_code 时
+    # 以首个产出行的维度为准，避免全局映射被后遍历维度覆盖）
+    dim_id_to_dname = {}
+    for _dim_id, aux_list in aux_params_map.items():
+        dim_id_to_dname[_dim_id] = aux_list[0]['dimension_name'] if aux_list else ''
+        for aux_info in aux_list:
+            p = aux_info['param']
+            param_code = _param_get(p, 'param_code')
+            if param_code:
+                param_to_dim[param_code] = aux_info['dimension_name']
+                param_to_type[param_code] = _param_get(p, 'field_type', FieldType.TEXT.value)
+                param_to_dim_id[param_code] = _dim_id
+
+    # ── 2. 提取 aux 辅助参数值（按轮次分组，多轮场景每轮独立取值）──
+    # aux_values: {param_code: {round_number: value}}（round_number=None 表示整体评估）
+    # 每条维度记录（含 round_number）从自身 api_raw_response（整体响应或 per_round 元素）取值，
+    # 保证多轮场景下每一轮都有独立明细（修复前 first-wins 合并会丢失后续轮次）。
+    aux_values = {}
+    dim_id_to_round = {}
+    param_to_dim_row = {}
+
+    # 2b. 主路径：从各 TRD 的 api_raw_response 提取（整体行 round=None、轮次行 round=i）
+    for dr in dim_result_rows:
+        dr_dim_id = (dr.get('dimension_id') or dr.get('id')) if isinstance(dr, dict) else getattr(dr, 'dimension_id', None)
+        dr_round = dr.get('round_number') if isinstance(dr, dict) else getattr(dr, 'round_number', None)
+        if dr_dim_id is not None and dr_dim_id not in dim_id_to_round:
+            dim_id_to_round[dr_dim_id] = dr_round
+
+        raw_resp = dr.get('api_raw_response') if isinstance(dr, dict) else getattr(dr, 'api_raw_response', None)
+        if not raw_resp:
+            continue
+        if isinstance(raw_resp, str):
+            try:
+                raw_resp = json.loads(raw_resp)
+            except Exception:
+                continue
+        entries = aux_params_map.get(dr_dim_id, [])
+        row_dim_name = dim_id_to_dname.get(dr_dim_id) or ''
+        for param_code, value in collect_aux_values(raw_resp, entries).items():
+            if value is not None:
+                aux_values.setdefault(param_code, {})[dr_round] = value
+                if row_dim_name and param_code not in param_to_dim_row:
+                    param_to_dim_row[param_code] = row_dim_name
+
+    # 2a. evaluation_data 兜底：仅当某参数在 api_raw_response 中完全未取到时使用
+    #     （兼容 api_raw_response 为空的历史数据，此时沿用 dim_id_to_round 标注轮次）
+    if isinstance(result_data, str):
+        try:
+            result_data = json.loads(result_data)
+        except Exception:
+            result_data = None
+    if isinstance(result_data, dict):
+        eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
+        if isinstance(eval_data, dict):
+            for param_code in param_to_dim:
+                if param_code not in eval_data:
+                    continue
+                if param_code in aux_values and aux_values[param_code]:
+                    continue
+                did = param_to_dim_id.get(param_code)
+                rn = dim_id_to_round.get(did)
+                aux_values.setdefault(param_code, {})[rn] = eval_data[param_code]
+
+    # 判断是否多轮场景（任一维度行有非 None 的 round_number）
+    is_multi_round = any(
+        (dr.get('round_number') if isinstance(dr, dict) else getattr(dr, 'round_number', None)) is not None
+        for dr in dim_result_rows
+    )
+
+    # 输出 aux 参数（按轮次分组输出，每轮一个条目）
+    for param_code, round_values in aux_values.items():
+        for rn, param_value in round_values.items():
+            if param_value is None:
+                continue
+            if is_multi_round:
+                if rn is not None:
+                    out_code = f'{param_code}@round:{rn + 1}'
+                    out_label = f'{param_code} (第{rn + 1}轮)'
+                    out_round_number = rn + 1
+                else:
+                    out_code = f'{param_code}@overall'
+                    out_label = f'{param_code} (整体)'
+                    out_round_number = None
+            else:
+                out_code = param_code
+                out_label = param_code
+                out_round_number = None
+            entries_out.append({
+                'device': resource,
+                'param_code': out_code,
+                'param_type': param_to_type.get(param_code, FieldType.TEXT.value),
+                'label': out_label,
+                'value': param_value,
+                'round_number': out_round_number,
+                'dimension_name': param_to_dim_row.get(param_code) or param_to_dim.get(param_code),
+            })
+
+    return entries_out
+
+
 def build_algorithm_results_for_result(
     result, resource, algo_res, result_data, aux_params_map,
     dim_result_rows, output_fields, algorithm_type,
@@ -93,100 +249,10 @@ def build_algorithm_results_for_result(
     if not (algo_res or result_data):
         return algorithm_results
 
-    # ── 1. 构建 param_code → (dimension_name, field_type) 全局映射 ──
-    param_to_dim = {}
-    param_to_type = {}
-    if aux_params_map:
-        for _dim_id, aux_list in aux_params_map.items():
-            for aux_info in aux_list:
-                p = aux_info['param']
-                param_code = _param_get(p, 'param_code')
-                if param_code:
-                    param_to_dim[param_code] = aux_info['dimension_name']
-                    param_to_type[param_code] = _param_get(p, 'field_type', FieldType.TEXT.value)
-
-    # ── 2. 提取 aux 辅助参数值（按轮次分组，多轮场景每轮独立取值）──
-    # aux_values: {param_code: {round_number: value}}（round_number=None 表示整体评估）
-    # 每条维度记录（含 round_number）从自身 api_raw_response（整体响应或 per_round 元素）取值，
-    # 保证多轮场景下每一轮都有独立明细（修复前 first-wins 合并会丢失后续轮次）。
-    aux_values = {}
-    param_to_dim_id = {}
-    dim_id_to_round = {}
-
-    if aux_params_map:
-        for _dim_id, aux_list in aux_params_map.items():
-            for aux_info in aux_list:
-                param_code = _param_get(aux_info['param'], 'param_code')
-                if param_code:
-                    param_to_dim_id[param_code] = _dim_id
-
-    # 2b. 主路径：从各 TRD 的 api_raw_response 提取（整体行 round=None、轮次行 round=i）
-    for dr in dim_result_rows:
-        dr_dim_id = (dr.get('dimension_id') or dr.get('id')) if isinstance(dr, dict) else getattr(dr, 'dimension_id', None)
-        dr_round = dr.get('round_number') if isinstance(dr, dict) else getattr(dr, 'round_number', None)
-        if dr_dim_id is not None and dr_dim_id not in dim_id_to_round:
-            dim_id_to_round[dr_dim_id] = dr_round
-
-        raw_resp = dr.get('api_raw_response') if isinstance(dr, dict) else getattr(dr, 'api_raw_response', None)
-        if not raw_resp:
-            continue
-        if isinstance(raw_resp, str):
-            try:
-                raw_resp = json.loads(raw_resp)
-            except Exception:
-                continue
-        entries = aux_params_map.get(dr_dim_id, []) if aux_params_map else []
-        for param_code, value in collect_aux_values(raw_resp, entries).items():
-            if value is not None:
-                aux_values.setdefault(param_code, {})[dr_round] = value
-
-    # 2a. evaluation_data 兜底：仅当某参数在 api_raw_response 中完全未取到时使用
-    #     （兼容 api_raw_response 为空的历史数据，此时沿用 dim_id_to_round 标注轮次）
-    if result_data:
-        eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
-        if isinstance(eval_data, dict):
-            for param_code in param_to_dim:
-                if param_code not in eval_data:
-                    continue
-                if param_code in aux_values and aux_values[param_code]:
-                    continue
-                did = param_to_dim_id.get(param_code)
-                rn = dim_id_to_round.get(did)
-                aux_values.setdefault(param_code, {})[rn] = eval_data[param_code]
-
-    # 判断是否多轮场景（任一维度行有非 None 的 round_number）
-    is_multi_round = any(
-        (dr.get('round_number') if isinstance(dr, dict) else getattr(dr, 'round_number', None)) is not None
-        for dr in dim_result_rows
-    )
-
-    # 输出 aux 参数（按轮次分组输出，每轮一个条目）
-    for param_code, round_values in aux_values.items():
-        for rn, param_value in round_values.items():
-            if param_value is None:
-                continue
-            if is_multi_round:
-                if rn is not None:
-                    out_code = f'{param_code}@round:{rn + 1}'
-                    out_label = f'{param_code} (第{rn + 1}轮)'
-                    out_round_number = rn + 1
-                else:
-                    out_code = f'{param_code}@overall'
-                    out_label = f'{param_code} (整体)'
-                    out_round_number = None
-            else:
-                out_code = param_code
-                out_label = param_code
-                out_round_number = None
-            algorithm_results.append({
-                'device': resource,
-                'param_code': out_code,
-                'param_type': param_to_type.get(param_code, FieldType.TEXT.value),
-                'label': out_label,
-                'value': param_value,
-                'round_number': out_round_number,
-                'dimension_name': param_to_dim.get(param_code),
-            })
+    # ── 1/2. aux 辅助参数明细（维度评估结果块）──
+    algorithm_results.extend(
+        collect_dimension_aux_entries(
+            aux_params_map, dim_result_rows, result_data, resource))
 
     # ── 3. 提取设备/API 原始执行结果 ──
     combined_data = {**(algo_res or {}), **(result_data or {})}

@@ -772,6 +772,7 @@ class RealtimeSessionExecutor:
             task_id=task_id, result_id=result_id, test_case_id=test_case_id,
             algorithm_result=aggregated.get('algorithm_result', {}),
             case_algorithm_params=data.get('case_algorithm_params'),
+            algorithm_params_col=data.get('algorithm_params_col'),
             reference_params=case_config.get('reference_params', {}),
             algorithm_type=algorithm_type, acl=_evaluation_acl,
             device_type=(data.get('device_type') or 'websocket_api'),

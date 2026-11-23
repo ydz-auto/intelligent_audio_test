@@ -320,7 +320,9 @@ class TestCaseQueryService:
             except VisibilityDenied:
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
 
-            audio_map = self._load_case_audio_map([tc])
+            # 详情只需音频 name/duration：走窄字段投影一次批量取回，
+            # 避免逐音频 GetAudio 跨服务 RPC（每个 200~300ms，多轮用例详情 0.6s+）。
+            audio_map = self._load_case_audio_summaries([tc])
             dim_list = self._load_case_dimensions([tc])
             return {
                 'success': True,
@@ -392,20 +394,6 @@ class TestCaseQueryService:
         from shared.utils import testcase_helpers as common
         normalized = common.normalize_optional_int(audio_id)
         return normalized if normalized is not None else audio_id
-
-    def _load_case_audio_map(self, test_cases) -> dict:
-        """逐条取音频（每个音频只取一次），返回 {audio_key: audio_dict|None}。"""
-        from shared.utils import testcase_helpers as common
-        audio_map = {}
-        for tc in test_cases:
-            for audio_item in common.collect_audios(tc.config or {}):
-                audio_id = audio_item.get('audio_id')
-                if audio_id is None:
-                    continue
-                key = self._audio_key(audio_id)
-                if key not in audio_map:
-                    audio_map[key] = self.repo.get_audio_by_id(audio_id)
-        return audio_map
 
     def _load_case_audio_summaries(self, test_cases) -> dict:
         """一片用例的音频一次窄字段批量取回，并按可见性逐行过滤。

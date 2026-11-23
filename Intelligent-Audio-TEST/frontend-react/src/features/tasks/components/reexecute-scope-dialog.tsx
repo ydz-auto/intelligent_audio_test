@@ -1,20 +1,27 @@
 /**
- * 重新执行 / 重新评估范围选择弹窗（09_任务域.md §5.7，Dialog sm:max-w-xl）。
+ * 重新执行 / 重新评估范围选择弹窗（09_任务域.md §5.7，Dialog sm:max-w-3xl）。
  * RadioGroup 三选项（全部用例/仅失败用例/手动选择用例）+ 手动勾选展开区
- * （全选 Checkbox + 标签/分组过滤 Select + 行 Checkbox 列表，空态「本任务暂无已执行用例」）；
+ * （工具行 = 搜索名称或 ID + 平铺/标签/分组视图 + 状态筛选，照任务详情「关联用例」口径；
+ * 全选 Checkbox + 按视图分组的行 Checkbox 列表（组头三态勾选整组全选/取消、组头可展开/收起）；
+ * 状态筛选与搜索联动「全选」= 按当前筛选条件全选（含按状态全选）；
  * 重评估追加：评估维度勾选网格（默认全选，候选=本任务用例聚合维度）+
  * 「重新提取设备输出（从存档日志）」Checkbox（默认不勾）；底栏「取消｜确认{已选 n 项}」。
  * 存在人工复核结果（task.detail.reviewCount > 0）时追加硬确认层（§5.7）：
  * 确认后先弹「该任务存在 {N} 条人工复核结果…是否继续？」主钮「覆盖并继续」（destructive）副钮「返回」。
  * 确认后经 infrastructure/api/tasks-control-api（client.ts）发起 retry / reevaluate。
  */
-import { LoaderCircle } from 'lucide-react'
+import { ChevronRight, LoaderCircle, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { useTaskDetail } from '@/application/tasks/use-task-detail'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import {
   Dialog,
@@ -24,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
@@ -33,6 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ApiError } from '@/infrastructure/api/api-error'
 import {
   reevaluateTask,
@@ -40,12 +49,68 @@ import {
   type ReexecuteScopeMode,
 } from '@/infrastructure/api/tasks-control-api'
 import { cn } from '@/lib/utils'
+import type { TaskCaseBrief } from '@/domain/models/task'
+import {
+  caseEvaluationStatusLabel,
+  caseEvaluationStatusTone,
+} from '@/domain/models/review'
+import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 
 type ActionType = 'retry' | 'reevaluate'
 
 const SCOPE_ALL: ReexecuteScopeMode = 'all'
 const SCOPE_FAILED: ReexecuteScopeMode = 'failed_only'
 const SCOPE_SELECTED: ReexecuteScopeMode = 'selected'
+
+/** 手动选择用例视图（平铺/标签/分组，照任务详情「关联用例」口径） */
+type CaseViewMode = 'flat' | 'tag' | 'group'
+
+const CASE_VIEW_OPTIONS: Array<{ value: CaseViewMode; label: string }> = [
+  { value: 'flat', label: '平铺' },
+  { value: 'tag', label: '标签' },
+  { value: 'group', label: '分组' },
+]
+
+/** 状态筛选选项（与任务详情「关联用例」同源） */
+const CASE_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'all', label: '全部状态' },
+  { value: 'pending', label: '等待中' },
+  { value: 'queued', label: '排队中' },
+  { value: 'running', label: '执行中' },
+  { value: 'evaluating', label: '计算指标中' },
+  { value: 'completed', label: '已完成' },
+  { value: 'execution_failed', label: '执行失败' },
+  { value: 'evaluation_failed', label: '评估失败' },
+  { value: 'failed', label: '已失败' },
+  { value: 'skipped', label: '已跳过' },
+  { value: 'stopped', label: '已停止' },
+]
+
+const EXECUTION_STATUS_LABEL: Record<string, string> = {
+  pending: '等待中',
+  queued: '排队中',
+  running: '执行中',
+  evaluating: '计算指标中',
+  calculating: '计算指标中',
+  completed: '已完成',
+  failed: '执行失败',
+  skipped: '已跳过',
+  stopped: '已停止',
+  deleted: '已删除',
+}
+
+/**
+ * 状态筛选（照任务详情「关联用例」matchesStatusFilter 口径）：
+ * 执行失败 = executionStatus 为 failed；评估失败 = evaluationStatus 为 failed 且执行未失败（互斥）；
+ * 其余按任务级/执行/评估任一命中。
+ */
+function matchesCaseStatus(c: TaskCaseBrief, status: string): boolean {
+  if (status === 'all') return true
+  if (status === 'execution_failed') return c.executionStatus === 'failed'
+  if (status === 'evaluation_failed')
+    return c.evaluationStatus === 'failed' && c.executionStatus !== 'failed'
+  return c.status === status || c.executionStatus === status || c.evaluationStatus === status
+}
 
 export function ReexecuteScopeDialog({
   open,
@@ -65,7 +130,11 @@ export function ReexecuteScopeDialog({
 
   const [scope, setScope] = useState<ReexecuteScopeMode>(SCOPE_ALL)
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([])
-  const [caseFilter, setCaseFilter] = useState('all')
+  const [caseView, setCaseView] = useState<CaseViewMode>('flat')
+  const [caseKeyword, setCaseKeyword] = useState('')
+  const [caseStatus, setCaseStatus] = useState('all')
+  /** 标签/分组视图的展开组（默认全部收起，组头可展开；照任务详情「关联用例」口径） */
+  const [openGroupKeys, setOpenGroupKeys] = useState<Set<string>>(new Set())
   const [selectedDimensionIds, setSelectedDimensionIds] = useState<number[]>([])
   const [reextractDeviceOutput, setReextractDeviceOutput] = useState(false)
   const [hardConfirmOpen, setHardConfirmOpen] = useState(false)
@@ -79,22 +148,29 @@ export function ReexecuteScopeDialog({
   /** 本任务已执行用例集（task 详情 task.cases；非全库用例） */
   const taskCases = useMemo(() => detail?.cases ?? [], [detail])
 
-  /** 标签/分组过滤选项（标签优先，无标签回退分组名；对齐 E2E 页过滤交互） */
-  const caseFilterOptions = useMemo(() => {
-    const names = new Set<string>()
-    taskCases.forEach((tc) => {
-      ;(tc.tags ?? []).forEach((t) => names.add(t))
-      if (tc.groupName) names.add(tc.groupName)
-    })
-    return Array.from(names).sort()
-  }, [taskCases])
-
+  /** 搜索（名称或用例 ID 子串，忽略大小写）+ 状态筛选后的用例集 */
   const filteredCases = useMemo(() => {
-    if (caseFilter === 'all') return taskCases
-    return taskCases.filter(
-      (tc) => (tc.tags ?? []).includes(caseFilter) || tc.groupName === caseFilter
-    )
-  }, [taskCases, caseFilter])
+    const q = caseKeyword.trim().toLowerCase()
+    return taskCases.filter((tc) => {
+      if (!matchesCaseStatus(tc, caseStatus)) return false
+      if (!q) return true
+      return tc.name.toLowerCase().includes(q) || tc.caseId.toLowerCase().includes(q)
+    })
+  }, [taskCases, caseKeyword, caseStatus])
+
+  /** 按视图分组（标签视图按首标签、分组视图按分组名；无归属归兜底桶） */
+  const caseGroups = useMemo(() => {
+    if (caseView === 'flat') return null
+    const map = new Map<string, TaskCaseBrief[]>()
+    for (const tc of filteredCases) {
+      const key =
+        caseView === 'tag' ? (tc.tags?.[0] ?? '未设置标签') : (tc.groupName ?? '未分组')
+      const bucket = map.get(key)
+      if (bucket) bucket.push(tc)
+      else map.set(key, [tc])
+    }
+    return [...map.entries()]
+  }, [filteredCases, caseView])
 
   /** 重评估维度候选集 = 本任务用例聚合（task.cases[].evaluationDimensions 去重） */
   const dimensionOptions = useMemo(() => {
@@ -119,7 +195,10 @@ export function ReexecuteScopeDialog({
     if (!open) return
     setScope(SCOPE_ALL)
     setSelectedCaseIds([])
-    setCaseFilter('all')
+    setCaseView('flat')
+    setCaseKeyword('')
+    setCaseStatus('all')
+    setOpenGroupKeys(new Set())
     setSelectedDimensionIds([])
     setReextractDeviceOutput(false)
   }, [open])
@@ -136,8 +215,12 @@ export function ReexecuteScopeDialog({
     }
   }, [open, isReevaluate, dimensionOptions])
 
+  const selectedFilteredCount = filteredCases.filter((tc) =>
+    selectedCaseSet.has(String(tc.caseId))
+  ).length
   const isAllCasesSelected =
-    filteredCases.length > 0 && filteredCases.every((tc) => selectedCaseSet.has(String(tc.caseId)))
+    filteredCases.length > 0 && selectedFilteredCount === filteredCases.length
+  const isSomeCasesSelected = selectedFilteredCount > 0 && !isAllCasesSelected
 
   const canConfirm = (() => {
     if (isReevaluate && dimensionOptions.length > 0 && selectedDimensionIds.length === 0) {
@@ -178,6 +261,80 @@ export function ReexecuteScopeDialog({
         return Array.from(next)
       })
     }
+  }
+
+  /** 组内勾选态（组头 Checkbox 三态；照用例管理「组头全选」口径） */
+  const groupSelectionState = (groupCases: TaskCaseBrief[]) => {
+    const selectedCount = groupCases.filter((tc) =>
+      selectedCaseSet.has(String(tc.caseId))
+    ).length
+    return {
+      all: groupCases.length > 0 && selectedCount === groupCases.length,
+      some: selectedCount > 0 && selectedCount < groupCases.length,
+    }
+  }
+
+  /** 组头全选/取消全选（按分组/标签整组勾选，折叠态同样生效） */
+  const toggleGroupSelect = (groupCases: TaskCaseBrief[], checked: boolean) => {
+    const ids = groupCases.map((tc) => String(tc.caseId))
+    setSelectedCaseIds((prev) => {
+      const next = new Set(prev.map(String))
+      if (checked) ids.forEach((id) => next.add(id))
+      else ids.forEach((id) => next.delete(id))
+      return Array.from(next)
+    })
+  }
+
+  const toggleGroupOpen = (groupKey: string) => {
+    setOpenGroupKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupKey)) next.delete(groupKey)
+      else next.add(groupKey)
+      return next
+    })
+  }
+
+  /** 用例行（Checkbox + 名称 + 执行/评估状态徽章；平铺态补分组名，分组态由组头承载） */
+  const renderCaseRow = (tc: TaskCaseBrief) => {
+    const caseId = String(tc.caseId)
+    const checked = selectedCaseSet.has(caseId)
+    return (
+      <label
+        key={caseId}
+        className={cn(
+          'flex cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-sm transition-colors',
+          checked && 'bg-accent/40'
+        )}
+      >
+        <Checkbox checked={checked} onCheckedChange={() => toggleCase(tc.caseId)} />
+        <span className='min-w-0 flex-1 truncate' title={tc.name}>
+          {tc.name}
+        </span>
+        {tc.executionStatus && (
+          <StatusBadge
+            label={EXECUTION_STATUS_LABEL[tc.executionStatus] ?? tc.executionStatus}
+            variant={
+              tc.executionStatus === 'failed'
+                ? 'danger'
+                : tc.executionStatus === 'completed'
+                  ? 'success'
+                  : 'neutral'
+            }
+            className='shrink-0 text-[11px]'
+          />
+        )}
+        <StatusBadge
+          label={caseEvaluationStatusLabel(tc.executionStatus, tc.evaluationStatus)}
+          variant={caseEvaluationStatusTone(tc.executionStatus, tc.evaluationStatus)}
+          className='shrink-0 text-[11px]'
+        />
+        {caseView === 'flat' && tc.groupName && (
+          <span className='text-muted-foreground max-w-24 shrink-0 truncate text-xs'>
+            {tc.groupName}
+          </span>
+        )}
+      </label>
+    )
   }
 
   const toggleDimension = (dimId: number) => {
@@ -230,7 +387,7 @@ export function ReexecuteScopeDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className='sm:max-w-xl'>
+        <DialogContent className='sm:max-w-3xl'>
           <DialogHeader>
             <DialogTitle>{isReevaluate ? '重新评估' : '重新执行'}</DialogTitle>
             <DialogDescription className='truncate'>
@@ -299,28 +456,75 @@ export function ReexecuteScopeDialog({
               })}
             </div>
 
-            {/* 手动选择用例（§5.7：全选 + 过滤 Select + 行 Checkbox 列表） */}
+            {/* 手动选择用例（§5.7：搜索 + 平铺/标签/分组视图 + 状态筛选 + 全选 + 行 Checkbox 列表） */}
             {scope === SCOPE_SELECTED && (
               <div className='flex flex-col gap-2 rounded-lg border bg-muted/30 p-3'>
-                <div className='flex flex-wrap items-center justify-between gap-2'>
-                  <label className='flex cursor-pointer items-center gap-2 text-sm'>
-                    <Checkbox checked={isAllCasesSelected} onCheckedChange={toggleSelectAll} />
-                    全选
-                  </label>
-                  <Select value={caseFilter} onValueChange={(value) => setCaseFilter(value ?? 'all')}>
-                    <SelectTrigger size='sm' className='h-8 w-auto min-w-40' aria-label='标签/分组过滤'>
-                      <SelectValue />
+                {/* 工具行（照任务详情「关联用例」口径）：搜索名称/ID + 平铺/标签/分组 + 状态筛选 */}
+                <div className='flex flex-wrap items-center gap-2'>
+                  <div className='relative min-w-40 flex-1'>
+                    <Search
+                      aria-hidden='true'
+                      className='text-muted-foreground pointer-events-none absolute top-1/2 start-2 size-3.5 -translate-y-1/2'
+                    />
+                    <Input
+                      value={caseKeyword}
+                      onChange={(e) => setCaseKeyword(e.target.value)}
+                      placeholder='搜索用例名称或 ID…'
+                      aria-label='搜索用例'
+                      className='h-8 ps-7 text-xs'
+                    />
+                  </div>
+                  <Tabs
+                    value={caseView}
+                    onValueChange={(v) => setCaseView(v as CaseViewMode)}
+                    aria-label='用例查看方式'
+                  >
+                    <TabsList className='h-8 gap-0.5 p-0.5'>
+                      {CASE_VIEW_OPTIONS.map((option) => (
+                        <TabsTrigger
+                          key={option.value}
+                          value={option.value}
+                          className='px-2 text-xs'
+                        >
+                          {option.label}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </Tabs>
+                  <Select
+                    value={caseStatus}
+                    onValueChange={(value) => setCaseStatus(value ?? 'all')}
+                  >
+                    <SelectTrigger size='sm' className='h-8 gap-1.5 px-2.5' aria-label='状态筛选'>
+                      <SelectValue>
+                        {CASE_STATUS_OPTIONS.find((option) => option.value === caseStatus)?.label ??
+                          '全部状态'}
+                      </SelectValue>
                     </SelectTrigger>
-                    <SelectContent align='start'>
-                      <SelectItem value='all'>全部标签/分组</SelectItem>
-                      {caseFilterOptions.map((name) => (
-                        <SelectItem key={name} value={name}>
-                          {name}
+                    <SelectContent align='end'>
+                      {CASE_STATUS_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className='flex items-center justify-between gap-2'>
+                  <label className='flex cursor-pointer items-center gap-2 text-sm'>
+                    <Checkbox
+                      checked={isAllCasesSelected}
+                      indeterminate={isSomeCasesSelected}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                    全选
+                  </label>
+                  <span className='text-muted-foreground text-xs tabular-nums'>
+                    共 {filteredCases.length} 条
+                  </span>
+                </div>
+
                 {detailQuery.isLoading ? (
                   <div className='flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground'>
                     <Spinner size={14} />
@@ -340,32 +544,58 @@ export function ReexecuteScopeDialog({
                   </div>
                 ) : filteredCases.length === 0 ? (
                   <p className='text-muted-foreground py-6 text-center text-xs'>
-                    本任务暂无已执行用例
+                    {taskCases.length === 0 ? '本任务暂无已执行用例' : '没有匹配的用例'}
                   </p>
                 ) : (
                   <ScrollArea className='max-h-60'>
-                    <div className='flex flex-col gap-1.5'>
-                      {filteredCases.map((tc) => {
-                        const checked = selectedCaseSet.has(String(tc.caseId))
-                        return (
-                          <label
-                            key={tc.caseId}
-                            className={cn(
-                              'flex cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 py-2 text-sm transition-colors',
-                              checked && 'bg-accent/40'
-                            )}
-                          >
-                            <Checkbox checked={checked} onCheckedChange={() => toggleCase(tc.caseId)} />
-                            <span className='min-w-0 flex-1 truncate'>{tc.name}</span>
-                            {tc.groupName && (
-                              <span className='text-muted-foreground shrink-0 text-xs'>
-                                {tc.groupName}
-                              </span>
-                            )}
-                          </label>
-                        )
-                      })}
-                    </div>
+                    {caseGroups ? (
+                      <div className='flex flex-col gap-2'>
+                        {caseGroups.map(([groupName, groupCases]) => {
+                          const groupState = groupSelectionState(groupCases)
+                          const open = openGroupKeys.has(groupName)
+                          return (
+                            <Collapsible
+                              key={groupName}
+                              open={open}
+                              onOpenChange={() => toggleGroupOpen(groupName)}
+                              className='rounded-lg border bg-background'
+                            >
+                              {/* 组头：三态勾选（整组全选/取消）+ 展开/收起（照用例管理「组头全选」口径） */}
+                              <div className='flex items-center gap-1.5 px-2 py-1.5'>
+                                <Checkbox
+                                  checked={groupState.all}
+                                  indeterminate={groupState.some}
+                                  aria-label={`全选 ${groupName}`}
+                                  onCheckedChange={(checked) =>
+                                    toggleGroupSelect(groupCases, !!checked)
+                                  }
+                                />
+                                <CollapsibleTrigger className='hover:bg-muted/40 flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 pr-2 text-left text-sm font-medium transition-colors'>
+                                  <ChevronRight
+                                    aria-hidden='true'
+                                    className={cn(
+                                      'text-muted-foreground size-3.5 shrink-0 transition-transform',
+                                      open && 'rotate-90'
+                                    )}
+                                  />
+                                  <span className='truncate'>{groupName}</span>
+                                  <span className='text-muted-foreground shrink-0 text-xs tabular-nums'>
+                                    ({groupCases.length})
+                                  </span>
+                                </CollapsibleTrigger>
+                              </div>
+                              <CollapsibleContent className='border-t'>
+                                <div className='flex flex-col gap-1.5 p-1.5'>
+                                  {groupCases.map(renderCaseRow)}
+                                </div>
+                              </CollapsibleContent>
+                            </Collapsible>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className='flex flex-col gap-1.5'>{filteredCases.map(renderCaseRow)}</div>
+                    )}
                   </ScrollArea>
                 )}
               </div>

@@ -23,7 +23,9 @@ import type {
   AlarmRule,
   AlarmStats,
   DeviceStatusEvent,
+  DeviceStatusEventType,
 } from '@/domain/models/alarm'
+import type { DeviceMonitorStats } from '@/domain/models/deviceMonitorStats'
 import type { Laboratory } from '@/domain/models/laboratory'
 import type { DeviceGroup } from '@/domain/models/deviceGroup'
 import type {
@@ -44,6 +46,7 @@ import type {
   AlarmStatsDto,
   DeviceStatusHistoryDto,
 } from '@/infrastructure/dto/alarm.dto'
+import type { DeviceMonitorStatsDto } from '@/infrastructure/dto/device-monitor-stats.dto'
 import { testDeviceFromDto } from '@/infrastructure/adapters/testDeviceAdapter'
 import { playbackDeviceFromDto } from '@/infrastructure/adapters/playbackDeviceAdapter'
 import { playbackSpeakerGroupFromDto } from '@/infrastructure/adapters/playbackSpeakerGroupAdapter'
@@ -58,6 +61,7 @@ import {
   alarmRuleFromDto,
   statusEventFromDto,
 } from '@/infrastructure/adapters/alarmAdapter'
+import { deviceMonitorStatsFromDto } from '@/infrastructure/adapters/deviceMonitorStatsAdapter'
 
 /** 后端统一分页信封（api_gateway/schemas/common.py PaginatedData） */
 interface PaginatedDto<T> {
@@ -68,8 +72,10 @@ interface PaginatedDto<T> {
   pages: number
 }
 
-/** 列表全量拉取参数（筛选/分页前端做；对照 Vue BATCH_LIST_PARAMS） */
-const LIST_ALL_PARAMS = { page: 1, per_page: 1000 }
+/** 列表全量拉取参数（筛选/分页前端做；对照 Vue BATCH_LIST_PARAMS）。
+ *  性能热修：per_page 1000→200——设备/播放设备规模远小于 200，避免整页 1000 行
+ *  请求在 HTTP/1.1 连接池中与 SSE/其他接口抢占连接（跨机 gRPC 单次往返约 300ms）。 */
+const LIST_ALL_PARAMS = { page: 1, per_page: 200 }
 
 /** 扫描结果行（device.py DeviceScanItem / playback.py PlaybackScanItem，snake_case 直出） */
 export interface ScannedDeviceRowDto {
@@ -289,13 +295,88 @@ export async function fetchAlarmRules(options: ApiRequestOptions = {}): Promise<
   return (dto?.items ?? []).map(alarmRuleFromDto)
 }
 
+/**
+ * 状态历史查询（INT-2671）。
+ *
+ * 后端 `GET /status-history` 支持 `event_type` 单值筛选，且健康检查事件量级远大于其余类型
+ * （实测 200 条最新事件全是 health_check），只取「最新一页再前端过滤」会让状态/操作页签恒空。
+ * 因此按分类的事件类型集合分次拉取（每类一页）后合并，页面再按时间范围收窄。
+ * 时间范围仍在前端过滤：该表 created_at 是东八区墙钟串（utc8now 落库），
+ * 前端筛选与展示同一口径，避免把 +08 墙钟当 UTC 下发造成 8 小时错位。
+ */
+export interface StatusHistoryQuery {
+  /** 只拉这些事件类型；留空＝不按类型筛选（全量最新一页） */
+  eventTypes?: readonly DeviceStatusEventType[]
+  page?: number
+  perPage?: number
+}
+
+/** 单类型一页的条数（状态/操作/错误事件量级很小，200 足够覆盖近 30 天） */
+const STATUS_HISTORY_PER_PAGE = 200
+/** device_service 对 per_page 的上限（list_status_events: min(per_page, 500)） */
+const STATUS_HISTORY_MAX_PER_PAGE = 500
+
 /** 状态历史（§3.7；GET /test-devices/status-history） */
-export async function fetchStatusHistory(options: ApiRequestOptions = {}): Promise<DeviceStatusEvent[]> {
-  const dto = await request<PaginatedDto<DeviceStatusHistoryDto>>(
-    'GET', '/test-devices/status-history', undefined,
-    { ...options, params: { page: 1, per_page: 200 } }
+export async function fetchStatusHistory(
+  query: StatusHistoryQuery = {},
+  options: ApiRequestOptions = {}
+): Promise<DeviceStatusEvent[]> {
+  const page = query.page ?? 1
+  const perPage = Math.min(query.perPage ?? STATUS_HISTORY_PER_PAGE, STATUS_HISTORY_MAX_PER_PAGE)
+  const eventTypes = [...new Set(query.eventTypes ?? [])]
+  const requestedEventTypes: (DeviceStatusEventType | undefined)[] =
+    eventTypes.length > 0 ? eventTypes : [undefined]
+
+  const pages = await Promise.all(
+    requestedEventTypes.map(async (eventType) => {
+      const dto = await request<PaginatedDto<DeviceStatusHistoryDto>>(
+        'GET', '/test-devices/status-history', undefined,
+        { ...options, params: { page, per_page: perPage, event_type: eventType } }
+      )
+      return (dto?.items ?? []).map(statusEventFromDto)
+    })
   )
-  return (dto?.items ?? []).map(statusEventFromDto)
+  // 多个类型各自倒序返回，合并后再统一倒序（表格不排序，直接按下发顺序渲染）
+  return pages
+    .flat()
+    .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+}
+
+/** 监控统计查询条件（设备管理功能设计文档 §3.7.1 / 契约 §1.1） */
+export interface MonitorStatsQuery {
+  /** 起始日期 YYYY-MM-DD（含） */
+  startDate: string
+  /** 结束日期 YYYY-MM-DD（含） */
+  endDate: string
+  /** 限定设备 id（页面设备筛选条件）；空数组/未传 = 不限 */
+  deviceIds?: number[]
+  /** 按设备 lab_id 过滤（页面实验室筛选条件） */
+  labId?: number | null
+}
+
+/**
+ * 设备监控统计（§3.7.1 统计分析四图；GET /test-devices/monitor-stats）。
+ * 契约 INT-1573：start_date / end_date 必填、本期固定 granularity=day；
+ * device_ids 逗号分隔，服务端与其它列表接口同口径。
+ */
+export async function fetchMonitorStats(
+  query: MonitorStatsQuery,
+  options: ApiRequestOptions = {}
+): Promise<DeviceMonitorStats> {
+  const params: Record<string, unknown> = {
+    start_date: query.startDate,
+    end_date: query.endDate,
+    granularity: 'day',
+  }
+  if (query.deviceIds && query.deviceIds.length > 0) {
+    params.device_ids = query.deviceIds.join(',')
+  }
+  if (query.labId != null) params.lab_id = query.labId
+  const dto = await request<DeviceMonitorStatsDto>(
+    'GET', '/test-devices/monitor-stats', undefined,
+    { ...options, params }
+  )
+  return deviceMonitorStatsFromDto(dto)
 }
 
 /* ==================== 变更操作（camelCase Domain → snake_case 请求体，对照后端 Create/Update Schema） ==================== */

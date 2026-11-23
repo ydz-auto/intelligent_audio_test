@@ -157,11 +157,15 @@ class EvaluationConfigAclRepository:
             grouped.setdefault(int(rid), []).append(row[1])
         return grouped
 
-    def get_dimension_results_by_result_ids(self, result_ids) -> dict:
+    def get_dimension_results_by_result_ids(self, result_ids, include_body=False) -> dict:
         """批量获取维度评估结果，按 test_result_id 分组返回。
 
         封装 evaluation_service.EvaluationDataService.GetDimensionResultsByResultIds RPC。
         失败时返回空 dict。
+
+        Args:
+            include_body: 是否携带 api_raw_response（用例详情「评估结果」维度明细块
+                需要按维度 output 参数从原始响应提取；默认 False 保持轻量载荷）。
         """
         if not result_ids:
             return {}
@@ -172,6 +176,7 @@ class EvaluationConfigAclRepository:
             resp = stub.GetDimensionResultsByResultIds(
                 eval_pb.GetDimensionResultsByResultIdsRequest(
                     result_ids=json.dumps(list(result_ids)),
+                    include_body=bool(include_body),
                 ))
             if not resp.success:
                 _logger.warning(
@@ -199,6 +204,7 @@ class EvaluationConfigAclRepository:
                 "evaluation_status": item.get('evaluation_status'),
                 "error_message": item.get('error_message'),
                 "round_number": item.get('round_number'),
+                "api_raw_response": item.get('api_raw_response'),
             })
         return grouped
 

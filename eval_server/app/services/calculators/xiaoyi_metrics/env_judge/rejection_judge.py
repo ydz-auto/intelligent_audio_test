@@ -42,6 +42,8 @@ import os
 import logging
 from typing import Any, Dict, List, Optional
 
+from app.utils.audio_source import exists, ensure_local
+
 from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
     call_llm as call_llm_api,
     parse_json,
@@ -65,7 +67,7 @@ def _load_audio_mono(filepath):
     """加载 WAV 为 mono float64，返回 (sr, data)。"""
     from scipy.io import wavfile
     import numpy as np
-    sr, data = wavfile.read(filepath)
+    sr, data = wavfile.read(ensure_local(filepath))
     if data.ndim > 1:
         data = data.mean(axis=1)
     dt = data.dtype
@@ -556,7 +558,7 @@ def evaluate_rejection_judge(
     }
 
     # ─── 参数校验 ───
-    if not ai_wav or not os.path.isfile(ai_wav):
+    if not ai_wav or not exists(ai_wav):
         result['message'] = f'模型回复音频(ai_wav)不存在或路径无效: ai_wav={ai_wav!r}'
         result['enabled'] = False
         logger.error(f'[reject_judge] {result["message"]}')
@@ -565,9 +567,9 @@ def evaluate_rejection_judge(
     # ─── 构建 ASR 时间线 + 交互文字 ───
     user_chunks = None
     model_chunks = None
-    if user_wav and os.path.isfile(user_wav):
+    if user_wav and exists(user_wav):
         user_chunks = get_asr_chunks(user_wav)
-    if ai_wav and os.path.isfile(ai_wav):
+    if ai_wav and exists(ai_wav):
         model_chunks = get_asr_chunks(ai_wav)
 
     interaction_text = build_interaction_text(user_chunks, model_chunks)
@@ -592,7 +594,7 @@ def evaluate_rejection_judge(
 
     # ─── 用户侧波形活跃段（能量检测，定位无 ASR 文本的干扰，如环境噪声） ───
     # 多轮聚合时由 calculator 算好传入复用；单轮/独立调用时此处计算
-    if active_segments is None and user_wav and os.path.isfile(user_wav):
+    if active_segments is None and user_wav and exists(user_wav):
         active_segments = get_active_segments(user_wav)
     active_segments = active_segments or []
     active_segments_text = '、'.join(
@@ -623,7 +625,7 @@ def evaluate_rejection_judge(
 
     # ─── 调用 LLM ───
     file_paths = [ai_wav]
-    if user_wav and os.path.isfile(user_wav):
+    if user_wav and exists(user_wav):
         file_paths.append(user_wav)
 
     try:
@@ -846,8 +848,8 @@ def evaluate_rejection_judge_text(user_wav: str, ai_wav: str, model: str = '',
     if temperature is None:
         temperature = llm_config.get('temperature', LLM_DEFAULT_TEMPERATURE)
 
-    user_chunks = get_asr_chunks(user_wav) if user_wav and os.path.isfile(user_wav) else None
-    model_chunks = get_asr_chunks(ai_wav) if ai_wav and os.path.isfile(ai_wav) else None
+    user_chunks = get_asr_chunks(user_wav) if user_wav and exists(user_wav) else None
+    model_chunks = get_asr_chunks(ai_wav) if ai_wav and exists(ai_wav) else None
     env_noise_present = any(
         isinstance(rd, dict) and rd.get('is_reject') is True and rd.get('type') == '环境噪声'
         for rd in (configured_rounds or [])

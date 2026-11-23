@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import type {
+  ReportAudioItem,
   ReportCaseItem,
   ReportDetailData,
   ReportReferenceParam,
@@ -56,12 +57,6 @@ const META_CODES = new Set([
   'error',
 ])
 const DISPLAY_TYPES = new Set(['text', 'timestamp', 'number', 'boolean', 'json', 'audio_file'])
-
-/** 音频外链 scheme 白名单（P3：拒绝 javascript:/data: 等危险 scheme 作 href） */
-function isSafeHttpUrl(url?: string): url is string {
-  if (!url) return false
-  return /^https?:\/\//i.test(url)
-}
 
 interface ResultTextField {
   paramCode: string
@@ -342,23 +337,30 @@ export function ExecutionResults({
 
   const hasAudio = (caseItem.audios?.length ?? 0) > 0
 
-  // 结果音频按设备分组（device_name 兜底 '默认'）
-  const resultAudioGroups = useMemo(() => {
-    const map = new Map<string, typeof caseItem.audios>()
-    for (const audio of caseItem.audios ?? []) {
-      const key = audio.device_name || '默认'
-      const list = map.get(key) ?? []
-      list.push(audio)
-      map.set(key, list)
-    }
-    return [...map.entries()]
-  }, [caseItem.audios])
-
   const openPlayer = (value: unknown, label: string) => {
+    const raw = String(value)
     setPlayingAudio({
-      audio_id: String(value),
+      audio_id: raw,
       audio_name: label,
       audio_type: 'result',
+      // INT-1688：audio_file 字段值是存储路径（oss://case_result/...），
+      // 经 stream-by-path 走服务器网关取流，不直连桶
+      path: raw,
+    })
+  }
+
+  // 点击音频时间轴分段播放对应输入音频
+  const playInputAudio = (audio: ReportAudioItem) => {
+    setPlayingAudio({
+      audio_id: audio.audio_id,
+      audio_name: audio.audio_name ?? `音频 ${audio.audio_id}`,
+      audio_type: audio.audio_type ?? 'reference',
+      spl: audio.spl,
+      play_order: audio.play_order,
+      noise_spl: audio.noise_spl,
+      device_name: audio.device_name,
+      url: audio.url,
+      duration: audio.duration,
     })
   }
 
@@ -586,66 +588,9 @@ export function ExecutionResults({
       {/* 时间轴对比（§3.3.9） */}
       {show('timeline') && hasTimeline && <TimelineComparison caseItem={caseItem} report={report} />}
 
-      {/* 音频时间轴（块七 §3.5.7） */}
-      {show('audio') && hasAudio && <AudioTimeline audioList={caseItem.audios ?? []} />}
-
-      {/* 结果音频（块七：按设备分组 + 播放外链/播放器） */}
-      {show('audio') && resultAudioGroups.length > 0 && (
-        <div>
-          <p className='text-muted-foreground mb-1 text-xs font-medium'>结果音频</p>
-          <div className='space-y-2'>
-            {resultAudioGroups.map(([device, audios]) => (
-              <div key={device}>
-                <p className='text-muted-foreground text-xs font-medium'>{device}</p>
-                <div className='mt-1 flex min-w-0 flex-wrap gap-1.5'>
-                  {audios.map((audio, idx) => (
-                    /* INT-2090 P3：结果音频 Badge 的音频名超长时截断（Badge 基座 whitespace-nowrap +
-                       w-fit，不加 max-w-full/truncate 会撑出容器横向溢出），title 悬停显完整名 */
-                    <Badge
-                      key={String(audio.audio_id)}
-                      variant='outline'
-                      className='max-w-full gap-1'
-                    >
-                      <span
-                        className='min-w-0 truncate'
-                        title={audio.audio_name ?? `音频 ${idx + 1}`}
-                      >
-                        {audio.audio_name ?? `音频 ${idx + 1}`}
-                      </span>
-                      {isSafeHttpUrl(audio.url) ? (
-                        <a href={audio.url} target='_blank' rel='noreferrer' className='text-primary underline-offset-2 hover:underline'>
-                          播放
-                        </a>
-                      ) : (
-                        <button
-                          type='button'
-                          className='text-primary underline-offset-2 hover:underline'
-                          onClick={() =>
-                            setPlayingAudio({
-                              audio_id: audio.audio_id,
-                              audio_name: audio.audio_name ?? `音频 ${idx + 1}`,
-                              audio_type: audio.audio_type,
-                              spl: audio.spl,
-                              play_order: audio.play_order,
-                              noise_spl: audio.noise_spl,
-                              device_name: audio.device_name,
-                              // INT-1547 P2-2：透传真实地址/时长（相对路径由 Modal 经
-                              // GET /audios/{id}/stream 换预签名地址后播放）
-                              url: audio.url,
-                              duration: audio.duration,
-                            })
-                          }
-                        >
-                          播放
-                        </button>
-                      )}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* 音频时间轴（块七 §3.5.7）：输入音频分段，点击分段播放对应输入音频 */}
+      {show('audio') && hasAudio && (
+        <AudioTimeline audioList={caseItem.audios ?? []} onPlay={playInputAudio} />
       )}
 
       <AudioPlayerModal

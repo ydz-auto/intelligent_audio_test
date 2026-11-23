@@ -40,10 +40,11 @@ import {
   splTestToneStopRequestFromDomain,
 } from '@/infrastructure/adapters/splAdapter'
 
-/** 物理域全量取回分页上限（后端无钳制；页面前端过滤分页） */
-const SPL_LIST_PAGE_SIZE = 1000
+/** 物理域全量取回分页上限（后端无钳制；页面前端过滤分页）。
+ *  性能热修：1000→200——SPL 映射规模小，避免整页 1000 行请求抢占 HTTP/1.1 连接池。 */
+const SPL_LIST_PAGE_SIZE = 200
 /** 播放设备 facet 全量取回分页上限 */
-const PLAYBACK_DEVICE_PAGE_SIZE = 1000
+const PLAYBACK_DEVICE_PAGE_SIZE = 200
 
 /** 列表（§4.2；GET /spl → SplMappingListDto，取 items 映射为 SplMapping[]） */
 export async function fetchSplMappings(

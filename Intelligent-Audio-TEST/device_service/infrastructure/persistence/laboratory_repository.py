@@ -169,41 +169,25 @@ class LaboratoryRepository(LaboratoryRepositoryInterface):
         return {lab_id: cnt for lab_id, cnt in rows if lab_id is not None}
 
     def count_test_cases(self, lab_ids: List[int]) -> Dict[int, int]:
-        """统计各实验室的用例数（task_service test_cases.config JSONB 中 lab_id，跨域 gRPC）。
+        """统计各实验室的用例数（task_service 一次聚合，config JSON 顶层 lab_id）。
 
-        按现有 testcase_acl_repository.check_playback_in_testcases 的模式全量分页
-        扫描用例 config，统计 config.lab_id ∈ lab_ids 的用例数。gRPC 不可用时
-        返回空计数（与 check_playback_in_testcases 的降级语义一致）。
+        原实现逐页拉全量用例再解析 config（每页 100、真实库 6~7 页串行 gRPC，
+        实验室列表 6s+）；改为 GetTestCaseStats(group_by='lab_id') 一次聚合。
+        gRPC 不可用时返回空计数（与既有降级语义一致）。
         """
         if not lab_ids:
             return {}
         from device_service.infrastructure.acl.testcase_acl_repository import testcase_acl_repository
-        lab_set = set(int(x) for x in lab_ids)
+        stats = testcase_acl_repository.get_testcase_stats(group_by='lab_id')
+        lab_set = {int(x) for x in lab_ids}
         counts: Dict[int, int] = {}
-        page = 1
-        per_page = 100
-        while True:
-            data = testcase_acl_repository.list_testcases(page=page, per_page=per_page)
-            if not isinstance(data, dict):
-                return counts
-            items = data.get('items', []) or []
-            for tc in items:
-                config = tc.get('config')
-                if not isinstance(config, dict):
-                    continue
-                tc_lab = config.get('lab_id')
-                if tc_lab is None:
-                    continue
-                try:
-                    tc_lab_int = int(tc_lab)
-                except (TypeError, ValueError):
-                    continue
-                if tc_lab_int in lab_set:
-                    counts[tc_lab_int] = counts.get(tc_lab_int, 0) + 1
-            total_pages = data.get('pages', 1)
-            if page >= total_pages or not items:
-                break
-            page += 1
+        for item in stats.get('items') or []:
+            try:
+                tc_lab_int = int(item.get('key'))
+            except (TypeError, ValueError):
+                continue
+            if tc_lab_int in lab_set:
+                counts[tc_lab_int] = int(item.get('count') or 0)
         return counts
 
 

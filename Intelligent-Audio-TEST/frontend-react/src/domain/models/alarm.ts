@@ -102,10 +102,13 @@ export const DEVICE_EVENT_TYPE_META: Record<
   operation: { label: '操作' },
 }
 
+/**
+ * 状态历史事件（INT-2671：后端 status-history 只回 device_id，无 device_name 与 result；
+ * 设备名在应用层按 device_id 关联测试设备，结果由 success 布尔归一为 success/failed/null）。
+ */
 export interface DeviceStatusEvent {
   id: number
   deviceId: number | null
-  deviceName: string | null
   eventType: DeviceStatusEventType
   fromStatus: string | null
   toStatus: string | null

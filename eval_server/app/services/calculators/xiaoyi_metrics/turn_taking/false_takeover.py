@@ -166,8 +166,12 @@ def compute_false_takeover_from_files(asr_json_path, pause_json_path,
 # ─────────── client_out 时延计算（内联，移植自 batch_align.py）───────────
 
 def _load_audio(filepath):
-    """加载 WAV 文件，转为 mono float64，返回 (sr, data)。"""
-    sr, data = wavfile.read(filepath)
+    """加载 WAV 文件，转为 mono float64，返回 (sr, data)。
+
+    oss:// 引用会先物化到本地缓存（ensure_local），波形处理需真实文件。
+    """
+    from app.utils.audio_source import ensure_local
+    sr, data = wavfile.read(ensure_local(filepath))
     if data.ndim > 1:
         data = data.mean(axis=1)
     dt = data.dtype

@@ -22,7 +22,11 @@ from datetime import datetime, timezone, timedelta
 from shared.infrastructure.storage import storage
 from shared.utils.status_constants import TaskStatus
 from shared.utils.audio_path_utils import normalize_audio_path
-from shared.domain.algorithm_result_builder import build_algorithm_results_for_result
+from shared.domain.algorithm_result_builder import (
+    build_algorithm_results_for_result,
+    collect_dimension_aux_entries,
+    apply_audio_file_fallback,
+)
 from shared.models.database import get_db_session
 
 from task_service.core.time_utils import to_local_naive, to_utc_naive, utcnow
@@ -406,11 +410,15 @@ class TaskQueryService:
                 # 构建 aux_params_map（与 report_service 逻辑一致）
                 aux_params_map = {}
                 all_dim_ids = set()
+                dim_id_to_name = {}
                 for pr in results:
                     for dim in pr.get('dimensions', []):
-                        dim_id = dim.get('id') or dim.get('dimension_id')
+                        # dimension_id 优先（id 是 TRD 行主键，不能当维度 id 用）
+                        dim_id = dim.get('dimension_id') or dim.get('id')
                         if dim_id:
                             all_dim_ids.add(dim_id)
+                            if dim_id not in dim_id_to_name:
+                                dim_id_to_name[dim_id] = dim.get('name') or dim.get('dimension_name') or ''
                 if all_dim_ids:
                     try:
                         from shared.clients.grpc_clients import get_algorithm_config_service_stub
@@ -432,7 +440,8 @@ class TaskQueryService:
                                     continue
                                 if not p.get('visible_in_report'):
                                     continue
-                                dim_name = p.get('dimension_name') or ''
+                                # GetDimensionParams 不下发 dimension_name，按维度 id 解析维度名
+                                dim_name = dim_id_to_name.get(dim_id) or p.get('dimension_name') or ''
                                 if dim_id not in aux_params_map:
                                     aux_params_map[dim_id] = []
                                 aux_params_map[dim_id].append({'param': p, 'dimension_name': dim_name})
@@ -448,9 +457,17 @@ class TaskQueryService:
                     if not isinstance(r_data, dict):
                         r_data = {}
 
+                    # 收集该 result 的维度行（含 api_raw_response，用于 aux 明细提取）
+                    result_dim_rows = pr.get('dimensions') or []
+
                     snapshot = r_data.get('algorithm_results')
                     if snapshot:
                         algorithm_results.extend(snapshot)
+                        # 快照预提取通常只含设备/API 原始输出（dimension_name 为空），
+                        # 「评估结果」维度明细块按 TRD api_raw_response 补充提取
+                        _merge_case_aux_entries(
+                            algorithm_results, result_dim_rows, aux_params_map,
+                            resource, r_data)
                         continue
 
                     # 快照为空时回退到实时提取（兼容旧数据）
@@ -460,9 +477,6 @@ class TaskQueryService:
 
                     if not (algo_res or r_data):
                         continue
-
-                    # 收集该 result 的维度行（用于 aux 提取）
-                    result_dim_rows = pr.get('dimensions') or []
 
                     algorithm_results.extend(
                         build_algorithm_results_for_result(
@@ -476,17 +490,45 @@ class TaskQueryService:
             except Exception as e:
                 logger.warning(f"构建 algorithm_results 失败: {e}")
 
+            # ai_wav 空值回退 wav_path（无录屏驱动把 AI 音频塞进 wav_path）
+            apply_audio_file_fallback(algorithm_results)
+
             # 构建 devices 列表和 metric_configs
             devices = list(set(
                 pr.get('device_name') for pr in results if pr.get('device_name')
             ))
             metric_configs = []
             seen_metrics = set()
+            dim_ids = set()
+            for pr in results:
+                for dim in pr.get('dimensions', []):
+                    did = dim.get('dimension_id')
+                    if did is not None:
+                        dim_ids.add(did)
+            # 维度配置（score_unit / decimal_places）：具体用例视图用维度单位而非聚合单位
+            dim_cfg_by_id = {}
+            if dim_ids:
+                try:
+                    from task_service.infrastructure.acl.evaluation_config_acl_repository import (
+                        evaluation_config_acl_repository,
+                    )
+                    for _d in evaluation_config_acl_repository.list_dimensions_by_ids(list(dim_ids)):
+                        dim_cfg_by_id[_d.get('id')] = _d
+                except Exception:
+                    pass
             for pr in results:
                 for dim in pr.get('dimensions', []):
                     if dim.get('name') and dim['name'] not in seen_metrics:
                         seen_metrics.add(dim['name'])
-                        metric_configs.append({'code': dim['name'], 'name': dim['name']})
+                        cfg = dim_cfg_by_id.get(dim.get('dimension_id')) or {}
+                        metric_configs.append({
+                            'code': dim['name'],
+                            'name': dim['name'],
+                            'unit': cfg.get('score_unit') or '',
+                            'decimal_places': cfg.get('decimal_places'),
+                            'dimension_type': cfg.get('dimension_type'),
+                            'parent_dimension_id': cfg.get('parent_dimension_id'),
+                        })
 
             # 提取结果音频
             try:
@@ -522,7 +564,14 @@ class TaskQueryService:
 
                                 if raw_url:
                                     try:
-                                        presigned = storage.get_url(raw_url, expires=3600)
+                                        from shared.infrastructure.config import BaseConfig
+                                        # 取流走服务器（AUDIO_STREAM_VIA_GATEWAY=true）：回网关
+                                        # 相对地址（浏览器带 JWT 经服务器转发取字节），不直连桶；
+                                        # 否则回 OSS 预签名直连地址
+                                        if BaseConfig.AUDIO_STREAM_VIA_GATEWAY:
+                                            presigned = storage.build_download_url(raw_url)
+                                        else:
+                                            presigned = storage.get_url(raw_url, expires=3600)
                                     except Exception:
                                         presigned = raw_url
                                 else:
@@ -591,6 +640,23 @@ class TaskQueryService:
             h = secs // 3600
             m = (secs % 3600) // 60
             return f"{h}小时" + (f"{m}分钟" if m > 0 else "")
+
+
+def _merge_case_aux_entries(target, dim_rows, aux_params_map, resource, result_data=None):
+    """把维度明细条目（带 dimension_name）合并进 algorithm_results（按 param_code 去重）。
+
+    快照已有 algorithm_results 时，预提取通常只含设备/API 原始输出；「评估结果」
+    维度明细块按 TRD api_raw_response 现算补齐。
+    """
+    if not dim_rows or not aux_params_map:
+        return
+    seen = {item.get('param_code') for item in target if isinstance(item, dict)}
+    for entry in collect_dimension_aux_entries(
+            aux_params_map, dim_rows, result_data, resource):
+        code = entry.get('param_code')
+        if code and code not in seen:
+            target.append(entry)
+            seen.add(code)
 
 
 def _normalize_audio_path_for_task(abs_path):

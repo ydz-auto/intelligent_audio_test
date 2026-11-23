@@ -131,6 +131,9 @@ class DbMixin:
             'case_config': case_config,
             'case_reference_params': case_reference_params,
             'reference_params_col': reference_params_col if isinstance(reference_params_col, list) else None,
+            # 按轮分组的 algorithm_params 列原样带出（case_algorithm_params 只压了首轮扁平 dict，
+            # 评估侧 _build_rounds_list 需按轮取 is_reject/timing/type，缺则拒识裁判整例跳过）
+            'algorithm_params_col': algorithm_params_col if isinstance(algorithm_params_col, list) else None,
             'case_algorithm_params': case_algorithm_params,
             'test_case_id': tc_rel_test_case_id,
             'tc_rel_id': tc_rel_id,

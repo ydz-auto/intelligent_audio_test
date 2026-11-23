@@ -36,7 +36,8 @@ def _get_asr_chunks(wav_path, filter_punct=True):
         list: chunks 列表 [{text, timestamp:[start_s, end_s]}, ...]
         None: ASR 失败或 chunks 为空
     """
-    if not wav_path or not os.path.isfile(wav_path):
+    from app.utils.audio_source import exists
+    if not wav_path or not exists(wav_path):
         logger.error(f"wav 文件不存在: {wav_path}")
         return None
 

@@ -354,7 +354,12 @@ class TestCaseQueryMixin:
         """按字段分组统计分支（复用已应用过滤的 query）。"""
         allowed = {'algorithm_type': TestCase.algorithm_type,
                    'group_id': TestCase.group_id}
-        col = allowed.get(group_by)
+        if group_by == 'lab_id':
+            # config JSON 顶层 lab_id（通用用例为空串，由调用方忽略）。
+            # 实验室列表用它一次聚合替代跨服务全量分页扫描（device_service）。
+            col = TestCase.config.op('->>')('lab_id')
+        else:
+            col = allowed.get(group_by)
         if col is None:
             return {'error': f'unsupported group_by field: {group_by}'}
         rows = query.with_entities(col, _func.count(TestCase.id)).group_by(col).all()

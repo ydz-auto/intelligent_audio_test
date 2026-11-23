@@ -12,9 +12,12 @@ lab_id 过滤为拆分②；用例 lab 过滤含通用用例为拆分③）。�
 - 子资源列表路径：RPC 未支持时退化为无过滤透传（路由骨架语义），随②③合入自动生效。
 """
 import inspect
+from concurrent.futures import ThreadPoolExecutor
 
 # 子资源列表默认分页（对齐各 List RPC 默认 per_page）
 _DEFAULT_PER_PAGE = 10
+# 批量计数全量拉取分页上限（laboratories list 前端 per_page=1000 场景）
+_BATCH_FETCH_PER_PAGE = 1000
 
 
 class LaboratoryResourceReadModel:
@@ -29,6 +32,93 @@ class LaboratoryResourceReadModel:
             return 'lab_id' in inspect.signature(method).parameters
         except (TypeError, ValueError):
             return False
+
+    # ---- 批量计数（列表端点：一次分组替代每行 3 次 RPC）----
+
+    @staticmethod
+    def batch_counts(lab_ids) -> dict:
+        """批量实验室三资源计数（性能热修，替代 list 端点的 3×N 串行 RPC）。
+
+        原实现（counts）对每个实验室串行 3 次 gRPC（device/playback/testcase 各
+        取 total）；device/audio 服务经 SSH 隧道跨机访问，单次往返约 300ms，
+        N 个实验室 = 3N 次往返。本方法改为每资源各一次全量拉取并按 items 的
+        lab_id 客户端分组（小数据集），全量未拉齐（超 _BATCH_FETCH_PER_PAGE 的
+        生产规模）时该资源回退逐 lab total（并行），保证任何规模下计数正确。
+
+        返回 {str(lab_id): {device_count, playback_device_count, test_case_count}}。
+        """
+        ids = [int(x) for x in lab_ids]
+
+        with ThreadPoolExecutor(max_workers=3, thread_name_prefix='lab-counts') as ex:
+            f_dev = ex.submit(LaboratoryResourceReadModel._grouped_counts, 'device', ids)
+            f_pb = ex.submit(LaboratoryResourceReadModel._grouped_counts, 'playback', ids)
+            f_tc = ex.submit(LaboratoryResourceReadModel._grouped_counts, 'testcase', ids)
+            dev_counts = f_dev.result(timeout=30)
+            pb_counts = f_pb.result(timeout=30)
+            tc_counts = f_tc.result(timeout=30)
+
+        return {
+            str(lab_id): {
+                'device_count': dev_counts.get(str(lab_id), 0),
+                'playback_device_count': pb_counts.get(str(lab_id), 0),
+                'test_case_count': tc_counts.get(str(lab_id), 0),
+            }
+            for lab_id in ids
+        }
+
+    @staticmethod
+    def _grouped_counts(resource: str, lab_ids) -> dict:
+        """单资源按 lab_id 分组计数：{str(lab_id): count}。RPC 失败返回 {}（容错为 0）。"""
+        try:
+            if resource == 'device':
+                from api_gateway.infrastructure.grpc_proxies import device_config_service
+                fetch = device_config_service.get_all
+            elif resource == 'playback':
+                from api_gateway.infrastructure.grpc_proxies import playback_config_service
+                fetch = playback_config_service.get_all
+            else:
+                from api_gateway.infrastructure.grpc_proxies import testcase_config_service
+                fetch = testcase_config_service.list_testcases
+
+            resp = fetch(page=1, per_page=_BATCH_FETCH_PER_PAGE)
+            if not resp or not resp.get('success'):
+                return {}
+            data = resp.get('data') or {}
+            items = data.get('items') or []
+            total = int(data.get('total', 0) or 0)
+
+            counts = {}
+            for item in items:
+                lab_id = item.get('lab_id')
+                if lab_id is None:
+                    continue
+                key = str(int(lab_id))
+                counts[key] = counts.get(key, 0) + 1
+
+            # 全量已拉齐：分组计数即精确值
+            if len(items) >= total:
+                return counts
+
+            # 全量未拉齐（超分页上限的生产规模）：回退逐 lab total（并行）
+            def _one(lab_id: int) -> int:
+                try:
+                    r = fetch(page=1, per_page=1, lab_id=lab_id)
+                    if not r or not r.get('success'):
+                        return 0
+                    d = r.get('data') or {}
+                    return int(d.get('total', 0) or 0)
+                except Exception:
+                    return 0
+
+            with ThreadPoolExecutor(
+                    max_workers=8, thread_name_prefix='lab-counts-fallback') as ex:
+                futures = {lab_id: ex.submit(_one, lab_id) for lab_id in lab_ids}
+                return {
+                    str(lab_id): future.result(timeout=30)
+                    for lab_id, future in futures.items()
+                }
+        except Exception:
+            return {}
 
     # ---- 计数聚合（容错为 0）----
 

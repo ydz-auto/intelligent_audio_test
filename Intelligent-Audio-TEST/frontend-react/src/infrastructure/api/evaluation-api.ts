@@ -49,10 +49,10 @@ export async function fetchDimensionOptions(
   return toDimensionOptionsList(dto)
 }
 
-/** 评估维度全量（列表/分组双视图；主/子同屏聚合，前端过滤分页；per_page=1000 全量拉取） */
+/** 评估维度全量（列表/分组双视图；主/子同屏聚合，前端过滤分页；per_page=200 覆盖现有维度规模） */
 export async function fetchEvaluationDimensions(): Promise<Dimension[]> {
   const dto = await request<DimensionListDataDto>('GET', '/evaluation/dimensions', undefined, {
-    params: { per_page: 1000 },
+    params: { per_page: 200 },
   })
   return (dto?.items ?? []).map(toDimension)
 }

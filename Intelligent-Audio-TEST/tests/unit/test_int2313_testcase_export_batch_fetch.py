@@ -412,8 +412,9 @@ def test_batch_detail_matches_single_detail():
     assert single['success'] and batch['success']
     assert batch['data']['missing_ids'] == []
     assert batch['data']['test_cases'] == [single['data']], '批量与单条必须逐字段一致'
-    # 同一音频取两次的旧问题：单条路径现在也只取一次
-    assert repo.detail_audio_calls == [7]
+    # 单条详情也改走窄字段批量投影：不再逐音频 GetAudio，单条/批量各一次投影
+    assert repo.detail_audio_calls == []
+    assert repo.summary_calls == [[7], [7]]
 
 
 def test_batch_missing_ids_keep_request_order():

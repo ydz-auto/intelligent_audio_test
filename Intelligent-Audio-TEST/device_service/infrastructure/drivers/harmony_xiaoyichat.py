@@ -9,6 +9,11 @@ import base64
 import tempfile
 import shutil
 
+try:
+    from hypium.model import UiParam
+except ImportError:
+    UiParam = None
+
 from .harmony_driver import HarmonyDriver
 from .driver_types import DevicePlatform
 from .registry import register_driver
@@ -492,23 +497,37 @@ class Xiaoyilivechat(HarmonyDriver):
             return []
         return [line.strip() for line in (r.stdout or '').splitlines() if line.strip()]
 
-    def _snapshot_ai_pcm_sizes(self, device_sn, app='xiaoyi'):
-        """快照当前 ai 后缀 PCM 文件及其 size（{remote_path: size}），作为本轮首帧检测基线。
+    def _ai_pcm_candidates(self, device_sn, app='xiaoyi'):
+        """当前 app 的 AI 回复 PCM 文件列表。
 
-        在 pre_process 轮首调用（用户语音播放/AI 回复前建立基线），post_process
-        的 _detect_ai_pcm_first_frame 据此判断 size 增长=模型开始写回复。
+        小艺走 DSP 层 audio_hook(in_raw1*)，与 _pull_dsp_pcm_wav 采集口径一致
+        （首帧检测与拉取必须看同一批文件，否则 DSP 模式下 fwk 的
+        cap_client_ec_out.pcm 不产出，检测必然 15s 超时）；
+        豆包/ChatGPT 走各自 fwk 缓存目录的 ai_suffix。
         """
+        if app == 'xiaoyi':
+            return [f for f in self._list_dir_pcm(device_sn, self.DSP_AUDIO_HOOK_DIR)
+                    if os.path.basename(f).startswith(self.DSP_AI_PREFIX)]
         cfg = self.PCM_APP_CONFIG.get(app)
         if not cfg:
-            return {}
+            return []
         ai_suffix = cfg['ai_suffix']
         # endswith 仅接受 str 或 tuple(不接受 list),这里统一转 tuple
         ai_suffix = tuple(ai_suffix) if isinstance(ai_suffix, list) else ai_suffix
         files = []
         for d in cfg['cache_dirs']:
             files.extend(self._list_dir_pcm(device_sn, d))
+        return [f for f in files if f.endswith(ai_suffix)]
+
+    def _snapshot_ai_pcm_sizes(self, device_sn, app='xiaoyi'):
+        """快照当前 ai PCM 文件及其 size（{remote_path: size}），作为本轮首帧检测基线。
+
+        在 pre_process 轮首调用（用户语音播放/AI 回复前建立基线），post_process
+        的 _detect_ai_pcm_first_frame 据此判断 size 增长=模型开始写回复。
+        候选文件口径统一走 _ai_pcm_candidates（小艺=DSP audio_hook）。
+        """
         return {f: self._get_device_file_size(device_sn, f)
-                for f in files if f.endswith(ai_suffix)}
+                for f in self._ai_pcm_candidates(device_sn, app=app)}
 
     def _detect_ai_pcm_first_frame(self, device_sn, app='xiaoyi',
                                    task_id=None, test_case_id=None,
@@ -516,26 +535,15 @@ class Xiaoyilivechat(HarmonyDriver):
         """轮询 ai PCM 首帧写入（相对基线 size 增长/新文件出现），返回墙钟毫秒或 None。
 
         替代录屏 first_frame 作为模型回复起始基准（first_frame_ms）。基线
-        _ai_pcm_size_base 由 pre_process 轮首快照。任一 ai 后缀文件 size>0 且
+        _ai_pcm_size_base 由 pre_process 轮首快照。任一 ai PCM 文件 size>0 且
         >基线即视为首帧，记 int(time.time()*1000)。打断轮不调用（留 None 走 fallback）。
         """
         base = getattr(self, '_ai_pcm_size_base', None) or {}
-        cfg = self.PCM_APP_CONFIG.get(app)
-        if not cfg:
-            return None
-        ai_suffix = cfg['ai_suffix']
-        # endswith 仅接受 str 或 tuple(不接受 list),这里统一转 tuple
-        ai_suffix = tuple(ai_suffix) if isinstance(ai_suffix, list) else ai_suffix
         deadline = int(time.time() * 1000) + timeout_ms
         while int(time.time() * 1000) < deadline:
             if self._check_stop('ai_pcm首帧检测'):
                 return None
-            files = []
-            for d in cfg['cache_dirs']:
-                files.extend(self._list_dir_pcm(device_sn, d))
-            for f in files:
-                if not f.endswith(ai_suffix):
-                    continue
+            for f in self._ai_pcm_candidates(device_sn, app=app):
                 sz = self._get_device_file_size(device_sn, f)
                 if sz > 0 and sz > base.get(f, 0):
                     ts = int(time.time() * 1000)
@@ -1334,6 +1342,7 @@ class Xiaoyilivechat(HarmonyDriver):
             # 进入设置界面删除对话记录
             driver.touch(self.SETTINGS_ENTRY_TOUCH)
             driver.wait(LONG_WAIT)
+            driver.swipe(UiParam.UP, 30, side=UiParam.LEFT)
             clear_chat = driver.find_component(By.text("删除对话记录"))
             if clear_chat:
                 clear_chat.click()

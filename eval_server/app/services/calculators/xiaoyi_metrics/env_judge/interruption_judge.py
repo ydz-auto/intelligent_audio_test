@@ -29,6 +29,8 @@ import os
 import logging
 from typing import Any, Dict, List, Optional
 
+from app.utils.audio_source import exists
+
 from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
     call_llm as call_llm_api,
     build_timeline_text,
@@ -402,14 +404,14 @@ def evaluate_interruption_judge(
 
     # 主音频：ai_wav（模型回复，被判定对象）——仍用于生成模型侧 ASR 时间线，
     # 但不再作为文件附件传给 LLM（纯文本评估，避免音频传输/多模态 token 开销）
-    if not ai_wav or not os.path.isfile(ai_wav):
+    if not ai_wav or not exists(ai_wav):
         raise FileNotFoundError(
             f'模型回复音频(ai_wav)不存在或路径无效: ai_wav={ai_wav!r}'
         )
 
     # ── 构建文本时间线（用户侧 ASR） ──
     user_chunks: Optional[List[Dict[str, Any]]] = None
-    if user_wav and os.path.isfile(user_wav):
+    if user_wav and exists(user_wav):
         user_chunks = get_asr_chunks(user_wav)
 
     # ── 模型回复 ASR：词级转写，用于 prompt 和交互文字展示 ──

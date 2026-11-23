@@ -147,6 +147,7 @@ class FinalizationMixin:
                         case_reference_params=case_reference_params,
                         algorithm_type=algorithm_type, device_type=DeviceType.PHYSICAL.value,
                         case_algorithm_params=data.get('case_algorithm_params'),
+                        algorithm_params_col=data.get('algorithm_params_col'),
                         round_number=None,
                         reference_params_col=data.get('reference_params_col')
                     )
@@ -164,6 +165,7 @@ class FinalizationMixin:
                 task_id, case_name, row_id, test_case_id, device_results, case_config,
                 case_reference_params=case_reference_params,
                 case_algorithm_params=data.get('case_algorithm_params'),
+                algorithm_params_col=data.get('algorithm_params_col'),
                 algorithm_type=algorithm_type,
                 adjusted_case_reference_params=last_adjusted_ref_params,
                 precreated_result_id=result_id,

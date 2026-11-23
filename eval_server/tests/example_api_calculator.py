@@ -57,7 +57,7 @@ def create_text_task(task_type, asr_ref, asr_result, **kwargs):
         return None
 
     data = response.json()
-    task_id = data['data']['task_id']
+    task_id = data['data']['eval_task_id']
     print(f"任务 ID: {task_id}")
 
     if not wait_for_task_completed(task_id):
@@ -106,7 +106,7 @@ def create_stm_task(task_type, stm_ref, stm_hyp, **kwargs):
         return None
 
     data = response.json()
-    task_id = data['data']['task_id']
+    task_id = data['data']['eval_task_id']
     print(f"任务 ID: {task_id}")
 
     if not wait_for_task_completed(task_id):
@@ -148,7 +148,7 @@ def create_der_task(rttm_ref, stm_ref, rttm_hyp, stm_hyp, **kwargs):
         return None
 
     data = response.json()
-    task_id = data['data']['task_id']
+    task_id = data['data']['eval_task_id']
     print(f"任务 ID: {task_id}")
 
     if not wait_for_task_completed(task_id):
@@ -327,7 +327,7 @@ def example_parallel_requests():
         }
         response = requests.post(f"{API_BASE_URL}/api/create_task", json=payload)
         if response.status_code == 200:
-            return response.json()['data']['task_id']
+            return response.json()['data']['eval_task_id']
         return None
 
     task_ids = []

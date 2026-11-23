@@ -14,6 +14,8 @@ import numpy as np
 from scipy.io import wavfile
 from scipy.signal import resample_poly
 
+from app.utils.audio_source import exists
+
 from app.services.calculators.xiaoyi_metrics.turn_taking.false_takeover import (
     _load_audio,
     _detect_speech_region,
@@ -125,7 +127,7 @@ def generate_aligned_clean_audio(user_wav, played_audios, output_path=None):
     ALIGN_REGION_MIN_RATIO = 0.85
 
     for i, played_path in enumerate(played_paths):
-        if not os.path.isfile(played_path):
+        if not exists(played_path):
             logger.warning(f"played_audio 文件不存在: {played_path}")
             continue
 

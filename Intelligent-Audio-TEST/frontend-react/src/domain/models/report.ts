@@ -220,7 +220,10 @@ export interface ReportRawDataGroup {
 export interface ReportMetricConfig {
   id?: number | string
   name: string
+  /** 聚合单位（% 强制；用于概览/资源对比等「非具体用例」视图） */
   unit?: string
+  /** 维度单位（score_unit；具体用例视图用，不做 % 强制） */
+  score_unit?: string
   decimal_places?: number
   statistic_method?: string
   dimension_type?: 'main' | 'sub'

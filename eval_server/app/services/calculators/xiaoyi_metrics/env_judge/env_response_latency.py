@@ -19,6 +19,8 @@ import numpy as np
 from scipy.io import wavfile
 from scipy.signal import fftconvolve, resample_poly
 
+from app.utils.audio_source import exists, ensure_local
+
 from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
     get_asr_chunks,
 )
@@ -30,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 def _load_audio(filepath):
     """加载 WAV 文件，转为 mono float64，返回 (sr, data)。"""
-    sr, data = wavfile.read(filepath)
+    sr, data = wavfile.read(ensure_local(filepath))
     if data.ndim > 1:
         data = data.mean(axis=1)
     dt = data.dtype
@@ -206,17 +208,17 @@ def evaluate_env_response_latency(
 
     # 解析 played_audios 路径
     played_audio_path = _resolve_played_audio_path(played_audios)
-    if not played_audio_path or not os.path.isfile(played_audio_path):
+    if not played_audio_path or not exists(played_audio_path):
         result['message'] = f'played_audios 文件不存在: {played_audios!r}'
         logger.error(result['message'])
         return result
 
-    if not user_wav or not os.path.isfile(user_wav):
+    if not user_wav or not exists(user_wav):
         result['message'] = f'user_wav 文件不存在: {user_wav!r}'
         logger.error(result['message'])
         return result
 
-    if not ai_wav or not os.path.isfile(ai_wav):
+    if not ai_wav or not exists(ai_wav):
         result['message'] = f'ai_wav 文件不存在: {ai_wav!r}'
         logger.error(result['message'])
         return result

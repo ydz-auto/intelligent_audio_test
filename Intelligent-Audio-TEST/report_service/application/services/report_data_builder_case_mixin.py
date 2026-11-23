@@ -6,7 +6,11 @@
 - _get_reference_params: 参考参数读取（result_data / 独立列 / config 兼容）
 """
 from shared.utils.result_data_store import load_full_result_data
-from shared.domain.algorithm_result_builder import build_algorithm_results_for_result
+from shared.domain.algorithm_result_builder import (
+    build_algorithm_results_for_result,
+    collect_dimension_aux_entries,
+    apply_audio_file_fallback,
+)
 
 from report_service.application.services.report_helpers import ReportHelpers
 from report_service.infrastructure.clients.grpc_clients import (
@@ -25,7 +29,8 @@ class ReportDataCaseMixin:
     """用例级数据组装：基本信息、指标列表、参考参数。"""
 
     @staticmethod
-    def _build_case_basic_info(tc, results, task, aux_params_map=None, dim_results_map=None):
+    def _build_case_basic_info(tc, results, task, aux_params_map=None, dim_results_map=None,
+                               aux_entries_by_result=None):
         """构建用例基本信息。"""
         case_results = results
 
@@ -83,6 +88,12 @@ class ReportDataCaseMixin:
                     snapshot, result_dims, aux_params_map
                 )
                 case_obj["algorithm_results"].extend(snapshot)
+                # 快照预提取通常只含设备/API 原始输出（dimension_name 为空），
+                # 维度明细块（评估结果）缺失时按 TRD api_raw_response 补充提取
+                ReportDataCaseMixin._merge_aux_entries(
+                    case_obj["algorithm_results"],
+                    (aux_entries_by_result or {}).get(r_id, []),
+                )
                 continue
 
             # 快照为空时回退到实时提取（兼容旧数据）
@@ -122,8 +133,33 @@ class ReportDataCaseMixin:
                         device_output_fields=device_output_fields,
                     )
                 )
+                # 轻量维度行不含 api_raw_response，实时提取拿不到 aux 明细时，
+                # 用带 body 的逐块提取结果补全维度明细块（按 param_code 去重）
+                ReportDataCaseMixin._merge_aux_entries(
+                    case_obj["algorithm_results"],
+                    (aux_entries_by_result or {}).get(r_id, []),
+                )
+
+        # ai_wav 空值回退 wav_path：无录屏驱动把 AI 音频塞进 wav_path
+        apply_audio_file_fallback(case_obj["algorithm_results"])
 
         return case_obj
+
+    @staticmethod
+    def _merge_aux_entries(target, aux_entries):
+        """把 aux 维度明细条目合并进 algorithm_results（按 param_code 去重）。"""
+        if not aux_entries:
+            return
+        seen = {
+            item.get('param_code')
+            for item in target
+            if isinstance(item, dict)
+        }
+        for entry in aux_entries:
+            code = entry.get('param_code')
+            if code and code not in seen:
+                target.append(entry)
+                seen.add(code)
 
     @staticmethod
     def _inject_snapshot_round_markers(snapshot, result_dims, aux_params_map):
@@ -287,16 +323,18 @@ class ReportDataCaseMixin:
         return metrics_list
 
     @staticmethod
-    def _get_aux_params_batch(dim_ids):
+    def _get_aux_params_batch(dim_ids, dim_id_to_name=None):
         """批量查询维度的 aux output 参数（visible_in_report=True）。
 
         通过 gRPC 逐维度查询 EvaluationDimensionParam，筛选 output_role='aux'
-        且 visible_in_report=True 的参数。
+        且 visible_in_report=True 的参数。GetDimensionParams 不下发 dimension_name，
+        由调用方传 dimension_id → 维度名 映射补齐（前端「评估结果」按维度分组依赖它）。
 
         返回 {dimension_id: [{param: dict, dimension_name: str}, ...]} 映射。
         """
         if not dim_ids:
             return {}
+        dim_id_to_name = dim_id_to_name or {}
         aux_map = {}
         for dim_id in dim_ids:
             try:
@@ -312,7 +350,7 @@ class ReportDataCaseMixin:
                         continue
                     if not p.get('visible_in_report'):
                         continue
-                    dim_name = p.get('dimension_name') or ''
+                    dim_name = dim_id_to_name.get(dim_id) or p.get('dimension_name') or ''
                     if dim_id not in aux_map:
                         aux_map[dim_id] = []
                     aux_map[dim_id].append({
@@ -324,6 +362,54 @@ class ReportDataCaseMixin:
         return aux_map
 
     @staticmethod
+    def _extract_aux_entries_batch(results, task, aux_params_map):
+        """逐块拉取带 body 的维度结果，块内提取 aux 参数条目（评估结果明细块）。
+
+        返回 {result_id: [entry, ...]}；原始响应块内即弃，峰值仅与单块相关
+        （INT-2381：不整份 body map 常驻）。
+        """
+        if not results or not aux_params_map:
+            return {}
+        from report_service.infrastructure.clients.grpc_clients import (
+            _grpc_iter_dimension_results_with_body,
+        )
+        result_ids = [
+            (r.get('id') if isinstance(r, dict) else r.id) for r in results
+        ]
+        result_ids = [rid for rid in result_ids if rid is not None]
+        if not result_ids:
+            return {}
+
+        resource_by_id = {
+            (r.get('id') if isinstance(r, dict) else r.id):
+                ReportHelpers.get_resource_name(r, task, use_time_prefix=False)
+            for r in results
+        }
+        data_by_id = {}
+        for r in results:
+            rid = r.get('id') if isinstance(r, dict) else r.id
+            rd_raw = r.get('result_data') if isinstance(r, dict) else r.result_data
+            rd_path = r.get('result_data_path') if isinstance(r, dict) else getattr(r, 'result_data_path', None)
+            rd = load_full_result_data(rd_raw, rd_path)
+            data_by_id[rid] = rd if isinstance(rd, dict) else None
+
+        entries_by_result = {}
+        try:
+            for chunk_map, _coverage in _grpc_iter_dimension_results_with_body(result_ids):
+                for rid, rows in (chunk_map or {}).items():
+                    if not rows:
+                        continue
+                    entries = collect_dimension_aux_entries(
+                        aux_params_map, rows, data_by_id.get(rid),
+                        resource_by_id.get(rid, ''))
+                    if entries:
+                        entries_by_result[rid] = entries
+        except Exception:
+            # 明细提取失败不影响报告主链路（快照/实时结果仍可展示）
+            return {}
+        return entries_by_result
+
+    @staticmethod
     def _build_case_data(test_cases, results, all_dimensions, dim_results_map, task):
         results_by_case = {}
         for result in results:
@@ -332,14 +418,21 @@ class ReportDataCaseMixin:
                 results_by_case[tc_id] = []
             results_by_case[tc_id].append(result)
 
-        # 批量查询 aux 参数
+        # 批量查询 aux 参数（维度名由 all_dimensions 补齐，GetDimensionParams 不下发）
         all_dim_ids = set()
         for drs in (dim_results_map.values() if dim_results_map else []):
             for dr in drs:
                 dim_id = dr.get('dimension_id') if isinstance(dr, dict) else getattr(dr, 'dimension_id', None)
                 if dim_id is not None:
                     all_dim_ids.add(dim_id)
-        aux_params_map = ReportDataCaseMixin._get_aux_params_batch(list(all_dim_ids))
+        dim_id_to_name = {_dim_id(d): _dim_name(d) for d in (all_dimensions or [])}
+        aux_params_map = ReportDataCaseMixin._get_aux_params_batch(
+            list(all_dim_ids), dim_id_to_name)
+
+        # 维度明细块（评估结果）补充提取：逐块拉取带 body 的维度结果，块内提取
+        # aux 参数条目后即弃原始响应（INT-2381 内存约束），供快照/实时路径合并
+        aux_entries_by_result = ReportDataCaseMixin._extract_aux_entries_batch(
+            results, task, aux_params_map)
 
         cases = []
 
@@ -349,7 +442,8 @@ class ReportDataCaseMixin:
 
             case_obj = ReportDataCaseMixin._build_case_basic_info(
                 test_case, case_results, task,
-                aux_params_map=aux_params_map, dim_results_map=dim_results_map
+                aux_params_map=aux_params_map, dim_results_map=dim_results_map,
+                aux_entries_by_result=aux_entries_by_result,
             )
 
             metrics_list = ReportDataCaseMixin._build_case_metrics(

@@ -1,9 +1,10 @@
 /**
  * 历史监控统计分析图表规格（16_设备域.md §3.7：可用性统计/性能统计/错误统计/使用统计；
  * VChart + use-chart-theme，深浅两套随主题）。
- * 数据源 mock 日粒度采点（devices-mock MOCK_DEVICE_STATS），接线后换实时监控指标端点。
+ * 数据源：GET /test-devices/monitor-stats 真实聚合（契约 INT-1573，INT-2670 接线）；
+ * 指标 null 原样保留为图表断点（无采点日不得补 0）。
  */
-import type { DeviceStatsPoint } from '@/infrastructure/mock/devices-mock'
+import type { DeviceStatsPoint } from '@/domain/models/deviceMonitorStats'
 import type { DeviceStatusEventType } from '@/domain/models/alarm'
 
 /** 四类历史事件类别 → eventType 集合（设备管理功能设计文档.md:411-429） */
@@ -48,6 +49,71 @@ export function filterByTimeRange(
   return true
 }
 
+/** 监控统计查询区间（YYYY-MM-DD，含首尾） */
+export interface StatsDateRange {
+  startDate: string
+  endDate: string
+}
+
+/** 本地墙钟日期 → YYYY-MM-DD（不用 toISOString：UTC 换算在 UTC+8 晚间会跨日） */
+export function toLocalIsoDate(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/**
+ * 页面时间范围（今日/近7天/近30天/自定义）→ /monitor-stats 的 start_date / end_date。
+ * 今日 = 当天；近7天/近30天按含首尾的自然日计；自定义起止未填全返回 null（不发请求）。
+ */
+export function resolveStatsDateRange(
+  range: HistoryTimeRange,
+  customStart?: string | null,
+  customEnd?: string | null,
+  now: Date = new Date()
+): StatsDateRange | null {
+  if (range === 'custom') {
+    if (!customStart || !customEnd) return null
+    return { startDate: customStart, endDate: customEnd }
+  }
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const start = new Date(end)
+  if (range === '7d') start.setDate(start.getDate() - 6)
+  else if (range === '30d') start.setDate(start.getDate() - 29)
+  return { startDate: toLocalIsoDate(start), endDate: toLocalIsoDate(end) }
+}
+
+/** 是否有真实采点：全 null 且无错误/操作 → 空态「暂无监控采点」，不用示例曲线充数 */
+export function hasMonitorStatsData(points: DeviceStatsPoint[]): boolean {
+  return points.some(
+    (point) =>
+      point.availability != null ||
+      point.cpu != null ||
+      point.memory != null ||
+      point.battery != null ||
+      point.errors > 0 ||
+      point.operations > 0
+  )
+}
+
+/** 非 null 的真实值个数（null 是断点，不补 0，也不参与连线） */
+function countRealValues(values: ReadonlyArray<number | null>): number {
+  return values.reduce<number>((count, value) => (value != null ? count + 1 : count), 0)
+}
+
+/**
+ * 线/面积至少要 2 个真实值才连得出走向：单日范围，或多日范围里某个指标只有一天
+ * 有采点时（如 11-18~11-19 仅 11-19 有健康检查采点），画面会只剩坐标轴。
+ * 此时开启点标记把数值画出来；真实值多于 1 个时保持关闭，避免密集点噪点。
+ * 每个系列（可用性 / 三条性能指标）分别计数取最小：任一序列只有 1 个值，该序列也连不出线。
+ */
+function singlePointVisible(series: ReadonlyArray<ReadonlyArray<number | null>>): boolean {
+  const counts = series.map(countRealValues).filter((count) => count > 0)
+  if (counts.length === 0) return false
+  return Math.min(...counts) <= 1
+}
+
 /** 可用性统计趋势（面积图） */
 export function buildAvailabilitySpec(points: DeviceStatsPoint[]): Record<string, unknown> {
   return {
@@ -59,7 +125,10 @@ export function buildAvailabilitySpec(points: DeviceStatsPoint[]): Record<string
     yField: '可用率',
     area: { style: { fill: { type: 'linear', gradient: 'x1', stops: [{ color: '#00d294' }, { color: 'rgba(0,210,148,0.1)' }] } } },
     line: { style: { stroke: '#00d294', lineWidth: 2 } },
-    point: { visible: false },
+    point: {
+      visible: singlePointVisible([points.map((p) => p.availability)]),
+      style: { fill: '#00d294' },
+    },
     axes: [
       { orient: 'left', label: { formatMethod: (v: number) => `${v}%` } },
       { orient: 'bottom', tick: { visible: false } },
@@ -83,7 +152,13 @@ export function buildPerformanceSpec(points: DeviceStatsPoint[]): Record<string,
     yField: '值',
     seriesField: '指标',
     line: { style: { lineWidth: 2 } },
-    point: { visible: false },
+    point: {
+      visible: singlePointVisible([
+        points.map((p) => p.cpu),
+        points.map((p) => p.memory),
+        points.map((p) => p.battery),
+      ]),
+    },
     axes: [{ orient: 'bottom', tick: { visible: false } }],
     height: 168,
   }

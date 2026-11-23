@@ -1,7 +1,7 @@
 /**
  * 具体用例（15_报告域.md §3.3.7，SpecificCaseComparison 对位）。
  *
- * 基本结构：筛选卡（名称/分组/标签两级/评估维度三级/排序）+ 三视图工具栏 + 已固定用例区 + 用例列表 + 展开详情。
+ * 基本结构：筛选卡（名称/状态/分组/标签两级/评估维度三级/排序）+ 三视图工具栏 + 已固定用例区 + 用例列表 + 展开详情。
  * - **三视图（INT-1738）**：用例视图（组织层 → 用例卡 → 跨资源叶表）/ 设备视图（设备·API → 组织层 →
  *   用例卡 → 结果类型叶表）/ 结果类型视图（result_type → 组织层 → 用例卡 → 设备叶表）；
  *   「结果类型视图」档仅在当前结果集解析出非「默认」result_type 时渲染（现网全部两档）；
@@ -52,7 +52,10 @@ import {
 } from '@/components/ui/tabs'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
-import { useReportCases } from '@/application/report-view/use-report-cases'
+import {
+  useReportCases,
+  type CaseFilters,
+} from '@/application/report-view/use-report-cases'
 import {
   caseResourceKeys,
   resultTypeText,
@@ -143,6 +146,35 @@ const VIEW_LABELS: Record<ReportCaseView, string> = {
   resultType: '结果类型视图',
 }
 
+/** 状态筛选哨兵值（照任务详情「关联用例」全部状态口径） */
+const STATUS_FILTER_ALL = 'all'
+
+/** 资源排序哨兵值：全部资源（平均） */
+const SORT_RESOURCE_ALL = 'all'
+
+/**
+ * 排序方式选项：Select 根 items 与弹层共用同一份，
+ * 让 Base UI SelectValue 用中文 label 回显（否则回退显示 name/createdat/metric 原始 value）。
+ */
+const SORT_BY_OPTIONS: Array<{
+  value: NonNullable<CaseFilters['sortBy']>
+  label: string
+}> = [
+  { value: 'name', label: '按名称' },
+  { value: 'createdat', label: '按创建时间' },
+  { value: 'metric', label: '按评估维度' },
+]
+
+/** 结果状态筛选选项（匹配 overallStatusOf 归一值） */
+const CASE_RESULT_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: STATUS_FILTER_ALL, label: '全部状态' },
+  { value: 'pass', label: '通过' },
+  { value: 'fail', label: '失败' },
+  { value: 'warning', label: '警告' },
+  { value: 'skip', label: '跳过' },
+  { value: 'unknown', label: '未知' },
+]
+
 /** 叶表渲染上下文（按视图给行集锚点） */
 interface LeafContext {
   view: ReportCaseView
@@ -158,6 +190,14 @@ export function SpecificCaseComparison({
   isExporting?: boolean
 }) {
   const fallbackCases = report.summary.cases ?? []
+  /** 资源下拉选项（首项「全部资源(平均)」+ 报告实际资源）：items 与弹层共用，保证触发器中文回显 */
+  const sortResourceOptions = useMemo(
+    () => [
+      { value: SORT_RESOURCE_ALL, label: '全部资源(平均)' },
+      ...report.summary.resources.map((r) => ({ value: r, label: r })),
+    ],
+    [report.summary.resources]
+  )
   const {
     filters,
     setFilters,
@@ -274,8 +314,20 @@ export function SpecificCaseComparison({
 
   const headers = report.summary.resource_headers ?? []
 
+  /** 状态筛选（客户端，searchCases 无 status 参数）：在合并视图前按用例整体状态过滤 */
+  const statusFilterActive = Boolean(
+    filters.status && filters.status !== STATUS_FILTER_ALL
+  )
+  const statusFilteredCases = useMemo(
+    () =>
+      statusFilterActive
+        ? items.filter((c) => overallStatusOf(c) === filters.status)
+        : items,
+    [items, filters.status, statusFilterActive]
+  )
+
   /** 三视图聚合（按 test_case_id 合并 + 资源并集；纯计算） */
-  const views = useReportCaseViews(items, headers)
+  const views = useReportCaseViews(statusFilteredCases, headers)
 
   /** 显示设置（区级一份；导出态强制全显） */
   const display = useCaseDisplaySettings(report.id, isExporting)
@@ -449,6 +501,8 @@ export function SpecificCaseComparison({
   const effectiveView: ReportCaseView = isExporting ? 'case' : view
   /** 设备 / 结果类型视图第 1 层节点展开态（默认只展开第一个；切视图重置） */
   const [openNodeKeys, setOpenNodeKeys] = useState<string[]>([])
+  /** 分组 / 标签视图组头展开态（本会话内存；默认全部展开，点组头折叠组内用例） */
+  const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<string[]>([])
 
   // 结果类型视图档位翻转 → 静默回落用例视图（保留筛选/固定/组织/排序，只重置展开态）
   useEffect(() => {
@@ -690,6 +744,21 @@ export function SpecificCaseComparison({
     )
   }
 
+  /** 组头展开态 key：按层级 + 叶表上下文隔离（同组 key 在不同设备 / 结果类型节点下独立） */
+  const groupStateKey = (leafCtx: LeafContext, level: 'group' | 'sub', groupKey: string) =>
+    `${level}:${leafCtx.view}:${leafCtx.resourceKey ?? leafCtx.resultType ?? ''}:${groupKey}`
+
+  /** 组头是否展开（导出态产物由脚本接管折叠，恒渲染完整内容） */
+  const isGroupOpen = (leafCtx: LeafContext, level: 'group' | 'sub', groupKey: string) =>
+    isExporting || !collapsedGroupKeys.includes(groupStateKey(leafCtx, level, groupKey))
+
+  const toggleGroup = (leafCtx: LeafContext, level: 'group' | 'sub', groupKey: string) => {
+    const key = groupStateKey(leafCtx, level, groupKey)
+    setCollapsedGroupKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    )
+  }
+
   /**
    * 组织层（INT-1125 / §3.3.7 组织层语义）：第 1 层 = 分组视图 / 标签视图，
    * 平铺 = 用例卡直接挂当层（不渲染子组头），交叉 = 组内再按另一维度分子组。
@@ -698,28 +767,53 @@ export function SpecificCaseComparison({
     const groups =
       org === 'tag' ? groupReportCasesByTag(cases, reportTagRegistry) : groupReportCasesByCategory(cases)
     /**
-     * 分组头：导出态做成可点按钮（INT-2434 三轮）——产物里组头原来是死文字，除第一组外
-     * 各组只剩标题、0 卡；现在组头是 `button[data-export-group-toggle]`（aria-expanded +
-     * 展开/收起箭头），折叠状态由导出脚本接管，纯 DOM，不依赖 React 状态。
+     * 分组头：页面态做成可点按钮（组头可展开 / 收起组内用例，aria-expanded + 旋转箭头）；
+     * 导出态保留 `data-export-group-toggle`（INT-2434 三轮：产物里组头原来是死文字，
+     * 除第一组外各组只剩标题、0 卡）——折叠状态由导出脚本接管，纯 DOM，不依赖 React 状态。
      */
-    const renderGroupHeader = (group: ReportCaseSubGroup) => {
+    const renderGroupHeader = (group: ReportCaseSubGroup, level: 'group' | 'sub') => {
       const muted = group.key === '__untagged__' || group.key === '__uncategorized__'
-      if (!isExporting) return <ReportGroupHeader group={group} muted={muted} />
+      if (isExporting) {
+        return (
+          <button
+            type='button'
+            className='block w-full cursor-pointer text-start'
+            data-export-group-toggle=''
+            aria-expanded='true'
+            aria-label={`展开或收起分组 ${group.label}`}
+          >
+            <ReportGroupHeader
+              group={group}
+              muted={muted}
+              trailing={
+                <span data-export-group-caret='' aria-hidden='true' className='text-muted-foreground ms-auto text-xs'>
+                  ▾
+                </span>
+              }
+            />
+          </button>
+        )
+      }
+      const open = isGroupOpen(leafCtx, level, group.key)
       return (
         <button
           type='button'
           className='block w-full cursor-pointer text-start'
-          data-export-group-toggle=''
-          aria-expanded='true'
+          aria-expanded={open}
           aria-label={`展开或收起分组 ${group.label}`}
+          onClick={() => toggleGroup(leafCtx, level, group.key)}
         >
           <ReportGroupHeader
             group={group}
             muted={muted}
             trailing={
-              <span data-export-group-caret='' aria-hidden='true' className='text-muted-foreground ms-auto text-xs'>
-                ▾
-              </span>
+              <ChevronDown
+                aria-hidden='true'
+                className={cn(
+                  'text-muted-foreground ms-auto size-4 transition-transform',
+                  !open && '-rotate-90'
+                )}
+              />
             }
           />
         </button>
@@ -745,10 +839,12 @@ export function SpecificCaseComparison({
               className='space-y-2'
               data-export-group={isExporting ? '' : undefined}
             >
-              {renderGroupHeader(sg)}
-              <div className='space-y-2' data-export-group-body={isExporting ? '' : undefined}>
-                {sg.cases.map((c) => renderCaseCard(c, leafCtx))}
-              </div>
+              {renderGroupHeader(sg, 'sub')}
+              {isGroupOpen(leafCtx, 'sub', sg.key) && (
+                <div className='space-y-2' data-export-group-body={isExporting ? '' : undefined}>
+                  {sg.cases.map((c) => renderCaseCard(c, leafCtx))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -762,8 +858,8 @@ export function SpecificCaseComparison({
             className='space-y-2'
             data-export-group={isExporting ? '' : undefined}
           >
-            {renderGroupHeader(g)}
-            {body(g.cases)}
+            {renderGroupHeader(g, 'group')}
+            {isGroupOpen(leafCtx, 'group', g.key) && body(g.cases)}
           </div>
         ))}
       </div>
@@ -771,7 +867,15 @@ export function SpecificCaseComparison({
   }
 
   const hasResultTypeView = views.hasResultTypeView && !isExporting
-  const totalCases = effectiveView === 'case' ? total : views.caseCount
+  /** 计数口径按视图分（§3.3.7 定死）：用例视图 = 结果行数，设备/结果类型视图 = 去重用例数；
+      状态筛选为客户端过滤，命中总数改由合并视图统计（服务端 total 不含状态口径） */
+  const totalCases = statusFilterActive
+    ? effectiveView === 'case'
+      ? views.mergedCases.reduce((n, c) => n + caseResourceKeys(c).length, 0)
+      : views.caseCount
+    : effectiveView === 'case'
+      ? total
+      : views.caseCount
 
   return (
     <Collapsible open={!collapsed || isExporting} onOpenChange={setCollapsed} className='space-y-3'>
@@ -830,9 +934,36 @@ export function SpecificCaseComparison({
               <Input
                 value={filters.keyword ?? ''}
                 onChange={(e) => setFilters({ ...filters, keyword: e.target.value })}
-                placeholder='输入用例ID或名称关键词'
+                placeholder='搜索用例名称或 ID…'
                 className='h-8 text-xs'
               />
+            </div>
+            <div>
+              <label className='text-muted-foreground mb-1 block text-xs'>状态</label>
+              <Select
+                value={filters.status ?? STATUS_FILTER_ALL}
+                onValueChange={(v) =>
+                  setFilters({
+                    ...filters,
+                    status: !v || v === STATUS_FILTER_ALL ? undefined : v,
+                  })
+                }
+              >
+                <SelectTrigger className='h-8 text-xs'>
+                  <SelectValue>
+                    {CASE_RESULT_STATUS_OPTIONS.find(
+                      (o) => o.value === (filters.status ?? STATUS_FILTER_ALL)
+                    )?.label ?? '全部状态'}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {CASE_RESULT_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className='text-muted-foreground mb-1 block text-xs'>排序方式</label>
@@ -842,14 +973,17 @@ export function SpecificCaseComparison({
                   onValueChange={(v) =>
                     setFilters({ ...filters, sortBy: v as typeof filters.sortBy })
                   }
+                  items={SORT_BY_OPTIONS}
                 >
                   <SelectTrigger className='h-8 flex-1 text-xs'>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='name'>按名称</SelectItem>
-                    <SelectItem value='createdat'>按创建时间</SelectItem>
-                    <SelectItem value='metric'>按评估维度</SelectItem>
+                    {SORT_BY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Button
@@ -878,18 +1012,20 @@ export function SpecificCaseComparison({
                 <div>
                   <label className='text-muted-foreground mb-1 block text-xs'>资源</label>
                   <Select
-                    value={filters.sortResource ?? 'all'}
+                    value={filters.sortResource ?? SORT_RESOURCE_ALL}
                     onValueChange={(v) =>
-                      setFilters({ ...filters, sortResource: v === 'all' || v === null ? undefined : v })
+                      setFilters({ ...filters, sortResource: v === SORT_RESOURCE_ALL || v === null ? undefined : v })
                     }
+                    items={sortResourceOptions}
                   >
-                    <SelectTrigger className='h-8 text-xs'>
+                    <SelectTrigger className='h-8 w-full min-w-0 text-xs'>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value='all'>全部资源(平均)</SelectItem>
-                      {report.summary.resources.map((r) => (
-                        <SelectItem key={r} value={r}>{r}</SelectItem>
+                    <SelectContent className='min-w-64'>
+                      {sortResourceOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -903,10 +1039,10 @@ export function SpecificCaseComparison({
                       setFilters({ ...filters, sortMetric: v === 'all' || v === null ? undefined : v })
                     }
                   >
-                    <SelectTrigger className='h-8 text-xs'>
+                    <SelectTrigger className='h-8 w-full min-w-0 text-xs'>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className='min-w-72'>
                       {taxonomy.dimensionSections.map((section) => (
                         <SelectGroup key={section.key}>
                           <SelectLabel>{section.name}</SelectLabel>
@@ -1009,6 +1145,17 @@ export function SpecificCaseComparison({
               ...(filters.categories ?? []).map((g) => ({ key: `group:${g}`, label: `分组·${g}` })),
               ...(filters.tags ?? []).map((t) => ({ key: `tag:${t}`, label: `标签·${t}` })),
               ...(filters.metrics ?? []).map((m) => ({ key: `metric:${m}`, label: `维度·${m}` })),
+              ...(statusFilterActive
+                ? [
+                    {
+                      key: `status:${filters.status}`,
+                      label: `状态·${
+                        CASE_RESULT_STATUS_OPTIONS.find((o) => o.value === filters.status)?.label ??
+                        filters.status
+                      }`,
+                    },
+                  ]
+                : []),
             ]}
             onRemove={(key) => {
               const [kind, ...rest] = key.split(':')
@@ -1027,6 +1174,7 @@ export function SpecificCaseComparison({
                   kind === 'metric'
                     ? (filters.metrics ?? []).filter((x) => x !== value)
                     : filters.metrics,
+                status: kind === 'status' ? undefined : filters.status,
               })
             }}
           />

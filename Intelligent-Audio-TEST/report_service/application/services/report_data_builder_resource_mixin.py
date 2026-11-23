@@ -171,12 +171,14 @@ class ReportDataResourceMixin:
         all_metrics = []
         for dim in all_dimensions:
             statistic_method = _dim_statistic_method(dim) or 'average'
-            # 聚合方式决定 unit：pass_rate/ratio/weighted_sum_ratio/weighted_wer 产出百分比，强制为 %；其余用维度配置的 score_unit
+            score_unit = _dim_score_unit(dim)
+            score_unit = score_unit if score_unit and score_unit.strip() else ""
+            # unit（聚合单位）：pass_rate/ratio/weighted_sum_ratio/weighted_wer 产出百分比，强制为 %；
+            # 其余用维度配置的 score_unit。仅用于「非具体用例」的聚合视图。
             if statistic_method in ('pass_rate', 'ratio', 'weighted_sum_ratio', 'weighted_wer'):
                 unit = "%"
             else:
-                score_unit = _dim_score_unit(dim)
-                unit = score_unit if score_unit and score_unit.strip() else ""
+                unit = score_unit
             decimal_places = _dim_decimal_places(dim)
             decimal_places = decimal_places if decimal_places is not None else 2
             dim_id = _dim_id(dim)
@@ -186,6 +188,8 @@ class ReportDataResourceMixin:
                 "id": dim_id,
                 "name": dim_name,
                 "unit": unit,
+                # score_unit（维度单位）：具体用例视图使用，不做 % 强制
+                "score_unit": score_unit,
                 "decimal_places": decimal_places,
                 "statistic_method": statistic_method,
                 "agg_denominator": _dim_agg_denominator(dim),

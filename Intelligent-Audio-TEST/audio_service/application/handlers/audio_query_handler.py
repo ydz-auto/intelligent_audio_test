@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from shared.infrastructure.storage import storage
@@ -89,6 +90,12 @@ def _audio_to_dict(audio, tags=None, annotations=None) -> dict:
     }
 
 
+# 音频统计短 TTL 缓存（key=(user_id, is_admin) → (时间戳, 统计 dict)）：
+# 见 AudioQueryHandler._cached_audio_stats，避免列表请求高频全表聚合。
+_STATS_CACHE_TTL_S = 30
+_stats_cache: Dict[tuple, tuple] = {}
+
+
 class AudioQueryHandler:
     """音频读查询处理器。
 
@@ -105,6 +112,27 @@ class AudioQueryHandler:
             TaskACLRepositoryImpl,
         )
         self._task_acl = TaskACLRepositoryImpl()
+
+    def _cached_audio_stats(self) -> dict:
+        """音频统计短 TTL 缓存（按用户 + admin 区分）。
+
+        handle_list_audios 每次请求都调 get_audio_stats 做全表聚合（sum size/duration
+        + 今日上传数），翻页/搜索会高频触发全表扫描。统计口径与可见性相关
+        （INT-423 只统计可见行），故缓存 key 必须含 user_id + is_admin，不能跨用户
+        复用；TTL 内复用，上传/删除后最多延迟一个 TTL 生效，可接受。
+        """
+        from shared.infrastructure.user_context import (
+            get_current_user_id,
+            get_current_user_is_admin,
+        )
+        key = (get_current_user_id(), get_current_user_is_admin())
+        now = time.time()
+        hit = _stats_cache.get(key)
+        if hit is not None and now - hit[0] < _STATS_CACHE_TTL_S:
+            return hit[1]
+        stats = self.repo.get_audio_stats()
+        _stats_cache[key] = (now, stats)
+        return stats
 
     def handle_get_all_tags(self, query: GetAllAudioTagsQuery) -> Dict[str, Any]:
         tag_names = self.repo.get_all_tag_names()
@@ -127,7 +155,7 @@ class AudioQueryHandler:
                     ann_map.get(audio.id, []),
                 ))
 
-            stats = self.repo.get_audio_stats()
+            stats = self._cached_audio_stats()
             total_size = stats.get('total_size', 0)
             total_duration = stats.get('total_duration', 0)
             today_uploads = stats.get('today_uploads', 0)
@@ -193,21 +221,21 @@ class AudioQueryHandler:
         # 单条详情（audio_bp 直连端点）才是严格校验边界。
         audio_ids = [int(aid) if str(aid).isdigit() else aid for aid in query.ids]
         audios = self.repo.get_audios_by_ids(audio_ids)
+        if not audios:
+            return _ok(data=[])
 
-        results = []
-        for audio in audios:
-            tags = self.repo.get_audio_tag_names(audio.id)
-            annotations = [
-                {
-                    'format': ann.format,
-                    'code': ann.code,
-                    'data': ann.data,
-                    'source_language': ann.source_language,
-                    'target_language': ann.target_language,
-                }
-                for ann in self.repo.get_annotations_by_audio(audio.id)
-            ]
-            results.append(_audio_to_dict(audio, tags, annotations))
+        audio_id_list = [audio.id for audio in audios]
+        tags_map = self.repo.get_audio_tags_map(audio_id_list)
+        annotations_map = self.repo.get_annotations_map(audio_id_list)
+
+        results = [
+            _audio_to_dict(
+                audio,
+                tags_map.get(audio.id, []),
+                annotations_map.get(audio.id, []),
+            )
+            for audio in audios
+        ]
 
         return _ok(data=results)
 

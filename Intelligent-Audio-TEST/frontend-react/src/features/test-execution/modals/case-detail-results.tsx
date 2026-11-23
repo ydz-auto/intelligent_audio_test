@@ -448,6 +448,7 @@ function toReportDetailData(detail: CaseExecutionDetail): ReportDetailData {
         parent_dimension_name: c.parentDimensionName,
         decimal_places: c.decimalPlaces,
         unit: c.unit,
+        score_unit: c.scoreUnit,
       })),
       case_type_stats: [],
       device_stats: [],

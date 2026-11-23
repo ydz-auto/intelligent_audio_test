@@ -145,7 +145,7 @@ class TaskLifecycleService:
                 from task_service.core.execution_engine import execution_engine
                 execution_engine.control_task(task_id, 'stop')
 
-            # 查询需要重试的用例（整任务语义沿用 find_retry_cases；范围模式走 scoped 查询）
+            # 查询需要重试的用例（all=整任务全部未移除用例；范围模式走 scoped 查询）
             if mode == RetryScopeMode.ALL.value:
                 retry_cases = task_repository.find_retry_cases(task_id)
             else:
@@ -154,34 +154,54 @@ class TaskLifecycleService:
             if not retry_cases:
                 return {'success': True, 'message': '没有需要重试的用例', 'data': None}
 
-            completed_cases = [tc for tc in retry_cases if tc.execution_status == ExecutionStatus.COMPLETED]
-            incomplete_cases = [tc for tc in retry_cases if tc.execution_status != ExecutionStatus.COMPLETED]
-
-            # 清理旧结果
-            if completed_cases:
+            # 「重新执行」语义（INT-302 口径修正）：
+            # - all / selected：范围内用例一律重置并重新执行（含已成功用例）——
+            #   清旧结果、执行+评估回 PENDING 重新下发设备；
+            # - failed_only：保留既有智能分流——执行完成的（评估失败）走重评估，
+            #   执行未完成的重置重执行。
+            if mode in (RetryScopeMode.ALL.value, RetryScopeMode.SELECTED.value):
                 task_repository.cleanup_case_results(
-                    task_id, [tc.test_case_id for tc in completed_cases], preserve_test_result=True
+                    task_id, [tc.test_case_id for tc in retry_cases], preserve_test_result=False
                 )
-            if incomplete_cases:
-                task_repository.cleanup_case_results(
-                    task_id, [tc.test_case_id for tc in incomplete_cases], preserve_test_result=False
-                )
+                for tc in retry_cases:
+                    tc.execution_status = ExecutionStatus.PENDING
+                    tc.evaluation_status = EvaluationStatus.PENDING
+                    tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
+                    tc.started_at = None
+                    tc.completed_at = None
+                    tc.duration = None
+                    tc.error_message = None
+                    task_repository.commit_task_case(tc)
+                completed_cases = []
+            else:
+                completed_cases = [tc for tc in retry_cases if tc.execution_status == ExecutionStatus.COMPLETED]
+                incomplete_cases = [tc for tc in retry_cases if tc.execution_status != ExecutionStatus.COMPLETED]
 
-            # 重置 TaskCase 状态（内存修改，稍后提交）
-            for tc in completed_cases:
-                tc.evaluation_status = EvaluationStatus.PENDING
-                tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
-                tc.error_message = None
-                task_repository.commit_task_case(tc)
-            for tc in incomplete_cases:
-                tc.execution_status = ExecutionStatus.PENDING
-                tc.evaluation_status = EvaluationStatus.PENDING
-                tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
-                tc.started_at = None
-                tc.completed_at = None
-                tc.duration = None
-                tc.error_message = None
-                task_repository.commit_task_case(tc)
+                # 清理旧结果
+                if completed_cases:
+                    task_repository.cleanup_case_results(
+                        task_id, [tc.test_case_id for tc in completed_cases], preserve_test_result=True
+                    )
+                if incomplete_cases:
+                    task_repository.cleanup_case_results(
+                        task_id, [tc.test_case_id for tc in incomplete_cases], preserve_test_result=False
+                    )
+
+                # 重置 TaskCase 状态（内存修改，稍后提交）
+                for tc in completed_cases:
+                    tc.evaluation_status = EvaluationStatus.PENDING
+                    tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
+                    tc.error_message = None
+                    task_repository.commit_task_case(tc)
+                for tc in incomplete_cases:
+                    tc.execution_status = ExecutionStatus.PENDING
+                    tc.evaluation_status = EvaluationStatus.PENDING
+                    tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
+                    tc.started_at = None
+                    tc.completed_at = None
+                    tc.duration = None
+                    tc.error_message = None
+                    task_repository.commit_task_case(tc)
 
             # 重新统计并重置任务状态
             task_repository.recount_task_cases(task_id)

@@ -17,12 +17,8 @@
  * 本身不会 404，控制台零 SEVERE）。环境层根治（隔离 pub/sub 通道前缀）另开解阻卡。
  */
 import { mapSseEventToNotification } from '@/infrastructure/adapters/notificationAdapter'
-import {
-  subscribeSse,
-  SSE_EVENT_CHANNELS,
-  type SseEvent,
-  type SseStatus,
-} from '@/infrastructure/realtime/sse'
+import { subscribeSharedSse } from '@/infrastructure/realtime/sse-bus'
+import { SSE_EVENT_CHANNELS, type SseEvent, type SseStatus } from '@/infrastructure/realtime/sse'
 import { fetchReportList } from '@/infrastructure/api/reports-api'
 import { fetchTaskList } from '@/infrastructure/api/tasks-list-api'
 import type { AppNotification } from '@/domain/models/notification'
@@ -46,7 +42,7 @@ export interface NotificationStreamHandlers {
 export function subscribeNotificationStream(
   handlers: NotificationStreamHandlers
 ): () => void {
-  return subscribeSse({
+  return subscribeSharedSse({
     channels: NOTIFICATION_CHANNELS,
     signal: handlers.signal,
     onStatusChange: handlers.onStatusChange,

@@ -39,7 +39,9 @@ export function ResultField({
   const text = formatValueText(value)
   const needsCollapse = text.length > 200
 
-  if (type === 'audio_file' && onPlayAudio) {
+  if (type === 'audio_file') {
+    // INT-1905：audio_file 无值（如 user_wav 未捕获）时以「—」呈现，不渲染失效播放按钮
+    const hasAudioValue = value != null && String(value).trim() !== ''
     return (
       <div
         data-export-round={exportRound}
@@ -49,15 +51,19 @@ export function ResultField({
         <span className='text-muted-foreground min-w-0 flex-1 truncate' title={label}>
           {label}
         </span>
-        <Button
-          variant='outline'
-          size='sm'
-          className='h-6 shrink-0 gap-1 px-2 text-xs'
-          onClick={() => onPlayAudio(value)}
-        >
-          <Play aria-hidden='true' className='size-3' />
-          播放音频
-        </Button>
+        {hasAudioValue && onPlayAudio ? (
+          <Button
+            variant='outline'
+            size='sm'
+            className='h-6 shrink-0 gap-1 px-2 text-xs'
+            onClick={() => onPlayAudio(value)}
+          >
+            <Play aria-hidden='true' className='size-3' />
+            播放音频
+          </Button>
+        ) : (
+          <span className='text-muted-foreground font-mono text-right'>—</span>
+        )}
       </div>
     )
   }

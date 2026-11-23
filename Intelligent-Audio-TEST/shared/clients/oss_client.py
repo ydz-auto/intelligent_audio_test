@@ -329,6 +329,17 @@ class OSSClient:
         obj = self._client.get_object(Bucket=bucket, Key=full_key)
         return obj['Body']
 
+    def get_size(self, category: str, key: str) -> int | None:
+        """查询对象字节大小（head_object；不存在/异常返回 None）。"""
+        try:
+            self._ensure_init()
+            bucket = self._bucket(category)
+            full_key = self._full_key(category, key)
+            head = self._client.head_object(Bucket=bucket, Key=full_key)
+            return int(head.get('ContentLength') or 0) or None
+        except Exception:
+            return None
+
     # ---- 临时文件（下载→处理→上传）----
 
     def download_to_temp(self, category: str, key: str, suffix: str = '.tmp') -> str:

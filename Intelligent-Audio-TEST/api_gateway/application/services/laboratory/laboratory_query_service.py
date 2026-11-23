@@ -65,7 +65,10 @@ class LaboratoryQueryService:
         status = query.status.value if query.status is not None else None
 
         items, total = _laboratory_repo.list(status=status, page=page, per_page=per_page)
-        data_items = [_lab_item(lab, _counts_dict(lab.id)) for lab in items]
+        # 性能热修：批量计数（每资源一次全量分组，替代原逐行 3×N 次串行 gRPC；
+        # device/audio 跨机隧道单次往返约 300ms）
+        counts_map = LaboratoryResourceReadModel.batch_counts([lab.id for lab in items])
+        data_items = [_lab_item(lab, counts_map.get(str(lab.id)) or {}) for lab in items]
         pages = (total + per_page - 1) // per_page if per_page else 1
         return success_response(
             LaboratoryListData(
