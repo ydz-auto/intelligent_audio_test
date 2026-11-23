@@ -58,7 +58,10 @@ class ReevaluationService:
             algo_result = ReevaluationService.deserialize_algorithm_result(
                 result.algorithm_result or {}
             )
-            full_data = full_data_map.get(str(test_case_id), {})
+            # 同一用例可能有多条结果（不同 result_type/设备/API）：优先按 result.id
+            # 取自身数据，避免后采集的类型覆盖先采集的参考参数。
+            full_data = (full_data_map.get(str(getattr(result, 'id', '')))
+                         or full_data_map.get(str(test_case_id), {}))
             result_type = full_data.get('result_type') if full_data else None
 
             case_info = ReevaluationService._build_case_info(
@@ -94,7 +97,9 @@ class ReevaluationService:
             algo_result = ReevaluationService.deserialize_algorithm_result(
                 result.algorithm_result or {}
             )
-            full_data = full_data_map.get(str(test_case_id), {})
+            # 口径同 collect_cases_all：按 result.id 优先取本结果自身数据
+            full_data = (full_data_map.get(str(getattr(result, 'id', '')))
+                         or full_data_map.get(str(test_case_id), {}))
             result_type = full_data.get('result_type', 'unknown') if full_data else 'unknown'
 
             case_info = ReevaluationService._build_case_info(

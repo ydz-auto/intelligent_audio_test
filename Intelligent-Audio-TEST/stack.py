@@ -8,10 +8,13 @@ audio_service 曾连到测试库）。本入口统一为一条命令：
 
     python stack.py up                    # compose 起栈 + 宿主 e2e/device/audio
     python stack.py up --audio-mode shim  # Windows 音频栈楔死时用影子 pyaudio
-    python stack.py status                # 容器 + 宿主服务状态
+    python stack.py up --no-docker --tunnel   # 日常形态：隧道 + 宿主三件套（数据面在服务器）
+    python stack.py status                # 容器 + 宿主服务 + SSH 隧道状态
     python stack.py health                # HTTP /health + gRPC/基础设施 TCP 探测
     python stack.py down                  # 优雅停宿主服务 → compose down
-    python stack.py restart host|audio|device|e2e|all
+    python stack.py down --no-docker --tunnel # 日常形态的逆操作：停三件套 → 停隧道
+    python stack.py restart host|audio|device|e2e|all|tunnel
+    python stack.py tunnel start|stop|status|restart  # 委托 ssh_tunnels.ps1（端口口径只在那边维护）
     python stack.py logs [服务名] [-f]    # 容器日志；audio/device/e2e 看宿主日志
     python stack.py build [服务名...]     # 构建镜像（委托 docker/build_stack.py）
 
@@ -21,6 +24,7 @@ audio_service 曾连到测试库）。本入口统一为一条命令：
 from __future__ import annotations
 
 import argparse
+import shutil
 import socket
 import subprocess
 import sys
@@ -36,6 +40,7 @@ from shared.constants.database import ISOLATED_TEST_DB_NAME  # noqa: E402
 
 RUN_STACK = REPO / 'docker' / 'run_stack.py'
 BUILD_STACK = REPO / 'docker' / 'build_stack.py'
+TUNNEL_SCRIPT = REPO / 'ssh_tunnels.ps1'
 
 # compose 容器内端口 → (服务名, 探测方式)
 HTTP_PROBES = {
@@ -61,9 +66,39 @@ def _print(msg: str) -> None:
     print(msg, flush=True)
 
 
+# ---------------------------------------------------------------- SSH 隧道
+
+def _powershell() -> str:
+    """优先 pwsh 7，回退 Windows PowerShell 5.1（ssh_tunnels.ps1 保持 ASCII，两者都能跑）。"""
+    return shutil.which('pwsh') or shutil.which('powershell') or 'powershell'
+
+
+def _tunnel(action: str) -> int:
+    """委托 ssh_tunnels.ps1——转发端口只在那份脚本里维护，避免两处手抄漂移。"""
+    if not TUNNEL_SCRIPT.is_file():
+        _print(f'[fail] 未找到隧道脚本 {TUNNEL_SCRIPT}')
+        return 1
+    return subprocess.run(
+        [_powershell(), '-NoProfile', '-ExecutionPolicy', 'Bypass',
+         '-File', str(TUNNEL_SCRIPT), action],
+        cwd=str(REPO)).returncode
+
+
+def cmd_tunnel(args) -> int:
+    if args.action == 'restart':
+        _tunnel('stop')
+        return _tunnel('start')
+    return _tunnel(args.action)
+
+
 # ---------------------------------------------------------------- up / down
 
 def cmd_up(args) -> int:
+    if args.tunnel:
+        # 数据面在服务器：先通隧道，宿主三件套起来才能连上 PG/Redis/gRPC
+        rc = _tunnel('start')
+        if rc != 0:
+            return rc
     if args.test_db:
         # 整栈切隔离测试库（pytest 实机链路/验收口径）：compose 用它拼各服务 DATABASE_URL
         os.environ['POSTGRES_DB'] = ISOLATED_TEST_DB_NAME
@@ -110,11 +145,16 @@ def cmd_down(args) -> int:
         if args.volumes:
             extra.append('--yes')
         rc |= _docker(['down', *extra])
+    if args.tunnel:
+        # 最后停隧道：宿主服务已停，不会再有连库/连 gRPC 的请求
+        rc |= _tunnel('stop')
     return rc
 
 
 def cmd_restart(args) -> int:
     target = args.target
+    if target == 'tunnel':
+        return cmd_tunnel(argparse.Namespace(action='restart'))
     if target in ('host', 'all', 'e2e'):
         ok, msg = control.stop_e2e()
         _print(msg)
@@ -136,7 +176,8 @@ def cmd_restart(args) -> int:
             return rc
         return cmd_up(argparse.Namespace(
             no_docker=False, no_host=False, build=False, test_db=args.test_db,
-            audio_mode=args.audio_mode, check_timeout=args.check_timeout))
+            audio_mode=args.audio_mode, check_timeout=args.check_timeout,
+            tunnel=False))
     if target in ('host', 'all', 'device'):
         ok, msg = control.start_device()
         _print(msg)
@@ -164,6 +205,8 @@ def cmd_status(args) -> int:
     for name, port, pid in control.status():
         state = f'UP pid={pid}' if pid else 'DOWN'
         _print(f'  {name:<16} :{port}  {state}')
+    _print('\nSSH 隧道:')
+    rc |= _tunnel('status')
     return rc
 
 
@@ -252,6 +295,8 @@ def main(argv=None) -> int:
                       help='real=真实声卡；shim=Windows 音频栈异常时的影子模块')
     p_up.add_argument('--test-db', action='store_true',
                       help='整栈切隔离测试库 intelligent_audio_test_test（pytest/验收）')
+    p_up.add_argument('--tunnel', action='store_true',
+                      help='先起 SSH 隧道（三件套连服务器数据面；与本地 Docker 同用会撞 5433）')
     p_up.add_argument('--check-timeout', type=float, default=60.0,
                       help='real 模式 pyaudio 自检超时秒数（超时即失败，不重试）')
     p_up.set_defaults(func=cmd_up)
@@ -261,17 +306,22 @@ def main(argv=None) -> int:
     p_down.add_argument('--yes', action='store_true', help='确认 -v 危险操作')
     p_down.add_argument('--no-docker', action='store_true')
     p_down.add_argument('--no-host', action='store_true')
+    p_down.add_argument('--tunnel', action='store_true', help='最后停 SSH 隧道')
     p_down.set_defaults(func=cmd_down)
 
-    p_restart = sub.add_parser('restart', help='重启宿主服务或全栈')
-    p_restart.add_argument('target', choices=('e2e', 'audio', 'device', 'host', 'all'))
+    p_restart = sub.add_parser('restart', help='重启宿主服务、全栈或 SSH 隧道')
+    p_restart.add_argument('target', choices=('e2e', 'audio', 'device', 'host', 'all', 'tunnel'))
     p_restart.add_argument('--audio-mode', choices=('real', 'shim'), default='real')
     p_restart.add_argument('--test-db', action='store_true')
     p_restart.add_argument('--check-timeout', type=float, default=60.0)
     p_restart.set_defaults(func=cmd_restart)
 
-    p_status = sub.add_parser('status', help='容器 + 宿主服务状态')
+    p_status = sub.add_parser('status', help='容器 + 宿主服务 + SSH 隧道状态')
     p_status.set_defaults(func=cmd_status)
+
+    p_tunnel = sub.add_parser('tunnel', help='SSH 隧道 start/stop/status/restart（委托 ssh_tunnels.ps1）')
+    p_tunnel.add_argument('action', choices=('start', 'stop', 'status', 'restart'))
+    p_tunnel.set_defaults(func=cmd_tunnel)
 
     p_health = sub.add_parser('health', help='HTTP /health + gRPC/基础设施 TCP 探测')
     p_health.set_defaults(func=cmd_health)

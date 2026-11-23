@@ -16,39 +16,14 @@ _PLATFORM_BY_SYSTEM_NAME = {
 # HarmonyDriver 的 scan() 仅依赖 hdc 命令，不需要 hypium，始终可用
 from .harmony_driver import HarmonyDriver
 
-# 注册表（新体系入口）：驱动类自声明 app_type/version/platform 字符串元数据
-from .registry import driver_registry
-
-# 专用驱动依赖 hypium（华为内部测试框架，非 PyPI 包）
-# hypium 不可时跳过这些专用驱动，不影响基础扫描功能
-# _HYPium_AVAILABLE 是全包唯一来源（__init__.py 从本模块 re-export，INT-1167）
+# 专用驱动依赖 hypium（华为内部测试框架，非 PyPI 包）。
+# 驱动模块自身对 hypium 做防御式导入，注册表始终可用；这里只探测依赖是否存在，
+# 供 _register_defaults 跳过 HARMONYOS 专用驱动。新增驱动不再需要改本文件。
+# _HYPium_AVAILABLE 是全包唯一来源（INT-1167）
 try:
-    from .harmony_translation_driver import (
-        HarmonyXiaoyiTranslationDriver,
-        XiaoyiFace2FaceDriver,
-        XiaoyiSimultaneousInterpretationDriver
-    )
-    from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
-    from .harmony_xiaoyichat import Xiaoyilivechat
-    from .harmony_xiaoyi_reject import XiaoyiLivechatReject
-    from .harmony_xiaoyilivechat import XiaoyilivechatV2
-    from .harmony_asr_driver import HarmonyXiaoyiInputMethodDriver
-    from .harmony_doubaochat import DoubaoChat
-    from .harmony_doubaolivechat import DoubaoReject
-    from .harmony_chatgpt import ChatGptVoiceChat
+    import hypium  # noqa: F401
     _HYPium_AVAILABLE = True
 except ImportError:
-    HarmonyXiaoyiTranslationDriver = None
-    XiaoyiFace2FaceDriver = None
-    XiaoyiSimultaneousInterpretationDriver = None
-    HarmonyHardenXiaoyiHuiJiDriver = None
-    Xiaoyilivechat = None
-    XiaoyiLivechatReject = None
-    XiaoyilivechatV2 = None
-    HarmonyXiaoyiInputMethodDriver = None
-    DoubaoChat = None
-    DoubaoReject = None
-    ChatGptVoiceChat = None
     _HYPium_AVAILABLE = False
 
 

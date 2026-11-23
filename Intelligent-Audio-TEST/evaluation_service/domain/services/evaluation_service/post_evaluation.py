@@ -36,6 +36,22 @@ class PostEvaluationMixin:
         except Exception as e:
             self._log(level='ERROR', content=f"评估后更新任务状态失败: {str(e)}", task_id=task_id, test_case_id=test_case_id)
 
+    def _case_has_inflight_evaluation(self, task_id, test_case_id):
+        """该用例是否仍有在途评估任务（本进程评估任务注册表）。
+
+        延迟导入基础设施模块，保持 domain 层不依赖 infrastructure。
+        注册表不可用时按「无在途」处理，保留原有收口能力。
+        """
+        if not test_case_id:
+            return False
+        try:
+            from evaluation_service.infrastructure.evaluation_api.api_request_handler import (
+                eval_task_registry,
+            )
+            return bool(eval_task_registry.has_inflight(task_id, str(test_case_id)))
+        except Exception:
+            return False
+
     def _update_task_case_and_progress(self, task_id, test_case_id=None):
         """更新 TaskCase 的 evaluation_status 和 status，并更新任务统计信息
 
@@ -48,9 +64,22 @@ class PostEvaluationMixin:
         if not tc_rels:
             return None
 
-        # 2. 更新 queued/pending/calculating 状态的 TaskCase 为 completed
+        # 2. 收口本次评估对应的用例终态。
+        #    只处理 test_case_id 命中的行：原实现扫描整个任务，会把同任务其他
+        #    仍在排队/评估中的用例一并翻成 completed，少评/漏评被伪装成成功。
+        target_rels = (
+            tc_rels if test_case_id is None
+            else [tc for tc in tc_rels if str(tc.test_case_id) == str(test_case_id)]
+        )
+        # 该用例仍有评估任务在途时，queued/pending/calculating 是在途真实状态，
+        # 不能提前收口（否则任务会在端点回调前被误判完成；回调丢失即永久假成功）。
+        # 在途评估到齐后由正常收口路径写终态；无在途（无维度/全部跳过等零提交路径）
+        # 才允许把遗留 active 状态收口，避免永久停留 queued。
+        if target_rels and self._case_has_inflight_evaluation(task_id, test_case_id):
+            target_rels = []
+
         any_updated = False
-        for tc in tc_rels:
+        for tc in target_rels:
             if (tc.evaluation_status in [EvaluationStatus.QUEUED, EvaluationStatus.PENDING,
                                          EvaluationStatus.CALCULATING]
                     and tc.execution_status in FINISHED_EXECUTION_STATUSES):

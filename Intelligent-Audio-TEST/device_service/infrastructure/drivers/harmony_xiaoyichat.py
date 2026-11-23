@@ -1324,14 +1324,14 @@ class Xiaoyilivechat(HarmonyDriver):
             # 注:08-17 fdb087a43 曾注掉此段(假设窗口已开只点通话按钮),
             # 但实测窗口常不在前台→pre_process 通话 SymbolGlyph 找不到→小艺没打开,故解回。
             user_center = driver.find_component(By.text("小艺"))
-            if user_center:
-                user_center.click()
-                time.sleep(LONG_WAIT)
-                self._log(level='DEBUG', content="initialize: 已点开小艺聊天窗口",
-                          task_id=task_id, test_case_id=test_case_id)
-            else:
-                self._log(level='WARNING', content="initialize: 未找到'小艺'入口,聊天窗口可能未打开(后续 pre_process 点通话按钮可能失败)",
-                          task_id=task_id, test_case_id=test_case_id)
+            # if user_center:
+            #     user_center.click()
+            #     time.sleep(LONG_WAIT)
+            #     self._log(level='DEBUG', content="initialize: 已点开小艺聊天窗口",
+            #               task_id=task_id, test_case_id=test_case_id)
+            # else:
+            #     self._log(level='WARNING', content="initialize: 未找到'小艺'入口,聊天窗口可能未打开(后续 pre_process 点通话按钮可能失败)",
+            #               task_id=task_id, test_case_id=test_case_id)
             # 清除上下文: 进入设置界面→点"清除上下文";再进设置→删除对话记录
             driver.touch(self.SETTINGS_ENTRY_TOUCH)
             driver.wait(LONG_WAIT)

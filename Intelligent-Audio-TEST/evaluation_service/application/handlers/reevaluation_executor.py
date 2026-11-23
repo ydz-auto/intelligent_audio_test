@@ -325,8 +325,11 @@ class ReevaluationExecutor:
         task_case_map = {}
         for result in test_results:
             tc_id = str(result.test_case_id)
-            full_data = load_full_result_data(result.result_data, result.result_data_path)
-            full_data_map[tc_id] = full_data or {}
+            full_data = load_full_result_data(result.result_data, result.result_data_path) or {}
+            full_data_map[tc_id] = full_data
+            # 同一用例可能有多条结果（不同 result_type/设备/API）：按 result.id
+            # 精确存放，避免后采集的类型覆盖先采集的类型（参考参数串用）。
+            full_data_map[str(result.id)] = full_data
 
             # 从文件恢复 raw_results，重新映射字段
             algo_result = reevaluation_service.deserialize_algorithm_result(
@@ -353,8 +356,11 @@ class ReevaluationExecutor:
         task_case_map = {}
         for result in test_results:
             tc_id = str(result.test_case_id)
-            full_data = load_full_result_data(result.result_data, result.result_data_path)
-            full_data_map[tc_id] = full_data or {}
+            full_data = load_full_result_data(result.result_data, result.result_data_path) or {}
+            full_data_map[tc_id] = full_data
+            # 同一用例可能有多条结果（不同 result_type/设备/API）：按 result.id
+            # 精确存放，避免后采集的类型覆盖先采集的类型（参考参数串用）。
+            full_data_map[str(result.id)] = full_data
 
             algo_result = reevaluation_service.deserialize_algorithm_result(
                 result.algorithm_result or {}

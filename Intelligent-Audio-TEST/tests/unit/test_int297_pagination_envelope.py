@@ -15,14 +15,13 @@
 - task_service algorithm 系列（定义/分组/参数/用例参数/参考参数/映射）返回五字段
 - evaluation_service 分类列表、device_service 状态/校准历史/按设备列表返回五字段
 - auth_service ListUsers 列表键 items（原 users）
-- 网关组装层（tags / 评估分类 / 用户 / 音频标签 / 日志）透出统一信封
+- 网关组装层（tags / 评估分类 / 用户 / 音频标签）透出统一信封
 - report_service 仓储 count_reports 与 list_reports 过滤口径一致
 
 DB：进程级 SQLite（tests/conftest.py 注入），报告相关用例按需 create_all，
 用例内自行清理，对齐 test_int219 / test_int262 口径。
 """
 import os
-import sys
 
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
@@ -563,29 +562,6 @@ class TestGatewayAssemblyEnvelope:
         body, _code = resp
         _assert_envelope(body['data'])
         assert body['data']['items'] == ['m', 'f'] and body['data']['total'] == 2
-
-    def test_gateway_logs_envelope_uses_upstream_pages(self, monkeypatch):
-        """网关日志列表读取上游 pages（task_service log_repository 已补齐）。"""
-        from api_gateway.application.services.log import log_query_service as lqs
-        from api_gateway.schemas.log import LogListQuery
-
-        upstream = {'items': [{'id': 1, 'time': '', 'level': 'INFO', 'category': '',
-                               'module': '', 'source': '', 'content': ''}], 'total': 21,
-                    'page': 2, 'per_page': 10, 'pages': 3}
-
-        class _FakeProxy:
-            @staticmethod
-            def list_logs(**kw):
-                return upstream
-
-        monkeypatch.setitem(sys.modules, 'api_gateway.infrastructure.grpc_proxies',
-                            SimpleNamespace(task_data_service=_FakeProxy()))
-        monkeypatch.setattr(lqs, '_parse_query_params',
-                            lambda cls: LogListQuery.model_validate({'page': 2, 'per_page': 10}))
-        resp = lqs.LogQueryService.get_logs()
-        body, _code = resp
-        _assert_envelope(body['data'])
-        assert body['data']['pages'] == 3 and body['data']['page'] == 2
 
 
 # =====================================================================

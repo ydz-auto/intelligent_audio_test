@@ -88,10 +88,10 @@ class TestRegistration:
         keywords = [e['keywords'] for e in factory_mod.DeviceDriverFactory().get_registered_keywords()]
         assert 'harmony.xiaoyi_livechat_reject.v1' in keywords
 
-    def test_factory_import_error_fallback_is_declared(self):
-        """hypium 不可用时 driver_factory 的 ImportError 兜底置 None（不炸）。"""
+    def test_hypium_probe_is_declared(self):
+        """hypium 缺失兜底：driver_factory 只探测依赖，驱动类由自动发现注册。"""
         from device_service.infrastructure.drivers import driver_factory as factory_mod
-        assert hasattr(factory_mod, 'XiaoyiLivechatReject')
+        assert isinstance(factory_mod._HYPium_AVAILABLE, bool)
 
     def test_driver_count_unchanged(self):
         """注册表总数：INT-2146 后为 13，INT-2402 新增豆包拒识驱动后为 14。"""

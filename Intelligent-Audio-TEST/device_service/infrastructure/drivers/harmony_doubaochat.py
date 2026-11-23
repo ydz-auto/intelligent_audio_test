@@ -6,6 +6,11 @@ import subprocess
 import uuid
 
 try:
+    from hypium.model import UiParam
+except ImportError:
+    UiParam = None
+
+try:
     from hypium import BY
 except ImportError:
     # hypium 依赖 devicetest 包；不可用时模块仍可导入（驱动注册由 factory 按 _HYPium_AVAILABLE 跳过），
@@ -443,6 +448,9 @@ class DoubaoChat(Xiaoyilivechat):
             driver.touch((959,2552))
             driver.wait(1)
             # 开启新话题
+
+            driver.swipe(UiParam.UP, 30, side=UiParam.LEFT)
+            driver.wait(1)
             driver.touch((BY.text("开启新话题")))
             driver.wait(1)
             driver.touch((105,234))
