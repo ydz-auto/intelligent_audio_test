@@ -2,7 +2,7 @@
  * 试听弹窗总时长口径：有真实流时只认媒体元数据，元数据未到 / 流不可用显示「—」（INT-1860）；
  * 无可用播放地址时整块换「音频暂不可播放」失败态，不再派生假时长、不做模拟播放（INT-1905 P3-3）。
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { stream } from '@/infrastructure/api/audios-api'
@@ -123,6 +123,31 @@ describe('AudioPlayerModal 总时长（INT-1860）', () => {
     await waitFor(() => expect(audioElement().getAttribute('src')).toBe(`blob:${p}`))
     expect(screen.queryByText('音频暂不可播放')).toBeNull()
     expect(screen.getByRole('button', { name: '播放' })).toBeTruthy()
+  })
+})
+
+describe('AudioPlayerModal 类型展示口径（INT-2685）', () => {
+  const cases: Array<[string, string]> = [
+    ['reference', '参考音频'],
+    ['result', '结果音频'],
+    ['dry', '干声 (信号音频)'],
+    ['noise', '噪声'],
+    ['prompt', '提示词音频'],
+    ['api', 'API测试音频'],
+  ]
+
+  it.each(cases)('%s：弹窗只展示中文类型，不外露原始枚举', (audioType, label) => {
+    renderOpened({
+      audio_id: 402,
+      audio_name: 'user_wav',
+      audio_type: audioType,
+      url: PRESIGNED_URL,
+    })
+
+    const dialog = document.querySelector('[data-slot="dialog-content"]') as HTMLElement
+    expect(within(dialog).getByText(label)).toBeTruthy()
+    // 修复前徽标直接渲染 audio.audio_type，弹窗里会出现英文原值
+    expect(within(dialog).queryByText(audioType)).toBeNull()
   })
 })
 

@@ -1,6 +1,6 @@
 /**
  * 音频播放 Modal（15_报告域.md §4.11，AudioPlayerModal 平移——照 V9.7.10 AudioPlayerModal.vue 抄写）。
- * 结构：音频标题 + 类型徽标 + 播放设备列表 → 进度条（点击/拖拽 seek）+ 当前/总时长
+ * 结构：中文类型标题（DialogTitle）+ 音频名 + 播放设备列表 → 进度条（点击/拖拽 seek）+ 当前/总时长
  * + 播放·暂停 / 停止 / 关闭 控制组 + 元信息（SPL/噪声级/播放顺序/音频 ID）+ 错误提示（可关闭）。
  * 真实 `<audio>`：audio.url 存在时走真实音频流（timeupdate/ended/error 驱动进度）；
  * INT-1905 P3-3：无可用播放地址时不再按 audio_id 派生假时长模拟推进（FEAT INT-1556 收口前），
@@ -285,8 +285,11 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
               </div>
             )}
 
-            {/* 音频标题 + 类型徽标（INT-2090：truncate 单行截断 + title 悬停显示完整名，
-                超长音频名不换行撑爆弹窗、不把控制组挤出） */}
+            {/* 音频标题 + 设备徽标（INT-2090：truncate 单行截断 + title 悬停显示完整名，
+                超长音频名不换行撑爆弹窗、不把控制组挤出）。
+                INT-2685：类型不再额外挂徽标——标题已是 audioTypeLabel 中文类型
+                （参考音频/干声/…），原徽标重复输出原始枚举（reference/dry/…）且与
+                中文标题口径不一致；照 V9.7.10 AudioPlayerModal 只展示中文类型。 */}
             <div className='text-center'>
               <p
                 className='truncate text-base font-semibold'
@@ -295,7 +298,6 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
                 {audio.audio_name ?? `音频 ${audio.audio_id}`}
               </p>
               <div className='mt-1.5 flex min-w-0 flex-wrap justify-center gap-1.5'>
-                {audio.audio_type && <Badge variant='outline'>{audio.audio_type}</Badge>}
                 {audio.device_name && (
                   <Badge variant='secondary' className='max-w-full'>
                     <span className='truncate' title={audio.device_name}>
