@@ -258,7 +258,33 @@ def cmd_health(args) -> int:
 
 # ---------------------------------------------------------------- logs / build
 
+def _open_log_window(name: str, path, tail: int) -> None:
+    """宿主服务日志用可见控制台窗口实时 tail（与 asr_control.logs 同款）。
+
+    日志文件是 UTF-8，控制台默认代码页 936（GBK）会把中文读成乱码，
+    因此先切 65001 并显式 -Encoding utf8。
+    """
+    script = (f"$Host.UI.RawUI.WindowTitle = 'IAT {name}';"
+              "chcp 65001 > $null;"
+              "$OutputEncoding = [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;"
+              f"Get-Content -Path '{path}' -Wait -Tail {tail} -Encoding utf8")
+    subprocess.Popen(['powershell', '-NoProfile', '-NoExit', '-Command', script],
+                     creationflags=0x00000010)  # CREATE_NEW_CONSOLE
+
+
 def cmd_logs(args) -> int:
+    if args.window:
+        names = [s for s in (args.services or list(HOST_LOGS)) if s in HOST_LOGS]
+        opened = 0
+        for name in names:
+            path = control.LOG_DIR / HOST_LOGS[name]
+            if not path.is_file():
+                _print(f'[skip] {name} 日志不存在: {path}')
+                continue
+            _open_log_window(name, path, args.tail)
+            opened += 1
+        _print(f'已打开 {opened} 个日志窗口: {control.LOG_DIR}')
+        return 0 if opened else 1
     if args.services and args.services[0] in HOST_LOGS:
         path = control.LOG_DIR / HOST_LOGS[args.services[0]]
         _print(f'# {path}')
@@ -268,7 +294,8 @@ def cmd_logs(args) -> int:
         follow = '-Wait' if args.follow else ''
         return subprocess.run(
             ['powershell', '-NoProfile', '-Command',
-             f'Get-Content -Path "{path}" {tail} {follow}'],
+             '$OutputEncoding = [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;'
+             f'Get-Content -Path "{path}" {tail} {follow} -Encoding utf8'],
             cwd=str(REPO)).returncode
     extra = ['--tail', str(args.tail)]
     if args.follow:
@@ -329,6 +356,8 @@ def main(argv=None) -> int:
     p_logs = sub.add_parser('logs', help='容器日志；e2e/audio/device/audio_shim 看宿主日志')
     p_logs.add_argument('services', nargs='*', help='服务名（缺省全部容器）')
     p_logs.add_argument('-f', '--follow', action='store_true')
+    p_logs.add_argument('-w', '--window', action='store_true',
+                        help='宿主服务日志改用可见窗口实时 tail（不阻塞当前终端）')
     p_logs.add_argument('--tail', type=int, default=100)
     p_logs.set_defaults(func=cmd_logs)
 
