@@ -3,11 +3,6 @@
 ARG BASE_IMAGE=iat-base:latest
 FROM ${BASE_IMAGE}
 
-# 本服务增量依赖（grpcio-tools 等，基座未含）
-ARG PIP_INDEX_URL=https://pypi.org/simple
-COPY docker/requirements/api_test_service.txt ./requirements-extra.txt
-RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements-extra.txt
-
 WORKDIR /app
 
 COPY . .

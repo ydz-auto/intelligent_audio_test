@@ -1,8 +1,10 @@
 # 依赖来自共用基座 iat-base（docker/Dockerfile.base + docker/requirements/base.txt），
 # 本镜像只叠加网关代码层。构建入口：python docker/build_stack.py api_gateway
 #
-# 原 ffmpeg + adb 系统层已移除：容器内无 ffmpeg/adb 调用（仅宿主侧 audio_service /
-# device_service 使用），该层曾占 465MB 且每个网关镜像各存一份。
+# 不装 ffmpeg：网关内唯一的 pydub 用法是
+# api_gateway/application/services/audio/audio_common.py#convert_to_wav，
+# 全仓检索确认无任何调用方（音频转码实际由宿主 audio_service 完成），
+# 因此无需把 400MB+ 的 ffmpeg 层带进网关镜像；若将来启用该函数需在本文件补 apt 层。
 ARG BASE_IMAGE=iat-base:latest
 FROM ${BASE_IMAGE}
 

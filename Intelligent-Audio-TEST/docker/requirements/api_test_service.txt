@@ -1,3 +1,0 @@
-# api_test_service 增量依赖（基座见 docker/requirements/base.txt）
-# grpcio-tools：服务内按需编译/反射 proto；其余依赖基座已覆盖。
-grpcio-tools>=1.83.0
