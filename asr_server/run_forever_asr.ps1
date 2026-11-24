@@ -11,6 +11,11 @@ param(
 )
 $ErrorActionPreference = 'Continue'
 $WorkDir = Split-Path -Parent $Entry
+$ChildLog = Join-Path (Split-Path -Parent $LogPath) 'asr_server.stdout.log'
+
+# Decode the child's UTF-8 output correctly (python runs with PYTHONUTF8=1).
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 # pythonw.exe is a GUI-subsystem binary: sys.stdout and sys.stderr are None, so
 # uvicorn aborts during startup with exit code 1 and no traceback. Always use the
@@ -31,8 +36,34 @@ if ($EnvFile -and (Test-Path $EnvFile)) {
   }
 }
 
+# Daily log files: keep writing <name>.log, and when the date changes rename the
+# previous content to <name>.log.YYYY-MM-DD so each day has its own file.
+$script:logDay = (Get-Date).Date
+
+function Switch-DailyLog([string]$Path, [datetime]$PrevDay) {
+  if (-not (Test-Path $Path)) { return }
+  $target = '{0}.{1}' -f $Path, $PrevDay.ToString('yyyy-MM-dd')
+  try {
+    if (Test-Path $target) {
+      # Already archived today (restart within the same day): merge, do not lose.
+      Get-Content -Raw -Encoding utf8 $Path | Out-File -Append -Encoding utf8 $target
+      Remove-Item $Path -Force
+    } else {
+      Move-Item -Path $Path -Destination $target -Force
+    }
+  } catch { }
+}
+
+function Roll-DailyLogs {
+  Switch-DailyLog $LogPath $script:logDay
+  Switch-DailyLog $ChildLog $script:logDay
+  $script:logDay = (Get-Date).Date
+}
+
 function Write-Log([string]$Message) {
-  $line = '{0} {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
+  $now = Get-Date
+  if ($now.Date -ne $script:logDay) { Roll-DailyLogs }
+  $line = '{0} {1}' -f $now.ToString('yyyy-MM-dd HH:mm:ss'), $Message
   $line | Out-File -Append -Encoding utf8 $LogPath
   Write-Host $line
 }
@@ -45,13 +76,20 @@ while ($true) {
   if (Test-Path $StopFlag) { Write-Log 'stop flag found, exit'; break }
   $started = Get-Date
   try {
-    # Let the child inherit this console so uvicorn / business logs and crash
-    # tracebacks stream straight into the window.
     Write-Log "starting $Python $Entry"
-    $proc = Start-Process -FilePath $Python -ArgumentList @($Entry) `
-      -WorkingDirectory $WorkDir -NoNewWindow -PassThru
-    $proc.WaitForExit()
-    $rc = $proc.ExitCode
+    # Tee the child output: it streams into this window and is appended to
+    # asr_server.stdout.log on disk (uvicorn access lines, print(), tracebacks).
+    Push-Location $WorkDir
+    $env:PYTHONUNBUFFERED = '1'
+    & $Python $Entry 2>&1 | ForEach-Object {
+      $now = Get-Date
+      if ($now.Date -ne $script:logDay) { Roll-DailyLogs }
+      $line = [string]$_
+      Write-Host $line
+      $line | Out-File -Append -Encoding utf8 $ChildLog
+    }
+    $rc = $LASTEXITCODE
+    Pop-Location
   } catch {
     $rc = -1
     Write-Log "spawn failed: $($_.Exception.Message)"

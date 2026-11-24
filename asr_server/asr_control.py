@@ -350,7 +350,7 @@ def status() -> bool:
 def logs() -> tuple[bool, str]:
     """打开一个可见控制台窗口，实时 tail 服务 / 守护日志。"""
     targets = [p for p in (LOG_DIR / 'asr_server.log',
-                           LOG_DIR / 'asr_server.stderr.log', SUP_LOG)
+                           LOG_DIR / 'asr_server.stdout.log', SUP_LOG)
                if p.is_file()]
     if not targets:
         return False, f'没有日志文件: {LOG_DIR}'

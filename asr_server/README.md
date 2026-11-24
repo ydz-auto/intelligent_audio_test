@@ -142,9 +142,14 @@ curl -s http://10.0.0.9:10095/health
 | 文件 | 内容 |
 |------|------|
 | `logs/asr_server.log` | 服务业务日志（含模型加载、请求），同时打到 `IAT ASR` 窗口 |
+| `logs/asr_server.stdout.log` | 子进程 stdout/stderr 原样留存（uvicorn 访问日志、print、崩溃 traceback），同样打到窗口 |
 | `logs/asr.supervisor.log` | 守护启停与重启记录，同时打到 `IAT ASR` 窗口 |
 | `logs/asr.supervisor.pid` / `logs/asr.supervisor.stop` | 守护 PID / 停止标记 |
 | `logs/autostart_asr.log` | 登录自启执行记录 |
+
+**按天分文件**：上面三个 `.log` 当天都写同名文件，跨过零点自动把旧内容改名为
+`<name>.log.YYYY-MM-DD`（同一天内重启会追加合并，不覆盖）。`asr_server.log` 保留 14 天，
+另外两个不自动删除，按需清理。控制类文件（`.pid` / `.stop` / `asr.env.json`）不带日期。
 
 ## 配置项
 

@@ -81,6 +81,8 @@ def _base_env() -> dict:
         load_dotenv(os.path.join(BASE_DIR, '.env'))
     env = os.environ.copy()
     env['PYTHONUTF8'] = '1'
+    # 输出经 _tee 管道转发，必须关闭块缓冲，否则日志要攒满 8KB 才出现在窗口/文件里
+    env['PYTHONUNBUFFERED'] = '1'
     # 服务发现：所有 *_HOST 指向本机；gRPC 端口取注册值（.env 已含，兜底补齐）
     for env_name, port in CLIENT_GRPC_ENVS.items():
         env[env_name] = str(port)
@@ -142,17 +144,61 @@ def _refuse_if_busy():
             f'[NATIVE-STACK] 拒绝启动：端口被占用 {busy}（本启动器绝不 kill 占用进程）')
 
 
+def _roll_log(fh, log_path, day):
+    """按天归档：把 <name>.log 改名为 <name>.log.YYYY-MM-DD，返回新句柄。"""
+    fh.close()
+    target = f'{log_path}.{day}'
+    try:
+        if os.path.exists(target):
+            # 当天已有归档（进程当天重启过），合并而不是覆盖
+            with open(target, 'ab') as dst, open(log_path, 'rb') as src:
+                dst.write(src.read())
+            os.remove(log_path)
+        else:
+            os.replace(log_path, target)
+    except OSError:
+        pass
+    return open(log_path, 'ab', buffering=0)
+
+
+def _tee(log_path, cmd):
+    """窗口直显 + 落盘：读子进程输出，原样打到本控制台并追加到 log_path（按天分文件）。"""
+    import ctypes
+    import time
+    try:
+        ctypes.windll.kernel32.SetConsoleTitleW(
+            'IAT ' + os.path.splitext(os.path.basename(log_path))[0])
+    except Exception:
+        pass
+    os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
+    day = time.strftime('%Y-%m-%d')
+    fh = open(log_path, 'ab', buffering=0)
+    proc = subprocess.Popen(cmd, cwd=BASE_DIR, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, bufsize=0)
+    for line in iter(proc.stdout.readline, b''):
+        today = time.strftime('%Y-%m-%d')
+        if today != day:
+            fh = _roll_log(fh, log_path, day)
+            day = today
+        fh.write(line)
+        sys.stdout.buffer.write(line)
+        sys.stdout.buffer.flush()
+    fh.close()
+    return proc.wait()
+
+
 def _spawn(name, cmd, env, log):
     log.write(f'\n[START] {name}: {" ".join(cmd[:6])}...\n'.encode())
     log.flush()
-    # 每个服务独占一个可见控制台窗口（标题 IAT <name>），日志实时滚动。
-    # 不再把 stdout 重定向到 native_stack.log，否则窗口里只会一片空白。
-    comspec = os.environ.get('COMSPEC', 'cmd.exe')
-    inner = 'chcp 65001 >nul & title IAT {} & {}'.format(
-        name, subprocess.list2cmdline(cmd))
+    # 每个服务独占一个可见控制台窗口（标题 IAT <name>），由 _tee 把输出
+    # 同时打到窗口和 LOG_DIR/<name>.log，窗口不再是空白也不丢文件记录。
+    python = sys.executable
+    if os.path.basename(python).lower() == 'pythonw.exe':
+        python = os.path.join(os.path.dirname(python), 'python.exe')
     return (name, subprocess.Popen(
-        [comspec, '/c', inner], cwd=BASE_DIR, env=env,
-        creationflags=subprocess.CREATE_NEW_CONSOLE))
+        [python, '-u', os.path.abspath(__file__), '_tee',
+         os.path.join(LOG_DIR, f'{name}.log'), '--'] + cmd,
+        cwd=BASE_DIR, env=env, creationflags=subprocess.CREATE_NEW_CONSOLE))
 
 
 def start():
@@ -253,9 +299,16 @@ def verify():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='V9.7.31 原生后端全栈启动器')
-    parser.add_argument('action', choices=['start', 'stop', 'status', 'verify'])
+    # _tee 为内部用法：由 _spawn 在独立窗口里拉起，把服务输出同时打到窗口与日志文件。
+    parser.add_argument('action',
+                        choices=['start', 'stop', 'status', 'verify', '_tee'])
+    parser.add_argument('rest', nargs=argparse.REMAINDER)
     args = parser.parse_args()
-    if args.action == 'start':
+    # argparse 只会吞掉出现在选项位置的那个 '--'，这里统一剔除分隔符
+    rest = [a for a in args.rest if a != '--']
+    if args.action == '_tee':
+        sys.exit(_tee(rest[0], rest[1:]))
+    elif args.action == 'start':
         start()
     elif args.action == 'stop':
         stop()
