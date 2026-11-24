@@ -145,8 +145,14 @@ def _refuse_if_busy():
 def _spawn(name, cmd, env, log):
     log.write(f'\n[START] {name}: {" ".join(cmd[:6])}...\n'.encode())
     log.flush()
-    return (name, subprocess.Popen(cmd, cwd=BASE_DIR, env=env,
-                                   stdout=log, stderr=subprocess.STDOUT))
+    # 每个服务独占一个可见控制台窗口（标题 IAT <name>），日志实时滚动。
+    # 不再把 stdout 重定向到 native_stack.log，否则窗口里只会一片空白。
+    comspec = os.environ.get('COMSPEC', 'cmd.exe')
+    inner = 'chcp 65001 >nul & title IAT {} & {}'.format(
+        name, subprocess.list2cmdline(cmd))
+    return (name, subprocess.Popen(
+        [comspec, '/c', inner], cwd=BASE_DIR, env=env,
+        creationflags=subprocess.CREATE_NEW_CONSOLE))
 
 
 def start():

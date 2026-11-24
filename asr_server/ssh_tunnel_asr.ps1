@@ -4,9 +4,11 @@
 #   手动运行:  powershell -ExecutionPolicy Bypass -File .\ssh_tunnel_asr.ps1
 #   注册自启:  见下方 Register-ScheduledTask 注释段
 $ErrorActionPreference = 'Continue'
+try { $Host.UI.RawUI.WindowTitle = 'IAT ASR Tunnel' } catch { }
 
 $sshArgs = @(
   '-N',
+  '-v',                                 # 打印握手/转发日志，窗口里能实时看到隧道状态
   '-o', 'BatchMode=yes',                # 免密（公钥登录），避免卡密码输入
   '-o', 'ExitOnForwardFailure=yes',     # 远端绑定失败立即退出，避免假隧道
   '-o', 'ServerAliveInterval=30',       # 30s 心跳，断线后由循环重启

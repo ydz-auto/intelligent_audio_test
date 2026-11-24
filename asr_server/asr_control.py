@@ -221,8 +221,9 @@ def _launch_supervisor() -> int:
 
     _request_stop(False)
     PID_FILE.unlink(missing_ok=True)
+    # 窗口显式可见：守护进程在本控制台里持续打印启动/重启/子进程日志。
     command_line = (
-        f'powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden '
+        f'powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Normal '
         f'-File "{SUPERVISOR}" -Python "{_runner(python)}" '
         f'-Entry "{ENTRY}" -EnvFile "{ENV_FILE}" '
         f'-Log "{SUP_LOG}" -StopFlag "{STOP_FLAG}" -PidFile "{PID_FILE}"')
@@ -287,7 +288,7 @@ def tunnel_start() -> tuple[bool, str]:
         encoding='utf-8-sig')
     try:
         _wmi_create(
-            f'powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden '
+            f'powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Normal '
             f'-File "{TUNNEL_LAUNCHER}"', APP_ROOT)
     except RuntimeError as exc:
         return False, str(exc)
@@ -344,6 +345,23 @@ def status() -> bool:
     return listening
 
 
+# ---------------------------------------------------------------- 日志窗口
+
+def logs() -> tuple[bool, str]:
+    """打开一个可见控制台窗口，实时 tail 服务 / 守护日志。"""
+    targets = [p for p in (LOG_DIR / 'asr_server.log',
+                           LOG_DIR / 'asr_server.stderr.log', SUP_LOG)
+               if p.is_file()]
+    if not targets:
+        return False, f'没有日志文件: {LOG_DIR}'
+    paths = ','.join("'" + str(p) + "'" for p in targets)
+    script = ("$host.UI.RawUI.WindowTitle = 'IAT ASR';"
+              f"Get-Content -Path {paths} -Wait -Tail 40")
+    subprocess.Popen(['powershell', '-NoProfile', '-NoExit', '-Command', script],
+                     creationflags=subprocess.CREATE_NEW_CONSOLE)
+    return True, f'已打开日志窗口（{len(targets)} 个文件）: {LOG_DIR}'
+
+
 # ---------------------------------------------------------------- 自启
 
 def install_autostart() -> tuple[bool, str]:
@@ -371,7 +389,7 @@ def uninstall_autostart() -> tuple[bool, str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description='ASR 服务守护 / 启停')
     parser.add_argument('action', choices=[
-        'start', 'stop', 'restart', 'status', 'tunnel-start', 'tunnel-stop',
+        'start', 'stop', 'restart', 'status', 'logs', 'tunnel-start', 'tunnel-stop',
         'install-autostart', 'uninstall-autostart',
     ])
     parser.add_argument('--with-tunnel', action='store_true', help='start/restart 时一并拉起反向隧道')
@@ -386,6 +404,8 @@ def main(argv: list[str] | None = None) -> int:
         ok, msg = stop()
     elif args.action == 'status':
         return 0 if status() else 1
+    elif args.action == 'logs':
+        ok, msg = logs()
     elif args.action == 'tunnel-start':
         ok, msg = tunnel_start()
     elif args.action == 'tunnel-stop':

@@ -91,18 +91,23 @@ python asr_server.py
 | `python asr_server/asr_control.py stop` | 落 stop 标记 → 杀监听进程 → 收守护；三步都做才保证不复活 |
 | `python asr_server/asr_control.py restart --with-tunnel` | 先 stop 再 start |
 | `python asr_server/asr_control.py status` | 查看解释器 / 端口 / 守护 / 隧道 / health |
+| `python asr_server/asr_control.py logs` | 打开独立窗口实时 tail 服务 + 守护日志 |
 | `python asr_server/asr_control.py tunnel-start` / `tunnel-stop` | 只操作反向隧道 |
 | `python asr_server/asr_control.py install-autostart` / `uninstall-autostart` | 写入 / 移除登录自启 |
 
-进程模型（启动后脱离当前终端，关窗口不退出）：
+进程模型（各占一个可见终端窗口，窗口标题 `IAT ASR` / `IAT ASR Tunnel`）：
 
 ```
 asr_control.py start --with-tunnel
   ├─ WMI 拉起 → powershell run_forever_asr.ps1   while($true)：子进程退出 5s 重启
-  │                └─ python asr_server.py        （无控制台窗口）
+  │                └─ python asr_server.py        与控制台同窗，日志直接刷在窗口里
   └─ WMI 拉起 → ssh_tunnel_asr.ps1                while($true)：断线 5s 重连
-                   └─ ssh -N -R 10.0.0.9:10095:127.0.0.1:10095 ubuntu@106.54.49.79
+                   └─ ssh -N -v -R 10.0.0.9:10095:127.0.0.1:10095 ubuntu@106.54.49.79
 ```
+
+两个窗口都不隐藏输出：守护的启停/重启记录和 uvicorn 的访问日志实时滚动；
+隧道窗口带 `ssh -v`，握手与断线原因可直接看到。关掉窗口等于结束该进程
+（守护被关则服务停止），要长期常驻就别关窗，或用 `logs` 另开一个 tail 窗口。
 
 `status` 输出示例：
 
@@ -136,9 +141,8 @@ curl -s http://10.0.0.9:10095/health
 
 | 文件 | 内容 |
 |------|------|
-| `logs/asr_server.log` | 服务业务日志（含模型加载、请求） |
-| `logs/asr_server.stdout.log` / `logs/asr_server.stderr.log` | 子进程标准输出 / 错误（崩溃 traceback 在这里） |
-| `logs/asr.supervisor.log` | 守护启停与重启记录 |
+| `logs/asr_server.log` | 服务业务日志（含模型加载、请求），同时打到 `IAT ASR` 窗口 |
+| `logs/asr.supervisor.log` | 守护启停与重启记录，同时打到 `IAT ASR` 窗口 |
 | `logs/asr.supervisor.pid` / `logs/asr.supervisor.stop` | 守护 PID / 停止标记 |
 | `logs/autostart_asr.log` | 登录自启执行记录 |
 
@@ -372,19 +376,22 @@ transcribe(
 
 ### 守护日志反复出现 `child exited rc= uptime=24s`
 
-说明子进程启动即退出、守护在无限重启。先看 `logs/asr_server.stderr.log` 里的 traceback。
+说明子进程启动即退出、守护在无限重启。traceback 直接看 `IAT ASR` 窗口，或 `logs/asr_server.log` 尾部。
 
-**已修复的坑（2026-11-24）**：用 `pythonw.exe` 启动时 `sys.stdout` / `sys.stderr` 为 `None`，
-uvicorn 在启动阶段抛 `AttributeError` 并以 `rc=1` 退出，且**不产生任何输出**；同一份代码用
-`python.exe` 完全正常。现在 `run_forever_asr.ps1` 检测到 `pythonw.exe` 会自动替换为同目录的
-`python.exe`（窗口仍由外层 `-WindowStyle Hidden` 隐藏），并把子进程输出重定向到
-`logs/asr_server.stdout.log` / `logs/asr_server.stderr.log`，后续崩溃能看到真实堆栈。
+**已修复的坑（2026-11-24）**：
+- 用 `pythonw.exe` 启动时 `sys.stdout` / `sys.stderr` 为 `None`，uvicorn 在启动阶段抛
+  `AttributeError` 并以 `rc=1` 静默退出；同一份代码用 `python.exe` 完全正常。现在
+  `run_forever_asr.ps1` 检测到 `pythonw.exe` 会自动替换为同目录的 `python.exe`。
+- funasr 的 Paraformer 初始化会 `GET https://pypi.org` 查版本且**不设超时**，网络不通时模型
+  加载会永久挂住（CPU 不再增长、日志停在「加载 Paraformer 模型」）。现在 `asr_server.py`
+  给 SenseVoice / Paraformer 都传了 `disable_update=True`。
 
 ### `start` 等到超时，但进程还活着
 
 模型加载是分钟级（实测 58–78s，机器有负载时更久）。用
 `curl -s http://127.0.0.1:10095/health` 轮询，三个 `*_loaded` 全为 `true` 才算就绪；
-必要时加大 `--timeout 300`。
+必要时加大 `--timeout 300`。若日志卡在「加载 Paraformer 模型」且 CPU 不动，见上一条的
+`disable_update` 问题。
 
 ### 隧道起不来 / 起来就退出
 

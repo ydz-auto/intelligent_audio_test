@@ -13,15 +13,14 @@ $ErrorActionPreference = 'Continue'
 $WorkDir = Split-Path -Parent $Entry
 
 # pythonw.exe is a GUI-subsystem binary: sys.stdout and sys.stderr are None, so
-# uvicorn aborts during startup with exit code 1 and no traceback. Prefer the
-# console python.exe from the same folder; the hidden console window still comes
-# from the "-WindowStyle Hidden" launcher that starts this script.
+# uvicorn aborts during startup with exit code 1 and no traceback. Always use the
+# console python.exe from the same folder.
 if ((Split-Path -Leaf $Python) -ieq 'pythonw.exe') {
   $consolePy = Join-Path (Split-Path -Parent $Python) 'python.exe'
   if (Test-Path $consolePy) { $Python = $consolePy }
 }
-$ChildOut = Join-Path (Split-Path -Parent $LogPath) 'asr_server.stdout.log'
-$ChildErr = Join-Path (Split-Path -Parent $LogPath) 'asr_server.stderr.log'
+# Window title so the taskbar entry is identifiable (no-op when hidden).
+try { $Host.UI.RawUI.WindowTitle = 'IAT ASR' } catch { }
 
 # WMI-created processes get the provider's minimal environment, so the caller
 # dumps its full environment to JSON and we apply it here before spawning.
@@ -35,6 +34,7 @@ if ($EnvFile -and (Test-Path $EnvFile)) {
 function Write-Log([string]$Message) {
   $line = '{0} {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
   $line | Out-File -Append -Encoding utf8 $LogPath
+  Write-Host $line
 }
 
 if (Test-Path $StopFlag) { Remove-Item $StopFlag -Force }
@@ -45,11 +45,11 @@ while ($true) {
   if (Test-Path $StopFlag) { Write-Log 'stop flag found, exit'; break }
   $started = Get-Date
   try {
-    # Redirect child output so a crash traceback is never lost (pythonw, if used
-    # via -Python, would swallow it entirely).
+    # Let the child inherit this console so uvicorn / business logs and crash
+    # tracebacks stream straight into the window.
+    Write-Log "starting $Python $Entry"
     $proc = Start-Process -FilePath $Python -ArgumentList @($Entry) `
-      -WorkingDirectory $WorkDir -NoNewWindow -PassThru `
-      -RedirectStandardOutput $ChildOut -RedirectStandardError $ChildErr
+      -WorkingDirectory $WorkDir -NoNewWindow -PassThru
     $proc.WaitForExit()
     $rc = $proc.ExitCode
   } catch {

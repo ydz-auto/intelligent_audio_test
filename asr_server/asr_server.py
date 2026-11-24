@@ -188,7 +188,10 @@ def _load_paraformer():
         if _paraformer_model is None:
             from funasr import AutoModel
             logger.info(f"加载 Paraformer 模型: {ASR_PARAFORMER_MODEL}")
-            kwargs = dict(model=ASR_PARAFORMER_MODEL, model_revision="v2.0.4")
+            # disable_update: funasr 启动时会 GET https://pypi.org 查版本且无超时，
+            # 网络不通风时会把模型加载永久挂住（与 SenseVoice 保持一致）。
+            kwargs = dict(model=ASR_PARAFORMER_MODEL, model_revision="v2.0.4",
+                          disable_update=True)
             if ASR_PARAFORMER_VAD_MODEL:
                 kwargs["vad_model"] = ASR_PARAFORMER_VAD_MODEL
                 kwargs["vad_revision"] = "v2.0.4"
