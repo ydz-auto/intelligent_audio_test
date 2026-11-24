@@ -385,6 +385,10 @@ class SharedToolGateway(ToolGateway):
             diff = report_tools.proposal_diff_export(dict(arguments or {}))
             if diff is not None:
                 return diff
+        if name == 'report_export_raw':
+            diff = report_tools.proposal_diff_export_raw(dict(arguments or {}))
+            if diff is not None:
+                return diff
         args = dict(arguments or {})
         if name == DRIVER_PROPOSE_TOOL:
             preview: Dict[str, Any] = {
@@ -520,6 +524,8 @@ class SharedToolGateway(ToolGateway):
             return self._run_report_generate(call, arguments, context)
         if name == 'report_export':
             return self._run_report_export(call, arguments, context)
+        if name == 'report_export_raw':
+            return self._run_report_export_raw(call, arguments, context)
         # staging 冒烟（INT-2491）：只读 staging 目录 + mock / 真机执行器；
         # 不写生产注册表。执行器未接入时明确 NOT_EXECUTED，不假通过。
         if _is_staging_smoke(name, arguments):
@@ -1152,6 +1158,70 @@ class SharedToolGateway(ToolGateway):
             'export_id': job.get('export_id'),
             'status': status,
             'progress': job.get('progress'),
+            'error': job.get('error'),
+            'download_ref': job.get('download_ref'),
+            'reused': bool(job.get('reused')),
+            'note': note,
+        }
+        return self._ok(call, json.dumps(payload, ensure_ascii=False))
+
+    def _run_report_export_raw(self, call: ToolCallRequest,
+                               arguments: Dict[str, Any],
+                               context: ToolInvocationContext) -> ToolResult:
+        """``report_export_raw``：平台原始报告（含全量用例明细）同步导出。
+
+        与 ``_run_report_export``（Studio 文档异步作业）并列：
+        1. 校验参数（``report_id`` + ``format=html|md``）；
+        2. 调网关 ``POST /report-studio/raw-exports``，服务端同步渲染并登记为
+           ``done`` 作业（毫秒~秒级，不需要轮询）；
+        3. 返回 ``export_id`` / ``download_ref`` / ``case_count`` / ``truncated``。
+        音频不打包（数据量口径），由产物内文案说明。
+        """
+        args = dict(arguments or {})
+        error = report_tools.validate_export_raw(args)
+        if error:
+            return self._fail(call, INVALID_ARGUMENTS, error)
+
+        body: Dict[str, Any] = {'report_id': args['report_id'],
+                                'format': args['format']}
+        if args.get('theme'):
+            body['theme'] = args['theme']
+        create_tool, create_args, resolve_error = self._bridge.resolve_rest(
+            report_tools.RAW_EXPORT_CREATE_TOOL, {'body': body})
+        if resolve_error or create_tool is None:
+            return self._fail(call, INVALID_ARGUMENTS,
+                              resolve_error or '工具映射不可用')
+        result = self._transport_call(create_tool, create_args, context)
+        failure = self._transport_failure(call, create_tool, result)
+        if failure is not None:
+            return failure
+        job = self._payload_data(result)
+        if not job.get('export_id'):
+            return self._fail(call, UPSTREAM_ERROR,
+                              '原始报告导出返回格式异常（缺少 export_id）')
+
+        status = str(job.get('status') or '')
+        case_count = job.get('case_count')
+        truncated = bool(job.get('truncated'))
+        if status == 'done':
+            note = (f'导出完成（{case_count if case_count is not None else "?"} 条用例）'
+                    '；会话中已生成产物卡：HTML 可在线预览（每条用例可展开），'
+                    'MD 可下载。音频不随报告打包，产物内已标注需在平台内播放。'
+                    '下载链接需登录鉴权，不能直接粘贴打开。')
+            if truncated:
+                note += ' 注意：用例数超过上限已截断，完整数据请在平台查看。'
+        elif status == 'failed':
+            note = f'导出失败：{job.get("error") or "未知原因"}'
+        else:
+            note = '导出作业已提交；稍后用同一入参再次调用即可查询该作业。'
+        payload = {
+            'report_id': job.get('report_id', args['report_id']),
+            'format': job.get('format') or args['format'],
+            'theme': job.get('theme'),
+            'export_id': job.get('export_id'),
+            'status': status,
+            'case_count': case_count,
+            'truncated': truncated,
             'error': job.get('error'),
             'download_ref': job.get('download_ref'),
             'reused': bool(job.get('reused')),

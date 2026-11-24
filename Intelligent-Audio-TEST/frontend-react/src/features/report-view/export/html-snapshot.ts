@@ -121,6 +121,14 @@ const KEEP_BUTTON_SELECTOR =
  */
 const KEEP_TEXT_BUTTON_SELECTOR = '[data-export-keep-text]'
 
+/**
+ * 音频播放入口（INT-27xx）：静态产物没有登录态也拿不到音频流，整块删掉会让
+ * 读者以为"这个字段没有音频"。标记此属性的按钮保留但置灰，文案改为提示。
+ */
+const AUDIO_HINT_BUTTON_SELECTOR = '[data-export-audio-hint]'
+
+const AUDIO_HINT_TEXT = '音频需在平台内播放'
+
 /** 报告详情根容器选择器（与 report-print.css / 报告的壳一致） */
 export const REPORT_VIEW_ROOT_SELECTOR = '.report-view-container'
 
@@ -472,6 +480,18 @@ export function buildStaticClone(
     // 导出态筛选面板（INT-2434 二轮）：面板里的按钮是产物内交互控件，整块保留
     if (btn.closest(`[${EXPORT_FILTER_PANEL_ATTR}]`)) return
     if (btn.matches(KEEP_BUTTON_SELECTOR)) return
+    // 音频入口：保留位置与"有音频"这一事实，但置灰并说明原因
+    if (btn.matches(AUDIO_HINT_BUTTON_SELECTOR)) {
+      btn.setAttribute('disabled', '')
+      btn.setAttribute('title', AUDIO_HINT_TEXT)
+      btn.setAttribute('aria-disabled', 'true')
+      btn.style.opacity = '0.55'
+      btn.style.cursor = 'not-allowed'
+      const label = btn.querySelector('span, svg')
+      if (label) label.remove()
+      btn.textContent = `🔇 ${AUDIO_HINT_TEXT}`
+      return
+    }
     if (btn.matches(KEEP_TEXT_BUTTON_SELECTOR)) {
       unwrapElement(btn)
       return

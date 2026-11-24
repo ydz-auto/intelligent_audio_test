@@ -382,6 +382,8 @@ service ReportStudioService {
   rpc GetStudioChartData(StudioChartDataRequest) returns (StudioResponse);
   // 固定文档版本 + 格式 + 主题，创建导出异步作业
   rpc CreateStudioExportJob(StudioExportJobRequest) returns (StudioResponse);
+  // 平台原始报告导出（用例明细可展开；非 Studio 文档），同步渲染后登记为已完成作业
+  rpc CreateStudioRawReportExport(StudioExportJobRequest) returns (StudioResponse);
   // 作业状态轮询（pending/running/done/failed）+ 下载引用
   rpc GetStudioExportJob(StudioExportJobRequest) returns (StudioResponse);
   // 已完成产物鉴权下载
@@ -401,6 +403,7 @@ message StudioChartDataRequest {
 
 message StudioExportJobRequest {
   string data = 1;  // JSON：{doc_id, version, format, theme, export_id}
+                    // CreateStudioRawReportExport 时：{report_id, format, theme}
 }
 
 message StudioResponse {

@@ -56,6 +56,7 @@ export function ResultField({
             variant='outline'
             size='sm'
             className='h-6 shrink-0 gap-1 px-2 text-xs'
+            data-export-audio-hint=''
             onClick={() => onPlayAudio(value)}
           >
             <Play aria-hidden='true' className='size-3' />

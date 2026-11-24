@@ -110,6 +110,15 @@ def create_export_job(doc_id: str, _: None = require_permission('report:studio:e
     return _handle(ReportStudioCommandService.create_export_job(doc_id))
 
 
+@router.post('/raw-exports')
+def create_raw_report_export(_: None = require_permission('report:studio:export')):
+    """平台原始报告导出：按 report_id 产出含全量用例明细的 HTML / MD。
+
+    与 ``POST /documents/{doc_id}/exports``（Studio 文档）并列，不依赖任何
+    Studio 文档；产物走同一导出作业表与 ``GET /exports/{id}/download`` 通道。
+    """
+    return _handle(ReportStudioCommandService.create_raw_report_export())
+
 # ----------------------------------------------------------------------
 # 导出作业
 # ----------------------------------------------------------------------

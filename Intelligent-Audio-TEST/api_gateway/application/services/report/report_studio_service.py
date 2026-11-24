@@ -360,3 +360,15 @@ class ReportStudioCommandService:
         return _call(report_studio_service.stub.CreateStudioExportJob,
                      {'doc_id': doc_id, 'version': version, 'format': fmt,
                       'theme': body.get('theme')})
+
+    @staticmethod
+    def create_raw_report_export():
+        """平台原始报告导出（用例明细可展开；非 Studio 文档）。"""
+        body = _parse_json_body()
+        report_id = body.get('report_id')
+        fmt = body.get('format')
+        if report_id is None or not fmt:
+            return error_response('缺少 report_id 或 format', http_code=400)
+        return _call(report_studio_service.stub.CreateStudioRawReportExport,
+                     {'report_id': report_id, 'format': fmt,
+                      'theme': body.get('theme')})

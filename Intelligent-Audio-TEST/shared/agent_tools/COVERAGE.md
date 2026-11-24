@@ -168,6 +168,7 @@
 | `report_secondary_compare` | POST | report:compare | WRITE | 内部归属（`report_compare`） | mcp | 二次对比只读取数 |
 | `report_regenerate` | POST | report:create | WRITE | 内部归属（`report_generate`） | mcp | 重新生成报告 |
 | `report_export` | POST | report:read | WRITE | 内部归属（`report_export`） | intent | 导出 PDF / PPTX / HTML / MD |
+| `report_export_raw` | POST | report:studio:export | WRITE | 内部归属（`report_export_raw`） | intent | 平台原始报告导出（含全量用例明细，HTML / MD） |
 | `report_case_averages` | POST | report:read | WRITE | 内部归属（`report_query`） | mcp | POST 但按过滤条件取用例平均值、权限仅 report:read |
 | `report_cases` | GET | report:read | READ | 内部归属（`report_query`） | mcp | report 域GET，归 report_query |
 | `report_cases_search` | POST | report:read | WRITE | 内部归属（`report_query`） | mcp | POST 但只搜索报告内用例、权限仅 report:read |
@@ -248,6 +249,7 @@
 | `report_studio_get_document` | GET | report:read | READ | 内部归属（`report_query`） | mcp | 读取 Studio 文档，只读 |
 | `report_studio_update_document` | PUT | report:studio:edit | WRITE | 内部归属（`report_generate`） | mcp | 编辑 Studio 文档（M2） |
 | `report_studio_export_document` | POST | report:studio:export | WRITE | 内部归属（`report_export`） | mcp | Studio 导出作业 |
+| `report_studio_export_raw_report` | POST | report:studio:export | WRITE | 内部归属（`report_export_raw`） | mcp | 原始报告导出（同步渲染） |
 | `log_list` | GET | log:read | READ | 内部归属（`log_diagnose`） | mcp | log 域GET，归 log_diagnose |
 | `log_stats` | GET | log:read | READ | 内部归属（`log_diagnose`） | mcp | log 域GET，归 log_diagnose |
 | `home_stats_details` | GET | home:read | READ | 内部归属（`dashboard_query`） | mcp | home 域GET，归 dashboard_query |

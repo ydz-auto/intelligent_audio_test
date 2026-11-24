@@ -39,6 +39,10 @@ from report_service.application.services.report_studio_renderer import (
     ExportRenderError,
     render_export,
 )
+from report_service.application.services.raw_report_renderer import (
+    RAW_EXPORT_FORMATS,
+    render_raw_report,
+)
 from report_service.config.config import Config
 
 logger = logging.getLogger(__name__)
@@ -52,6 +56,11 @@ EXPORT_STALE_ERROR = '渲染超时：作业长时间未推进，已判失效'
 # 已完成作业的复用窗口：只做「防重复点击」的短时幂等；超过窗口再导出会重新渲染，
 # 避免渲染器升级后用户永远拿到旧产物（同版本 + 同格式 + 同主题）。
 EXPORT_DONE_REUSE_SECONDS = 600
+
+# 原始报告导出的用例上限：全量用例渲染进单文件（HTML 带 details 折叠 / MD
+# 分节表格），超出截断并在响应里标记 ``truncated``，避免超大报告把单次
+# gRPC 响应和产物撑爆。
+RAW_EXPORT_MAX_CASES = 2000
 
 # Studio 时间列的落库口径（INT-2283）：PO 默认值 ``utc8now`` 写进
 # ``timestamp without time zone`` 后是东八区墙钟，读回来是无偏移的 naive 值。
@@ -734,6 +743,137 @@ class ReportStudioService:
         t.start()
         return {'success': True, 'message': 'ok',
                 'data': self._export_job_dict(job), 'code': 0}
+
+    def create_raw_report_export(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """平台原始报告导出：全量用例明细渲染为静态 HTML / MD，同步落盘。
+
+        与 ``create_export_job``（Studio 文档异步作业）的区别：
+        - 数据源是平台报告（``GET /reports/{id}`` 同口径的详情 + 全量用例），
+          不是 Studio 文档的 Markdown；
+        - 同步渲染、直接登记为 ``done``（毫秒~秒级，无需后台线程）；
+        - 产物走同一导出作业表与下载通道（``created_by`` 归属鉴权）。
+
+        ``doc_id`` 用 ``raw:<report_id>`` 占位：导出作业表以 ``doc_id`` 为必填
+        外键形态，这里不对应任何 Studio 文档；查询 / 下载只按 ``export_id`` 走，
+        不会被文档接口误读。
+        """
+        report_id = data.get('report_id')
+        fmt = data.get('format')
+        if report_id is None or not fmt:
+            return {'success': False, 'message': '缺少 report_id/format',
+                    'data': None, 'code': 400}
+        try:
+            report_id = int(report_id)
+        except (TypeError, ValueError):
+            return {'success': False, 'message': f'report_id 必须是整数：{report_id}',
+                    'data': None, 'code': 400}
+        fmt_value = str(fmt).strip().lower()
+        if fmt_value not in RAW_EXPORT_FORMATS:
+            supported = ' / '.join(RAW_EXPORT_FORMATS)
+            return {'success': False,
+                    'message': f'不支持的原始报告导出格式: {fmt}（仅支持 {supported}）',
+                    'data': None, 'code': 400}
+        theme = str(data.get('theme') or DEFAULT_EXPORT_THEME)
+
+        # 取数：报告详情（与 GET /reports/{id} 同口径）+ 全量用例
+        from report_service.application.handlers.report_handlers import ReportQueryHandler
+        from report_service.application.queries.report_queries import GetReportQuery
+        handler = ReportQueryHandler()
+        aggregate = handler.handle_get(GetReportQuery(report_id=report_id))
+        if aggregate is None:
+            return {'success': False, 'message': '报告不存在或无权访问',
+                    'data': None, 'code': 404}
+        detail = self._load_raw_report_detail(handler, report_id, aggregate)
+        cases_payload = handler.handle_get_report_cases(report_id, {
+            'page': 1, 'per_page': RAW_EXPORT_MAX_CASES})
+        cases = cases_payload.get('items') or []
+        total_cases = int(cases_payload.get('total') or 0)
+        if total_cases > RAW_EXPORT_MAX_CASES:
+            logger.warning('原始报告导出截断：report_id=%s total=%s max=%s',
+                           report_id, total_cases, RAW_EXPORT_MAX_CASES)
+
+        try:
+            content, ext, _mime = render_raw_report(
+                detail, cases, fmt_value, title=detail.get('name'))
+        except Exception as exc:  # 渲染异常按作业失败
+            logger.exception('原始报告渲染失败: report_id=%s', report_id)
+            return {'success': False, 'message': f'渲染失败: {exc}',
+                    'data': None, 'code': 500}
+
+        export_id = _new_id()
+        export_dir = self._export_dir()
+        os.makedirs(export_dir, exist_ok=True)
+        file_path = os.path.join(export_dir, f'{export_id}{ext}')
+        try:
+            with open(file_path, 'wb') as f:
+                f.write(content)
+        except OSError as exc:
+            logger.exception('原始报告导出写文件失败: report_id=%s', report_id)
+            return {'success': False, 'message': f'写入产物失败: {exc}',
+                    'data': None, 'code': 500}
+
+        from report_service.domain.entities.report_studio import ReportStudioExportJob
+        job = ReportStudioExportJob(
+            export_id=export_id, doc_id=f'raw:{report_id}', version=1,
+            format=fmt_value, theme=theme,
+            status=StudioExportStatus.DONE.value, progress=100,
+            file_path=file_path, created_by=get_current_user_id(),
+        )
+        try:
+            self.repo.create_export_job(job)
+        except Exception as exc:
+            logger.exception('登记原始报告导出作业失败: report_id=%s', report_id)
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+            return {'success': False, 'message': f'登记导出作业失败: {exc}',
+                    'data': None, 'code': 500}
+        payload = self._export_job_dict(job)
+        payload['reused'] = False
+        payload['report_id'] = report_id
+        payload['case_count'] = len(cases)
+        payload['truncated'] = total_cases > RAW_EXPORT_MAX_CASES
+        return {'success': True, 'message': 'ok', 'data': payload, 'code': 0}
+
+    def _load_raw_report_detail(self, handler, report_id: int, aggregate) -> Dict[str, Any]:
+        """组装原始报告导出用的详情（字段与 ``GET /reports/{id}`` 的 data 同口径）。
+
+        ``load_full_report_data`` 返回扁平结构（计数在顶层），这里把四个计数
+        包进 ``summary`` 以对齐详情接口形态；其余 ``all_metrics`` / ``metric_data``
+        / ``case_type_stats`` 原样透传给渲染器。汇总数据缺失时（未迁移的报告）
+        降级为聚合根上的字段，不阻断导出。
+        """
+        detail = dict(self._load_summary_data(report_id) or {})
+        detail.setdefault('id', report_id)
+        detail.setdefault('name', getattr(aggregate, 'name', None) or f'报告 {report_id}')
+        detail.setdefault('status', getattr(aggregate, 'status', None))
+        detail.setdefault('type', getattr(aggregate, 'type', None))
+        summary = {
+            'total_cases': detail.pop('total_cases', None),
+            'completed_cases': detail.pop('completed_cases', None),
+            'failed_cases': detail.pop('failed_cases', None),
+            'pass_rate': detail.pop('pass_rate', None),
+        }
+        if all(v is None for v in summary.values()):
+            summary = {
+                'total_cases': getattr(aggregate, 'total_cases', None),
+                'completed_cases': getattr(aggregate, 'completed_cases', None),
+                'failed_cases': getattr(aggregate, 'failed_cases', None),
+                'pass_rate': getattr(aggregate, 'pass_rate', None),
+            }
+        detail['summary'] = {k: v for k, v in summary.items() if v is not None}
+        return detail
+
+    def _load_summary_data(self, report_id: int) -> Optional[Dict[str, Any]]:
+        try:
+            from report_service.infrastructure.persistence.report_repository import (
+                report_repository,
+            )
+            return report_repository.load_full_report_data(report_id)
+        except Exception:
+            logger.warning('读取报告汇总数据失败: report_id=%s', report_id, exc_info=True)
+            return None
 
     def _run_export_job(self, export_id: str, fmt: str, theme: str) -> None:
         """后台执行导出：渲染 → 写文件 → 更新作业状态。"""

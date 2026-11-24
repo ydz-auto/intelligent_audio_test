@@ -4,10 +4,12 @@ description: >-
   报告取数、指标解释与报告交付口径：三类报告（任务 / 对比 / 二次对比）列表与详情、
   指标矩阵、设备与 API 统计、用例明细与用例搜索、维度统计、生成进度、页签计数、
   报告文本（描述 / 分析 / 结论）的起草与版本口径，以及生成 / 重生成报告、
-  Studio 草稿与版本恢复、导出 PDF / PPTX / HTML / MD（写操作走提案 + 审批）。
+  Studio 草稿与版本恢复、导出 PDF / PPTX / HTML / MD，以及**平台原始报告导出**
+  （含每条用例的全部维度值，HTML / MD；写操作走提案 + 审批）。
   触发词：报告详情、报告指标、报告列表、报告用例、报告统计、报告进度、页签计数、
   通过率、平均分、指标单位、用例平均值、报告起草、报告版本、导出报告、报告结论、
-  生成报告、重生成报告、Studio 草稿、导出 PDF、导出 PPTX、导出 HTML。
+  生成报告、重生成报告、Studio 草稿、导出 PDF、导出 PPTX、导出 HTML、
+  导出原始报告、导出用例明细、报告导出缺用例。
   不适用：多报告对比 / 二次对比 / 趋势（report-compare 负责）；任务执行本身
   （task-operations 负责）；评估维度评分口径（evaluation-config 负责）。
 version: 1.1.0
@@ -16,6 +18,7 @@ allowed-tools:
   - report_query
   - report_generate
   - report_export
+  - report_export_raw
   - tool_search
 permissions:
   - report:read
@@ -57,7 +60,8 @@ budgets:
 
 ## 工具用法
 
-三个业务工具：`report_query`（只读）、`report_generate`（写）、`report_export`（写）。
+四个业务工具：`report_query`（只读）、`report_generate`（写）、`report_export`（写）、
+`report_export_raw`（写）。
 写工具同样只接受 Schema 里列出的参数；参数名逐字按本文档。
 
 ### 取数：`report_query`（只读，权限 `report:read`）
@@ -94,6 +98,25 @@ budgets:
 （按 `report_id` 定位文档、取当前版本），所以实际还依赖 `report:read`——
 RBAC 里含 export 的角色都同时具备，缺 read 时按 403 提示权限边界即可。
 
+### 写：`report_export_raw`（平台原始报告导出，权限 `report:studio:export`）
+
+导出**平台原始报告**（不是 Studio 文档）：保留报告全貌——汇总指标、维度统计、
+设备 / 标签统计，以及**每条用例的全部维度值**（资源 → 轮次 → 维度），HTML 里
+每条用例可展开、可按关键词过滤。音频不随报告打包，产物内已标注「需在平台内播放」。
+
+必填 `report_id`、`format`（`html` / `md`）；可选 `theme`。同步渲染，直接返回
+`done` 与 `download_ref`，不需要轮询。
+
+何时用哪个：
+
+| 用户诉求 | 用 |
+|---|---|
+| 把 Studio 起草的分析文档导出成 PDF / PPTX / HTML / MD | `report_export` |
+| 「把平台这份报告原样导出」「导出里要能看到每条用例的值」「报告页导出缺用例明细」 | `report_export_raw` |
+| 要 PDF 格式的原始报告 | 先说明当前只支持 HTML / MD；PDF 可用 `report_export` 导 Studio 文档 |
+
+用例数超过上限（2000）会截断并在返回里标记 `truncated=true`，如实告知用户。
+
 规则：
 
 1. 先用 `list` 定位报告 ID（可用 `keyword` / `status` / `report_type` / `task_id`
@@ -106,7 +129,7 @@ RBAC 里含 export 的角色都同时具备，缺 read 时按 403 提示权限�
 
 ## 写操作：提案、审批与幂等
 
-1. 调用 `report_generate` / `report_export` → 平台生成**待审批提案**，
+1. 调用 `report_generate` / `report_export` / `report_export_raw` → 平台生成**待审批提案**，
    工具结果错误码 `APPROVAL_REQUIRED`，此时**没有任何副作用**；
 2. 审批通过后平台按提案参数执行一次；拒绝 / 过期则原样返回失败，不执行；
 3. 幂等由平台保证：一次提案对应一次执行，重复投递不会重复执行；
@@ -315,7 +338,7 @@ categoryName, metrics}]}]`、`tag_metric_data`、`raw_data`、`normal_distributi
    `evaluation_metric`（越界 400 并回列可选值）；工具层已按枚举拦截，不要传别的。
 10. **`anomaly` 是统计分析自带的可疑报告清单**（如 `low_pass_rate`），不是模型推断；
     需要下钻到具体用例再走 `cases_search`。
-11. **写操作是「提案」不是「已执行」**：`report_generate` / `report_export` 在审批
+11. **写操作是「提案」不是「已执行」**：`report_generate` / `report_export` / `report_export_raw` 在审批
     前只得到 `APPROVAL_REQUIRED`，此时没有生成报告、没有建文档、没有导出文件。
     把提案说成「已完成」是严重口径错误。
 12. **`generate` 已有报告时不会新建**：返回 `data.status = exists`（附已有报告
@@ -324,8 +347,9 @@ categoryName, metrics}]}]`、`tag_metric_data`、`raw_data`、`normal_distributi
 14. **`expected_version` 是乐观锁**：`studio_edit` / `studio_restore` 版本不一致
     直接 `409` + 当前版本与差异，**不要**重读到新版本后静默重试覆盖他人改动；
     先向用户说明冲突。
-15. **导出是异步作业**：`pending` / `running` 不是失败；同一组参数再调一次即
+15. **Studio 导出是异步作业**：`pending` / `running` 不是失败；同一组参数再调一次即
     复用 / 查询同一作业，产物通过 `download_ref` 鉴权下载（工具不返回二进制）。
+    `report_export_raw` 是同步渲染，直接返回 `done`。
 16. **平台汇总导出不在工具范围**：`/reports/export`（csv / excel / pdf 列表汇总）
     是页面下载通道，工具层不承载；Studio 文档导出走 `report_export`。
 

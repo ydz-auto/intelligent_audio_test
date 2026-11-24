@@ -983,6 +983,11 @@ TOOLS: List[dict] = [
           ['report:studio:export'], 'POST',
           '/api/v1/report-studio/documents/{doc_id}/exports',
           path_params=['doc_id']),
+    _tool('report_studio_export_raw_report', '导出平台原始报告（含全量用例明细）',
+          {'body': {'type': 'object',
+                    'description': '导出参数（report_id / format / theme）'}},
+          ['report:studio:export'], 'POST',
+          '/api/v1/report-studio/raw-exports'),
 
     # ---------------- 日志只读 log:read（倾向覆盖，负责人验收核对） ----------------
     # INT-2461：过滤参数对齐网关 LogListQuery 的真实字段——未声明的参数会被

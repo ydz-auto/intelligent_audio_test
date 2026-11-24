@@ -5,7 +5,7 @@ import warnings
 
 import report_service_pb2 as report__service__pb2
 
-GRPC_GENERATED_VERSION = '1.83.0'
+GRPC_GENERATED_VERSION = '1.85.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -2767,6 +2767,11 @@ class ReportStudioServiceStub:
                 request_serializer=report__service__pb2.StudioExportJobRequest.SerializeToString,
                 response_deserializer=report__service__pb2.StudioResponse.FromString,
                 _registered_method=True)
+        self.CreateStudioRawReportExport = channel.unary_unary(
+                '/report.ReportStudioService/CreateStudioRawReportExport',
+                request_serializer=report__service__pb2.StudioExportJobRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
         self.GetStudioExportJob = channel.unary_unary(
                 '/report.ReportStudioService/GetStudioExportJob',
                 request_serializer=report__service__pb2.StudioExportJobRequest.SerializeToString,
@@ -2850,6 +2855,13 @@ class ReportStudioServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreateStudioRawReportExport(self, request, context):
+        """平台原始报告导出（用例明细可展开；非 Studio 文档），同步渲染后登记为已完成作业
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetStudioExportJob(self, request, context):
         """作业状态轮询（pending/running/done/failed）+ 下载引用
         """
@@ -2909,6 +2921,11 @@ def add_ReportStudioServiceServicer_to_server(servicer, server):
             ),
             'CreateStudioExportJob': grpc.unary_unary_rpc_method_handler(
                     servicer.CreateStudioExportJob,
+                    request_deserializer=report__service__pb2.StudioExportJobRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'CreateStudioRawReportExport': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateStudioRawReportExport,
                     request_deserializer=report__service__pb2.StudioExportJobRequest.FromString,
                     response_serializer=report__service__pb2.StudioResponse.SerializeToString,
             ),
@@ -3168,6 +3185,33 @@ class ReportStudioService:
             request,
             target,
             '/report.ReportStudioService/CreateStudioExportJob',
+            report__service__pb2.StudioExportJobRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateStudioRawReportExport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/CreateStudioRawReportExport',
             report__service__pb2.StudioExportJobRequest.SerializeToString,
             report__service__pb2.StudioResponse.FromString,
             options,

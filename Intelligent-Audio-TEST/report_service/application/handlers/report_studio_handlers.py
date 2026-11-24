@@ -40,6 +40,10 @@ class ReportStudioCommandHandler:
     def handle_create_export_job(self, data: dict) -> dict:
         return self._service.create_export_job(data)
 
+    def handle_create_raw_report_export(self, data: dict) -> dict:
+        """平台原始报告导出（用例明细可展开；非 Studio 文档）。"""
+        return self._service.create_raw_report_export(data)
+
 
 class ReportStudioQueryHandler:
     """Report Studio 读侧处理器（只读）。"""

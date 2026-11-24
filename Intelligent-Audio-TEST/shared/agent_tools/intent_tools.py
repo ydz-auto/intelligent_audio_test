@@ -1378,6 +1378,25 @@ INTENT_TOOLS: List[IntentTool] = [
         risk='WRITE', permissions=(report_tools.STUDIO_EXPORT,),
         enabled=True, kind='local'),
     IntentTool(
+        name='report_export_raw',
+        description=('导出**平台原始报告**（提案 → 审批 → 执行）：按 report_id 取报告'
+                     '当前数据与全量用例，同步渲染为含用例明细的静态产物——HTML 里'
+                     '每条用例可展开查看各轮次 × 资源 × 维度的原值，并带关键词过滤；'
+                     'MD 为汇总表 + 按用例分节的维度表。适用于用户要「把报告完整'
+                     '导出来 / 每条用例的值都要能看到」的场景；与 report_export'
+                     '（只导 AI 起草的 Studio 分析文档，不含用例明细）是两条通道。'
+                     '音频不随报告打包（数据量口径），产物里会标注「音频需在平台内'
+                     '播放」。返回 export_id / status / download_ref；download_ref '
+                     '需登录鉴权，不能当公开链接。'),
+        parameters=_schema({
+            'report_id': _prop('integer', '平台报告 ID', required=True, minimum=1),
+            'format': _prop('string', '导出格式', required=True,
+                            enum=list(report_tools.RAW_EXPORT_FORMATS)),
+            'theme': _prop('string', '导出主题（缺省 default）'),
+        }, required=('report_id', 'format')),
+        risk='WRITE', permissions=(report_tools.STUDIO_EXPORT,),
+        enabled=True, kind='local'),
+    IntentTool(
         name='driver_propose',
         description=('生成设备驱动（AppDriver）与厂商 API 适配器（ApiVendorAdapter）'
                      '代码提案（写，需审批）：产出文件清单 + diff + 依赖 + 风险 + '
@@ -1879,7 +1898,7 @@ def risk_for(name: str,
 # report_export 由 ToolGateway 按动作映射 / 编排（见模块 docstring）。
 LOCAL_INTENT_TOOL_NAMES = frozenset(
     {'tool_search', 'platform_contract', 'report_compare', 'report_generate',
-     'report_export', 'driver_propose'})
+     'report_export', 'report_export_raw', 'driver_propose'})
 
 # 写意图工具（INT-2467）：动作 → 目标 REST 由各域模块解析。执行前一律走
 # INT-2466 的提案 + 审批 + 幂等；`driver_propose` 是本地工具（代码生成 + T2

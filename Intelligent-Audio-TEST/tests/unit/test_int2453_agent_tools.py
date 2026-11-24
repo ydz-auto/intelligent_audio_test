@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
-"""INT-2453 工具层：单一事实源 / 31 意图工具 / tool_search / platform_contract。
+"""INT-2453 工具层：单一事实源 / 32 意图工具 / tool_search / platform_contract。
 
 验收锚点（卡面可测标准 1、3、5）：
-1. MCP 工具（M0 迁移时 205 个；INT-2461 追加 2 个首页只读工具 = 207 个）的
+1. MCP 工具（M0 迁移时 205 个；INT-2461 追加 2 个首页只读工具 = 207 个；
+   原始报告导出补登记 1 个 = 208 个）的
    name/description/inputSchema/permissions 快照迁移前后一致；
 2. tool_search 对关键词命中正确工具，返回可直接调用的 Schema，权限不足不返回；
-3. 注册表 31 个意图工具无重复，5 个预留名称（memory_* / ui_* / api_spec）在索引内。
+3. 注册表 32 个意图工具无重复，5 个预留名称（memory_* / ui_* / api_spec）在索引内。
 """
 import hashlib
 import json
@@ -23,8 +24,9 @@ from shared.agent_tools.intent_tools import (
     ENABLED_TOOLS, INTENT_TOOLS, TOOL_INDEX,
 )
 
-# MCP 工具数（INT-2461：INT-2453 谱的 205 + 首页 2 个只读工具）
-MCP_TOOL_COUNT = 207
+# MCP 工具数（INT-2461：INT-2453 谱的 205 + 首页 2 个只读工具；
+# 原始报告导出目标 1 个）
+MCP_TOOL_COUNT = 208
 
 
 def _snapshot(tools):
@@ -86,10 +88,10 @@ def test_gateway_url_and_body_use_shared_builders():
         '/api/v1/tasks?page=2&search=a+b'
 
 
-# ---------------------------------------------------------------- 31 个意图工具
+# ---------------------------------------------------------------- 32 个意图工具
 
-def test_intent_registry_has_31_unique_tools():
-    assert len(INTENT_TOOLS) == 31
+def test_intent_registry_has_32_unique_tools():
+    assert len(INTENT_TOOLS) == 32
     names = [t.name for t in INTENT_TOOLS]
     assert len(names) == len(set(names))
     # M0 四项常驻 + M1 各域卡按域追加
@@ -116,8 +118,8 @@ def test_intent_registry_has_31_unique_tools():
                              # INT-2470 算法写（定义 / 参数 / 参考参数 / 映射 /
                              # 导入 / 热重载）
                              'algorithm_manage',
-                             # INT-2471 报告写 / Studio 编排
-                             'report_generate', 'report_export',
+                             # INT-2471 报告写 / Studio 编排；原始报告导出（含用例明细）
+                             'report_generate', 'report_export', 'report_export_raw',
                              # INT-2492 探索-生成层（ui_tree / ui_action / api_spec）
                              'ui_tree', 'ui_action', 'api_spec'}
 
@@ -226,7 +228,7 @@ def test_tool_search_index_includes_reserved_names():
     names = {t['name'] for t in TOOL_INDEX}
     assert {'memory_search', 'memory_write', 'ui_tree', 'ui_action',
             'api_spec'} <= names
-    assert len(TOOL_INDEX) == (MCP_TOOL_COUNT - 1) + 31 - 2  # 两个同名项去重 + 排除 audio_get_by_ids（INT-2530 宿主语境）
+    assert len(TOOL_INDEX) == (MCP_TOOL_COUNT - 1) + 32 - 2  # 两个同名项去重 + 排除 audio_get_by_ids（INT-2530 宿主语境）
 
 
 def test_tool_search_limit_is_bounded():

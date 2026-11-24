@@ -223,6 +223,8 @@ class SharedToolRegistryBridge(ToolRegistryPort):
                 return report_tools.validate_arguments(arguments or {})
             if name == 'report_export':
                 return report_tools.validate_export(arguments or {})
+            if name == 'report_export_raw':
+                return report_tools.validate_export_raw(arguments or {})
             return None
         mcp = mcp_registry.get_tool(name)
         if mcp is None:

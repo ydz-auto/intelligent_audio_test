@@ -156,6 +156,20 @@ describe('buildStaticClone', () => {
     root.remove()
   })
 
+  it('音频按钮保留为置灰占位（音频不随报告打包，不能把按钮整条删掉让人以为没有音频）', () => {
+    const root = mountReportDom(1)
+    root.querySelector('[data-export-case-detail]')!.insertAdjacentHTML(
+      'beforeend',
+      '<button type="button" data-export-audio-hint="">▶ 播放音频</button>',
+    )
+    const { clone } = buildStaticClone(root)
+    const audio = clone.querySelector<HTMLButtonElement>('[data-export-audio-hint]')
+    expect(audio).not.toBeNull()
+    expect(audio!.disabled).toBe(true)
+    expect(audio!.textContent).toContain('音频需在平台内播放')
+    root.remove()
+  })
+
   it('导出内 Tab 按钮保留（轮次 / 维度 / 目标），普通操作按钮仍剪掉（INT-2434）', () => {
     const root = document.createElement('div')
     root.className = 'report-view-container'

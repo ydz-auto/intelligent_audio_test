@@ -1591,6 +1591,17 @@ class StudioServicer(report_grpc.ReportStudioServiceServicer):
             logger.exception("CreateStudioExportJob failed")
             return self._resp(False, str(e), {}, 500)
 
+    def CreateStudioRawReportExport(self, request, context=None):
+        """平台原始报告导出：同步渲染用例明细产物，登记为已完成导出作业。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.command_handler.handle_create_raw_report_export(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("CreateStudioRawReportExport failed")
+            return self._resp(False, str(e), {}, 500)
+
     # ---- 读侧 ----
 
     def GetStudioDocument(self, request, context=None):

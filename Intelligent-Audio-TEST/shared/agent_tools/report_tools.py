@@ -146,6 +146,13 @@ REPORT_WRITE_TOOLS: List[dict] = [
         [STUDIO_UNDO], 'POST',
         '/api/v1/report-studio/documents/{doc_id}/restore',
         path_params=['doc_id']),
+    tool_entry(
+        'report_studio_export_raw_report', '导出平台原始报告（含全量用例明细）',
+        {'body': {'type': 'object',
+                  'description': '导出参数（report_id / format / theme）',
+                  'required': True}},
+        [STUDIO_EXPORT], 'POST',
+        '/api/v1/report-studio/raw-exports'),
 ]
 
 # Agent 专用只读目标：不属于对外 MCP 清单，只供本模块的编排与校验回源。
@@ -415,15 +422,70 @@ def proposal_diff_export(arguments: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return diff
 
 
+# ---------------------------------------------------------------- 原始报告导出
+
+# 平台原始报告（非 Studio 文档）导出：把报告详情 + 全量用例渲染为可交互
+# HTML / MD，每条用例可展开看各维度值。格式只有 html / md（PDF 排版承载不了
+# 折叠交互，且 Studio 导出已有 PDF 通道）。音频不打包（数据量口径）。
+RAW_EXPORT_FORMATS: Tuple[str, ...] = ('html', 'md')
+RAW_EXPORT_ALLOWED_KEYS = frozenset({'report_id', 'format', 'theme'})
+RAW_EXPORT_CREATE_TOOL = 'report_studio_export_raw_report'
+
+
+def validate_export_raw(arguments: Dict[str, Any]) -> Optional[str]:
+    """``report_export_raw`` 参数校验；返回错误文本或 None。"""
+    if not isinstance(arguments, dict):
+        return '工具参数必须是对象'
+    unknown = sorted(key for key in arguments if key not in RAW_EXPORT_ALLOWED_KEYS)
+    if unknown:
+        return f'不支持参数：{"、".join(unknown)}'
+    report_id = arguments.get('report_id')
+    if report_id is None:
+        return '缺少必填参数：report_id'
+    if not _positive_int(report_id):
+        return f'report_id 必须是正整数：{report_id}'
+    fmt = arguments.get('format')
+    if fmt is None:
+        return '缺少必填参数：format'
+    if fmt not in RAW_EXPORT_FORMATS:
+        return (f'format 取值必须是 {" / ".join(RAW_EXPORT_FORMATS)} 之一：'
+                f'{fmt}')
+    theme = arguments.get('theme')
+    if theme is not None and not _non_empty_str(theme):
+        return 'theme 必须是非空字符串'
+    return None
+
+
+def proposal_diff_export_raw(arguments: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """原始报告导出的字段级预览（报告 + 格式 + 用例数预估 + 音频不打包提示）。"""
+    error = validate_export_raw(arguments or {})
+    if error:
+        return None
+    diff: Dict[str, Any] = {
+        'kind': 'report_export_raw',
+        'operation': 'raw_report_export',
+        'request': RAW_EXPORT_CREATE_TOOL,
+        'report_id': arguments.get('report_id'),
+        'format': arguments.get('format'),
+    }
+    if arguments.get('theme') is not None:
+        diff['theme'] = arguments['theme']
+    diff['effect'] = ('按报告当前数据同步渲染「含全量用例明细」的静态产物，'
+                      '每条用例可展开查看各维度值；音频不随报告打包；'
+                      '产物走导出作业表，download_ref 需登录鉴权下载')
+    return diff
+
+
 __all__ = [
     'DOCUMENTS_LIST_TOOL', 'EXPORT_CREATE_TOOL', 'EXPORT_JOB_TOOL',
     'EXPORT_POLL_INTERVAL_SECONDS', 'EXPORT_POLL_MAX_ATTEMPTS',
     'EXPORT_TERMINAL_STATUSES',
+    'RAW_EXPORT_ALLOWED_KEYS', 'RAW_EXPORT_CREATE_TOOL', 'RAW_EXPORT_FORMATS',
     'REPORT_CREATE', 'REPORT_EXPORT_FORMATS', 'REPORT_GENERATE_ACTIONS',
     'REPORT_GENERATE_BODY_FIELDS', 'REPORT_GENERATE_BODY_REQUIRED',
     'REPORT_GENERATE_PERMISSIONS', 'REPORT_GENERATE_REQUIRED_PARAMS',
     'REPORT_READ_TOOLS', 'REPORT_WRITE_TOOLS', 'STUDIO_CREATE', 'STUDIO_EDIT',
     'STUDIO_EXPORT', 'STUDIO_UNDO', 'action_permissions', 'get_tool',
-    'proposal_diff', 'proposal_diff_export', 'resolve_call', 'validate_arguments',
-    'validate_export',
+    'proposal_diff', 'proposal_diff_export', 'proposal_diff_export_raw',
+    'resolve_call', 'validate_arguments', 'validate_export', 'validate_export_raw',
 ]
