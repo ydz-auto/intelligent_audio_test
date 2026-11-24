@@ -43,7 +43,14 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
         """
         try:
             play_config = _loads(request.play_config, {})
-            file_path = request.audio_file_paths
+            # audio_file_paths 契约为 JSON 路径列表；兼容早期直接传纯路径的调用方
+            try:
+                file_paths = _loads(request.audio_file_paths, [])
+            except ValueError:
+                file_paths = [request.audio_file_paths]
+            if isinstance(file_paths, str):
+                file_paths = [file_paths]
+            file_path = file_paths[0] if file_paths else ''
             task_id = request.task_id or play_config.get('task_id', '0')
             device_index = play_config.get('device_index')
             channel_index = play_config.get('channel_index', 0)
