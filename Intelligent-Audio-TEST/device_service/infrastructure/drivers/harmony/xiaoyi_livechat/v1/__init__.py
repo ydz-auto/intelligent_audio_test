@@ -99,6 +99,14 @@ class Xiaoyilivechat(HarmonyDriver):
     # 改把 ai_wav 塞进 wav_path 复用 wav_path→record_file 映射喂评估。
     _record_enabled = True
 
+    def _recording_allowed(self) -> bool:
+        """录屏总开关（配置化临时降级：device_recording.enabled）
+
+        False 时不启动/不停止录屏、不拉取 mp4；get_results 走"无录屏"分支，
+        仅采集 PCM 并用 ai_wav 充当评估音频。
+        """
+        return bool(RECORDING_ENABLED)
+
     # 各 app 的 pcm 缓存目录、用户输入后缀、AI 回复后缀
     # 当前驱动仅抓取小艺(xiaoyi)数据；通过 app 参数可切换到 doubao/chatgpt
     PCM_APP_CONFIG = {
@@ -156,8 +164,13 @@ class Xiaoyilivechat(HarmonyDriver):
         try:
             r = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=LONG_HDC_TIMEOUT)
             if r.returncode != 0 or not os.path.exists(wav_path):
+                # 带上本地文件大小便于区分"未收尾(moov 缺失)"与"recv 截断/空文件"
+                try:
+                    size = os.path.getsize(mp4_path)
+                except OSError:
+                    size = -1
                 self._log(level='ERROR',
-                          content=f"mp4转wav失败: {r.stderr[-500:] if r.stderr else ''}",
+                          content=f"mp4转wav失败(size={size}B): {r.stderr[-500:] if r.stderr else ''}",
                           task_id=task_id, test_case_id=test_case_id)
                 return None
             self._log(level='INFO', content=f"mp4转wav成功: {wav_path}",
@@ -391,14 +404,30 @@ class Xiaoyilivechat(HarmonyDriver):
         return True
 
     def _stop_recorder(self, device_sn, task_id=None, test_case_id=None):
-        """停止录屏服务
+        """停止录屏服务并校验收尾
 
-        说明: 与 _start_recorder 同理, aa dump -l 的二次校验不可靠,
-        这里直接以 toggle 命令执行成功为准; 真正的兜底放在 teardown 中按
-        _recording 标志位判断, 避免对已停止的录屏再次 toggle 反而打开。
+        toggle 成功不等于录制已停止：moov 原子由录屏服务在收尾时写入，未收尾
+        就拉取会得到无法解析的 mp4（ffmpeg: moov atom not found）。因此以本轮
+        录屏文件 size 连续两次读数稳定作为收尾判据，仍增长则再 toggle 一次复验。
         """
-        self._hdc_shell(device_sn, 'aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY)
-        return True
+        if not getattr(self, '_record_enabled', True):
+            self._log(level='DEBUG',
+                      content="录屏已配置关闭(device_recording.enabled=false), 跳过停止录屏",
+                      task_id=task_id, test_case_id=test_case_id)
+            return True
+        args = ['aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY]
+        self._hdc_shell(device_sn, *args)
+        if self._wait_recorder_stopped(device_sn):
+            return True
+        # size 仍增长 → 第一次 toggle 可能未生效，再 toggle 一次并复验
+        self._hdc_shell(device_sn, *args)
+        if self._wait_recorder_stopped(device_sn):
+            return True
+        self._log(level='WARNING',
+                  content=(f"停止录屏后文件 size 仍未稳定(可能仍在收尾): "
+                           f"{getattr(self, '_record_device_path', None)}"),
+                  task_id=task_id, test_case_id=test_case_id)
+        return False
 
     def _stop_music_app(self, device_sn, task_id=None, test_case_id=None):
         """停止华为音乐 app。
@@ -1426,6 +1455,17 @@ class Xiaoyilivechat(HarmonyDriver):
         except Exception:
             self._log(level='ERROR', content="通话失败", task_id=task_id, test_case_id=test_case_id)
             return False
+        # 录屏总开关（配置化临时降级）：关闭时跳过录屏启动，仅采集 PCM；
+        # get_results 会走 _record_enabled=False 分支，用 ai_wav 充当评估音频
+        self._record_enabled = self._recording_allowed()
+        if not self._record_enabled:
+            self._recording = False
+            self._record_device_path = None
+            self._log(level='WARNING',
+                      content=("录屏已配置关闭(device_recording.enabled=false), "
+                               "本轮不启动录屏, 仅采集 PCM"),
+                      task_id=task_id, test_case_id=test_case_id)
+            return True
         # 开启录屏
         if record_mode == 'case':
             # 整用例一个文件，不带轮次后缀
@@ -1657,6 +1697,17 @@ class Xiaoyilivechat(HarmonyDriver):
                           task_id=task_id, test_case_id=test_case_id)
                 return None
             os.replace(part_path, local_path)
+            # 收尾校验：moov 缺失的未收尾 mp4 不转 wav 也不上传
+            if not self._validate_mp4(local_path, task_id=task_id, test_case_id=test_case_id):
+                try:
+                    size = os.path.getsize(local_path)
+                except OSError:
+                    size = -1
+                self._log(level='ERROR',
+                          content=(f"teardown兜底录屏 mp4 不可播放(moov 缺失/未收尾, "
+                                   f"size={size}B), 放弃上传: {device_path or record_file_name}"),
+                          task_id=task_id, test_case_id=test_case_id)
+                return None
             wav_path = self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
             # mp4 + wav 都上传 OSS,返回 mp4 的 OSS URL(评估主视频)
             oss_url = self._upload_file_to_oss(local_path, oss_key_prefix,
@@ -1853,6 +1904,31 @@ class Xiaoyilivechat(HarmonyDriver):
                     'ai_wav': ai_wav or ''
                 }]
             os.replace(part_path, local_path)
+            # 收尾校验：未收尾的 mp4 缺 moov 原子（ffmpeg 无法解析），既不能转 wav
+            # 也不应上传；直接按录屏失败返回，避免坏文件污染回看与评估
+            if not self._validate_mp4(local_path, task_id=task_id, test_case_id=test_case_id):
+                try:
+                    size = os.path.getsize(local_path)
+                except OSError:
+                    size = -1
+                note = (f'录屏 mp4 不可播放(moov 缺失/未收尾, size={size}B): '
+                        f'{device_path or record_file_name}')
+                self._log(level='ERROR', content=note,
+                          task_id=task_id, test_case_id=test_case_id)
+                return [{
+                    'success': any([user_wav, ai_wav, question_text, answer_text]),
+                    'message': note,
+                    'record_path': '',
+                    'record_device_path': device_path or '',
+                    'wav_path': '',
+                    'start_ms': ts['start_ms'],
+                    'end_ms': ts['end_ms'],
+                    'first_frame_ms': first_frame_ms,
+                    'question': question_text or '',
+                    'answer': answer_text or '',
+                    'user_wav': user_wav or '',
+                    'ai_wav': ai_wav or ''
+                }]
             # mp4 无损转 wav
             wav_path = self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
             # mp4(回看原视频) + wav(评估分析) 都上传 OSS
@@ -1943,7 +2019,10 @@ class Xiaoyilivechat(HarmonyDriver):
                 self._log(level='WARNING', content=f"teardown: 停止录屏失败: {e}", task_id=task_id, test_case_id=test_case_id)
 
         # case 模式兜底：末轮 post_process 异常未拉取时，此处补拉一次单视频，避免整段录屏丢失
-        if getattr(self, '_record_mode', 'round') == 'case' and not getattr(self, '_record_pulled', False):
+        # 录屏配置关闭时没有 mp4 产物，跳过兜底拉取
+        if (getattr(self, '_record_mode', 'round') == 'case'
+                and getattr(self, '_record_enabled', True)
+                and not getattr(self, '_record_pulled', False)):
             pulled = self._pull_record_file(device_sn, task_id=task_id, test_case_id=test_case_id)
             if pulled:
                 self._log(level='INFO', content=f"teardown: 兜底拉取录屏成功(OSS): {pulled}",

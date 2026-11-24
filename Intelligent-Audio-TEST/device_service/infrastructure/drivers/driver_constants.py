@@ -80,6 +80,12 @@ BASE_REPLY_STABLE_ROUNDS = config_manager.get_value('device_timing', 'base_reply
 BASE_RECORDER_STOP_VERIFY_TIMEOUT = config_manager.get_value('device_timing', 'base_recorder_stop_verify_timeout', 10)
 BASE_RECORDER_STOP_VERIFY_INTERVAL = config_manager.get_value('device_timing', 'base_recorder_stop_verify_interval', 1)
 
+# —— 录屏总开关（语音通话驱动：小艺/豆包/ChatGPT）——
+# device_recording.enabled=false 时不启动录屏、不拉取 mp4，get_results 走"无录屏"分支，
+# 用 ai_wav 充当评估音频（record_file 映射到 ai_wav）。用于设备录屏服务不稳定时临时降级。
+# 注意：配置在进程启动时读取，修改后需重启 device_service 生效。
+RECORDING_ENABLED = config_manager.get_value('device_recording', 'enabled', True)
+
 # 设备路径
 DEVICE_TMP_DIR = '/data/local/tmp'
 

@@ -53,6 +53,9 @@
     "reconnect_max_seconds": 30,
     "hdc_scan_interval_seconds": 1
   },
+  "device_recording": {
+    "enabled": true
+  },
   "device_timing": {
     "ui_wait": 0.2,
     "short_wait": 0.1,
