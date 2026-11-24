@@ -60,7 +60,7 @@ class AudioServiceACLRepository:
     所有方法返回纯 dict / list / bool，不返回 ORM 对象。
     """
 
-    def enumerate_physical_devices(self) -> tuple:
+    def enumerate_physical_devices(self, refresh: bool = False) -> tuple:
         """枚举物理设备并区分「枚举不可用」与「没有设备」
 
         契约 §2.5 要求：诊断在枚举不可用时返回 unsupported 而不是 error，
@@ -77,7 +77,9 @@ class AudioServiceACLRepository:
         from shared.proto import audio_service_pb2 as _audio_pb
         try:
             stub = get_audio_service_stub()
-            resp = stub.GetPhysicalDevices(_audio_pb.GetPhysicalDevicesRequest())
+            metadata = (('x-refresh-devices', '1'),) if refresh else None
+            resp = stub.GetPhysicalDevices(
+                _audio_pb.GetPhysicalDevicesRequest(), metadata=metadata)
             if not resp.success:
                 logger.warning(
                     "gRPC GetPhysicalDevices 返回失败 message=%s", resp.message)
@@ -92,13 +94,14 @@ class AudioServiceACLRepository:
             return [], False
         return devices, True
 
-    def get_physical_devices(self) -> list:
+    def get_physical_devices(self, refresh: bool = False) -> list:
         """获取物理设备列表
 
         通过 gRPC 调用 audio_service.AudioService.GetPhysicalDevices，
         返回设备列表；gRPC 不可用时返回空列表。
+        refresh=True 时先重建 audio_service 的 PortAudio 会话，感知热插拔。
         """
-        return self.enumerate_physical_devices()[0]
+        return self.enumerate_physical_devices(refresh=refresh)[0]
 
     def get_device_index(self, unique_id: str):
         """获取设备索引

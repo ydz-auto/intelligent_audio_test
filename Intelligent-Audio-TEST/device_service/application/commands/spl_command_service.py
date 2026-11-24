@@ -325,11 +325,35 @@ class SPLCommandService:
             if not devices_to_use:
                 return {'success': False, 'message': '没有找到可用的播放设备', 'data': None, 'code': 404}
 
+            # 离线校验：audio_service 的 get_device_index 找不到设备时会兜底返回首个设备，
+            # 导致离线设备被悄悄替换成别的输出。这里先按物理设备列表确认在线，避免播错设备。
+            def _online_ids(refresh=False):
+                devices, available = self._get_audio_service().enumerate_physical_devices(refresh=refresh)
+                if not available:
+                    return None
+                return {
+                    str(d.get('unique_id') or d.get('name') or '').strip()
+                    for d in devices
+                }
+
+            online_ids = _online_ids()
+
             results = []
             for device in devices_to_use:
                 device_name = getattr(device, 'name', '未知设备')
                 device_unique_id = getattr(device, 'device_unique_id', '')
                 channel_index = getattr(device, 'channel_index', 0)
+
+                if device_unique_id and online_ids is not None and device_unique_id.strip() not in online_ids:
+                    # 设备快照可能早于热插拔：要求 audio_service 重建 Pa 会话后再判定一次
+                    online_ids = _online_ids(refresh=True)
+                    if online_ids is not None and device_unique_id.strip() not in online_ids:
+                        return {
+                            'success': False,
+                            'message': f'播放设备已离线: {device_name}，请重新选择播放设备',
+                            'data': None,
+                            'code': 404,
+                        }
 
                 final_gain = linear_gain
 

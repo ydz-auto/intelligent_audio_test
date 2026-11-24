@@ -19,6 +19,17 @@ from shared.proto import audio_service_pb2_grpc as e2e_grpc
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
 
+def _refresh_requested(context):
+    """请求方是否要求重建设备快照（metadata: x-refresh-devices=1）"""
+    try:
+        for item in (context.invocation_metadata() if context else None) or ():
+            if item.key == 'x-refresh-devices' and str(item.value).lower() in ('1', 'true'):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 # ==================== AudioServiceServicer ====================
 
 class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
@@ -129,8 +140,14 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
             return e2e_pb.AudioInfoResponse(success=False, message=str(e), data="")
 
     def GetPhysicalDevices(self, request, context=None):
-        """扫描所有物理输出设备"""
+        """扫描所有物理输出设备
+
+        调用方可通过 metadata `x-refresh-devices: 1` 要求先重建 PortAudio
+        会话，用于感知运行期间的热插拔（扫描/状态检查/播放前重试）。
+        """
         try:
+            if _refresh_requested(context):
+                self.audio_service.refresh_devices()
             devices = self.audio_service.get_all_physical_devices()
             return e2e_pb.GetPhysicalDevicesResponse(
                 success=True, message="ok", data=_dumps(devices),

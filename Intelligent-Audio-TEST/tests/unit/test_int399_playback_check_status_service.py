@@ -60,7 +60,7 @@ class _FakeEventBus:
 def _make_service(repo, monkeypatch, physical_devices):
     monkeypatch.setattr(
         PlaybackCommandService, '_get_physical_devices_via_grpc',
-        staticmethod(lambda: physical_devices))
+        staticmethod(lambda refresh=False: physical_devices))
     _FakeEventBus.published.clear()
     monkeypatch.setattr('shared.utils.redis_pubsub.EventBus', _FakeEventBus)
     return PlaybackCommandService(repo=repo, spl_repo=None)

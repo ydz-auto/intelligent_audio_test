@@ -53,10 +53,10 @@ class PlaybackQueryService:
         self.spl_repo = spl_repo
 
     @staticmethod
-    def _get_physical_devices_via_grpc():
-        """通过 ACL 仓储获取物理设备列表"""
+    def _get_physical_devices_via_grpc(refresh: bool = False):
+        """通过 ACL 仓储获取物理设备列表（refresh=True 时重建 Pa 会话感知热插拔）"""
         from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
-        return audio_service_acl_repository.get_physical_devices()
+        return audio_service_acl_repository.get_physical_devices(refresh=refresh)
 
     # ========== 读操作 ==========
 
@@ -83,7 +83,7 @@ class PlaybackQueryService:
     def scan(self) -> dict:
         """扫描物理播放通道"""
         try:
-            physical_devices = self._get_physical_devices_via_grpc()
+            physical_devices = self._get_physical_devices_via_grpc(refresh=True)
 
             registered = self.repo.get_all_playback_devices()
             registered_keys = set([f'{d.device_unique_id}_{d.channel_index}' for d in registered])

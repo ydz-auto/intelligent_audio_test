@@ -89,10 +89,10 @@ class PlaybackCommandService:
         return audio_service_acl_repository.stop_audio(task_id)
 
     @staticmethod
-    def _get_physical_devices_via_grpc():
-        """通过 ACL 仓储获取物理设备列表"""
+    def _get_physical_devices_via_grpc(refresh: bool = False):
+        """通过 ACL 仓储获取物理设备列表（refresh=True 时重建 Pa 会话感知热插拔）"""
         from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
-        return audio_service_acl_repository.get_physical_devices()
+        return audio_service_acl_repository.get_physical_devices(refresh=refresh)
 
     @staticmethod
     def _spl_to_gain_via_grpc(mapping_id, target_spl):
@@ -679,7 +679,7 @@ class PlaybackCommandService:
             devices = self.repo.get_all_playback_devices()
             # 经 ACL 仓储获取物理设备列表（INT-399：原 _get_audio_service 未定义，
             # DDD 重构 5c5e35da 带入，被路由 422 掩盖；与兄弟查询服务 scan 同款引用）
-            physical_devices = self._get_physical_devices_via_grpc()
+            physical_devices = self._get_physical_devices_via_grpc(refresh=True)
 
             results = []
             current_time = now_cst()

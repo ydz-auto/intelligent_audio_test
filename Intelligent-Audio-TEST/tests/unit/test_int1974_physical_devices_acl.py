@@ -48,7 +48,8 @@ class _FakeStub(object):
         self._error = error
         self.calls = 0
 
-    def GetPhysicalDevices(self, request):
+    def GetPhysicalDevices(self, request, metadata=None):
+        self.last_metadata = metadata
         self.calls += 1
         if self._error is not None:
             raise self._error

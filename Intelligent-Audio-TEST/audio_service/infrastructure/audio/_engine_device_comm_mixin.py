@@ -29,6 +29,36 @@ class EngineDeviceCommMixin:
             self.init_driver()
         return self.driver
 
+    def refresh_devices(self):
+        """重建 PortAudio 会话，让设备枚举感知热插拔。
+
+        PortAudio 在 Pa_Initialize 时固定设备快照，插拔声卡/驱动重启后
+        不重新初始化就永远枚举不到新端点。有音频正在播放时跳过，避免
+        强停带流的会话把 WASAPI 端点锁死在驱动里。
+
+        Returns:
+            bool: 是否执行了重建
+        """
+        with self._lock:
+            if self.active_players:
+                log_and_emit('INFO', 'audio_engine',
+                             "设备刷新跳过：有音频正在播放", category='audio')
+                return False
+            driver = self.driver
+            if driver is not None:
+                try:
+                    driver.terminate()
+                except Exception as e:
+                    log_and_emit('WARNING', 'audio_engine',
+                                 f"设备刷新终止旧会话失败: {e}", category='audio')
+                self.driver = None
+                self._device_cache = None
+                self._cache_time = 0
+            self.init_driver()
+            log_and_emit('INFO', 'audio_engine',
+                         "设备列表已重建（热插拔刷新）", category='audio')
+            return True
+
     def _get_cached_devices(self):
         """获取带缓存的设备列表，避免频繁扫描导致驱动崩溃"""
         import time
