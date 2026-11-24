@@ -71,6 +71,8 @@ node_modules/
 *.tsbuildinfo
 
 # ===== Test / coverage =====
+tests/
+e2e_tests/
 coverage/
 .pytest_cache/
 **/.pytest_cache/

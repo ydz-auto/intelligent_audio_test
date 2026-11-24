@@ -43,6 +43,12 @@ RUN set -eux; \
 COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements.txt
 
+# 编译期依赖 pip 之后即卸（gcc/libc6-dev/portaudio19-dev 只为 pyaudio 源码编译）；
+# libportaudio2 是 pyaudio 运行时依赖，先 apt-mark manual 防止被 auto-remove 连带删除。
+RUN apt-mark manual libportaudio2 \
+    && apt-get purge -y --auto-remove gcc libc6-dev portaudio19-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY . .
 
 # 引导入口（幂等，任一步失败即非零退出，compose 以 service_completed_successfully 门控后端启动）
