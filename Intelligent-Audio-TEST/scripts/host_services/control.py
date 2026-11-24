@@ -74,6 +74,9 @@ E2E_HTTP_PORT = 5002
 E2E_GRPC_PORT = 50051
 
 ENTRY = Path(__file__).with_name('service_entry.py')
+# 守护壳：与 asr_server/ssh_tunnel_asr.ps1 同款「退出即 5s 重启」循环。
+# 拉起的是守护进程，子进程 service_entry 崩了会被它拉回来。
+SUPERVISOR = Path(__file__).with_name('run_forever.ps1')
 
 # WMI 拉起的进程父级是 WmiPrvSE（系统服务），不在 agent run 的 job 对象里；
 # 否则 run 结束会整树回收，宿主服务刚起来就被杀掉。
@@ -230,6 +233,61 @@ def wait_port(port: int, want_open: bool, timeout: float) -> bool:
     return port_listening(port) is want_open
 
 
+# ---------------------------------------------------------------- 守护进程
+
+def _supervisor_files(service: str) -> tuple[Path, Path]:
+    """守护进程的 pid 文件与停止标记文件。"""
+    return (LOG_DIR / f'{service}.supervisor.pid',
+            LOG_DIR / f'{service}.supervisor.stop')
+
+
+def _supervisor_log(service: str) -> Path:
+    return LOG_DIR / f'{service}.supervisor.log'
+
+
+def _supervisor_pid(service: str) -> int | None:
+    pid_file, _ = _supervisor_files(service)
+    try:
+        return int(pid_file.read_text(encoding='ascii').strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _supervisor_alive(service: str) -> bool:
+    """pid 文件里的进程还活着，且确实是这个服务的 run_forever.ps1。"""
+    pid = _supervisor_pid(service)
+    if not pid:
+        return False
+    result = subprocess.run(
+        ['powershell', '-NoProfile', '-Command',
+         f'(Get-CimInstance Win32_Process -Filter "ProcessId={pid}").CommandLine'],
+        capture_output=True, text=True, encoding='utf-8', errors='replace',
+    )
+    cmdline = (result.stdout or '').strip()
+    return 'run_forever.ps1' in cmdline and f'-Tag {service}' in cmdline
+
+
+def _request_stop(service: str, on: bool = True) -> None:
+    """落/清停止标记：守护进程看到标记后不再重启子进程。"""
+    _, stop_flag = _supervisor_files(service)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    if on:
+        stop_flag.write_text('stop\n', encoding='ascii')
+    elif stop_flag.exists():
+        stop_flag.unlink()
+
+
+def _kill_supervisor(service: str, timeout: float = DEVICE_STOP_TIMEOUT) -> None:
+    if _supervisor_alive(service):
+        pid = _supervisor_pid(service)
+        subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
+                       capture_output=True, text=True)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline and _supervisor_alive(service):
+            time.sleep(0.3)
+    _supervisor_files(service)[0].unlink(missing_ok=True)
+
+
 # ---------------------------------------------------------------- 进程拉起
 
 def _wmi_create(command_line: str, cwd: Path) -> int:
@@ -276,8 +334,15 @@ def _launch(service: str, mode: str) -> int:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     env_file = LOG_DIR / f'{service}.env.json'
     env_file.write_text(json.dumps(env, ensure_ascii=False), encoding='utf-8')
+    pid_file, stop_flag = _supervisor_files(service)
+    _request_stop(service, False)          # 清掉上次 stop 留下的标记
+    pid_file.unlink(missing_ok=True)
     command_line = (
-        f'"{RUNNER}" "{ENTRY}" --service {service} --mode {mode} --env-file "{env_file}"')
+        f'powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden '
+        f'-File "{SUPERVISOR}" -Tag {service} -Python "{RUNNER}" '
+        f'-Entry "{ENTRY}" -Mode {mode} -EnvFile "{env_file}" '
+        f'-Log "{_supervisor_log(service)}" -StopFlag "{stop_flag}" '
+        f'-PidFile "{pid_file}"')
     return _wmi_create(command_line, REPO)
 
 
@@ -285,15 +350,24 @@ def _start(name: str, service: str, mode: str, port: int,
            timeout: float, log_name: str) -> tuple[bool, str]:
     if port_listening(port):
         return True, f'[skip] {name} 已在 :{port} 监听'
+    if _supervisor_alive(service):
+        # 子进程崩溃后正由守护进程重启中：不再重复拉一个守护
+        if wait_port(port, True, timeout):
+            return True, f'[ok] {name} 由守护进程拉起 :{port}'
+        return False, (f'[fail] {name} 守护进程存活但 :{port} 在 {timeout:.0f}s 内未监听，'
+                       f'日志: {_supervisor_log(service)}\n'
+                       f'{_log_tail(_supervisor_log(service).name)}')
     try:
         pid = _launch(service, mode)
     except RuntimeError as exc:
         return False, f'[fail] {name} 拉起失败: {exc}'
     if wait_port(port, True, timeout):
-        return True, f'[ok] {name} 已启动 pid={pid} :{port}（WMI 脱离 run 树）'
+        return True, f'[ok] {name} 已启动 守护pid={pid} :{port}（WMI 脱离 run 树）'
     tail = _log_tail(log_name)
+    sup_tail = _log_tail(_supervisor_log(service).name)
     return False, (f'[fail] {name} 在 {timeout:.0f}s 内未监听 :{port}，'
-                   f'日志: {LOG_DIR / log_name}\n{tail}')
+                   f'日志: {LOG_DIR / log_name}\n{tail}\n'
+                   f'守护日志: {_supervisor_log(service)}\n{sup_tail}')
 
 
 def _log_tail(log_name: str, lines: int = 20) -> str:
@@ -329,19 +403,25 @@ def start_e2e(timeout: float = READY_TIMEOUT_DEFAULT) -> tuple[bool, str]:
 
 
 def stop_e2e(timeout: float = DEVICE_STOP_TIMEOUT) -> tuple[bool, str]:
-    """停止宿主 e2e_test_service：按 5002/50051 定位 PID 后杀进程树。"""
-    pids = sorted({pid for pid in (listener_pid(E2E_HTTP_PORT),
-                                   listener_pid(E2E_GRPC_PORT)) if pid})
-    if not pids:
-        return True, f'[skip] e2e_test_service 未在 :{E2E_HTTP_PORT}/:{E2E_GRPC_PORT} 监听'
-    for pid in pids:
-        subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
-                       capture_output=True, text=True)
-    if not (wait_port(E2E_HTTP_PORT, False, timeout)
-            and wait_port(E2E_GRPC_PORT, False, timeout)):
-        return False, (f'[fail] e2e_test_service :{E2E_HTTP_PORT}/:{E2E_GRPC_PORT} '
-                       f'在 {timeout}s 内未释放')
-    return True, f'[ok] e2e_test_service 已停止 pid={pids}'
+    """停止宿主 e2e_test_service：落停止标记 → 按 5002/50051 杀进程树 → 收守护。"""
+    _request_stop('e2e')
+    try:
+        pids = sorted({pid for pid in (listener_pid(E2E_HTTP_PORT),
+                                       listener_pid(E2E_GRPC_PORT)) if pid})
+        if not pids:
+            return True, f'[skip] e2e_test_service 未在 :{E2E_HTTP_PORT}/:{E2E_GRPC_PORT} 监听'
+        for pid in pids:
+            subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
+                           capture_output=True, text=True)
+        if not (wait_port(E2E_HTTP_PORT, False, timeout)
+                and wait_port(E2E_GRPC_PORT, False, timeout)):
+            return False, (f'[fail] e2e_test_service :{E2E_HTTP_PORT}/:{E2E_GRPC_PORT} '
+                           f'在 {timeout}s 内未释放')
+        return True, f'[ok] e2e_test_service 已停止 pid={pids}'
+    finally:
+        _kill_supervisor('e2e')
+        if not _supervisor_alive('e2e'):
+            _request_stop('e2e', False)
 
 
 # ---------------------------------------------------------------- audio
@@ -368,19 +448,25 @@ def start_audio(mode: str = 'real', timeout: float = READY_TIMEOUT_DEFAULT,
 
 
 def stop_audio(cooldown: float = 8.0, timeout: float = 90.0) -> tuple[bool, str]:
-    """优雅停止 audio_service（gRPC Shutdown → 端口释放 → 冷却）。"""
-    env = host_env()
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        [PY, str(AUDIO_DIR / 'stop_audio_service.py'),
-         '--port', str(AUDIO_PORT), '--cooldown', str(cooldown),
-         '--log', str(LOG_DIR / 'audio_stop.log')],
-        cwd=str(REPO), env=env, capture_output=True, text=True,
-        encoding='utf-8', errors='replace', timeout=timeout,
-    )
-    output = ((result.stdout or '') + (result.stderr or '')).strip()
-    ok = result.returncode == 0 and not port_listening(AUDIO_PORT)
-    return ok, output
+    """优雅停止 audio_service（gRPC Shutdown → 端口释放 → 冷却），并收掉守护进程。"""
+    _request_stop('audio')
+    try:
+        env = host_env()
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        result = subprocess.run(
+            [PY, str(AUDIO_DIR / 'stop_audio_service.py'),
+             '--port', str(AUDIO_PORT), '--cooldown', str(cooldown),
+             '--log', str(LOG_DIR / 'audio_stop.log')],
+            cwd=str(REPO), env=env, capture_output=True, text=True,
+            encoding='utf-8', errors='replace', timeout=timeout,
+        )
+        output = ((result.stdout or '') + (result.stderr or '')).strip()
+        ok = result.returncode == 0 and not port_listening(AUDIO_PORT)
+        return ok, output
+    finally:
+        _kill_supervisor('audio')
+        if not _supervisor_alive('audio'):
+            _request_stop('audio', False)
 
 
 # ---------------------------------------------------------------- device
@@ -391,15 +477,21 @@ def start_device(timeout: float = READY_TIMEOUT_DEFAULT) -> tuple[bool, str]:
 
 
 def stop_device() -> tuple[bool, str]:
-    """device_service 无 Shutdown RPC：按端口定位 PID 后杀进程树并等端口释放。"""
-    pid = listener_pid(DEVICE_PORT)
-    if pid is None:
-        return True, f'[skip] device_service 未在 :{DEVICE_PORT} 监听'
-    subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
-                   capture_output=True, text=True)
-    if not wait_port(DEVICE_PORT, False, DEVICE_STOP_TIMEOUT):
-        return False, f'[fail] device_service :{DEVICE_PORT} 在 {DEVICE_STOP_TIMEOUT}s 内未释放'
-    return True, f'[ok] device_service 已停止 pid={pid}'
+    """device_service 无 Shutdown RPC：落停止标记 → 杀进程树等端口释放 → 收守护。"""
+    _request_stop('device')
+    try:
+        pid = listener_pid(DEVICE_PORT)
+        if pid is None:
+            return True, f'[skip] device_service 未在 :{DEVICE_PORT} 监听'
+        subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
+                       capture_output=True, text=True)
+        if not wait_port(DEVICE_PORT, False, DEVICE_STOP_TIMEOUT):
+            return False, f'[fail] device_service :{DEVICE_PORT} 在 {DEVICE_STOP_TIMEOUT}s 内未释放'
+        return True, f'[ok] device_service 已停止 pid={pid}'
+    finally:
+        _kill_supervisor('device')
+        if not _supervisor_alive('device'):
+            _request_stop('device', False)
 
 
 # ---------------------------------------------------------------- 状态
