@@ -313,7 +313,8 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
   return (
     <>
       <Dialog open={props.open} onOpenChange={handleOpenChange}>
-        <DialogContent className='sm:max-w-2xl'>
+        {/* 行模板 + overflow-hidden：标题/底部按钮固定，仅中间内容滚动；否则长表单会整体滚出视口 */}
+        <DialogContent className='grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl'>
           <DialogHeader>
             <DialogTitle>{isEdit ? '编辑增益映射' : '添加增益映射'}</DialogTitle>
             <DialogDescription>
@@ -321,211 +322,214 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-            <div className='space-y-2'>
-              <Label required>映射名称</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder='请输入映射名称' aria-label='映射名称' />
-            </div>
-            <div className='space-y-2'>
-              <Label>关联播放设备</Label>
-              <Select
-                value={deviceId}
-                items={deviceOptions}
-                onValueChange={(value) => {
-                  // 切换关联设备 → 先停掉在播测试音（unique_id 已失效）
-                  if (playingUniqueIdRef.current) {
-                    const uniqueId = playingUniqueIdRef.current
-                    playingUniqueIdRef.current = null
-                    setPlayingIndex(null)
-                    void stopSplTestToneQuietly(uniqueId)
-                  }
-                  setDeviceId(value ?? '')
-                }}
-              >
-                <SelectTrigger size='sm' className='w-full' aria-label='关联播放设备'>
-                  <SelectValue placeholder='不使用声压映射' />
-                </SelectTrigger>
-                <SelectContent>
-                  {deviceOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className='space-y-2'>
-              <Label>设备类型</Label>
-              <Select
-                value={deviceType}
-                items={DEVICE_TYPE_SELECT_ITEMS}
-                onValueChange={(value) => setDeviceType(value ?? 'dry')}
-              >
-                <SelectTrigger size='sm' className='w-full' aria-label='设备类型'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEVICE_TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className='space-y-2'>
-              <Label>测量距离（米）</Label>
-              <Input
-                type='number'
-                step='0.1'
-                value={distance}
-                onChange={(e) => guardedChange('distance', e.target.value)}
-                aria-label='测量距离'
-              />
-            </div>
-            <div className='space-y-2'>
-              <Label>目标声压级（dB）</Label>
-              <Input
-                type='number'
-                value={targetSpl}
-                onChange={(e) => setTargetSpl(e.target.value)}
-                aria-label='目标声压级'
-              />
-            </div>
-            <div className='space-y-2'>
-              <Label>数字增益（dB）</Label>
-              <Input
-                type='number'
-                step='0.1'
-                value={digitalGain}
-                onChange={(e) => setDigitalGain(e.target.value)}
-                aria-label='数字增益'
-              />
-            </div>
-            <div className='space-y-2'>
-              <Label>测试频率（Hz）</Label>
-              <Input
-                type='number'
-                value={testFrequency}
-                onChange={(e) => guardedChange('testFrequency', e.target.value)}
-                aria-label='测试频率'
-              />
-            </div>
-          </div>
-
-          <div className='space-y-2'>
-            <Label>描述</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder='请输入描述' className='min-h-20' aria-label='描述' />
-          </div>
-
-          <section aria-labelledby='calibration-points-title'>
-            <div className='mb-2 flex items-center justify-between'>
-              <h3 id='calibration-points-title' className='text-sm font-medium'>校准点集</h3>
-              <Button variant='outline' size='sm' onClick={addPoint}>
-                添加校准点
-              </Button>
-            </div>
-            {points.length === 0 ? (
-              <div className='bg-card ring-foreground/10 text-muted-foreground rounded-lg px-3 py-4 text-center text-xs ring-1'>
-                尚无校准点（已校准映射修改距离/频率将重置校准）
-              </div>
-            ) : (
+          {/* 中间滚动区：表单/描述/校准点集；min-h-0 让 1fr 行可收缩 */}
+          <div className='min-h-0 space-y-4 overflow-y-auto'>
+            <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
               <div className='space-y-2'>
-                <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
-                  <div className='overflow-x-auto'>
-                    <table className='w-full min-w-0 text-xs'>
-                      <thead>
-                        <tr className='bg-[var(--table-header)]'>
-                          <th className='px-3 py-2 text-left font-medium'>增益偏移（dB）</th>
-                          <th className='px-3 py-2 text-left font-medium'>基础电平</th>
-                          <th className='px-3 py-2 text-left font-medium'>最终电平</th>
-                          <th className='px-3 py-2 text-left font-medium'>实测 SPL（dB）</th>
-                          <th className='w-20 px-3 py-2' />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {points.map((point, index) => {
-                          const finalLevel =
-                            point.gainOffset === '' || Number.isNaN(Number(point.gainOffset))
-                              ? null
-                              : CALIBRATION_BASE_LEVEL_DBFS + Number(point.gainOffset)
-                          return (
-                            <tr key={index} className='border-border/50 border-b last:border-b-0'>
-                              <td className='px-3 py-1.5'>
-                                <Input
-                                  type='number'
-                                  step='0.1'
-                                  value={point.gainOffset}
-                                  onChange={(e) => patchPoint(index, { gainOffset: e.target.value })}
-                                  aria-label={`第 ${index + 1} 行增益偏移`}
-                                  className='h-7 w-24'
-                                />
-                              </td>
-                              <td className='px-3 py-1.5 font-mono text-xs tabular-nums text-muted-foreground'>
-                                -30 dBFS
-                              </td>
-                              <td
-                                className={`px-3 py-1.5 font-mono text-xs tabular-nums ${
-                                  finalLevel != null && finalLevel > -5
-                                    ? 'text-destructive'
-                                    : 'text-muted-foreground'
-                                }`}
-                              >
-                                {finalLevelOf(point.gainOffset)}
-                              </td>
-                              <td className='px-3 py-1.5'>
-                                <Input
-                                  type='number'
-                                  step='0.1'
-                                  value={point.spl}
-                                  onChange={(e) => patchPoint(index, { spl: e.target.value })}
-                                  aria-label={`第 ${index + 1} 行实测 SPL`}
-                                  className='h-7 w-24'
-                                />
-                              </td>
-                              <td className='px-3 py-1.5'>
-                                <div className='flex items-center gap-1'>
-                                  <Button
-                                    variant='outline'
-                                    size='icon-sm'
-                                    aria-label={`第 ${index + 1} 行播放测试音`}
-                                    aria-pressed={playingIndex === index}
-                                    disabled={
-                                      tonePending ||
-                                      (playingIndex !== index && !canPlayTestTone(point))
-                                    }
-                                    onClick={() =>
-                                      playingIndex === index
-                                        ? void stopTestTone()
-                                        : void playTestTone(index)
-                                    }
-                                  >
-                                    {playingIndex === index ? (
-                                      <Square aria-hidden='true' className='size-3' />
-                                    ) : (
-                                      <Play aria-hidden='true' className='size-3' />
-                                    )}
-                                  </Button>
-                                  <Button
-                                    variant='ghost'
-                                    size='icon-sm'
-                                    aria-label={`删除第 ${index + 1} 个校准点`}
-                                    onClick={() => removePoint(index)}
-                                  >
-                                    <Trash2 aria-hidden='true' className='size-3.5' />
-                                  </Button>
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                <Label required>映射名称</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder='请输入映射名称' aria-label='映射名称' />
+              </div>
+              <div className='space-y-2'>
+                <Label>关联播放设备</Label>
+                <Select
+                  value={deviceId}
+                  items={deviceOptions}
+                  onValueChange={(value) => {
+                    // 切换关联设备 → 先停掉在播测试音（unique_id 已失效）
+                    if (playingUniqueIdRef.current) {
+                      const uniqueId = playingUniqueIdRef.current
+                      playingUniqueIdRef.current = null
+                      setPlayingIndex(null)
+                      void stopSplTestToneQuietly(uniqueId)
+                    }
+                    setDeviceId(value ?? '')
+                  }}
+                >
+                  <SelectTrigger size='sm' className='w-full' aria-label='关联播放设备'>
+                    <SelectValue placeholder='不使用声压映射' />
+                  </SelectTrigger>
+                  <SelectContent className='w-auto max-w-[min(36rem,calc(100vw-2rem))] min-w-(--anchor-width)'>
+                    {deviceOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className='space-y-2'>
+                <Label>设备类型</Label>
+                <Select
+                  value={deviceType}
+                  items={DEVICE_TYPE_SELECT_ITEMS}
+                  onValueChange={(value) => setDeviceType(value ?? 'dry')}
+                >
+                  <SelectTrigger size='sm' className='w-full' aria-label='设备类型'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DEVICE_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className='space-y-2'>
+                <Label>测量距离（米）</Label>
+                <Input
+                  type='number'
+                  step='0.1'
+                  value={distance}
+                  onChange={(e) => guardedChange('distance', e.target.value)}
+                  aria-label='测量距离'
+                />
+              </div>
+              <div className='space-y-2'>
+                <Label>目标声压级（dB）</Label>
+                <Input
+                  type='number'
+                  value={targetSpl}
+                  onChange={(e) => setTargetSpl(e.target.value)}
+                  aria-label='目标声压级'
+                />
+              </div>
+              <div className='space-y-2'>
+                <Label>数字增益（dB）</Label>
+                <Input
+                  type='number'
+                  step='0.1'
+                  value={digitalGain}
+                  onChange={(e) => setDigitalGain(e.target.value)}
+                  aria-label='数字增益'
+                />
+              </div>
+              <div className='space-y-2'>
+                <Label>测试频率（Hz）</Label>
+                <Input
+                  type='number'
+                  value={testFrequency}
+                  onChange={(e) => guardedChange('testFrequency', e.target.value)}
+                  aria-label='测试频率'
+                />
+              </div>
+            </div>
+
+            <div className='space-y-2'>
+              <Label>描述</Label>
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder='请输入描述' className='min-h-20' aria-label='描述' />
+            </div>
+
+            <section aria-labelledby='calibration-points-title'>
+              <div className='mb-2 flex items-center justify-between'>
+                <h3 id='calibration-points-title' className='text-sm font-medium'>校准点集</h3>
+                <Button variant='outline' size='sm' onClick={addPoint}>
+                  添加校准点
+                </Button>
+              </div>
+              {points.length === 0 ? (
+                <div className='bg-card ring-foreground/10 text-muted-foreground rounded-lg px-3 py-4 text-center text-xs ring-1'>
+                  尚无校准点（已校准映射修改距离/频率将重置校准）
+                </div>
+              ) : (
+                <div className='space-y-2'>
+                  <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
+                    <div className='overflow-x-auto'>
+                      <table className='w-full min-w-0 text-xs'>
+                        <thead>
+                          <tr className='bg-[var(--table-header)]'>
+                            <th className='px-3 py-2 text-left font-medium'>增益偏移（dB）</th>
+                            <th className='px-3 py-2 text-left font-medium'>基础电平</th>
+                            <th className='px-3 py-2 text-left font-medium'>最终电平</th>
+                            <th className='px-3 py-2 text-left font-medium'>实测 SPL（dB）</th>
+                            <th className='w-20 px-3 py-2' />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {points.map((point, index) => {
+                            const finalLevel =
+                              point.gainOffset === '' || Number.isNaN(Number(point.gainOffset))
+                                ? null
+                                : CALIBRATION_BASE_LEVEL_DBFS + Number(point.gainOffset)
+                            return (
+                              <tr key={index} className='border-border/50 border-b last:border-b-0'>
+                                <td className='px-3 py-1.5'>
+                                  <Input
+                                    type='number'
+                                    step='0.1'
+                                    value={point.gainOffset}
+                                    onChange={(e) => patchPoint(index, { gainOffset: e.target.value })}
+                                    aria-label={`第 ${index + 1} 行增益偏移`}
+                                    className='h-7 w-24'
+                                  />
+                                </td>
+                                <td className='px-3 py-1.5 font-mono text-xs tabular-nums text-muted-foreground'>
+                                  -30 dBFS
+                                </td>
+                                <td
+                                  className={`px-3 py-1.5 font-mono text-xs tabular-nums ${
+                                    finalLevel != null && finalLevel > -5
+                                      ? 'text-destructive'
+                                      : 'text-muted-foreground'
+                                  }`}
+                                >
+                                  {finalLevelOf(point.gainOffset)}
+                                </td>
+                                <td className='px-3 py-1.5'>
+                                  <Input
+                                    type='number'
+                                    step='0.1'
+                                    value={point.spl}
+                                    onChange={(e) => patchPoint(index, { spl: e.target.value })}
+                                    aria-label={`第 ${index + 1} 行实测 SPL`}
+                                    className='h-7 w-24'
+                                  />
+                                </td>
+                                <td className='px-3 py-1.5'>
+                                  <div className='flex items-center gap-1'>
+                                    <Button
+                                      variant='outline'
+                                      size='icon-sm'
+                                      aria-label={`第 ${index + 1} 行播放测试音`}
+                                      aria-pressed={playingIndex === index}
+                                      disabled={
+                                        tonePending ||
+                                        (playingIndex !== index && !canPlayTestTone(point))
+                                      }
+                                      onClick={() =>
+                                        playingIndex === index
+                                          ? void stopTestTone()
+                                          : void playTestTone(index)
+                                      }
+                                    >
+                                      {playingIndex === index ? (
+                                        <Square aria-hidden='true' className='size-3' />
+                                      ) : (
+                                        <Play aria-hidden='true' className='size-3' />
+                                      )}
+                                    </Button>
+                                    <Button
+                                      variant='ghost'
+                                      size='icon-sm'
+                                      aria-label={`删除第 ${index + 1} 个校准点`}
+                                      onClick={() => removePoint(index)}
+                                    >
+                                      <Trash2 aria-hidden='true' className='size-3.5' />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </section>
+              )}
+            </section>
+          </div>
 
           <DialogFooter>
             <Button variant='outline' size='sm' onClick={() => handleOpenChange(false)}>
