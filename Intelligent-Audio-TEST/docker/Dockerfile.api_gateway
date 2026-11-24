@@ -1,41 +1,14 @@
-# INT-2166：apt / pip 走可达镜像源（统一约定见 docker/README.md §3）。
-# 缺省值即推荐值；compose 经 x-backend-build-args 透传，可 --build-arg 或 .env 覆盖。
-# 历史：INT-1276 接 APT_MIRROR（deb.debian.org 502），INT-2156 接 PIP_INDEX_URL（pypi.org ~150 kB/s）。
-FROM python:3.11-slim
-
-ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
-ARG PIP_INDEX_URL=https://pypi.org/simple
+# 依赖来自共用基座 iat-base（docker/Dockerfile.base + docker/requirements/base.txt），
+# 本镜像只叠加网关代码层。构建入口：python docker/build_stack.py api_gateway
+#
+# 原 ffmpeg + adb 系统层已移除：容器内无 ffmpeg/adb 调用（仅宿主侧 audio_service /
+# device_service 使用），该层曾占 465MB 且每个网关镜像各存一份。
+ARG BASE_IMAGE=iat-base:latest
+FROM ${BASE_IMAGE}
 
 WORKDIR /app
-
-# 系统依赖：音频处理（ffmpeg）、设备通信（adb、串口）
-RUN set -eux; \
-    for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
-        [ -f "$f" ] && sed -i "s|deb.debian.org|${APT_MIRROR}|g" "$f"; \
-    done; \
-    apt-get -o Acquire::Retries=5 update \
-    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
-    ffmpeg \
-    adb \
-    && rm -rf /var/lib/apt/lists/*
-
-# 依赖按服务裁剪（全量清单见根 requirements.txt；新增 import 需同步本文件）
-COPY docker/requirements/api_gateway.txt ./requirements.txt
-RUN set -eux; \
-    for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
-        [ -f "$f" ] && sed -i "s|deb.debian.org|${APT_MIRROR}|g" "$f"; \
-    done; \
-    apt-get -o Acquire::Retries=5 update \
-    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
-        gcc libc6-dev libffi-dev portaudio19-dev \
-    && apt-mark manual libportaudio2 \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements.txt \
-    && apt-get purge -y --auto-remove gcc libc6-dev libffi-dev portaudio19-dev \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY . .
 
 EXPOSE 5000
-
 CMD ["python", "-m", "api_gateway.app"]

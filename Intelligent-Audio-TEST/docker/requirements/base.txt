@@ -1,0 +1,72 @@
+# 容器化后端共用基座依赖（镜像 iat-base，构建文件 docker/Dockerfile.base）
+#
+# 全量清单见根 requirements.txt；容器内只跑业务编排，不跑音频采集/设备自动化，故以下依赖
+# 不装（它们只属于宿主侧 audio_service / device_service，或仅测试用）：
+#   librosa / soundfile / scipy / scikit-learn / numba / llvmlite / pyaudio
+#   adbutils / uiautomator2 / playwright / pymodbus / pyserial / wda
+#   pytest / pytest-xdist
+# 新增服务代码若 import 了上述包，必须同步在本基座或该服务的增量清单里补上。
+
+# ===== Web Framework =====
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+websockets>=12.0
+python-socketio>=5.11.0
+
+# ===== gRPC =====
+grpcio>=1.83.0
+protobuf>=5.29.0
+
+# ===== Database =====
+SQLAlchemy>=2.0.0,<2.1
+alembic>=1.13.0
+psycopg2-binary>=2.9.0
+greenlet>=2.0.0
+
+# ===== Object Storage =====
+boto3>=1.34.0
+
+# ===== Redis =====
+redis>=5.0.0
+
+# ===== Data Validation / Config =====
+pydantic>=2.0.0
+pydantic-core>=2.0.0
+annotated-types>=0.7.0
+python-dotenv>=1.0.0
+PyYAML>=6.0
+
+# ===== HTTP Clients =====
+requests>=2.31.0
+httpx>=0.27.0
+urllib3>=2.0.0
+websocket-client>=1.7.0
+PySocks>=1.7.1
+python-socks>=2.0.0
+
+# ===== Data Processing =====
+numpy>=1.24.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+
+# ===== Audio (仅 pydub 的容器内解码 API；ffmpeg 二进制由宿主侧服务使用) =====
+pydub>=0.25.0
+
+# ===== Cryptography =====
+paramiko>=3.4.0
+cryptography>=42.0.0
+bcrypt>=4.0.0
+PyNaCl>=1.5.0
+PyJWT>=2.8.0
+
+# ===== Report Generation =====
+reportlab>=4.0.0
+python-docx>=1.1.0
+python-pptx>=1.0.0
+
+# ===== Utilities =====
+colorlog>=6.8.0
+colorama>=0.4.0
+Click>=8.0.0
+filelock>=3.12.0

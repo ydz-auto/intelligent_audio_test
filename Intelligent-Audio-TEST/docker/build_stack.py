@@ -62,9 +62,45 @@ BACKEND_SERVICES = [
 PROBE_TIMEOUT = 20          # 单次引擎探测上限（秒）；引擎「半死」时 docker CLI 会挂到 45s+
 BUILD_TIMEOUT = 3600        # 单次构建上限（秒）
 
+# 共用基座镜像：10 个后端服务的 Python 依赖收敛在这一层（docker/Dockerfile.base）。
+# 单服务 Dockerfile 全部 `FROM ${BASE_IMAGE}`，因此必须在 compose build 之前先建好它；
+# tag 固定不带项目前缀——基座是跨项目共享的基础设施，不随 --project 变化。
+BASE_IMAGE = 'iat-base:latest'
+BASE_DOCKERFILE = 'docker/Dockerfile.base'
+
 
 def _log(msg):
     print(f"[BUILD] {msg}", flush=True)
+
+
+def _base_image_exists():
+    rc, out, _ = _docker('image', 'inspect', '-f', '{{.Id}}', BASE_IMAGE)
+    return rc == 0 and bool(out)
+
+
+def build_base_image(no_cache=False):
+    """构建/复用共用基座镜像。返回 (ok, detail)。"""
+    if not no_cache and _base_image_exists():
+        _log(f'基座镜像已存在，复用 {BASE_IMAGE}（--no-cache 可强制重建）')
+        return True, 'reused'
+    args = ['build', '-f', BASE_DOCKERFILE, '-t', BASE_IMAGE]
+    if no_cache:
+        args.append('--no-cache')
+    args.append('.')
+    for env_name, build_arg in (('APT_MIRROR', 'APT_MIRROR'), ('PIP_INDEX_URL', 'PIP_INDEX_URL')):
+        value = os.environ.get(env_name)
+        if value:
+            args += ['--build-arg', f'{build_arg}={value}']
+    _log('构建共用基座：docker ' + ' '.join(args))
+    started = time.time()
+    try:
+        rc = subprocess.run(['docker', *args], cwd=BASE_DIR, timeout=BUILD_TIMEOUT).returncode
+    except subprocess.TimeoutExpired:
+        return False, f'基座构建超时（>{BUILD_TIMEOUT}s）'
+    if rc != 0:
+        return False, f'基座构建失败（rc={rc}）'
+    return True, f'{time.time() - started:.0f}s'
+
 
 
 def _run(cmd, timeout=PROBE_TIMEOUT, env=None):
@@ -218,6 +254,12 @@ def cmd_build(args):
         _log('恢复见 docker/README.md「引擎崩溃后的恢复清单」。')
         return 3
     _log(f'引擎健康：server={ver}；目标项目：{project}（镜像 tag 前缀 {project}-）')
+
+    # ---- 共用基座：必须先于 compose build（服务 Dockerfile 都是 FROM ${BASE_IMAGE}）----
+    base_ok, base_detail = build_base_image(no_cache=args.no_cache)
+    if not base_ok:
+        _log(f'{base_detail}；服务镜像无法构建（基座缺失）')
+        return 4
 
     before_snap = container_snapshot(project) or {}
     before_imgs = image_identity(project, services)
