@@ -6,8 +6,14 @@
 
 | 文件 | 说明 |
 |------|------|
-| [asr_server.py](asr_server.py) | 本地 ASR HTTP 服务（Silero VAD 切段 + SenseVoice 出文本） |
+| [asr_server.py](asr_server.py) | ASR HTTP 服务本体（Silero VAD 切段 + SenseVoice 出文本） |
+| [asr_control.py](asr_control.py) | **启停 / 守护 / 状态 / 反向隧道 / 登录自启 统一入口**（推荐用这个） |
+| [run_forever_asr.ps1](run_forever_asr.ps1) | 守护壳：子进程退出 5s 后重启（由 `asr_control.py` 拉起） |
+| [ssh_tunnel_asr.ps1](ssh_tunnel_asr.ps1) | 反向隧道：本机 10095 → 服务器 `10.0.0.9:10095` |
+| [autostart_asr.ps1](autostart_asr.ps1) | 登录自启入口（由 `IAT-ASR.vbs` 调用） |
 | [asr_transcribe.py](asr_transcribe.py) | 阿里云百炼录音文件转写示例（云端方案，可选） |
+| [qwen_omni_asr.py](qwen_omni_asr.py) | Qwen-Omni 云端 ASR 示例（可选） |
+| [word_timestamps.py](word_timestamps.py) | 逐词时间戳工具 |
 
 ## 设计目标
 
@@ -57,13 +63,84 @@ cp .env.example .env
 
 ### 启动
 
+推荐用 `asr_control.py`（带守护、状态、隧道与日志）：
+
+```bash
+python asr_server/asr_control.py start --with-tunnel
+```
+
+前台调试时也可以直接跑：
+
 ```bash
 python asr_server.py
 ```
 
-启动时预加载模型（首次下载 SenseVoice ~900MB），随后监听 `0.0.0.0:10095`。
+启动时预加载模型（首次下载 SenseVoice ~900MB），随后监听 `0.0.0.0:10095`；
+模型加载完成前 `/health` 的 `*_loaded` 仍为 `false`（分钟级，见「就绪判定」）。
+启停 / 自启 / 排障见下文「启停、守护与自启」与「故障排查」。
 
 > **代理注意**：ModelScope 为国内站点，代码已自动清除 `HTTP_PROXY` / `HTTPS_PROXY` 等代理环境变量，避免 SSL 握手失败。如仍遇到下载问题，请检查系统代理设置。
+
+## 启停、守护与自启
+
+统一入口 [asr_control.py](asr_control.py)，不需要手工 `taskkill` 或注册计划任务。
+
+| 命令 | 作用 |
+|------|------|
+| `python asr_server/asr_control.py start [--with-tunnel] [--timeout 180]` | 启动守护 + 服务（可一并拉起隧道），等到端口可连 |
+| `python asr_server/asr_control.py stop` | 落 stop 标记 → 杀监听进程 → 收守护；三步都做才保证不复活 |
+| `python asr_server/asr_control.py restart --with-tunnel` | 先 stop 再 start |
+| `python asr_server/asr_control.py status` | 查看解释器 / 端口 / 守护 / 隧道 / health |
+| `python asr_server/asr_control.py tunnel-start` / `tunnel-stop` | 只操作反向隧道 |
+| `python asr_server/asr_control.py install-autostart` / `uninstall-autostart` | 写入 / 移除登录自启 |
+
+进程模型（启动后脱离当前终端，关窗口不退出）：
+
+```
+asr_control.py start --with-tunnel
+  ├─ WMI 拉起 → powershell run_forever_asr.ps1   while($true)：子进程退出 5s 重启
+  │                └─ python asr_server.py        （无控制台窗口）
+  └─ WMI 拉起 → ssh_tunnel_asr.ps1                while($true)：断线 5s 重连
+                   └─ ssh -N -R 10.0.0.9:10095:127.0.0.1:10095 ubuntu@106.54.49.79
+```
+
+`status` 输出示例：
+
+```
+解释器   : C:\...\Python310\python.exe
+入口     : E:\...\asr_server\asr_server.py (exists=True)
+服务端口 : :10095 listening=True pid=16040
+守护进程 : alive=True pid=15320
+守护日志 : E:\...\asr_server\logs\asr.supervisor.log
+反向隧道 : 运行中 pid=[17244]
+健康检查 : {'status': 'ok', 'vad_loaded': True, 'asr_loaded': True, 'paraformer_loaded': True}
+```
+
+**解释器**：ASR 依赖 funasr/torch，`asr_control.py` 按
+`ASR_PYTHON` 环境变量 → 仓库根 `.env` 的 `ASR_PYTHON` → 当前 Python 的顺序解析，
+守护子进程也用它（不是运行 control 的那个解释器）。指错环境会每 5 秒重启一次。
+
+**自启**：`install-autostart` 写
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\IAT-ASR.vbs`，登录时无窗口调起
+`autostart_asr.ps1` → `asr_control.py start --with-tunnel`。只由登录触发、不注册计划任务，
+所以 `stop` 之后不会被顶回来。
+
+**反向隧道**：固定为 `-R 10.0.0.9:10095:127.0.0.1:10095 ubuntu@106.54.49.79`，依赖服务器
+sshd 的 `GatewayPorts clientspecified` 与本机公钥免密。服务器侧自检：
+
+```bash
+curl -s http://10.0.0.9:10095/health
+```
+
+**日志**：
+
+| 文件 | 内容 |
+|------|------|
+| `logs/asr_server.log` | 服务业务日志（含模型加载、请求） |
+| `logs/asr_server.stdout.log` / `logs/asr_server.stderr.log` | 子进程标准输出 / 错误（崩溃 traceback 在这里） |
+| `logs/asr.supervisor.log` | 守护启停与重启记录 |
+| `logs/asr.supervisor.pid` / `logs/asr.supervisor.stop` | 守护 PID / 停止标记 |
+| `logs/autostart_asr.log` | 登录自启执行记录 |
 
 ## 配置项
 
@@ -290,3 +367,35 @@ transcribe(
 ```
 
 > 云端方案为异步转写，适合批量离线处理；本地 `asr_server.py` 为同步推理，适合实时性要求高的自动化测试场景。
+
+## 故障排查
+
+### 守护日志反复出现 `child exited rc= uptime=24s`
+
+说明子进程启动即退出、守护在无限重启。先看 `logs/asr_server.stderr.log` 里的 traceback。
+
+**已修复的坑（2026-11-24）**：用 `pythonw.exe` 启动时 `sys.stdout` / `sys.stderr` 为 `None`，
+uvicorn 在启动阶段抛 `AttributeError` 并以 `rc=1` 退出，且**不产生任何输出**；同一份代码用
+`python.exe` 完全正常。现在 `run_forever_asr.ps1` 检测到 `pythonw.exe` 会自动替换为同目录的
+`python.exe`（窗口仍由外层 `-WindowStyle Hidden` 隐藏），并把子进程输出重定向到
+`logs/asr_server.stdout.log` / `logs/asr_server.stderr.log`，后续崩溃能看到真实堆栈。
+
+### `start` 等到超时，但进程还活着
+
+模型加载是分钟级（实测 58–78s，机器有负载时更久）。用
+`curl -s http://127.0.0.1:10095/health` 轮询，三个 `*_loaded` 全为 `true` 才算就绪；
+必要时加大 `--timeout 300`。
+
+### 隧道起不来 / 起来就退出
+
+`ssh -R` 开启 `ExitOnForwardFailure=yes`，远端绑定失败会立即退出（避免出现假隧道）。
+常见原因：远端 `10.0.0.9:10095` 已被别的连接占用（上一次隧道没退干净）、sshd 未开启
+`GatewayPorts clientspecified`、公钥免密失效。先手工 `ssh ubuntu@106.54.49.79` 验证连通性。
+
+### 端口被占用
+
+```powershell
+netstat -ano | findstr :10095
+```
+
+不要直接 `taskkill`：先执行 `python asr_server/asr_control.py stop`，否则守护进程会立刻把它拉起来。

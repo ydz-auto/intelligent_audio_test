@@ -17,14 +17,17 @@ $sshArgs = @(
 
 while ($true) {
   Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] starting ssh reverse tunnel ..."
+  # 直接在当前（headless）控制台启动 ssh，不新建窗口
   & ssh @sshArgs 2>&1 | ForEach-Object { Write-Host $_ }
   Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] tunnel exited, restart in 5s ..."
   Start-Sleep -Seconds 5
 }
 
-# ─── 注册计划任务（登录时自启，无需管理员）────────────────────────────
-# $task = New-ScheduledTaskAction -Execute 'powershell.exe' `
-#   -Argument '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "E:\w60085971\intelligent_audio_test\asr_server\ssh_tunnel_asr.ps1"'
+# ─── 注册计划任务（conhost --headless，彻底无窗口）─────────────────────
+# Windows 默认终端是 Windows Terminal 时，-WindowStyle Hidden 无效（会被 WT 托管弹窗），
+# 因此用 conhost --headless 启 powershell，控制台完全无窗口。
+# $task = New-ScheduledTaskAction -Execute 'conhost.exe' `
+#   -Argument '--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\w60085971\intelligent_audio_test\asr_server\ssh_tunnel_asr.ps1"'
 # $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 # $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
 # Register-ScheduledTask -TaskName 'ASR-SSH-Tunnel' -Action $task -Trigger $trigger -Settings $settings -Force

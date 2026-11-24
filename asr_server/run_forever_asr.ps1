@@ -12,6 +12,17 @@ param(
 $ErrorActionPreference = 'Continue'
 $WorkDir = Split-Path -Parent $Entry
 
+# pythonw.exe is a GUI-subsystem binary: sys.stdout and sys.stderr are None, so
+# uvicorn aborts during startup with exit code 1 and no traceback. Prefer the
+# console python.exe from the same folder; the hidden console window still comes
+# from the "-WindowStyle Hidden" launcher that starts this script.
+if ((Split-Path -Leaf $Python) -ieq 'pythonw.exe') {
+  $consolePy = Join-Path (Split-Path -Parent $Python) 'python.exe'
+  if (Test-Path $consolePy) { $Python = $consolePy }
+}
+$ChildOut = Join-Path (Split-Path -Parent $LogPath) 'asr_server.stdout.log'
+$ChildErr = Join-Path (Split-Path -Parent $LogPath) 'asr_server.stderr.log'
+
 # WMI-created processes get the provider's minimal environment, so the caller
 # dumps its full environment to JSON and we apply it here before spawning.
 if ($EnvFile -and (Test-Path $EnvFile)) {
@@ -34,10 +45,11 @@ while ($true) {
   if (Test-Path $StopFlag) { Write-Log 'stop flag found, exit'; break }
   $started = Get-Date
   try {
-    # pythonw.exe is a GUI subsystem binary: Start-Process + WaitForExit is the
-    # only reliable way to get its real exit code (plain & returns immediately).
+    # Redirect child output so a crash traceback is never lost (pythonw, if used
+    # via -Python, would swallow it entirely).
     $proc = Start-Process -FilePath $Python -ArgumentList @($Entry) `
-      -WorkingDirectory $WorkDir -NoNewWindow -PassThru
+      -WorkingDirectory $WorkDir -NoNewWindow -PassThru `
+      -RedirectStandardOutput $ChildOut -RedirectStandardError $ChildErr
     $proc.WaitForExit()
     $rc = $proc.ExitCode
   } catch {
