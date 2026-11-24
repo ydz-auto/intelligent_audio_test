@@ -160,8 +160,13 @@ def host_env() -> dict:
     env['DATABASE_URL'] = (
         f'postgresql://{user}:{password}@127.0.0.1:{infra[5432]}/{database}')
     env['REDIS_URL'] = f"redis://127.0.0.1:{infra[6379]}"
-    env['OSS_ENDPOINT'] = f"http://127.0.0.1:{infra[9000]}"
-    env['OSS_PUBLIC_ENDPOINT'] = f"http://127.0.0.1:{infra[9000]}"
+    # STORAGE_BACKEND=local 时宿主服务只落本地磁盘，不注入（也不探测）对象存储地址
+    if (env.get('STORAGE_BACKEND') or 'auto').strip().lower() == 'local':
+        env.pop('OSS_ENDPOINT', None)
+        env.pop('OSS_PUBLIC_ENDPOINT', None)
+    else:
+        env['OSS_ENDPOINT'] = f"http://127.0.0.1:{infra[9000]}"
+        env['OSS_PUBLIC_ENDPOINT'] = f"http://127.0.0.1:{infra[9000]}"
 
     for container_port, env_name in _GRPC_ENV_BY_CONTAINER_PORT.items():
         if container_port in ports:
@@ -175,9 +180,7 @@ def host_env() -> dict:
     env['DEVICE_SERVICE_GRPC_PORT'] = str(DEVICE_PORT)
     # 容器经 host.docker.internal 访问宿主服务，必须绑全部网卡
     env['SERVICE_HOST'] = '0.0.0.0'
-    # COS 的 S3 接口只接受 virtual-hosted style；本机 audio/device 也走 COS
-    env['AWS_CONFIG_FILE'] = str(Path(__file__).with_name('aws_config'))
-    # 生产形态：本机只跑硬件服务，数据面（DB/Redis/COS）在腾讯云
+    # 生产形态：本机只跑硬件服务，数据面（DB/Redis/对象存储）在服务器
     remote_env = REPO / 'logs' / 'host_services' / 'remote.env'
     if remote_env.is_file():
         for line in remote_env.read_text(encoding='utf-8').splitlines():

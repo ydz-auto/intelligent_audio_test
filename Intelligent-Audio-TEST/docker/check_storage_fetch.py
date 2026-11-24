@@ -10,7 +10,6 @@ for line in env_path.read_text(encoding='utf-8').splitlines():
         key, value = line.split('=', 1)
         os.environ.setdefault(key.strip(), value.strip())
 
-os.environ['AWS_CONFIG_FILE'] = str(repo / 'scripts' / 'host_services' / 'aws_config')
 sys.path.insert(0, str(repo))
 
 from shared.infrastructure.storage import storage

@@ -133,8 +133,14 @@ class Storage:
             self._oss_checked = True
         return ok
 
+    def _local_backend(self) -> bool:
+        """STORAGE_BACKEND=local：只落本地磁盘，不探测/不访问任何 S3 兼容存储。"""
+        return getattr(BaseConfig, 'STORAGE_BACKEND', 'auto') == 'local'
+
     def _use_oss(self) -> bool:
         """决定本次操作是否走 OSS。"""
+        if self._local_backend():
+            return False
         if not BaseConfig.STORAGE_FALLBACK_ENABLED:
             # 未开启降级：强制走 OSS（不可用则由调用方处理异常）
             return True
@@ -210,7 +216,7 @@ class Storage:
             if self._use_oss():
                 self._oss.upload_file(local_path, category, key)
                 return f'{_SCHEME_OSS}{category}/{key}'
-            if not allow_fallback:
+            if not allow_fallback and not self._local_backend():
                 raise StorageUnavailableError(
                     f'OSS 不可用，且调用方禁止本地降级: save_file {category}/{key}')
         except StorageUnavailableError:
@@ -244,7 +250,7 @@ class Storage:
                 self._oss.upload_bytes(data, category, key,
                                        content_type=content_type)
                 return f'{_SCHEME_OSS}{category}/{key}'
-            if not allow_fallback:
+            if not allow_fallback and not self._local_backend():
                 raise StorageUnavailableError(
                     f'OSS 不可用，且调用方禁止本地降级: save_bytes {category}/{key}')
         except StorageUnavailableError:
@@ -279,7 +285,7 @@ class Storage:
                 self._oss.upload_stream(stream, category, key,
                                         content_type=content_type)
                 return f'{_SCHEME_OSS}{category}/{key}'
-            if not allow_fallback:
+            if not allow_fallback and not self._local_backend():
                 raise StorageUnavailableError(
                     f'OSS 不可用，且调用方禁止本地降级: save_stream {category}/{key}')
         except StorageUnavailableError:
@@ -354,7 +360,7 @@ class Storage:
             local_path = tempfile.mktemp(suffix=suffix)
 
         if scheme == 'local':
-            if not allow_fallback:
+            if not allow_fallback and not self._local_backend():
                 raise StorageUnavailableError(
                     f'禁止从本地降级副本读取（allow_fallback=False）: {path}')
             src = self._local_path(category, key)
@@ -386,6 +392,14 @@ class Storage:
                 _warn_oss_throttled(
                     f'load_file server proxy failed, try OSS: {e}',
                     category=category)
+        if self._local_backend():
+            for src in (self._cache_path(category, key),
+                        self._local_path(category, key)):
+                if os.path.exists(src):
+                    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+                    shutil.copy2(src, local_path)
+                    return local_path
+            raise FileNotFoundError(f'文件不存在（本地存储根）: {path}')
         try:
             return self._oss.download_file(category, key, local_path)
         except Exception as e:
@@ -413,7 +427,7 @@ class Storage:
         scheme, category, key = self._parse_path(path)
 
         if scheme == 'local':
-            if not allow_fallback:
+            if not allow_fallback and not self._local_backend():
                 raise StorageUnavailableError(
                     f'禁止从本地降级副本读取（allow_fallback=False）: {path}')
             src = self._local_path(category, key)
@@ -436,6 +450,13 @@ class Storage:
                 _warn_oss_throttled(
                     f'load_bytes server proxy failed, try OSS: {e}',
                     category=category)
+        if self._local_backend():
+            for src in (self._cache_path(category, key),
+                        self._local_path(category, key)):
+                if os.path.exists(src):
+                    with open(src, 'rb') as f:
+                        return f.read()
+            raise FileNotFoundError(f'文件不存在（本地存储根）: {path}')
         try:
             return self._oss.download_bytes(category, key)
         except Exception as e:
@@ -468,6 +489,13 @@ class Storage:
             if os.path.isfile(cache):
                 return open(cache, 'rb')
 
+        if self._local_backend():
+            for src in (self._cache_path(category, key),
+                        self._local_path(category, key)):
+                if os.path.isfile(src):
+                    return open(src, 'rb')
+            raise FileNotFoundError(f'文件不存在（本地存储根）: {path}')
+
         return self._oss.download_stream(category, key)
 
     # ---- 公开 API：管理 ----
@@ -482,6 +510,10 @@ class Storage:
         if self._local_cache_enabled() and os.path.isfile(
                 self._cache_path(category, key)):
             return True
+
+        if self._local_backend():
+            return (os.path.isfile(self._cache_path(category, key))
+                    or os.path.isfile(self._local_path(category, key)))
 
         # OSS
         try:
@@ -509,6 +541,14 @@ class Storage:
                 return os.path.getsize(cache)
             except OSError:
                 return None
+        if self._local_backend():
+            for src in (self._cache_path(category, key),
+                        self._local_path(category, key)):
+                try:
+                    return os.path.getsize(src)
+                except OSError:
+                    continue
+            return None
         if self._server_fetch_base():
             # 服务器代理回源没有本地 size；尝试直接 HEAD OSS
             pass
@@ -521,8 +561,8 @@ class Storage:
         """删除文件（OSS 和本地降级副本都会清理）。"""
         scheme, category, key = self._parse_path(path)
 
-        # 先删 OSS
-        if scheme != 'local':
+        # 先删 OSS（local 后端没有对象存储）
+        if scheme != 'local' and not self._local_backend():
             try:
                 self._oss.delete_object(category, key)
             except Exception as e:
@@ -545,24 +585,25 @@ class Storage:
         :param prefix: key 前缀
         :return: 逻辑 key 列表（不含 category/ 前缀）
         """
-        try:
-            return self._oss.list_objects(category, prefix)
-        except Exception as e:
-            _warn_oss_throttled(
-                f'list_objects OSS failed: {e}',
-                category=category)
-            # 回退：列举本地降级副本
-            local_base = self._local_path(category, '')
-            local_root = os.path.join(local_base, prefix) if prefix else local_base
-            results = []
-            if os.path.isdir(local_root):
-                for root, _dirs, files in os.walk(local_root):
-                    for fname in files:
-                        full = os.path.join(root, fname)
-                        rel = os.path.relpath(full, local_base)
-                        rel = rel.replace(os.sep, '/')
-                        results.append(rel)
-            return results
+        if not self._local_backend():
+            try:
+                return self._oss.list_objects(category, prefix)
+            except Exception as e:
+                _warn_oss_throttled(
+                    f'list_objects OSS failed: {e}',
+                    category=category)
+        # 回退：列举本地降级副本（local 后端只走这里）
+        local_base = self._local_path(category, '')
+        local_root = os.path.join(local_base, prefix) if prefix else local_base
+        results = []
+        if os.path.isdir(local_root):
+            for root, _dirs, files in os.walk(local_root):
+                for fname in files:
+                    full = os.path.join(root, fname)
+                    rel = os.path.relpath(full, local_base)
+                    rel = rel.replace(os.sep, '/')
+                    results.append(rel)
+        return results
 
     def list_objects_with_meta(self, category: str, prefix: str = '') -> list:
         """列出指定类别+前缀下的对象 key 及元数据（sizeBytes/lastModified）。
@@ -573,32 +614,33 @@ class Storage:
         :param prefix: key 前缀
         :return: [{key, sizeBytes, lastModified}]（key 为逻辑 key，不含 category/ 前缀）
         """
-        try:
-            return self._oss.list_objects_with_meta(category, prefix)
-        except Exception as e:
-            _warn_oss_throttled(
-                f'list_objects_with_meta OSS failed: {e}',
-                category=category)
-            # 回退：列举本地降级副本
-            local_base = self._local_path(category, '')
-            local_root = os.path.join(local_base, prefix) if prefix else local_base
-            results = []
-            if os.path.isdir(local_root):
-                for root, _dirs, files in os.walk(local_root):
-                    for fname in files:
-                        full = os.path.join(root, fname)
-                        rel = os.path.relpath(full, local_base)
-                        rel = rel.replace(os.sep, '/')
-                        try:
-                            st = os.stat(full)
-                        except OSError:
-                            continue
-                        results.append({
-                            'key': rel,
-                            'sizeBytes': st.st_size,
-                            'lastModified': datetime.fromtimestamp(st.st_mtime, tz=timezone.utc),
-                        })
-            return results
+        if not self._local_backend():
+            try:
+                return self._oss.list_objects_with_meta(category, prefix)
+            except Exception as e:
+                _warn_oss_throttled(
+                    f'list_objects_with_meta OSS failed: {e}',
+                    category=category)
+        # 回退：列举本地降级副本（local 后端只走这里）
+        local_base = self._local_path(category, '')
+        local_root = os.path.join(local_base, prefix) if prefix else local_base
+        results = []
+        if os.path.isdir(local_root):
+            for root, _dirs, files in os.walk(local_root):
+                for fname in files:
+                    full = os.path.join(root, fname)
+                    rel = os.path.relpath(full, local_base)
+                    rel = rel.replace(os.sep, '/')
+                    try:
+                        st = os.stat(full)
+                    except OSError:
+                        continue
+                    results.append({
+                        'key': rel,
+                        'sizeBytes': st.st_size,
+                        'lastModified': datetime.fromtimestamp(st.st_mtime, tz=timezone.utc),
+                    })
+        return results
 
     def get_url(self, path: str, expires: int = 3600) -> Optional[str]:
         """获取文件访问 URL。
@@ -608,7 +650,7 @@ class Storage:
         """
         scheme, category, key = self._parse_path(path)
 
-        if scheme == 'local':
+        if scheme == 'local' or self._local_backend():
             return None
 
         try:

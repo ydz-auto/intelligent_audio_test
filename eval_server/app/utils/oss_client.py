@@ -47,8 +47,10 @@ class OSSClient:
 
     @property
     def enabled(self) -> bool:
-        """是否启用了 OSS 能力（是否配置了 OSS_ENDPOINT）。"""
+        """是否启用了 OSS 能力（后端非 local 且配置了 OSS_ENDPOINT）。"""
         from ..config import config
+        if getattr(config, 'STORAGE_BACKEND', 'auto') == 'local':
+            return False
         return bool(config.OSS_ENDPOINT)
 
     def _ensure_init(self):
@@ -62,6 +64,8 @@ class OSSClient:
             if self._initialized:
                 return
             from ..config import config
+            if getattr(config, 'STORAGE_BACKEND', 'auto') == 'local':
+                raise RuntimeError('STORAGE_BACKEND=local，OSS 能力未启用')
             if not config.OSS_ENDPOINT:
                 raise RuntimeError('OSS_ENDPOINT 未配置，OSS 能力未启用')
             # 懒导入 boto3：仅在 OSS 配置存在时引入
@@ -74,6 +78,9 @@ class OSSClient:
                 )
             self._bucket = config.OSS_BUCKET_NAME
             self._key_prefix = (config.OSS_KEY_PREFIX or '').strip('/')
+            # COS 只接受 virtual-hosted 寻址，RustFS/MinIO 用 path；由后端配置决定
+            style = (getattr(config, 'OSS_ADDRESSING_STYLE', '') or '').strip().lower()
+            s3_options = {'addressing_style': style} if style in ('path', 'virtual') else {}
             self._client = boto3.client(
                 's3',
                 endpoint_url=config.OSS_ENDPOINT,
@@ -87,6 +94,7 @@ class OSSClient:
                     retries={'max_attempts': 3, 'mode': 'standard'},
                     connect_timeout=5,
                     read_timeout=120,
+                    s3=s3_options,
                 ),
                 region_name=config.OSS_REGION,
             )
