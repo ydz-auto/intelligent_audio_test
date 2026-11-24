@@ -147,4 +147,31 @@ describe('AiChatEmptyState', () => {
       screen.queryByRole('button', { name: /系统设置/ })
     ).not.toBeInTheDocument()
   })
+
+  it('能力分组网格按容器宽度分栏（窄浮窗单列）：用容器查询断点而非视口断点', () => {
+    render(<AiChatEmptyState onFillPrompt={vi.fn()} />)
+    const groupsGrid = screen.getByText('全能力分组')
+      .nextElementSibling as HTMLElement
+    expect(groupsGrid.className).toContain('@xl:grid-cols-2')
+    expect(groupsGrid.className).not.toMatch(/(^|\s)sm:grid-cols-2(\s|$)/)
+  })
+
+  it('提示词芯片高度随内容自增：多行文案不溢出固定高度（min-h 而非 h-6）', () => {
+    useAuthStore.getState().setAuth({
+      id: 'u1',
+      username: 'demo_admin',
+      displayName: '演示管理员',
+      roleName: '超级管理员',
+      permissions: ['*'],
+    })
+    render(<AiChatEmptyState onFillPrompt={vi.fn()} />)
+    const executableChip = screen.getByRole('button', {
+      name: '扫描播放设备，为豆包 APP 生成 Android 驱动',
+    })
+    expect(executableChip.className).toContain('min-h-6')
+    expect(executableChip.className).not.toMatch(/(^|\s)h-6(\s|$)/)
+    const pendingChip = screen.getByText('待接入').parentElement as HTMLElement
+    expect(pendingChip.className).toContain('min-h-6')
+    expect(pendingChip.className).not.toMatch(/(^|\s)h-6(\s|$)/)
+  })
 })

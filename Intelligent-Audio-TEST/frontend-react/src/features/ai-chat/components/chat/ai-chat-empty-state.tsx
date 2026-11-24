@@ -58,7 +58,7 @@ export function AiChatEmptyState({
           : 'flex min-h-[min(520px,calc(100svh-18rem))] items-center justify-center px-1 py-8 md:py-12'
       }
     >
-      <div className='grid w-full max-w-2xl gap-5 text-center'>
+      <div className='@container grid w-full max-w-2xl gap-5 text-center'>
         <div className='bg-muted/50 text-muted-foreground mx-auto flex size-11 items-center justify-center rounded-xl border'>
           <MessagesSquare className='size-5' aria-hidden='true' />
         </div>
@@ -85,7 +85,7 @@ export function AiChatEmptyState({
                   onClick={() => onFillPrompt(prompt)}
                   variant='outline'
                 >
-                  <Icon className='text-muted-foreground size-4' />
+                  <Icon className='text-muted-foreground size-4 shrink-0' />
                   <span>{label}</span>
                 </Button>
               ))}
@@ -97,7 +97,7 @@ export function AiChatEmptyState({
           <h3 className='text-muted-foreground text-xs font-semibold tracking-wide'>
             {EMPTY_STATE_COPY.capabilityGroupsTitle}
           </h3>
-          <div className='grid gap-2 sm:grid-cols-2'>
+          <div className='grid gap-2 @xl:grid-cols-2'>
             {visibleGroups.map((group) => {
               const executable =
                 group.requiredPermission !== null &&
@@ -116,7 +116,7 @@ export function AiChatEmptyState({
                   )}
                   key={group.key}
                 >
-                  <div className='flex items-center gap-2'>
+                  <div className='flex items-start gap-2'>
                     <group.icon
                       className='text-muted-foreground size-4 shrink-0'
                       aria-hidden='true'
@@ -135,14 +135,14 @@ export function AiChatEmptyState({
                   </div>
                   {executable && group.prompt ? (
                     <button
-                      className='text-muted-foreground hover:text-foreground hover:bg-accent mt-2 flex h-6 w-full cursor-pointer items-center gap-1 rounded-md border px-2 text-xs transition-colors'
+                      className='text-muted-foreground hover:text-foreground hover:bg-accent mt-2 flex min-h-6 w-full cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-left text-xs leading-snug whitespace-normal transition-colors'
                       onClick={() => onFillPrompt(group.prompt!)}
                       type='button'
                     >
                       {group.prompt}
                     </button>
                   ) : (
-                    <span className='text-muted-foreground/80 mt-2 flex h-6 w-full items-center gap-1 rounded-md border border-dashed px-2 text-xs'>
+                    <span className='text-muted-foreground/80 mt-2 flex min-h-6 w-full items-center gap-1 rounded-md border border-dashed px-2 py-1 text-xs leading-snug'>
                       {group.prompt ?? '待后端立项'}
                       <Badge className='ms-auto shrink-0' variant='warning'>
                         {EMPTY_STATE_COPY.capabilityPendingBadge}
