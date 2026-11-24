@@ -243,6 +243,7 @@ Intelligent-Audio-TEST/
 
 ## 相关文档
 
+- [部署与运行指南](docs/部署指南.md)（Docker 栈 / 宿主执行器 / ASR）
 - [系统架构](docs/系统架构.md) / [微服务](docs/微服务.md) / [DDD 重构](docs/DDD重构.md)
 - [RBAC 权限划分](docs/RBAC权限划分.md) / [OAuth](docs/oauth.md) / [迁移验证报告](docs/迁移验证报告.md)
 - [分布式协调器](docs/分布式协调器.md)
