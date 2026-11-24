@@ -227,7 +227,8 @@ class TaskLifecycleMixin:
 
         - selected: 仅命中 case_ids 的 task_cases（无论已完成/失败，交由
           调用方按既有 retry 状态机分流处理）；
-        - failed_only: 执行失败或评估失败的用例。
+        - failed_only: 执行失败/中断或评估失败/中断的用例（与任务级
+          failed_cases 计数口径一致：stopped 也计入失败）。
         其余用例一律不动（不重置、不清结果、不重新入队）。
         """
         from shared.models.common_enums import RetryScopeMode
@@ -240,9 +241,16 @@ class TaskLifecycleMixin:
             if mode == RetryScopeMode.SELECTED.value:
                 q = q.filter(TaskCase.test_case_id.in_([str(c) for c in (selected_case_ids or [])]))
             elif mode == RetryScopeMode.FAILED_ONLY.value:
+                # 停止任务会把未完成用例标记为 stopped，任务级 failed_cases
+                # 也按失败展示；这里必须一并纳入，否则「重新执行失败用例」
+                # 在已停止任务上会查到 0 条并直接返回“没有需要重试的用例”。
                 q = q.filter(or_(
-                    TaskCase.execution_status == ExecutionStatus.FAILED,
-                    TaskCase.evaluation_status == EvaluationStatus.FAILED,
+                    TaskCase.execution_status.in_([
+                        ExecutionStatus.FAILED, ExecutionStatus.STOPPED,
+                    ]),
+                    TaskCase.evaluation_status.in_([
+                        EvaluationStatus.FAILED, EvaluationStatus.STOPPED,
+                    ]),
                 ))
             cases = q.all()
             session.expunge_all()

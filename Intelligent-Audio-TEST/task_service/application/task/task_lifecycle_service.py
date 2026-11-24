@@ -121,7 +121,7 @@ class TaskLifecycleService:
 
         INT-302：options 可选 {case_ids: [str], mode: 'selected'|'failed_only'|'all'}——
         selected 时仅重执行指定用例（状态机对齐既有 retry 语义：结果重置、
-        队列重新入队）；failed_only 仅执行失败/评估失败用例；缺省 all 保持
+        队列重新入队）；failed_only 仅执行失败/中断或评估失败/中断用例；缺省 all 保持
         整任务语义（既有调用方零改动）。
         """
         options = options or {}
