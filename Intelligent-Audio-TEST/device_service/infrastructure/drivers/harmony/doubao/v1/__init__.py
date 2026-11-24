@@ -326,32 +326,19 @@ class DoubaoChat(Xiaoyilivechat):
           - 无首帧(从未真正捕获): 跳过 toggle(避免停变开),直接 force-stop 清残留态。
         两条路径末尾都 force-stop 一次(幂等),保证 screenrecorder 不残留。
         """
-        if not getattr(self, '_record_enabled', True):
-            self._log(level='DEBUG',
-                      content="录屏已配置关闭(device_recording.enabled=false), 跳过停止/force-stop",
-                      task_id=task_id, test_case_id=test_case_id)
-            return True
         first_frame = getattr(self, '_recorder_first_frame_ms', None)
-        stopped = True
         if first_frame is not None:
             self._log(level='INFO',
                       content=f"[录屏] _stop_recorder: 首帧已记录({first_frame}),graceful toggle + force-stop 兜底",
                       task_id=task_id, test_case_id=test_case_id)
-            # 接住 graceful toggle 的收尾结果：False 表示 size 仍未稳定（moov 还没写完），
-            # 此时 force-stop 会杀掉录制进程导致该段 mp4 永久缺 moov，必须留痕
-            stopped = super()._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id)
-            if not stopped:
-                self._log(level='ERROR',
-                          content=(f"[录屏] graceful 停止未收尾(size 仍未稳定), 即将 force-stop, "
-                                   f"本段 mp4 可能缺 moov 被丢弃: {getattr(self, '_record_file_name', None)}"),
-                          task_id=task_id, test_case_id=test_case_id)
+            super()._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id)
             time.sleep(2)  # 给 graceful toggle 落盘 finalizes mp4 的时间
         else:
             self._log(level='WARNING',
                       content="[录屏] _stop_recorder: 首帧为 None(录屏未真正启动),跳过 toggle 直接 force-stop(避免停变开)",
                       task_id=task_id, test_case_id=test_case_id)
         self._force_stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id)
-        return stopped
+        return True
 
     # ------------------------------------------------------------------
     # 生命周期
@@ -541,17 +528,6 @@ class DoubaoChat(Xiaoyilivechat):
                           task_id=task_id, test_case_id=test_case_id)
                 return False
 
-        # 录屏总开关（配置化临时降级）：关闭时跳过录屏启动，仅采集 PCM；
-        # get_results 会走 _record_enabled=False 分支，用 ai_wav 充当评估音频
-        self._record_enabled = self._recording_allowed()
-        if not self._record_enabled:
-            self._recording = False
-            self._record_device_path = None
-            self._log(level='WARNING',
-                      content=("录屏已配置关闭(device_recording.enabled=false), "
-                               "本轮不启动录屏, 仅采集 PCM"),
-                      task_id=task_id, test_case_id=test_case_id)
-            return True
         # 开启录屏
         if record_mode == 'case':
             # 整用例一个文件，不带轮次后缀
@@ -759,10 +735,7 @@ class DoubaoChat(Xiaoyilivechat):
                           task_id=task_id, test_case_id=test_case_id)
 
         # 2. case 模式兜底：末轮 post_process 异常未拉取时，补拉一次完整录屏，避免整段录屏丢失
-        # 录屏配置关闭时没有 mp4 产物，跳过 case 兜底拉取
-        if (getattr(self, '_record_mode', 'round') == 'case'
-                and getattr(self, '_record_enabled', True)
-                and not getattr(self, '_record_pulled', False)):
+        if getattr(self, '_record_mode', 'round') == 'case' and not getattr(self, '_record_pulled', False):
             pulled = self._pull_record_file(device_sn, task_id=task_id, test_case_id=test_case_id)
             if pulled:
                 self._log(level='INFO', content=f"teardown: 兜底拉取录屏成功: {pulled}",

@@ -571,17 +571,6 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                   content="已点击蓝色语音按钮,进入语音通话" if entered else "进入语音通话校验未通过(继续)",
                   task_id=task_id, test_case_id=test_case_id)
 
-        # 录屏总开关（配置化临时降级）：关闭时跳过录屏启动，仅采集 PCM；
-        # get_results 会走 _record_enabled=False 分支，用 ai_wav 充当评估音频
-        self._record_enabled = self._recording_allowed()
-        if not self._record_enabled:
-            self._recording = False
-            self._record_device_path = None
-            self._log(level='WARNING',
-                      content=("录屏已配置关闭(device_recording.enabled=false), "
-                               "本轮不启动录屏, 仅采集 PCM"),
-                      task_id=task_id, test_case_id=test_case_id)
-            return True
         # 开启录屏
         if record_mode == 'case':
             self._record_file_name = f"{test_case_id}.mp4"
@@ -723,10 +712,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                           task_id=task_id, test_case_id=test_case_id)
 
         # case 模式兜底：末轮 post_process 异常未拉取时，补拉一次完整录屏
-        # 录屏配置关闭时没有 mp4 产物，跳过 case 兜底拉取
-        if (getattr(self, '_record_mode', 'round') == 'case'
-                and getattr(self, '_record_enabled', True)
-                and not getattr(self, '_record_pulled', False)):
+        if getattr(self, '_record_mode', 'round') == 'case' and not getattr(self, '_record_pulled', False):
             pulled = self._pull_record_file(device_sn, task_id=task_id, test_case_id=test_case_id)
             if pulled:
                 self._log(level='INFO', content=f"teardown: 兜底拉取录屏成功: {pulled}",
