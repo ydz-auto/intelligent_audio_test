@@ -44,6 +44,31 @@ def _env_bool(name: str, default: bool) -> bool:
     return v == '1' if v is not None else default
 
 
+_STORAGE_BACKENDS = ('auto', 'cos', 'rustfs', 'local')
+_STORAGE_BACKEND_ALIASES = {
+    's3': 'auto', 'oss': 'auto', 'object': 'auto',
+    'minio': 'rustfs',
+    'disk': 'local', 'filesystem': 'local', 'fs': 'local',
+}
+
+
+def _normalize_storage_backend(raw: str) -> str:
+    val = (raw or 'auto').strip().lower()
+    val = _STORAGE_BACKEND_ALIASES.get(val, val)
+    return val if val in _STORAGE_BACKENDS else 'auto'
+
+
+def _resolve_addressing_style(backend: str, raw: str) -> str:
+    val = (raw or '').strip().lower()
+    if val in ('path', 'virtual'):
+        return val
+    if backend == 'cos':
+        return 'virtual'
+    if backend == 'rustfs':
+        return 'path'
+    return ''
+
+
 class Config:
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
     # 项目根目录（与 Intelligent-Audio-TEST 保持一致）
@@ -63,6 +88,16 @@ class Config:
 
     # 上传文件临时目录
     UPLOAD_DIR = os.path.join(DATA_DIR, 'uploads')
+
+    # 存储后端（与主项目对齐）：auto / cos / rustfs / local
+    #   auto   —— 配了 OSS_ENDPOINT 就用对象存储（兼容旧行为），否则本地
+    #   cos    —— 腾讯云 COS（virtual-hosted 寻址）
+    #   rustfs —— 自建 RustFS / MinIO（path 寻址）
+    #   local  —— 只用本地磁盘，oss:// 解析能力关闭
+    STORAGE_BACKEND = _normalize_storage_backend(
+        _env('STORAGE_BACKEND', _yaml.get('storage_backend', 'auto')))
+    OSS_ADDRESSING_STYLE = _resolve_addressing_style(
+        STORAGE_BACKEND, _env('OSS_ADDRESSING_STYLE', _yaml.get('oss_addressing_style', '')))
 
     # OSS/MinIO 配置（可选能力）
     _oss = _yaml.get('oss') or {}

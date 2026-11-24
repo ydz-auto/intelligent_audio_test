@@ -1,7 +1,8 @@
 """api_gateway 基础设施层 —— 统一存储
 
-封装 shared.utils.storage.Storage，提供音频/报告/采集结果的上传、下载、预签名 URL。
-OSS 不可用时自动降级到本地磁盘存储。
+封装 shared.infrastructure.storage.Storage，提供音频/报告/采集结果的上传、下载、预签名 URL。
+存储后端由 STORAGE_BACKEND 决定（cos / rustfs / local / auto），
+对象存储不可用时按 STORAGE_FALLBACK_ENABLED 降级到本地磁盘。
 """
 import os
 import uuid

@@ -55,6 +55,42 @@ def _get_float(key: str, default: float = 0.0) -> float:
         return default
 
 
+# --- 存储后端枚举（STORAGE_BACKEND）---
+# auto   —— 兼容旧行为：配了 OSS_ENDPOINT 就走 S3 兼容对象存储，不可用时按
+#           STORAGE_FALLBACK_ENABLED 降级本地磁盘
+# cos    —— 腾讯云 COS（S3 兼容，只接受 virtual-hosted style）
+# rustfs —— 自建 RustFS / MinIO（S3 兼容，path-style）
+# local  —— 只用本地磁盘（STORAGE_LOCAL_ROOT），不初始化任何 S3 客户端
+STORAGE_BACKENDS = ('auto', 'cos', 'rustfs', 'local')
+_STORAGE_BACKEND_ALIASES = {
+    's3': 'auto', 'oss': 'auto', 'object': 'auto',
+    'minio': 'rustfs',
+    'disk': 'local', 'filesystem': 'local', 'fs': 'local',
+}
+
+
+def normalize_storage_backend(raw: Optional[str]) -> str:
+    """归一 STORAGE_BACKEND；未知取值回落 auto（保持旧部署行为）。"""
+    val = (raw or 'auto').strip().lower()
+    val = _STORAGE_BACKEND_ALIASES.get(val, val)
+    return val if val in STORAGE_BACKENDS else 'auto'
+
+
+def resolve_addressing_style(backend: str, raw: Optional[str] = None) -> str:
+    """S3 寻址风格：cos 必须 virtual，rustfs/minio 用 path；auto 保持空（boto 默认）。
+
+    OSS_ADDRESSING_STYLE=path|virtual 可显式覆盖；空/非法值按后端推导。
+    """
+    val = (raw if raw is not None else os.environ.get('OSS_ADDRESSING_STYLE', '') or '').strip().lower()
+    if val in ('path', 'virtual'):
+        return val
+    if backend == 'cos':
+        return 'virtual'
+    if backend == 'rustfs':
+        return 'path'
+    return ''
+
+
 # 日志归档阈值默认值（INT-1962）：logs 表行数超过该值才触发冷数据归档。
 LOG_ARCHIVE_THRESHOLD_DEFAULT = 300000
 
@@ -85,6 +121,13 @@ class BaseConfig:
     # --- 平台版本（/health 暴露，供 tests/api 健康检查区分不同分支，避免误连）---
     PLATFORM_VERSION: str = _get_env('PLATFORM_VERSION', 'V10.11.2')
 
+    # --- 存储后端（COS / RustFS / 本地磁盘 三选一，见模块顶部 normalize_storage_backend）---
+    STORAGE_BACKEND: str = normalize_storage_backend(_get_env('STORAGE_BACKEND', 'auto'))
+    # S3 寻址风格：cos → virtual（COS 的 S3 接口只接受 virtual-hosted），
+    # rustfs → path；auto 留空沿用 boto 默认。可用 OSS_ADDRESSING_STYLE 显式覆盖。
+    OSS_ADDRESSING_STYLE: str = resolve_addressing_style(
+        STORAGE_BACKEND, _get_env('OSS_ADDRESSING_STYLE', ''))
+
     # --- 数据库 ---
     AUDIO_STORAGE_PATH: str = os.environ.get(
         'AUDIO_STORAGE_PATH',
@@ -97,12 +140,14 @@ class BaseConfig:
     #         浏览器直连桶，计「桶公网下行流量」；
     # true  → 返回网关 /api/v1/audios/download 相对地址，前端带 JWT 取字节，
     #         音频由服务器从桶内网读取后转发，计「服务器出流量」、不计桶公网下行。
-    AUDIO_STREAM_VIA_GATEWAY: bool = _get_bool('AUDIO_STREAM_VIA_GATEWAY', False)
+    AUDIO_STREAM_VIA_GATEWAY: bool = _get_bool(
+        'AUDIO_STREAM_VIA_GATEWAY', STORAGE_BACKEND == 'local')
     # 文件下载取流方式（导出 ZIP / 用例日志下载，默认 false 保持预签名直连桶）：
     # false → 网关返回 COS 预签名 URL，浏览器直连桶（计桶公网下行）；
     # true  → 不上抛预签名：导出产物由前端走 /export/jobs/{id}/download 鉴权取流，
     #         日志 ZIP 由 report_service 回对象路径、网关流式转发（计服务器出流量）。
-    FILE_DOWNLOAD_VIA_GATEWAY: bool = _get_bool('FILE_DOWNLOAD_VIA_GATEWAY', False)
+    FILE_DOWNLOAD_VIA_GATEWAY: bool = _get_bool(
+        'FILE_DOWNLOAD_VIA_GATEWAY', STORAGE_BACKEND == 'local')
     # 媒体取流短效签名 token 密钥（INT-xxxx）：<audio>/<video> 无法携带
     # Authorization 头，取流 URL 内嵌 HMAC 签名 token；各服务（网关验签 +
     # 任务/音频服务签发）必须用同一密钥。缺省留空时回落 OSS_SECRET_KEY 派生
@@ -159,7 +204,8 @@ class BaseConfig:
     # real_task_events 等；默认空 = 保持原通道名，5000 段等其它栈不受影响。
     EVENT_CHANNEL_PREFIX: str = _get_env('EVENT_CHANNEL_PREFIX', '')
 
-    # --- OSS (RustFS / S3 兼容) ---
+    # --- 对象存储（S3 兼容：腾讯 COS / 自建 RustFS / MinIO 等）---
+    # STORAGE_BACKEND=local 时不初始化任何 S3 客户端，以下 OSS_* 仅占位可留空。
     OSS_ENDPOINT: str = _get_env('OSS_ENDPOINT', 'http://localhost:9000')
     # 对浏览器/第三方暴露的 OSS 地址（INT-1719）：预签名 URL 一律由独立客户端按此
     # endpoint 签名，内部读写仍走 OSS_ENDPOINT。
@@ -168,8 +214,10 @@ class BaseConfig:
     # 空串 = 回落 OSS_ENDPOINT（宿主/单机部署零行为变化）；跨机访问要改成局域网 IP
     # 或公开域名，不要写死 127.0.0.1。
     OSS_PUBLIC_ENDPOINT: str = _get_env('OSS_PUBLIC_ENDPOINT', '')
-    OSS_ACCESS_KEY: str = _get_env('OSS_ACCESS_KEY', required=True)
-    OSS_SECRET_KEY: str = _get_env('OSS_SECRET_KEY', required=True)
+    OSS_ACCESS_KEY: str = _get_env(
+        'OSS_ACCESS_KEY', required=STORAGE_BACKEND != 'local')
+    OSS_SECRET_KEY: str = _get_env(
+        'OSS_SECRET_KEY', required=STORAGE_BACKEND != 'local')
     OSS_REGION: str = _get_env('OSS_REGION', 'us-east-1')
 
     # --- OSS 客户端管理类操作短超时（INT-1348）---

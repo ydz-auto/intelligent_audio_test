@@ -156,15 +156,18 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - REDIS_URL=redis://redis:6379
-      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-http://rustfs:9000}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-auto}
+      - OSS_ADDRESSING_STYLE=${OSS_ADDRESSING_STYLE:-}
       # 预签名 URL 的签名 endpoint（INT-1719）：该 URL 返回给浏览器/第三方，
       # 必须宿主可达；容器内的 rustfs:9000 宿主解析不了（ERR_NAME_NOT_RESOLVED）。
       # 跨机访问在 .env 覆盖成局域网 IP 或公开域名，不要写死 127.0.0.1。
       - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
-      - OSS_BUCKET_NAME=intelligent-audio-test
-      - OSS_KEY_PREFIX=intelligent_audio_test
+      # 空值表示多桶模式（RustFS 下每个 category 一个桶），故用单横线默认
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME-intelligent-audio-test}
+      - OSS_KEY_PREFIX=${OSS_KEY_PREFIX:-intelligent_audio_test}
       - SERVICE_HOST=api_gateway
       - SERVICE_NAME=api_gateway
       # INT-1962：日志归档阈值（logs 表行数超过它才触发 OSS 归档巡检）。
@@ -260,15 +263,18 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - REDIS_URL=redis://redis:6379
-      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-http://rustfs:9000}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-auto}
+      - OSS_ADDRESSING_STYLE=${OSS_ADDRESSING_STYLE:-}
       # 预签名 URL 的签名 endpoint（INT-1719）：该 URL 返回给浏览器/第三方，
       # 必须宿主可达；容器内的 rustfs:9000 宿主解析不了（ERR_NAME_NOT_RESOLVED）。
       # 跨机访问在 .env 覆盖成局域网 IP 或公开域名，不要写死 127.0.0.1。
       - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
-      - OSS_BUCKET_NAME=intelligent-audio-test
-      - OSS_KEY_PREFIX=intelligent_audio_test
+      # 空值表示多桶模式（RustFS 下每个 category 一个桶），故用单横线默认
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME-intelligent-audio-test}
+      - OSS_KEY_PREFIX=${OSS_KEY_PREFIX:-intelligent_audio_test}
       - SERVICE_HOST=task_service
       - SERVICE_NAME=task_service
       # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
@@ -330,11 +336,14 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - REDIS_URL=redis://redis:6379
-      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-http://rustfs:9000}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-auto}
+      - OSS_ADDRESSING_STYLE=${OSS_ADDRESSING_STYLE:-}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
-      - OSS_BUCKET_NAME=intelligent-audio-test
-      - OSS_KEY_PREFIX=intelligent_audio_test
+      # 空值表示多桶模式（RustFS 下每个 category 一个桶），故用单横线默认
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME-intelligent-audio-test}
+      - OSS_KEY_PREFIX=${OSS_KEY_PREFIX:-intelligent_audio_test}
       - SERVICE_HOST=evaluation_service
       - SERVICE_NAME=evaluation_service
       # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
@@ -386,11 +395,14 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - REDIS_URL=redis://redis:6379
-      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-http://rustfs:9000}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-auto}
+      - OSS_ADDRESSING_STYLE=${OSS_ADDRESSING_STYLE:-}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
-      - OSS_BUCKET_NAME=intelligent-audio-test
-      - OSS_KEY_PREFIX=intelligent_audio_test
+      # 空值表示多桶模式（RustFS 下每个 category 一个桶），故用单横线默认
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME-intelligent-audio-test}
+      - OSS_KEY_PREFIX=${OSS_KEY_PREFIX:-intelligent_audio_test}
       - GRPC_PORT=50051
       - LAB_NAME=lab-a
       - SERVICE_HOST=e2e_test_service
@@ -442,15 +454,18 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - REDIS_URL=redis://redis:6379
-      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-http://rustfs:9000}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-auto}
+      - OSS_ADDRESSING_STYLE=${OSS_ADDRESSING_STYLE:-}
       # 预签名 URL 的签名 endpoint（INT-1719）：该 URL 返回给浏览器/第三方，
       # 必须宿主可达；容器内的 rustfs:9000 宿主解析不了（ERR_NAME_NOT_RESOLVED）。
       # 跨机访问在 .env 覆盖成局域网 IP 或公开域名，不要写死 127.0.0.1。
       - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
-      - OSS_BUCKET_NAME=intelligent-audio-test
-      - OSS_KEY_PREFIX=intelligent_audio_test
+      # 空值表示多桶模式（RustFS 下每个 category 一个桶），故用单横线默认
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME-intelligent-audio-test}
+      - OSS_KEY_PREFIX=${OSS_KEY_PREFIX:-intelligent_audio_test}
       - SERVICE_HOST=report_service
       - SERVICE_NAME=report_service
       # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
@@ -505,11 +520,14 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - REDIS_URL=redis://redis:6379
-      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-http://rustfs:9000}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-auto}
+      - OSS_ADDRESSING_STYLE=${OSS_ADDRESSING_STYLE:-}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
-      - OSS_BUCKET_NAME=intelligent-audio-test
-      - OSS_KEY_PREFIX=intelligent_audio_test
+      # 空值表示多桶模式（RustFS 下每个 category 一个桶），故用单横线默认
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME-intelligent-audio-test}
+      - OSS_KEY_PREFIX=${OSS_KEY_PREFIX:-intelligent_audio_test}
       - SERVICE_HOST=algorithm_service
       - SERVICE_NAME=algorithm_service
       # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
@@ -551,11 +569,14 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - REDIS_URL=redis://redis:6379
-      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-http://rustfs:9000}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-auto}
+      - OSS_ADDRESSING_STYLE=${OSS_ADDRESSING_STYLE:-}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
-      - OSS_BUCKET_NAME=intelligent-audio-test
-      - OSS_KEY_PREFIX=intelligent_audio_test
+      # 空值表示多桶模式（RustFS 下每个 category 一个桶），故用单横线默认
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME-intelligent-audio-test}
+      - OSS_KEY_PREFIX=${OSS_KEY_PREFIX:-intelligent_audio_test}
       - SERVICE_HOST=auth_service
       - SERVICE_NAME=auth_service
       # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
@@ -603,12 +624,15 @@ services:
       # shared.infrastructure.config.BaseConfig 在导入期强校验 OSS 凭据
       # （按各服务统一口径），即便 M0 不用对象存储也必须注入，否则启动即
       # ConfigValidationError。取值与其余后端服务同源。
-      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-http://rustfs:9000}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-auto}
+      - OSS_ADDRESSING_STYLE=${OSS_ADDRESSING_STYLE:-}
       - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
-      - OSS_BUCKET_NAME=intelligent-audio-test
-      - OSS_KEY_PREFIX=intelligent_audio_test
+      # 空值表示多桶模式（RustFS 下每个 category 一个桶），故用单横线默认
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME-intelligent-audio-test}
+      - OSS_KEY_PREFIX=${OSS_KEY_PREFIX:-intelligent_audio_test}
       - SERVICE_HOST=agent_service
       - SERVICE_NAME=agent_service
       - PORT=5011
@@ -717,15 +741,18 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - REDIS_URL=redis://redis:6379
-      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-http://rustfs:9000}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-auto}
+      - OSS_ADDRESSING_STYLE=${OSS_ADDRESSING_STYLE:-}
       # 预签名 URL 的签名 endpoint（INT-1719）：该 URL 返回给浏览器/第三方，
       # 必须宿主可达；容器内的 rustfs:9000 宿主解析不了（ERR_NAME_NOT_RESOLVED）。
       # 跨机访问在 .env 覆盖成局域网 IP 或公开域名，不要写死 127.0.0.1。
       - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
-      - OSS_BUCKET_NAME=intelligent-audio-test
-      - OSS_KEY_PREFIX=intelligent_audio_test
+      # 空值表示多桶模式（RustFS 下每个 category 一个桶），故用单横线默认
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME-intelligent-audio-test}
+      - OSS_KEY_PREFIX=${OSS_KEY_PREFIX:-intelligent_audio_test}
       - SERVICE_HOST=api_test_service
       - SERVICE_NAME=api_test_service
       # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释

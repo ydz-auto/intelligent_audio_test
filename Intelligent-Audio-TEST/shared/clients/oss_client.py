@@ -1,9 +1,11 @@
 """
-OSS 客户端封装 - S3 兼容（开发环境 RustFS / 生产环境 AWS S3）
+OSS 客户端封装 - S3 兼容对象存储（腾讯 COS / 自建 RustFS / MinIO / AWS S3）
 
-通过环境变量切换：
-  开发：OSS_ENDPOINT=http://localhost:9000  (RustFS)
-  生产：OSS_ENDPOINT=https://s3.amazonaws.com (S3)
+通过 STORAGE_BACKEND 切换后端（见 shared/infrastructure/config.py）：
+  cos    —— 腾讯云 COS，OSS_ENDPOINT=https://cos.<region>.myqcloud.com，virtual 寻址
+  rustfs —— 自建 RustFS，OSS_ENDPOINT=http://<host>:9000，path 寻址
+  local  —— 不使用本客户端（Storage 直接落本地磁盘），工厂方法不会被调用
+  auto   —— 兼容旧部署，沿用以上 endpoint 的既有行为
 
 预签名 URL 的签名 endpoint 取 OSS_PUBLIC_ENDPOINT（INT-1719，空串回落
 OSS_ENDPOINT）：它是对浏览器/第三方暴露的地址，容器部署下与内部读写地址不同。
@@ -24,6 +26,29 @@ from botocore.exceptions import ClientError
 from shared.infrastructure.config import BaseConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _prepare_backend() -> str:
+    """按 STORAGE_BACKEND 推导 S3 兼容细节，返回寻址风格（path/virtual/空）。
+
+    COS 的 S3 接口只接受 virtual-hosted style，且不支持新版 boto3 默认的
+    CRC64NVME 校验和（会 400/NotImplemented）。两个开关通过 AWS_* 环境变量
+    关闭，老版本 botocore 会忽略，不影响 RustFS/MinIO。
+    """
+    backend = getattr(BaseConfig, 'STORAGE_BACKEND', 'auto')
+    if backend == 'cos':
+        os.environ.setdefault('AWS_REQUEST_CHECKSUM_CALCULATION', 'when_required')
+        os.environ.setdefault('AWS_RESPONSE_CHECKSUM_VALIDATION', 'when_required')
+    style = (getattr(BaseConfig, 'OSS_ADDRESSING_STYLE', '') or '').strip().lower()
+    return style if style in ('path', 'virtual') else ''
+
+
+def _build_config(style: str, **overrides) -> BotoConfig:
+    """构造 botocore Config，按后端附加 s3 寻址风格（空则沿用 boto 默认）。"""
+    kwargs = dict(overrides)
+    if style:
+        kwargs['s3'] = {'addressing_style': style}
+    return BotoConfig(**kwargs)
 
 
 def _normalize_endpoint(endpoint: str) -> str:
@@ -99,6 +124,9 @@ class OSSClient:
             return False, str(e)
 
     def _init(self):
+        # 后端差异（COS virtual-hosted / RustFS path-style）统一在客户端配置里落地，
+        # 调用方无需感知 STORAGE_BACKEND。
+        style = _prepare_backend()
         # INT-1348：localhost 统一改写 127.0.0.1，避免 ::1/IPv4 解析歧义悬挂
         endpoint = _normalize_endpoint(BaseConfig.OSS_ENDPOINT)
         access_key = BaseConfig.OSS_ACCESS_KEY
@@ -111,7 +139,8 @@ class OSSClient:
             endpoint_url=endpoint,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            config=BotoConfig(
+            config=_build_config(
+                style,
                 retries={'max_attempts': 3, 'mode': 'standard'},
                 connect_timeout=5,
                 read_timeout=60,
@@ -138,7 +167,8 @@ class OSSClient:
                 endpoint_url=public_endpoint,
                 aws_access_key_id=access_key,
                 aws_secret_access_key=secret_key,
-                config=BotoConfig(
+                config=_build_config(
+                    style,
                     retries={'max_attempts': 3, 'mode': 'standard'},
                     connect_timeout=5,
                     read_timeout=60,
@@ -161,7 +191,8 @@ class OSSClient:
             endpoint_url=endpoint,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            config=BotoConfig(
+            config=_build_config(
+                style,
                 retries={'total_max_attempts': BaseConfig.OSS_ADMIN_MAX_ATTEMPTS,
                          'mode': 'standard'},
                 connect_timeout=BaseConfig.OSS_ADMIN_CONNECT_TIMEOUT_SECONDS,
