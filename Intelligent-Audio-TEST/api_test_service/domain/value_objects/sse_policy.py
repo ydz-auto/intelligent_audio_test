@@ -2,7 +2,7 @@
 """SSE 配置边界（A2 / INT-1790）— 写侧校验与执行侧限幅共用一组口径。
 
 写侧（`application/api_crud_service.py`）按这些上限拒绝非法配置；执行侧
-（`infrastructure/adapters/transport/sse_client.py`）对**线缆里来的值**再做一次
+（`infrastructure/adapters/http/transport/v1/sse_client.py`）对**线缆里来的值**再做一次
 限幅：配置可能是旧数据 / 直接 SQL 写入而绕过校验，而服务端 `retry:` 字段
 本身完全不可控（A2 返工 P3-2）。两处引用同一常量，避免各写一份魔法数字。
 """

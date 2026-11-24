@@ -2,7 +2,7 @@
 """被测 API `meta.grpc` 契约常量与校验（INT-1953 / A3 后端对齐）。
 
 写侧（`application/api_crud_service.py`）与执行侧（`infrastructure/adapters/
-grpc_adapter.py`、`…/transport/grpc_client.py`）共用本模块的常量与校验口径：
+grpc/any/v1/__init__.py`、`…/grpc/transport/v1/grpc_client.py`）共用本模块的常量与校验口径：
 同一份词表、同一个 proto 体积上限、同一套凭据保留判断，不各写一份字面量
 （A0 §3.5 / A1 §四：`meta.grpc` 未新增配置键）。
 

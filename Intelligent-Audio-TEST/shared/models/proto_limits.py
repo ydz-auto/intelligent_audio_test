@@ -5,8 +5,8 @@ INT-1952 起 `PROTO_MAX_BYTES` 由 `shared/` 持有：网关的上传预检与
 api_test_service 的编译 / 执行期读取必须同口径，两处各写一份必然漂移
 （卡面 §5 第 4 条；网关禁止反向 import `api_test_service`）。
 
-执行期传输件 `api_test_service/.../transport/grpc_client.py` 从本模块
-import 后**保留原名字 re-export**，既有 import 点（`grpc_adapter.py:37`
+执行期传输件 `api_test_service/.../adapters/grpc/transport/v1/grpc_client.py` 从本模块
+import 后**保留原名字 re-export**，既有 import 点（`grpc/any/v1/__init__.py:37`
 等）不改。
 """
 

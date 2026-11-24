@@ -372,7 +372,7 @@ def test_resolver_from_config_chain_order():
 
 # ── 消费点：ApiDriverAdapter（api_test_service 内置驱动）──────
 
-from api_test_service.infrastructure.adapters.api_driver_adapter import (
+from api_test_service.infrastructure.adapters.any.api_driver.v1 import (
     ApiDriverAdapter,
 )
 from types import SimpleNamespace
@@ -421,8 +421,8 @@ def test_voice_llm_chat_headers_carry_bearer():
         return {'status_code': 200, 'latency': 10, 'raw_response': '',
                 'json': {}, 'error': None}
 
-    with mock.patch('api_test_service.infrastructure.adapters.'
-                    'api_driver_adapter.api_client.call', _fake_call):
+    with mock.patch('api_test_service.infrastructure.adapters.any.'
+                    'api_driver.v1.api_client.call', _fake_call):
         driver.execute_voice_llm_chat(
             session_id='s-1', input_type='text', input_data='hi',
             round_number=1, total_rounds=1, timeout=5)

@@ -34,7 +34,7 @@ from shared.utils.path_extractor import extract_by_path
 from api_test_service.domain.ports import ApiVendorAdapter
 from api_test_service.domain.value_objects.grpc_meta import validate_grpc_meta
 from api_test_service.infrastructure.adapters.registry import register_vendor_adapter
-from api_test_service.infrastructure.adapters.transport.grpc_client import (
+from api_test_service.infrastructure.adapters.grpc.transport.v1.grpc_client import (
     PROTO_MAX_BYTES,
     GrpcBidiSession,
     GrpcCallError,

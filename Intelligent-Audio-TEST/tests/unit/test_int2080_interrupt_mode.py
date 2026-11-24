@@ -27,7 +27,7 @@ from api_test_service.core.realtime_session_executor import (
     audio_bytes_to_ms,
 )
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
-from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
+from api_test_service.infrastructure.adapters.realtime.transport.v1 import RealtimeWSClient
 from mock_services.mock_realtime_api import MockRealtimeBehavior, MockRealtimeServer
 
 _RATE_CFG = {'chunk_duration_ms': 20}

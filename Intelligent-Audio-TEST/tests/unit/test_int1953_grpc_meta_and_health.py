@@ -337,7 +337,7 @@ class TestWriteSideValidation:
 def test_shared_constants_are_single_source():
     from shared.models import proto_limits
     from api_test_service.domain.value_objects import grpc_meta
-    from api_test_service.infrastructure.adapters.transport import grpc_client
+    from api_test_service.infrastructure.adapters.grpc.transport.v1 import grpc_client
 
     # proto 上限源头在 shared/（网关侧预检也要用，不能反向依赖本服务）
     assert proto_limits.PROTO_MAX_BYTES is PROTO_MAX_BYTES
@@ -348,8 +348,8 @@ def test_shared_constants_are_single_source():
 
 
 def test_grpc_adapter_reuses_shared_validation():
-    from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
-    from api_test_service.infrastructure.adapters.transport.grpc_client import GrpcProtoError
+    from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
+    from api_test_service.infrastructure.adapters.grpc.transport.v1.grpc_client import GrpcProtoError
 
     class _Cfg:
         meta = {'grpc': {'proto_object_key': 'local://a.proto', 'service': 's',

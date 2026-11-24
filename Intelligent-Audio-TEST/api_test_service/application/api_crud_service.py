@@ -34,7 +34,7 @@ from api_test_service.domain.value_objects.grpc_meta import (
     redact_grpc_meta_credentials,
     validate_grpc_meta,
 )
-from api_test_service.infrastructure.adapters.proxy_utils import (
+from api_test_service.infrastructure.adapters.common.proxy_utils import (
     build_proxy_url,
     validate_proxy,
     websocket_proxy_kwargs,

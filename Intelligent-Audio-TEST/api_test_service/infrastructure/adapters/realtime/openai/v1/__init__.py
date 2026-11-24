@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from shared.models.common_enums import AdapterProtocol, AdapterVendor, VendorAdapterType
 
-from api_test_service.infrastructure.adapters.protocol.realtime_adapter_base import (
+from api_test_service.infrastructure.adapters.realtime.any.v1 import (
     RealtimeAdapterBase,
 )
 from api_test_service.infrastructure.adapters.registry import register_vendor_adapter

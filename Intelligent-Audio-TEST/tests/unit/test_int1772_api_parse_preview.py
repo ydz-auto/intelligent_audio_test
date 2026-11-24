@@ -9,7 +9,7 @@
 
 外加口径断言：路径提取与执行期同源（``extract_by_path``），文本/结束标志
 映射在 ``resp['data']`` 解包后取值、错误码映射在完整响应上取值
-（``api_driver_adapter._parse_response``）。
+（``adapters/any/api_driver/v1/_parse_response``）。
 """
 import os
 
@@ -178,7 +178,7 @@ def test_empty_string_value_is_resolved():
 
 def _make_adapter(meta):
     from types import SimpleNamespace
-    from api_test_service.infrastructure.adapters.api_driver_adapter import (
+    from api_test_service.infrastructure.adapters.any.api_driver.v1 import (
         ApiDriverAdapter,
     )
     cfg = SimpleNamespace(

@@ -4,8 +4,8 @@
 前端「响应解析」页签要「贴一段样例响应 → 看按 meta 解析器能提取出什么」。
 本模块不读库、不发任何外部请求、不写文件、不落缓存，可在路由/单测里直接调。
 
-口径与执行期同一份实现（``api_test_service/infrastructure/adapters/
-api_driver_adapter.py``），路径提取一律走
+口径与执行期同一份实现（``api_test_service/infrastructure/adapters/any/
+api_driver/v1/__init__.py``），路径提取一律走
 ``shared.utils.path_extractor.extract_by_path``，不另写解析：
 
 - ``result_parser``（voice_llm，与 ``_parse_voice_llm_response`` 同形：

@@ -7,14 +7,14 @@
 
 | 你要做的事 | 放哪 | 写代码？ |
 | --- | --- | --- |
-| ① 适配器（实现 Port 抽象方法） | `api_test_service/infrastructure/adapters/vendors/你的厂商.py` | ✅ |
+| ① 适配器（实现 Port 抽象方法） | `api_test_service/infrastructure/adapters/http/你的厂商/v1/__init__.py` | ✅ |
 | ② 注册（枚举 + 映射 + @register） | `common_enums.py` + `registry.py` | ✅（约 5 行） |
 | ③ 参数配置（请求模板/输出字段/用例） | APIs 表 meta + field_mapper + 用例 | ❌ 纯配置 |
 
 ## 二、写适配器（HTTP 无协议基类，直接实现 Port）
 
 ```python
-# adapters/vendors/my_http_adapter.py
+# adapters/http/my_vendor/v1/__init__.py
 from shared.models.common_enums import AdapterVendor, VendorAdapterType
 from api_test_service.domain.ports.api_vendor_adapter import ApiVendorAdapter
 from api_test_service.infrastructure.adapters.registry import register_vendor_adapter

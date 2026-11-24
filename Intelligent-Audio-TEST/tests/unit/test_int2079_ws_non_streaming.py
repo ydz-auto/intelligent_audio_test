@@ -191,7 +191,7 @@ class TestRouting:
 class TestRegistryResolution:
     def test_create_from_config_resolves_websocket_adapter(self):
         from api_test_service.infrastructure.adapters import vendor_adapter_registry
-        from api_test_service.infrastructure.adapters.websocket_adapter import (
+        from api_test_service.infrastructure.adapters.websocket.any.v1 import (
             WebSocketAdapter,
         )
         adapter = vendor_adapter_registry.create_from_config(
@@ -203,7 +203,7 @@ class TestRegistryResolution:
 
 class TestWebSocketAdapter:
     def _adapter(self, url, meta=None, body_template=None):
-        from api_test_service.infrastructure.adapters.websocket_adapter import (
+        from api_test_service.infrastructure.adapters.websocket.any.v1 import (
             WebSocketAdapter,
         )
         cfg = _api_cfg(url, meta=meta or {})

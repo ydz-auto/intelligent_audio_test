@@ -30,7 +30,7 @@ from shared.utils.config_manager import config_manager
 from shared.utils.path_extractor import extract_by_path
 
 from api_test_service.domain.ports import ApiVendorAdapter
-from api_test_service.infrastructure.adapters.proxy_utils import (
+from api_test_service.infrastructure.adapters.common.proxy_utils import (
     websocket_proxy_kwargs,
 )
 from api_test_service.infrastructure.adapters.registry import register_vendor_adapter

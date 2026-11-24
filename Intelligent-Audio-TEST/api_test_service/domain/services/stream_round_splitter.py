@@ -9,7 +9,7 @@ server-stream 是「一问多回」，轮次边界由**句子结束标记**决�
 - 输入：`NormalizedEvent.payload`（wire payload，已归一为 dict）+ 事件时间戳；
 - 输出：已闭合的轮次草稿（`StreamRoundDraft`），由执行器补齐编号 / 评估字段。
 
-映射键沿用 `api_driver_adapter.py` 存量的五个 meta 键（A0 §3.2「不新造键名」）：
+映射键沿用 `any/api_driver/v1/__init__.py` 存量的五个 meta 键（A0 §3.2「不新造键名」）：
 `asr_mapping` / `trans_mapping` / `sentence_end_mapping` / `session_end_mapping` /
 `append_mode`。业务码取 `error_code_mapping`（缺省 `code`）/ `error_msg_mapping`
 （缺省 `msg`）。
@@ -20,7 +20,7 @@ server-stream 是「一问多回」，轮次边界由**句子结束标记**决�
 """
 from shared.utils.path_extractor import extract_by_path
 
-# 五个通用映射键（A0 §3.2 / api_driver_adapter.py:523-528），不新增键名
+# 五个通用映射键（A0 §3.2 / any/api_driver/v1/__init__.py:523-528），不新增键名
 MAPPING_KEYS = (
     'asr_mapping',
     'trans_mapping',
@@ -167,7 +167,7 @@ class StreamRoundSplitter:
     @staticmethod
     def _data_root(payload):
         """wire payload 取值根：标准格式 ``{"code":0,"data":{...}}`` 取 data，
-        否则取 payload 顶层（与 api_driver_adapter 单条响应解析同口径）。"""
+        否则取 payload 顶层（与 any/api_driver/v1 单条响应解析同口径）。"""
         if isinstance(payload, dict):
             inner = payload.get('data')
             if isinstance(inner, dict):

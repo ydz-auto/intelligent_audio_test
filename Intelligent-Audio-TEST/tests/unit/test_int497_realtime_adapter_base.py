@@ -34,10 +34,10 @@ from shared.models.common_enums import (
 )
 from api_test_service.domain.ports import ApiVendorAdapter
 from api_test_service.infrastructure.adapters import vendor_adapter_registry
-from api_test_service.infrastructure.adapters.protocol.realtime_adapter_base import (
+from api_test_service.infrastructure.adapters.realtime.any.v1 import (
     RealtimeAdapterBase,
 )
-from api_test_service.infrastructure.adapters.vendors.openai_realtime_adapter import (
+from api_test_service.infrastructure.adapters.realtime.openai.v1 import (
     OpenAIRealtimeAdapter,
 )
 from mock_services.mock_realtime_api import MockRealtimeBehavior, MockRealtimeServer
@@ -263,8 +263,8 @@ class TestKeyPoolRotation:
     """
 
     def _install_resolver(self, monkeypatch, pool=None, cooldown=60):
-        from api_test_service.infrastructure.adapters.protocol import (
-            realtime_adapter_base as rab,
+        from api_test_service.infrastructure.adapters.realtime.any import (
+            v1 as rab,
         )
         from shared.utils.api_key_provider import (
             ApiKeyChainResolver,
@@ -286,7 +286,7 @@ class TestKeyPoolRotation:
 
     def test_handshake_401_rotates_keys_then_succeeds(self, monkeypatch):
         """前两次握手 401 → 切下一 key；第三次成功。重试上限 = 池内 key 数。"""
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.adapters.realtime.transport.v1.realtime_ws_client import (
             RealtimeWSClient,
         )
         resolver = self._install_resolver(monkeypatch)
@@ -323,7 +323,7 @@ class TestKeyPoolRotation:
 
     def test_handshake_403_rotates(self, monkeypatch):
         """403 同样触发轮换（白名单 401/403/429）"""
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.adapters.realtime.transport.v1.realtime_ws_client import (
             RealtimeWSClient,
         )
         self._install_resolver(monkeypatch)
@@ -349,7 +349,7 @@ class TestKeyPoolRotation:
 
     def test_handshake_pool_all_cooled_raises(self, monkeypatch):
         """池全冷却立即失败：不空转等待，抛 ConnectionError"""
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.adapters.realtime.transport.v1.realtime_ws_client import (
             RealtimeWSClient,
         )
         resolver = self._install_resolver(monkeypatch)
@@ -371,7 +371,7 @@ class TestKeyPoolRotation:
 
     def test_handshake_all_failed_raises_last_error(self, monkeypatch):
         """全失败抛最后错误：池内每 key 都 401 → ConnectionError"""
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.adapters.realtime.transport.v1.realtime_ws_client import (
             RealtimeWSClient,
         )
         self._install_resolver(monkeypatch)
@@ -390,7 +390,7 @@ class TestKeyPoolRotation:
 
     def test_handshake_network_error_no_rotation(self, monkeypatch):
         """5xx / 网络错误明确不轮换：单次失败即返回 False，不重试"""
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.adapters.realtime.transport.v1.realtime_ws_client import (
             RealtimeWSClient,
         )
         self._install_resolver(monkeypatch)
@@ -412,7 +412,7 @@ class TestKeyPoolRotation:
 
     def test_case_level_key_no_rotation(self, monkeypatch):
         """case 层单值最高优先（现状不变）：配置池也不轮换，单次连接"""
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.adapters.realtime.transport.v1.realtime_ws_client import (
             RealtimeWSClient,
         )
         self._install_resolver(monkeypatch)
@@ -442,7 +442,7 @@ class TestKeyPoolRotation:
         若适配器首 attempt 就丢弃外部头重新解析（双推进），2-key 池恒用
         第二把密钥、round-robin 失效，且失败 key 不进入冷却。
         """
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.adapters.realtime.transport.v1.realtime_ws_client import (
             RealtimeWSClient,
         )
         from shared.utils.api_key_provider import (
@@ -450,8 +450,8 @@ class TestKeyPoolRotation:
             InMemoryRotationStateStore,
         )
         from api_test_service.core import realtime_session_executor as rse
-        from api_test_service.infrastructure.adapters.protocol import (
-            realtime_adapter_base as rab,
+        from api_test_service.infrastructure.adapters.realtime.any import (
+            v1 as rab,
         )
 
         # 共享同一隔离 store 的两个 resolver：模拟 executor 模块级 resolver
@@ -502,7 +502,7 @@ class TestHandshakeStatusPassthrough:
     """RealtimeWSClient.connect 握手异常 status_code 透出（供适配器判定轮换）。"""
 
     def test_websocket_bad_status_captured(self, monkeypatch):
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.adapters.realtime.transport.v1.realtime_ws_client import (
             RealtimeWSClient,
         )
         import websocket
@@ -517,7 +517,7 @@ class TestHandshakeStatusPassthrough:
         assert 'mock 401' in client.last_handshake_error
 
     def test_generic_error_no_status(self, monkeypatch):
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.adapters.realtime.transport.v1.realtime_ws_client import (
             RealtimeWSClient,
         )
         import websocket
@@ -534,7 +534,7 @@ class TestHandshakeStatusPassthrough:
     def test_resolved_headers_rotation(self):
         """_resolve_ws_headers 消费 resolve_rotating（传 (api_id, ws endpoint
         URL)）：同一端点连续解析轮换命中各 key"""
-        from api_test_service.infrastructure.adapters.protocol.realtime_adapter_base import (
+        from api_test_service.infrastructure.adapters.realtime.any.v1 import (
             RealtimeAdapterBase,
         )
         api_config = SimpleNamespace(

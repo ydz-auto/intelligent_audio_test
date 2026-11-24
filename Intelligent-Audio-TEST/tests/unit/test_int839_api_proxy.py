@@ -25,15 +25,15 @@ import pytest
 
 from api_test_service.application import api_crud_service as api_crud_module
 from api_test_service.application.api_crud_service import APICrudService
-from api_test_service.infrastructure.adapters.transport import APIClient
-from api_test_service.infrastructure.adapters.proxy_utils import (
+from api_test_service.infrastructure.adapters.http.transport.v1 import APIClient
+from api_test_service.infrastructure.adapters.common.proxy_utils import (
     PROXY_TYPES,
     build_proxy_url,
     split_proxy_url,
     validate_proxy,
     websocket_proxy_kwargs,
 )
-from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
+from api_test_service.infrastructure.adapters.realtime.transport.v1 import RealtimeWSClient
 from shared.utils.secret_mask import mask_mapping, mask_text
 
 

@@ -22,11 +22,11 @@ os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 from shared.models.common_enums import APIProtocol, VendorAdapterType
-from api_test_service.infrastructure.adapters.transport import (
+from api_test_service.infrastructure.adapters.http.transport.v1 import (
     APIClient,
     endpoint_protocol,
 )
-from api_test_service.infrastructure.adapters.api_driver_adapter import (
+from api_test_service.infrastructure.adapters.any.api_driver.v1 import (
     ApiDriverAdapter,
 )
 
@@ -408,7 +408,7 @@ class TestExecutorFullChain:
         """
         from api_test_service.core.api_session_executor import APISessionExecutor
         from api_test_service.core.session_context import SessionContext
-        from api_test_service.infrastructure.adapters.api_driver_adapter import (
+        from api_test_service.infrastructure.adapters.any.api_driver.v1 import (
             ApiDriverAdapter,
         )
         import api_test_service.core.api_session_executor as se_mod

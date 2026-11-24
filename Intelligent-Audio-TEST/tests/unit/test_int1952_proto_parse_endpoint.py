@@ -38,7 +38,7 @@ from api_test_service.application.api_proto_service import (
     ApiProtoService,
     ProtoParseError,
 )
-from api_test_service.infrastructure.adapters.transport.grpc_client import (
+from api_test_service.infrastructure.adapters.grpc.transport.v1.grpc_client import (
     clear_proto_cache,
 )
 from api_test_service.interfaces.grpc.servicers import APITestServiceServicer
@@ -366,7 +366,7 @@ class TestGatewayEndpoint:
 
     def test_gateway_constants_match_shared(self):
         from api_gateway.application.services.api import proto_upload
-        from api_test_service.infrastructure.adapters.transport import grpc_client
+        from api_test_service.infrastructure.adapters.grpc.transport.v1 import grpc_client
 
         assert proto_upload.PROTO_MAX_BYTES == SHARED_PROTO_MAX_BYTES
         assert grpc_client.PROTO_MAX_BYTES == SHARED_PROTO_MAX_BYTES
@@ -405,7 +405,7 @@ class TestUploadEndToEnd:
         assert [svc['name'] for svc in data['services']] == ['wiring.WiringEcho']
 
         # 把返回的元信息填进 meta.grpc → 执行期（未改动）能通过校验并解析方法
-        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
 
         api_config = types.SimpleNamespace(
             meta={'grpc': {

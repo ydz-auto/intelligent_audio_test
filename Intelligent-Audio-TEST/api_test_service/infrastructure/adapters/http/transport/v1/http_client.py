@@ -4,7 +4,8 @@
 INT-62 迁移：自 api_test_service/clients/api_client.py 原样迁入
 infrastructure/adapters/（协议细节唯一落位，设计文档 §3.6），
 协议分派枚举化（APIProtocol），调用行为不变。
-INT-1168 迁移：原 adapters/api_client.py 迁入 adapters/transport/（传输层收拢），
+INT-1168 / INT-2079 迁移：原 adapters/api_client.py 迁入
+adapters/http/transport/v1/（协议/厂商/版本三层与传输层收拢），
 类/函数名与 docstring 保留。
 """
 import time
@@ -19,7 +20,7 @@ except ImportError:
 
 from shared.utils.path_extractor import extract_by_path
 from shared.models.common_enums import APIProtocol
-from api_test_service.infrastructure.adapters.proxy_utils import (
+from api_test_service.infrastructure.adapters.common.proxy_utils import (
     build_proxy_url,
     websocket_proxy_kwargs,
 )

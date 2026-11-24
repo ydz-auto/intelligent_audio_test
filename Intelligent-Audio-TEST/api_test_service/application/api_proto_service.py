@@ -6,7 +6,7 @@
 类型预览。
 
 复用而非重写：大小 / UTF-8 / import 白名单 / protoc 编译全在
-`infrastructure/adapters/transport/grpc_client.compile_proto`，本模块经
+`infrastructure/adapters/grpc/transport/v1/grpc_client.compile_proto`，本模块经
 `load_compiled_proto` 走 sha 缓存（同内容只编译一次），只补「编译预算 +
 并发限流 + 存储落盘 + 符号表」。
 
@@ -34,7 +34,7 @@ from shared.models.proto_limits import (
     PROTO_STORAGE_CATEGORY,
 )
 
-from api_test_service.infrastructure.adapters.transport.grpc_client import (
+from api_test_service.infrastructure.adapters.grpc.transport.v1.grpc_client import (
     GrpcProtoError,
     load_compiled_proto,
 )

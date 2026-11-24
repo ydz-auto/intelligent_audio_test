@@ -22,8 +22,8 @@ os.environ.setdefault('OSS_SECRET_KEY', 'ut-dummy-sk')
 
 import pytest
 
-from api_test_service.infrastructure.adapters import api_driver_adapter as ada
-from api_test_service.infrastructure.adapters import mock_vendor_adapter as mva
+from api_test_service.infrastructure.adapters.any.api_driver import v1 as ada
+from api_test_service.infrastructure.adapters.any.mock import v1 as mva
 from api_test_service.infrastructure.adapters import vendor_adapter_registry
 from api_test_service.core import api_session_executor as exmod
 

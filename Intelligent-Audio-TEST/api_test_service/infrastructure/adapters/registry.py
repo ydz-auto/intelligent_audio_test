@@ -9,15 +9,18 @@ INT-497 起与 device_service/infrastructure/drivers/registry.py 同构（方案
 推断协议维度，再 (protocol, vendor) 精确→兜底解析（向后兼容：既有 API_DRIVER /
 MOCK 注册与 create_from_config 行为不变）。
 
-三级体系：ApiVendorAdapter (Port) → protocol/RealtimeAdapterBase（协议级 base，
-protocol=REALTIME）→ vendors/OpenAIRealtimeAdapter（品牌级，protocol=REALTIME,
-vendor=OPENAI）。协议细节只允许出现在 infrastructure/adapters/ 具体实现中，
-执行链只经 vendor_adapter_registry 分发获取 Port 实例。
+三级体系：ApiVendorAdapter (Port) → realtime/any/v1 RealtimeAdapterBase（协议级
+base，protocol=REALTIME）→ realtime/openai/v1 OpenAIRealtimeAdapter（品牌级，
+protocol=REALTIME, vendor=OPENAI）。目录按「协议 / 厂商 / 版本」三层组织（与
+device_service/infrastructure/drivers 平台 / 应用 / 版本同构），注册键
+(protocol, vendor) 不变；协议细节只允许出现在 infrastructure/adapters/ 具体
+实现中，执行链只经 vendor_adapter_registry 分发获取 Port 实例。
 
 贡献者使用（新增厂商适配器三步，核心链路零改动）：
     1. shared/models/common_enums.py 新增 AdapterProtocol/AdapterVendor 维度
        （或 VendorAdapterType 扁平 key）
-    2. infrastructure/adapters/ 下实现 ApiVendorAdapter Port
+    2. infrastructure/adapters/<协议>/<厂商>/v1/__init__.py 下实现
+       ApiVendorAdapter Port
     3. @register_vendor_adapter 装饰注册
     用例侧配置 vendor_adapter=<扁平 key> 即分发（case_config 优先于 api meta）。
 

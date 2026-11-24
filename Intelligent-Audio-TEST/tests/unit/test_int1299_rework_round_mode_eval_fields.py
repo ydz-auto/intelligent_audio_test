@@ -24,10 +24,10 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 from shared.models.common_enums import RealtimeRoundMode
 from api_test_service.domain.dto import AlgoFieldMappingsDTO
 from api_test_service.core.realtime_session_executor import RealtimeSessionExecutor
-from api_test_service.infrastructure.adapters.protocol.realtime_adapter_base import (
+from api_test_service.infrastructure.adapters.realtime.any.v1 import (
     RealtimeAdapterBase,
 )
-from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
+from api_test_service.infrastructure.adapters.realtime.transport.v1 import RealtimeWSClient
 import api_test_service.core.realtime_session_executor as rt_executor_module
 
 
@@ -70,7 +70,7 @@ class TestRealtimeAdapterBaseResolveRoundMode:
         assert adapter.resolve_round_mode(None) is RealtimeRoundMode.NORMAL
 
     def test_openai_adapter_inherits_default(self):
-        from api_test_service.infrastructure.adapters.vendors.openai_realtime_adapter import (
+        from api_test_service.infrastructure.adapters.realtime.openai.v1 import (
             OpenAIRealtimeAdapter,
         )
         adapter = _make_adapter(OpenAIRealtimeAdapter)

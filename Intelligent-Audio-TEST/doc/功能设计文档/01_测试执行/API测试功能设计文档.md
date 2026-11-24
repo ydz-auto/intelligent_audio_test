@@ -201,7 +201,7 @@ sequenceDiagram
 - 内置适配器：
   - **HttpAPIAdapter**：request/response 一问一答（非流式 HTTP）；
   - **HttpStreamAdapter**：HTTP 流式（SSE / chunked）；
-  - **Realtime 三级体系**（INT-497，见 3.6）：`ApiVendorAdapter`（Port）→ `RealtimeAdapterBase`（协议级 base，`infrastructure/adapters/protocol/realtime_adapter_base.py`）→ 品牌适配器（`vendors/OpenAIRealtimeAdapter`）；RealtimeWSClient 作传输/状态机被组合复用；
+  - **Realtime 三级体系**（INT-497，见 3.6）：`ApiVendorAdapter`（Port）→ `RealtimeAdapterBase`（协议级 base，`infrastructure/adapters/realtime/any/v1/__init__.py`）→ 品牌适配器（`realtime/openai/v1/OpenAIRealtimeAdapter`）；RealtimeWSClient 作传输/状态机被组合复用；
 - 适配器输出统一为 `AdapterOutput`（dataclass，定义见 `07_流式推送与结果获取.md`）；
 - UC-1003 扩展点：新增厂商经注册表表驱动分发（`registry.resolve_for(protocol, flat_key)`，INT-1299）——新厂商 = `AdapterVendor`/`VendorAdapterType` 枚举 + `_FLAT_KEY_DIMENSIONS` 一行映射 + `@register_vendor_adapter` 类，执行器零改动；
 - 【适配说明】承接旧 api_adapter_service:5008 的适配职责，后者 P3 下线（INT-1176 已删除）。
@@ -260,8 +260,8 @@ DistributedLock(key=f"calibration:api_rms_spl:{api_id}:{mapping_id}", ttl=30)
 - 执行器：`RealtimeSessionExecutor`（`api_test_service/core/realtime_session_executor.py`），**生产者-消费者**事件队列：`_recv_loop` daemon 线程收包 → `queue.Queue` → 主循环 `recv()` 消费；
 - 归一化事件：`RealtimeFrameType` 枚举（`shared/models/common_enums.py`，前端 `frontend/src/domain/enums.ts` 镜像），厂商原始事件经 `RealtimeWSClient._parse_event` + `_EVENT_TYPE_MAP` 归一化（默认 OpenAI 事件协议）；
 - **适配器三级体系**（INT-497）：
-  - `ApiVendorAdapter`（Port，`domain/ports/api_vendor_adapter.py`）→ `RealtimeAdapterBase`（协议级 base，`infrastructure/adapters/protocol/realtime_adapter_base.py`）→ 品牌适配器（`vendors/OpenAIRealtimeAdapter`，零覆写样例：仅 `protocol` / `vendor` / `adapter_type` / `display_name` / `_transport_vendor` 五类属性）；
-  - 组合复用 `RealtimeWSClient`（`infrastructure/adapters/transport/realtime_ws_client.py`）为传输/状态机，暴露同形方法面（connect / pre_process / send / recv / output / close）；
+  - `ApiVendorAdapter`（Port，`domain/ports/api_vendor_adapter.py`）→ `RealtimeAdapterBase`（协议级 base，`infrastructure/adapters/realtime/any/v1/__init__.py`）→ 品牌适配器（`infrastructure/adapters/realtime/openai/v1/OpenAIRealtimeAdapter`，零覆写样例：仅 `protocol` / `vendor` / `adapter_type` / `display_name` / `_transport_vendor` 五类属性）；
+  - 组合复用 `RealtimeWSClient`（`infrastructure/adapters/realtime/transport/v1/realtime_ws_client.py`）为传输/状态机，暴露同形方法面（connect / pre_process / send / recv / output / close）；
   - **特殊化覆写落点**（新厂商在此选覆写点，其余继承）：`pre_process`（握手/session.update 载荷）、`recv`（事件归一化，打断依赖 `user_speech_started` ↔ 厂商打断事件、`response_cancelled` ↔ 厂商取消回复事件）、`output`+`post_process`（聚合）、`wait_ai_speaking`+`wait_ai_complete`（等待语义）、`_build_client`（私有传输替换）；配置级差异（URL / 密钥 / 代理 / session_config）走 `api.meta`；`audio_config` 为目标音频格式的顶层列（INT-1771，HTTP / Realtime / 轮次渲染同源，meta 仅存量兼容），不写代码；
 - **表驱动分发**（INT-1299）：`RealtimeSessionExecutor._resolve_realtime_transport` 查 `vendor_adapter_registry.resolve_for(AdapterProtocol.REALTIME, a_type)`（`registry.py`）——命中 → 严格分发（fallback=False）；未命中（未配置 / API_DRIVER / MOCK）→ 回退 `RealtimeWSClient` 默认构造。新厂商 = `AdapterVendor`/`VendorAdapterType` 枚举 + `_FLAT_KEY_DIMENSIONS` 一行 + `@register_vendor_adapter` 类，执行器零改动；
 - **字段归一化**（INT-1299）：轮次语义 `RealtimeAdapterBase.resolve_round_mode`（默认实现 `_as_bool` 兼容 int/bool/str，参照 `harmony_xiaoyichat._as_bool`）+ 厂商方言覆写；评估字段走 field_mapper 配置透传（与 E2E/HTTP 同构）：评估入参遍历 `field_mappings['original']['evaluation']['output']`（param_mapping source_param→target_param，case/reference 源取 round_config、api 源取轮次输出），`answer` 等按 api 输出字段定义取（output_field_keys），别名兜底（question/query）收敛到算法 param_mapping 配置，代码无硬编码字段名；
@@ -308,7 +308,7 @@ DistributedLock(key=f"calibration:api_rms_spl:{api_id}:{mapping_id}", ttl=30)
 | `proxy_type` | VARCHAR(20) NULL | 枚举 http / https / socks5 / socks5h；NULL 或空 = 不用代理 |
 | `proxy_url` | VARCHAR(255) NULL | `[user:pass@]host:port`，不含 scheme；配置代理时认证段必填 |
 
-**校验规则**（前后端同口径，后端 `api_test_service/infrastructure/adapters/proxy_utils.py` `validate_proxy` / 前端 `frontend/src/utils/proxyValidation.ts` 镜像）：
+**校验规则**（前后端同口径，后端 `api_test_service/infrastructure/adapters/common/proxy_utils.py` `validate_proxy` / 前端 `frontend/src/utils/proxyValidation.ts` 镜像）：
 
 - `proxy_type` 为空 → `proxy_url` 必须为空；
 - `proxy_type` 非空 → 必须是 http / https / socks5 / socks5h，`proxy_url` 必填且带 `user:pass@` 认证段；
@@ -364,9 +364,9 @@ DistributedLock(key=f"calibration:api_rms_spl:{api_id}:{mapping_id}", ttl=30)
 
 | 消费面 | 实现位置 | 轮换 key | 失败降级 |
 | --- | --- | --- | --- |
-| HTTP 请求头 | `ApiDriverAdapter._merge_headers`（`api_driver_adapter.py`） | `(api_config.id, 当前端点 base URL)` | `_call_api_with_key_rotation`：响应 401/403/429 → 报告失败 → 重解析下一非冷却 key 重试；上限 = 池内 key 数；**仅池内 key 触发轮换**（case 单值 / 显式 Authorization / 无池不轮换，立即失败）；5xx/网络错误不轮换；无池退化为单次调用 |
+| HTTP 请求头 | `ApiDriverAdapter._merge_headers`（`any/api_driver/v1/__init__.py`） | `(api_config.id, 当前端点 base URL)` | `_call_api_with_key_rotation`：响应 401/403/429 → 报告失败 → 重解析下一非冷却 key 重试；上限 = 池内 key 数；**仅池内 key 触发轮换**（case 单值 / 显式 Authorization / 无池不轮换，立即失败）；5xx/网络错误不轮换；无池退化为单次调用 |
 | HTTP 内嵌 chat 路径 | `ApiDriverAdapter.execute_voice_llm_chat` → `_call_api_with_key_rotation`（INT-1178） | 同上（`_send_via_adapter` 内嵌执行） | 同上；`X-Session-Id` 等其余头原样保留，仅替换 Authorization |
-| Realtime WS 握手头 | `RealtimeAdapterBase._resolve_ws_headers`（`realtime_adapter_base.py`） | `(api_config.id, 当前 ws 端点 URL)` | `_connect_with_rotation`：握手 401/403/429 → 报告失败 → 重建 client 取下一非冷却 key；上限 = 池内 key 数；池全冷却立即抛错；5xx/网络错误不轮换 |
+| Realtime WS 握手头 | `RealtimeAdapterBase._resolve_ws_headers`（`realtime/any/v1/__init__.py`） | `(api_config.id, 当前 ws 端点 URL)` | `_connect_with_rotation`：握手 401/403/429 → 报告失败 → 重建 client 取下一非冷却 key；上限 = 池内 key 数；池全冷却立即抛错；5xx/网络错误不轮换 |
 
 - **端点身份解析**：HTTP 侧 `_current_endpoint()` 按 `self.endpoint`（含 path）对 `api_config.api_endpoints` 做 base 前缀最长匹配，未匹配（main url 单端点/未配端点）返回 None → 回退单值链；Realtime 侧 `_resolve_ws_endpoint()` 取 `api_endpoints` 中 ws://wss:// 条目（无则回退单端点包装），无 ws 端点返回 None → 回退单值链。
 - case 层单值最高优先不变（Realtime `_connect_with_rotation` 检测到 case 层 key 即单次连接，不轮换）。
@@ -678,8 +678,8 @@ v3.0 修订后，API 测试子域从"单体 + WebSocket 直连 + 通用压测"�
 - `shared/utils/secret_mask.py`（`api_keys` 数组掩码，INT-1173）
 - `api_test_service/application/api_crud_service.py`（`_validate_api_keys` / `_build_endpoints_list` / `_api_to_dict` 逐端点摘要，INT-1173）
 - `api_test_service/domain/entities/api.py`（`derive_api_keys_summary` / `redact_endpoint_keys`，INT-1173）
-- `api_test_service/infrastructure/adapters/api_driver_adapter.py`（`_merge_headers` / `_call_api_with_key_rotation`，INT-1173/1178）
-- `api_test_service/infrastructure/adapters/protocol/realtime_adapter_base.py`（`_resolve_ws_headers` / `_connect_with_rotation`，INT-1173）
+- `api_test_service/infrastructure/adapters/any/api_driver/v1/__init__.py`（`_merge_headers` / `_call_api_with_key_rotation`，INT-1173/1178）
+- `api_test_service/infrastructure/adapters/realtime/any/v1/__init__.py`（`_resolve_ws_headers` / `_connect_with_rotation`，INT-1173）
 - `api_gateway/schemas/api.py`（`ApiEndpointInput.api_keys` / `ApiEndpointItem.api_keys_summary`，INT-1173）
 - `shared/infrastructure/base_executor/_base.py`
 - `task_service/core/execution_engine/mixins/task_dispatch.py`

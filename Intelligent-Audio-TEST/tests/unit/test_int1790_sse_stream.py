@@ -35,7 +35,7 @@ import pytest
 from api_test_service.domain.services.stream_round_splitter import (
     StreamRoundSplitter,
 )
-from api_test_service.infrastructure.adapters.transport.sse_client import (
+from api_test_service.infrastructure.adapters.http.transport.v1.sse_client import (
     EVENT_END_STREAM,
     EVENT_ERROR,
     EVENT_HEARTBEAT,

@@ -32,7 +32,7 @@ from api_test_service.core.evaluation_submitter import submit_case_evaluation
 from api_test_service.domain.services.stream_round_splitter import (
     StreamRoundSplitter,
 )
-from api_test_service.infrastructure.adapters.transport import HttpStreamClient
+from api_test_service.infrastructure.adapters.http.transport.v1 import HttpStreamClient
 
 logger = logging.getLogger(__name__)
 

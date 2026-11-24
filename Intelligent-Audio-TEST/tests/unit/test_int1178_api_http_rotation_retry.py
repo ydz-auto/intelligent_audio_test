@@ -25,8 +25,8 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 import pytest
 
 import shared.utils.api_key_provider as akp
-from api_test_service.infrastructure.adapters import api_driver_adapter as ada_mod
-from api_test_service.infrastructure.adapters.api_driver_adapter import (
+from api_test_service.infrastructure.adapters.any.api_driver import v1 as ada_mod
+from api_test_service.infrastructure.adapters.any.api_driver.v1 import (
     ApiDriverAdapter,
 )
 

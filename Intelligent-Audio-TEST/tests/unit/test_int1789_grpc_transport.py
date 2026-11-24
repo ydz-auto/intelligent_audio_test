@@ -37,7 +37,7 @@ from shared.utils.error_mapping import (
     grpc_status_to_biz,
 )
 
-from api_test_service.infrastructure.adapters.transport.grpc_client import (
+from api_test_service.infrastructure.adapters.grpc.transport.v1.grpc_client import (
     GrpcBidiSession,
     GrpcCallError,
     GrpcClient,
@@ -372,13 +372,13 @@ class _ApiCfg:
 class TestAdapterConfig:
 
     def test_missing_meta_grpc(self):
-        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
         adapter = GrpcAdapter(_ApiCfg({}))
         with pytest.raises(GrpcProtoError):
             adapter.grpc_config()
 
     def test_reflection_rejected(self):
-        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
         adapter = GrpcAdapter(_ApiCfg({'grpc': {
             'service': 's', 'method': 'm', 'method_kind': 'unary',
             'proto_object_key': 'local://x/y.proto', 'reflection': True}}))
@@ -386,7 +386,7 @@ class TestAdapterConfig:
             adapter.grpc_config()
 
     def test_unknown_method_kind_rejected(self):
-        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
         adapter = GrpcAdapter(_ApiCfg({'grpc': {
             'service': 's', 'method': 'm', 'method_kind': 'client_stream',
             'proto_object_key': 'local://x/y.proto'}}))
@@ -394,7 +394,7 @@ class TestAdapterConfig:
             adapter.grpc_config()
 
     def test_proto_sha_mismatch_rejected(self, tmp_path, monkeypatch):
-        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
         from shared.infrastructure import storage as storage_mod
 
         proto_path = tmp_path / 'echo.proto'
@@ -418,7 +418,7 @@ _UNARY_META = {'grpc': {
 class TestRequestRendering:
 
     def _adapter(self, meta=None, case_config=None):
-        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
         return GrpcAdapter(_ApiCfg(meta or _UNARY_META), case_config=case_config or {})
 
     def test_nested_body_template_placeholders_rendered(self):
@@ -440,7 +440,7 @@ class TestRequestRendering:
 
     def test_nested_body_template_renders_on_the_wire(self, echo_server):
         """嵌套渲染结果真的进到 request message（端到端取一次 unary 响应）。"""
-        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
         adapter = self._adapter(case_config={'body_template': {
             'session_id': '{{session_id}}',
             'input_text': '{{input_text}}',
@@ -454,7 +454,7 @@ class TestRequestRendering:
 
     def test_metadata_placeholders_refresh_every_round(self, echo_server):
         """`meta.grpc.metadata` 的占位符每轮重新渲染（不是只首轮生效）。"""
-        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
         meta = {'grpc': {**_UNARY_META['grpc'], 'metadata': {
             'x-round': '{{round_number}}', 'authorization': 'Bearer static'}}}
         adapter = self._adapter(meta=meta, case_config={'body_template': {
@@ -475,7 +475,7 @@ class TestRequestRendering:
 
     def test_execute_unknown_body_field_is_config_error(self, echo_server):
         """body_template 多出 proto 没有的字段 → execute() 归 config/400，不外抛 ParseError。"""
-        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
         adapter = self._adapter(case_config={
             'body_template': {'no_such_field': 'x'}})
         adapter._endpoint = echo_server.target
@@ -561,7 +561,7 @@ class TestStreamStrategy:
 
         monkeypatch.setattr(executor, '_attach_api_output_fields', fake_attach)
 
-        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
         adapter = GrpcAdapter(
             _ApiCfg({'grpc': {'service': 'int1789.EchoService',
                               'method': 'ServerStream',
@@ -591,7 +591,7 @@ class TestStreamStrategy:
 
         monkeypatch.setattr(executor, '_attach_api_output_fields', fake_attach)
 
-        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
         adapter = GrpcAdapter(
             _ApiCfg({'grpc': {'service': 'int1789.EchoService',
                               'method': 'Bidi', 'method_kind': 'bidi',
@@ -649,7 +649,7 @@ class TestStreamStrategy:
         from api_test_service.infrastructure.adapters import (
             vendor_adapter_registry as registry,
         )
-        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        from api_test_service.infrastructure.adapters.grpc.any.v1 import GrpcAdapter
 
         adapter = GrpcAdapter(_ApiCfg(dict(_UNARY_META)), case_config={})
         adapter._endpoint = echo_server.target

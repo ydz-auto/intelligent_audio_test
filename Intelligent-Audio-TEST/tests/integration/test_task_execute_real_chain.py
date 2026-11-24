@@ -48,7 +48,7 @@ INT-26 遗留项：execute 执行链路在 INT-26 验收时以 fake/集成替身
   （INT-41 已修复：api_test_service 应用层入口 CreateAPITestCommandHandler.handle
   对数值字符串 case_ids 做 dataclasses.replace 幂等规范化，与命令 List[int]
   声明对齐；锁定测试转为常驻守卫，隔离替身自动等价于幂等操作）
-- INT-43：api_test_service/infrastructure/adapters/api_driver_adapter.py（INT-62
+- INT-43：api_test_service/infrastructure/adapters/any/api_driver/v1/__init__.py（INT-62
   自 clients/api_driver.py 迁移）APIDriver._log 把 **kwargs
   转发给 log_and_emit 又显式传 task_id/test_case_id，调用点传了这两个参数即抛
   TypeError("got multiple values for keyword argument") → 每次真实 API 调用在
@@ -603,7 +603,7 @@ def int35_quarantine(oss_fast_fail, pg_db):
     # ── INT-43：APIDriver._log 转发 **kwargs 又显式传 task_id/test_case_id，重复传参即崩 ──
     # 隔离：以「调用方 kwargs 优先、实例属性兜底」的语义直调 log_and_emit
     # （与推荐修复一致）。调用方不传这两个参数时行为与原实现完全一致。
-    from api_test_service.infrastructure.adapters.api_driver_adapter import ApiDriverAdapter as APIDriver
+    from api_test_service.infrastructure.adapters.any.api_driver.v1 import ApiDriverAdapter as APIDriver
     from shared.utils.log_handler import log_and_emit as _log_and_emit_fn
     orig_apidriver_log = APIDriver._log
 
@@ -1037,7 +1037,7 @@ class TestKnownExecuteChainDefects:
             self, monkeypatch, int35_quarantine):
         """调用方传 task_id/test_case_id 时 _log 不应抛 TypeError（探针直调
         隔离夹具保存的未补丁原始 _log，避免被隔离替身污染）。"""
-        import api_test_service.infrastructure.adapters.api_driver_adapter as drv_mod
+        import api_test_service.infrastructure.adapters.any.api_driver.v1 as drv_mod
 
         captured = {}
         monkeypatch.setattr(drv_mod, 'log_and_emit', lambda **kw: captured.update(kw))

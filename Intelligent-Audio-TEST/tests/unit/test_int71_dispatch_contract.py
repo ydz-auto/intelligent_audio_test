@@ -302,7 +302,7 @@ class TestAudioInputWiring:
     def test_send_via_adapter_carries_audio_path(self, monkeypatch):
         """_send_via_adapter 音频轮次把混音产物引用传给内嵌 execute（storage-ref）。"""
         import api_test_service.core.api_session_executor as executor_mod
-        from api_test_service.infrastructure.adapters import mock_vendor_adapter as mva
+        from api_test_service.infrastructure.adapters.any.mock import v1 as mva
 
         captured = {}
 
@@ -402,7 +402,7 @@ class TestAdapterAudioResolution:
     """内嵌适配器音频引用解析：存储引用/裸路径/字节，失败抛错不静默。"""
 
     def test_storage_ref_resolved_via_storage_layer(self, monkeypatch):
-        from api_test_service.infrastructure.adapters.audio_input import (
+        from api_test_service.infrastructure.adapters.common.audio_input import (
             resolve_audio_bytes)
         import shared.infrastructure.storage as storage_mod
 
@@ -412,19 +412,19 @@ class TestAdapterAudioResolution:
         assert resolve_audio_bytes('oss://audios/x.wav') == b'STORED-AUDIO'
 
     def test_bare_path_read_from_disk(self, tmp_path):
-        from api_test_service.infrastructure.adapters.audio_input import (
+        from api_test_service.infrastructure.adapters.common.audio_input import (
             resolve_audio_bytes)
         f = tmp_path / 'a.wav'
         f.write_bytes(b'RAW-AUDIO')
         assert resolve_audio_bytes(str(f)) == b'RAW-AUDIO'
 
     def test_bytes_passthrough(self):
-        from api_test_service.infrastructure.adapters.audio_input import (
+        from api_test_service.infrastructure.adapters.common.audio_input import (
             resolve_audio_bytes)
         assert resolve_audio_bytes(b'\x00\x01') == b'\x00\x01'
 
     def test_invalid_input_raises(self):
-        from api_test_service.infrastructure.adapters.audio_input import (
+        from api_test_service.infrastructure.adapters.common.audio_input import (
             resolve_audio_bytes)
         with pytest.raises(ValueError):
             resolve_audio_bytes('')
@@ -434,8 +434,8 @@ class TestAdapterAudioResolution:
 
     def test_voice_llm_chat_uploads_real_bytes(self, monkeypatch):
         """execute_voice_llm_chat audio 路径解析 storage-ref 为真实字节上传。"""
-        from api_test_service.infrastructure.adapters import (
-            api_driver_adapter as ada)
+        from api_test_service.infrastructure.adapters.any.api_driver import (
+            v1 as ada)
         import shared.infrastructure.storage as storage_mod
 
         captured = {}

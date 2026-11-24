@@ -34,14 +34,14 @@ from api_test_service.infrastructure.adapters import (
     register_vendor_adapter,
     vendor_adapter_registry,
 )
-from api_test_service.infrastructure.adapters.transport import (
+from api_test_service.infrastructure.adapters.http.transport.v1 import (
     APIClient,
     endpoint_protocol,
 )
-from api_test_service.infrastructure.adapters.api_driver_adapter import (
+from api_test_service.infrastructure.adapters.any.api_driver.v1 import (
     ApiDriverAdapter,
 )
-from api_test_service.infrastructure.adapters.mock_vendor_adapter import (
+from api_test_service.infrastructure.adapters.any.mock.v1 import (
     MockVendorAdapter,
 )
 

@@ -25,7 +25,7 @@ from shared.utils.path_extractor import extract_by_path
 
 from api_test_service.core.api_session_executor import APISessionExecutor
 from api_test_service.infrastructure.adapters import vendor_adapter_registry
-from api_test_service.infrastructure.adapters.transport.grpc_client import (
+from api_test_service.infrastructure.adapters.grpc.transport.v1.grpc_client import (
     EVENT_END_STREAM,
     EVENT_ERROR,
     EVENT_HEARTBEAT,

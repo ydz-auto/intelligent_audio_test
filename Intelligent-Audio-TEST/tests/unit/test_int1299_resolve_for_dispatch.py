@@ -32,10 +32,10 @@ from api_test_service.infrastructure.adapters import (
     VendorAdapterRegistry,
     vendor_adapter_registry,
 )
-from api_test_service.infrastructure.adapters.protocol.realtime_adapter_base import (
+from api_test_service.infrastructure.adapters.realtime.any.v1 import (
     RealtimeAdapterBase,
 )
-from api_test_service.infrastructure.adapters.vendors.openai_realtime_adapter import (
+from api_test_service.infrastructure.adapters.realtime.openai.v1 import (
     OpenAIRealtimeAdapter,
 )
 
@@ -139,7 +139,7 @@ class TestExecutorTableDrivenDispatch:
 
     def test_unset_keeps_realtime_ws_client(self):
         """未配置 / api_driver / mock → resolve_for=None → RealtimeWSClient 默认"""
-        from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
+        from api_test_service.infrastructure.adapters.realtime.transport.v1 import RealtimeWSClient
         ex = self._executor()
         for vendor_adapter in (None, 'api_driver', 'mock'):
             case_cfg = ({'vendor_adapter': vendor_adapter}
@@ -149,7 +149,7 @@ class TestExecutorTableDrivenDispatch:
             assert isinstance(transport, RealtimeWSClient), vendor_adapter
 
     def test_openai_selects_adapter(self):
-        from api_test_service.infrastructure.adapters.vendors.openai_realtime_adapter import (
+        from api_test_service.infrastructure.adapters.realtime.openai.v1 import (
             OpenAIRealtimeAdapter,
         )
         ex = self._executor()

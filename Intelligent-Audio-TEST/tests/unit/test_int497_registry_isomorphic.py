@@ -37,16 +37,16 @@ from api_test_service.infrastructure.adapters import (
     register_vendor_adapter,
     vendor_adapter_registry,
 )
-from api_test_service.infrastructure.adapters.api_driver_adapter import (
+from api_test_service.infrastructure.adapters.any.api_driver.v1 import (
     ApiDriverAdapter,
 )
-from api_test_service.infrastructure.adapters.mock_vendor_adapter import (
+from api_test_service.infrastructure.adapters.any.mock.v1 import (
     MockVendorAdapter,
 )
-from api_test_service.infrastructure.adapters.protocol.realtime_adapter_base import (
+from api_test_service.infrastructure.adapters.realtime.any.v1 import (
     RealtimeAdapterBase,
 )
-from api_test_service.infrastructure.adapters.vendors.openai_realtime_adapter import (
+from api_test_service.infrastructure.adapters.realtime.openai.v1 import (
     OpenAIRealtimeAdapter,
 )
 

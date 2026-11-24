@@ -48,7 +48,7 @@ from api_test_service.domain.value_objects.sse_policy import (
     SSE_MAX_RECONNECT_ATTEMPTS,
     SSE_MAX_RETRY_MS,
 )
-from api_test_service.infrastructure.adapters.proxy_utils import build_proxy_url
+from api_test_service.infrastructure.adapters.common.proxy_utils import build_proxy_url
 
 logger = logging.getLogger(__name__)
 

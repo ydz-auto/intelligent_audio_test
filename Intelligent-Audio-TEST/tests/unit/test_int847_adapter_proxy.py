@@ -21,9 +21,9 @@ os.environ.setdefault('OSS_SECRET_KEY', 'ut-dummy-sk')
 from types import SimpleNamespace
 from unittest import mock
 
-from api_test_service.infrastructure.adapters.proxy_utils import (
+from api_test_service.infrastructure.adapters.common.proxy_utils import (
     build_proxy_url, split_proxy_url, validate_proxy)
-from api_test_service.infrastructure.adapters import api_driver_adapter as ada
+from api_test_service.infrastructure.adapters.any.api_driver import v1 as ada
 
 _PROXY_HTTP = ('http', 'user:pass@10.0.0.1:8080', 'http://user:pass@10.0.0.1:8080')
 _PROXY_SOCKS5 = ('socks5', 'user:pass@10.0.0.1:1080', 'socks5://user:pass@10.0.0.1:1080')

@@ -25,8 +25,8 @@ from shared.utils.api_key_provider import (
 from shared.models.common_enums import VendorAdapterType
 
 from api_test_service.domain.ports import ApiVendorAdapter
-from api_test_service.infrastructure.adapters.transport import api_client
-from api_test_service.infrastructure.adapters.audio_input import resolve_audio_bytes
+from api_test_service.infrastructure.adapters.http.transport.v1 import api_client
+from api_test_service.infrastructure.adapters.common.audio_input import resolve_audio_bytes
 from api_test_service.infrastructure.adapters.registry import register_vendor_adapter
 
 # 密钥链解析器（UC-0901 扩展流程 3a）：各级键名/环境变量名经

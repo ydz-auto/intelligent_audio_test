@@ -7,7 +7,7 @@
 
 | 你要做的事 | 放哪 | 写代码？ |
 | --- | --- | --- |
-| ① 厂商协议适配器（WS 事件/握手/输出） | `api_test_service/infrastructure/adapters/vendors/你的厂商.py` | ✅ |
+| ① 厂商协议适配器（WS 事件/握手/输出） | `api_test_service/infrastructure/adapters/realtime/你的厂商/v1/__init__.py` | ✅ |
 | ② 厂商注册（枚举 + 映射 + @register） | `common_enums.py` + `registry.py` | ✅（约 5 行） |
 | ③ 参数配置（评估字段/会话/用例） | 算法配置 field_mapper + APIs 表 + 用例配置 | ❌ 纯配置 |
 
@@ -19,7 +19,7 @@
 
 ```
 ApiVendorAdapter (Port，抽象契约，domain/ports/)
-   ├── RealtimeAdapterBase   ← Realtime 厂商继承这个（协议级，protocol/）
+   ├── RealtimeAdapterBase   ← Realtime 厂商继承这个（协议级，realtime/any/v1）
    │      └── OpenAIRealtimeAdapter  （官方样例：5 个类属性，零覆写）
    │      └── 你的厂商适配器
    └── (HTTP 厂商) 直接实现 Port（见《接入指南·普通 HTTP API》）
@@ -30,9 +30,9 @@ ApiVendorAdapter (Port，抽象契约，domain/ports/)
 ### 2.2 最小模板（事件协议与 OpenAI 相同 → 5 行就够）
 
 ```python
-# adapters/vendors/my_vendor_adapter.py
+# adapters/realtime/my_vendor/v1/__init__.py
 from shared.models.common_enums import AdapterProtocol, AdapterVendor, VendorAdapterType
-from api_test_service.infrastructure.adapters.protocol.realtime_adapter_base import RealtimeAdapterBase
+from api_test_service.infrastructure.adapters.realtime.any.v1 import RealtimeAdapterBase
 from api_test_service.infrastructure.adapters.registry import register_vendor_adapter
 
 @register_vendor_adapter

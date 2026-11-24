@@ -12,6 +12,7 @@ api_adapter_service 删除后，OCP 演练指向内嵌 vendor_adapter_registry�
 import hashlib
 import importlib
 import os
+import shutil
 import sys
 from types import SimpleNamespace
 
@@ -25,8 +26,11 @@ os.environ.setdefault('OSS_SECRET_KEY', 'ut-dummy-sk')
 from shared.models.common_enums import AdapterProtocol, AdapterVendor  # noqa: E402
 
 ADAPTERS_PKG = 'api_test_service.infrastructure.adapters'
-NEW_MODULE_NAME = 'zz_acceptance_acme_adapter'
-GUARDED_FILES = ('registry.py', 'api_driver_adapter.py')
+# 三级目录约定（协议/厂商/版本）：演练厂商按 http/<vendor>/v1/__init__.py 落位
+NEW_VENDOR_DIR = os.path.join('http', 'zz_acceptance_acme')
+NEW_VERSION_DIR = os.path.join(NEW_VENDOR_DIR, 'v1')
+NEW_MODULE_PATH = f'{ADAPTERS_PKG}.http.zz_acceptance_acme.v1'
+GUARDED_FILES = ('registry.py', os.path.join('any', 'api_driver', 'v1', '__init__.py'))
 
 # 演练厂商注册键：(HTTP, API_DRIVER) —— 与既有 ApiDriverAdapter（(ANY, API_DRIVER)
 # 遗留单维）不同键，不覆盖；create_from_config 在演练期间按该键精确命中。
@@ -79,22 +83,29 @@ def _file_hash(path):
 def acme_drill():
     pkg = importlib.import_module(ADAPTERS_PKG)
     pkg_dir = _pkg_dir()
-    new_path = os.path.join(pkg_dir, NEW_MODULE_NAME + '.py')
+    vendor_dir = os.path.join(pkg_dir, NEW_VENDOR_DIR)
+    version_dir = os.path.join(pkg_dir, NEW_VERSION_DIR)
+    new_path = os.path.join(version_dir, '__init__.py')
     guarded_before = {
         name: _file_hash(os.path.join(pkg_dir, name))
         for name in GUARDED_FILES
     }
     assert not os.path.exists(new_path), '演练模块文件已存在，拒绝覆盖'
+    os.makedirs(version_dir, exist_ok=True)
+    with open(os.path.join(vendor_dir, '__init__.py'), 'w', encoding='utf-8') as f:
+        f.write('"""验收演练：Acme 厂商分组，具体版本在 v1/ 子目录。"""\n')
     with open(new_path, 'w', encoding='utf-8') as f:
         f.write(NEW_MODULE_SRC)
     importlib.invalidate_caches()
     try:
-        importlib.import_module(f'{ADAPTERS_PKG}.{NEW_MODULE_NAME}')
+        importlib.import_module(NEW_MODULE_PATH)
         yield pkg_dir, guarded_before
     finally:
         if os.path.exists(new_path):
             os.remove(new_path)
-        sys.modules.pop(f'{ADAPTERS_PKG}.{NEW_MODULE_NAME}', None)
+        shutil.rmtree(os.path.join(pkg_dir, 'http', 'zz_acceptance_acme'),
+                      ignore_errors=True)
+        sys.modules.pop(NEW_MODULE_PATH, None)
         importlib.invalidate_caches()
         from api_test_service.infrastructure.adapters import \
             vendor_adapter_registry
@@ -111,7 +122,7 @@ class TestUC1003OCPDrill:
         for name, digest in guarded_before.items():
             assert _file_hash(os.path.join(pkg_dir, name)) == digest, name
 
-        mod = importlib.import_module(f'{ADAPTERS_PKG}.{NEW_MODULE_NAME}')
+        mod = importlib.import_module(NEW_MODULE_PATH)
         cls = mod.AcmeRealtimeAdapter
 
         from api_test_service.infrastructure.adapters import \

@@ -2,7 +2,7 @@
 """Mock WS 请求-响应 API 服务 — 被测产品请求-响应式 WebSocket 替身（INT-2079/A4）。
 
 契约对齐（生产客户端，勿改 mock 侧以外的契约）：
-- 客户端：api_test_service/infrastructure/adapters/websocket_adapter.py
+- 客户端：api_test_service/infrastructure/adapters/websocket/any/v1/__init__.py
   （websocket + streaming=false 的请求-响应式传输）
 
 语义（非会话式，一次连接一次往返）：

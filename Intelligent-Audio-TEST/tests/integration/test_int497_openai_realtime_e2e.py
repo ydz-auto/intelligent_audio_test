@@ -318,7 +318,7 @@ class TestOpenAIRealtimeE2E:
 
     def test_disconnect_injection_converges(self, mock_rt):
         """超时/错误路径：断连注入收敛 connection_closed，wait_ai_complete 判失败"""
-        from api_test_service.infrastructure.adapters.vendors.openai_realtime_adapter import (
+        from api_test_service.infrastructure.adapters.realtime.openai.v1 import (
             OpenAIRealtimeAdapter,
         )
         mock_rt.set_behavior({'disconnect_after_events': 2})
@@ -344,7 +344,7 @@ class TestOpenAIRealtimeE2E:
 
     def test_protocol_error_injection_fails_pre_process(self, mock_rt):
         """超时/错误路径：协议错误注入 → pre_process 收敛失败（session.updated 未确认）"""
-        from api_test_service.infrastructure.adapters.vendors.openai_realtime_adapter import (
+        from api_test_service.infrastructure.adapters.realtime.openai.v1 import (
             OpenAIRealtimeAdapter,
         )
         mock_rt.set_behavior({'protocol_error_on_event': 'session.update'})
@@ -384,7 +384,7 @@ class TestWiringDispatch:
         transport = ex._resolve_realtime_transport(
             self._cfg(), {'vendor_adapter': 'openai_realtime'}, {},
             'ws://mock', {}, 20, 1, 'c1', 'rt-1')
-        from api_test_service.infrastructure.adapters.vendors.openai_realtime_adapter import (
+        from api_test_service.infrastructure.adapters.realtime.openai.v1 import (
             OpenAIRealtimeAdapter,
         )
         assert isinstance(transport, OpenAIRealtimeAdapter)
@@ -395,7 +395,7 @@ class TestWiringDispatch:
         transport = ex._resolve_realtime_transport(
             self._cfg(), {}, {'vendor_adapter': 'openai'},
             'ws://mock', {}, 20, 1, 'c1', 'rt-1')
-        from api_test_service.infrastructure.adapters.vendors.openai_realtime_adapter import (
+        from api_test_service.infrastructure.adapters.realtime.openai.v1 import (
             OpenAIRealtimeAdapter,
         )
         assert isinstance(transport, OpenAIRealtimeAdapter)
@@ -405,14 +405,14 @@ class TestWiringDispatch:
         transport = ex._resolve_realtime_transport(
             self._cfg(meta={'vendor_adapter': 'openai_realtime'}), {}, {},
             'ws://mock', {}, 20, 1, 'c1', 'rt-1')
-        from api_test_service.infrastructure.adapters.vendors.openai_realtime_adapter import (
+        from api_test_service.infrastructure.adapters.realtime.openai.v1 import (
             OpenAIRealtimeAdapter,
         )
         assert isinstance(transport, OpenAIRealtimeAdapter)
 
     def test_unset_keeps_realtime_ws_client(self):
         """未配置 / api_driver / mock → RealtimeWSClient 默认（向后兼容）"""
-        from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
+        from api_test_service.infrastructure.adapters.realtime.transport.v1 import RealtimeWSClient
         ex = self._executor()
         for vendor_adapter in (None, 'api_driver', 'mock'):
             case_cfg = ({'vendor_adapter': vendor_adapter}

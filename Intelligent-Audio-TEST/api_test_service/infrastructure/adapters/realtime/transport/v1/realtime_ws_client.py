@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Realtime 厂商 WebSocket 客户端（INT-61）— 基础设施层
 
-INT-1168 迁移：原厂商 WS 传输包文件迁入 adapters/transport/
-（传输层收拢，与 http_client 同属连接形态分区）。
+INT-1168 / INT-2079 迁移：原厂商 WS 传输包文件迁入
+adapters/realtime/transport/v1/（传输层收拢，与 http_client 同属连接形态分区）。
 
 与设计文档 RealtimeAPIAdapter 对称的实例内闭环实现：WS 长连接跨多轮保持，
 后台接收线程 → 阻塞事件队列，executor 在执行线程中 recv() 取归一化事件。
@@ -25,7 +25,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from shared.models.common_enums import RealtimeFrameType, RealtimeRoundMode
-from api_test_service.infrastructure.adapters.proxy_utils import websocket_proxy_kwargs
+from api_test_service.infrastructure.adapters.common.proxy_utils import websocket_proxy_kwargs
 
 logger = logging.getLogger(__name__)
 

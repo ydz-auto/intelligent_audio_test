@@ -54,7 +54,7 @@
 | `default_max_audio_duration` | 支持的最大音频时长（秒，默认 60） |
 | `proxy_type` / `proxy_url` | 被测 API 网络代理（INT-839）：`proxy_type` ∈ http / https / socks5 / socks5h，`proxy_url` 为 `user:pass@host:port` 不含 scheme；配置代理时认证段必填；NULL/空 = 不用代理 |
 
-校验规则（后端 `api_test_service/infrastructure/adapters/proxy_utils.py` `validate_proxy`，前端
+校验规则（后端 `api_test_service/infrastructure/adapters/common/proxy_utils.py` `validate_proxy`，前端
 `frontend/src/utils/proxyValidation.ts` 镜像）：`proxy_type` 为空则 `proxy_url` 必须为空；
 非空则类型必须是四值之一、`proxy_url` 必填且带 `user:pass@` 认证段、不得含 scheme 前缀。
 
@@ -119,7 +119,7 @@ Realtime 测试以 WebSocket 全双工直连被测 Realtime API：上行推音�
 | 配置 | 说明 |
 | --- | --- |
 | WS/WSS 端点 | `api_endpoints` 中 `ws://` / `wss://` 前缀条目优先，回退 `api_url` 同规则；`RealtimeSessionExecutor._resolve_ws_url` 校验必须带 `ws://` / `wss://` 前缀 |
-| `meta.vendor_adapter` | `openai` / `openai_realtime`（`VendorAdapterType` 扁平 key）→ 注册表 `(AdapterProtocol.REALTIME, AdapterVendor.OPENAI)` 分发 `OpenAIRealtimeAdapter`（`api_test_service/infrastructure/adapters/vendors/openai_realtime_adapter.py`）；未配置回退 `RealtimeWSClient` 默认行为（api_driver / mock / 未配置，向后兼容） |
+| `meta.vendor_adapter` | `openai` / `openai_realtime`（`VendorAdapterType` 扁平 key）→ 注册表 `(AdapterProtocol.REALTIME, AdapterVendor.OPENAI)` 分发 `OpenAIRealtimeAdapter`（`api_test_service/infrastructure/adapters/realtime/openai/v1/__init__.py`）；未配置回退 `RealtimeWSClient` 默认行为（api_driver / mock / 未配置，向后兼容） |
 | `meta.session_config` | `session.update` 载荷（VAD / voice / instructions 等），`_build_session_config` 合并用例级 `session` 覆盖 |
 | `audio_config`（顶层列） | 目标音频格式声明（`sample_rate` 默认 **24000** / bit_depth / channels / container），与 HTTP 路径同源；`_build_session_config` 回退 `input_audio_sample_rate`。列空时才回退 `meta.audio_config`（存量兼容，INT-1771） |
 | `meta.ws_headers` | WS 握手头（直传，显式 `Authorization` 头优先，不覆盖） |
@@ -143,8 +143,8 @@ Realtime 厂商适配器按**三级体系**落地（`api_test_service/infrastruc
 | 层级 | 落位 | 职责 |
 | --- | --- | --- |
 | **ApiVendorAdapter（Port）** | `api_test_service/domain/ports/api_vendor_adapter.py` | 适配器统一契约（生命周期钩子 + 同形方法面） |
-| **RealtimeAdapterBase（协议级 base）** | `infrastructure/adapters/protocol/realtime_adapter_base.py` | Realtime 协议默认实现，组合复用 `RealtimeWSClient` 为传输/状态机，暴露同形方法面（`connect` / `pre_process` / `send` / `recv` / `output` / `close` 等），轮次编排零改动 |
-| **品牌适配器（vendors/）** | `infrastructure/adapters/vendors/openai_realtime_adapter.py` | 声明品牌维度，行为继承基类 |
+| **RealtimeAdapterBase（协议级 base）** | `infrastructure/adapters/realtime/any/v1/__init__.py` | Realtime 协议默认实现，组合复用 `RealtimeWSClient` 为传输/状态机，暴露同形方法面（`connect` / `pre_process` / `send` / `recv` / `output` / `close` 等），轮次编排零改动 |
+| **品牌适配器（realtime/<厂商>/v1/）** | `infrastructure/adapters/realtime/openai/v1/__init__.py` | 声明品牌维度，行为继承基类 |
 
 **`OpenAIRealtimeAdapter` 零覆写即官方样例**：仅声明 5 个类属性（`protocol` / `vendor` / `adapter_type` /
 `display_name` / `_transport_vendor`），全部行为继承 `RealtimeAdapterBase`。
@@ -174,7 +174,7 @@ Realtime 厂商适配器按**三级体系**落地（`api_test_service/infrastruc
 - **新厂商接入三步**（执行器零改动）：
   1. `shared/models/common_enums.py` 新增 `AdapterVendor` + `VendorAdapterType` 枚举成员；
   2. `_FLAT_KEY_DIMENSIONS` 加一行映射（扁平 key → `(protocol, vendor)`）；
-  3. `infrastructure/adapters/vendors/` 下实现品牌适配器类 + `@register_vendor_adapter` 装饰注册。
+  3. `infrastructure/adapters/realtime/<厂商>/v1/__init__.py` 下实现品牌适配器类 + `@register_vendor_adapter` 装饰注册。
 
   用例侧配置 `vendor_adapter=<扁平 key>` 即分发（`case_config` 优先于 `api_config.meta`）。
 
@@ -294,8 +294,8 @@ flowchart LR
 ```
 
 要点（与代码一致，`api_test_service/core/realtime_session_executor.py` +
-`api_test_service/infrastructure/adapters/transport/realtime_ws_client.py` +
-`api_test_service/infrastructure/adapters/vendors/openai_realtime_adapter.py`）：
+`api_test_service/infrastructure/adapters/realtime/transport/v1/realtime_ws_client.py` +
+`api_test_service/infrastructure/adapters/realtime/openai/v1/__init__.py`）：
 
 - **委托构造**：`_resolve_realtime_transport` 查表分发（2.3）构造 `OpenAIRealtimeAdapter`，
   否则构造 `RealtimeWSClient`；两者暴露同一方法面，轮次编排零改动。

@@ -49,7 +49,7 @@ from shared.utils.config_manager import config_manager
 
 from api_test_service.domain.ports import ApiVendorAdapter
 from api_test_service.infrastructure.adapters.registry import register_vendor_adapter
-from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
+from api_test_service.infrastructure.adapters.realtime.transport.v1 import RealtimeWSClient
 
 logger = logging.getLogger(__name__)
 

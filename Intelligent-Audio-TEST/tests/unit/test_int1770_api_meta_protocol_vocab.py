@@ -32,7 +32,7 @@ from api_test_service.infrastructure.adapters import (
     infer_protocol,
     vendor_adapter_registry,
 )
-from api_test_service.infrastructure.adapters.api_driver_adapter import (
+from api_test_service.infrastructure.adapters.any.api_driver.v1 import (
     ApiDriverAdapter,
 )
 
