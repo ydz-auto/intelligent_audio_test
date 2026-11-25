@@ -24,6 +24,10 @@ x-backend-env: &backend-env
   OSS_KEY_PREFIX: ${OSS_KEY_PREFIX:-}
   # cos → virtual（COS 的 S3 接口只接受 virtual-hosted），rustfs → path
   OSS_ADDRESSING_STYLE: ${OSS_ADDRESSING_STYLE:-}
+  # COS 不接受 aws-chunked 尾随校验：关闭默认 CRC32 上传/响应校验，
+  # 否则 multipart UploadPart 会报 MissingContentLength / 403
+  AWS_REQUEST_CHECKSUM_CALCULATION: ${AWS_REQUEST_CHECKSUM_CALCULATION:-when_required}
+  AWS_RESPONSE_CHECKSUM_VALIDATION: ${AWS_RESPONSE_CHECKSUM_VALIDATION:-when_required}
   STORAGE_FALLBACK_ENABLED: ${STORAGE_FALLBACK_ENABLED:-false}
   # local 后端的落盘根目录（与 storage_local 卷对应）
   STORAGE_LOCAL_ROOT: ${STORAGE_LOCAL_ROOT:-/app/storage/local}
@@ -132,6 +136,9 @@ services:
       OSS_BUCKET_NAME: ${OSS_BUCKET_NAME:-}
       OSS_KEY_PREFIX: ${OSS_KEY_PREFIX:-}
       OSS_ADDRESSING_STYLE: ${OSS_ADDRESSING_STYLE:-}
+      # eval_server 直接使用 boto3：同样需要关闭 CRC32 尾随校验
+      AWS_REQUEST_CHECKSUM_CALCULATION: ${AWS_REQUEST_CHECKSUM_CALCULATION:-when_required}
+      AWS_RESPONSE_CHECKSUM_VALIDATION: ${AWS_RESPONSE_CHECKSUM_VALIDATION:-when_required}
       LLM_JUDGE_API_KEY: ""
       # 评估结果事件化：任务终态发布到 Redis eval:result 频道（平台订阅）
       REDIS_URL: redis://redis:6379/0
