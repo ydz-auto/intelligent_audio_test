@@ -24,6 +24,55 @@ class PlaybackAclRepositoryImpl(PlaybackAclRepository):
     # 一页取全避免分页循环；超出时调用方只会用到首个匹配项，不影响选择口径。
     LAB_PLAYBACK_DEVICE_PAGE_SIZE = 200
 
+    # play_round 是整轮同步阻塞调用（服务端等音频播完才返回），默认 60s 的
+    # gRPC deadline 会把时长 >=60s 的音频直接打断为 DEADLINE_EXCEEDED。
+    PLAY_ROUND_TIMEOUT_BUFFER_SECONDS = 120
+    # 预下载结果没带 duration（旧版 audio_service）时的保守 deadline
+    PLAY_ROUND_TIMEOUT_WITHOUT_DURATION = 600
+
+    @classmethod
+    def _collect_audio_ids(cls, node, acc=None):
+        """递归收集配置节点中出现的 audio_id（主讲人/噪声/干扰人）。"""
+        if acc is None:
+            acc = set()
+        if isinstance(node, dict):
+            audio_id = node.get('audio_id')
+            if audio_id not in (None, ''):
+                try:
+                    acc.add(int(audio_id))
+                except (TypeError, ValueError):
+                    pass
+            for value in node.values():
+                cls._collect_audio_ids(value, acc)
+        elif isinstance(node, list):
+            for item in node:
+                cls._collect_audio_ids(item, acc)
+        return acc
+
+    @classmethod
+    def estimate_play_round_timeout(cls, round_config: Dict,
+                                    audio_local_paths: Optional[Dict] = None) -> float:
+        """按本轮音频总时长估算 StartPlayback 的显式 deadline（秒）。
+
+        预下载阶段带回每个音频的 duration，求和作为本轮播放时长上界，
+        再叠加设备锁等待与播放启动余量。缺少时长信息时回退到保守常量。
+        """
+        durations = {}
+        for audio_id, spec in (audio_local_paths or {}).items():
+            if not isinstance(spec, dict):
+                continue
+            try:
+                durations[int(audio_id)] = max(float(spec.get('duration') or 0.0), 0.0)
+            except (TypeError, ValueError):
+                continue
+        total = sum(durations.get(audio_id, 0.0)
+                    for audio_id in cls._collect_audio_ids(round_config))
+        if total <= 0:
+            return float(cls.PLAY_ROUND_TIMEOUT_WITHOUT_DURATION)
+        from shared.infrastructure.config import BaseConfig
+        lock_wait = float(getattr(BaseConfig, 'PLAYBACK_DEVICE_LOCK_WAIT_SECONDS', 900) or 0)
+        return total * 1.2 + lock_wait + cls.PLAY_ROUND_TIMEOUT_BUFFER_SECONDS
+
     def list_playback_devices(self, lab_id: int) -> list:
         """按实验室查询播放设备（device_service PlaybackConfigService）"""
         from shared.clients.grpc_clients import get_playback_config_service_stub
@@ -109,12 +158,15 @@ class PlaybackAclRepositoryImpl(PlaybackAclRepository):
 
     def play_round(self, round_config: Dict, task_id: str, case_config: Dict,
                    test_case_id: str, round_number: int,
-                   audio_local_paths: Optional[Dict] = None) -> Optional[PlaybackResultDTO]:
+                   audio_local_paths: Optional[Dict] = None,
+                   timeout: Optional[float] = None) -> Optional[PlaybackResultDTO]:
         """播放本轮音频
 
         Args:
             audio_local_paths: 嵌套映射 {audio_id: {target_rate: local_path, "original": local_path}}，
                 由 PrepareAudios RPC 预下载+重采样生成，按设备 target_rate 取本地文件。
+            timeout: 显式 RPC deadline（秒）。整轮播放是长阻塞调用，调用方应按本轮
+                音频时长传入（见 estimate_play_round_timeout），否则走默认 60s。
         """
         from shared.clients.grpc_clients import get_playback_service_stub
         from shared.proto import audio_service_pb2 as audio_pb
@@ -128,10 +180,14 @@ class PlaybackAclRepositoryImpl(PlaybackAclRepository):
                 'round_number': round_number,
                 'audio_local_paths': audio_local_paths or {},
             }
-            resp = stub.StartPlayback(audio_pb.StartPlaybackRequest(
+            request = audio_pb.StartPlaybackRequest(
                 task_id=str(task_id),
                 playback_config=json.dumps(playback_config),
-            ))
+            )
+            if timeout:
+                resp = stub.StartPlayback(request, timeout=timeout)
+            else:
+                resp = stub.StartPlayback(request)
             if not resp.success or not resp.data:
                 return None
             wrapper = json.loads(resp.data)

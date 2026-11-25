@@ -44,8 +44,9 @@ class PlaybackAclRepository(ABC):
     @abstractmethod
     def play_round(self, round_config: Dict, task_id: str, case_config: Dict,
                    test_case_id: str, round_number: int,
-                   audio_local_paths: Optional[Dict] = None) -> Optional[Any]:
-        """播放本轮音频"""
+                   audio_local_paths: Optional[Dict] = None,
+                   timeout: Optional[float] = None) -> Optional[Any]:
+        """播放本轮音频（timeout: 显式 RPC deadline 秒，缺省走全局默认）"""
 
     @abstractmethod
     def start_background_noise(self, case_config: Dict, task_id: str) -> Optional[Dict]:

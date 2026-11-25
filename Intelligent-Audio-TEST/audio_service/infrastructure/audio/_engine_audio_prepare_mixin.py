@@ -21,14 +21,15 @@ class EngineAudioPrepareMixin:
         1. 解析 playback_device_ids → device_unique_id → defaultSampleRate，去重得到 target_rate 集合
         2. 对每个 audio_id：从仓储取 file_path → OSS 下载到本地 → 读原始采样率
         3. 对每个 (audio_id, target_rate)：sr==target_rate 直接用原文件；sr!=target_rate 重采样
-        4. 返回嵌套映射 {audio_id: {target_rate: local_path, "original": local_path}}
+        4. 返回嵌套映射 {audio_id: {target_rate: local_path, "original": local_path, "duration": 秒}}
 
         Args:
             audio_ids: 待预下载的音频 ID 列表
             playback_device_ids: 播放设备 ID 列表（DB 主键或 device_unique_id）
 
         Returns:
-            dict: {audio_id: {target_rate(int): local_path, "original": local_path}}
+            dict: {audio_id: {target_rate(int): local_path, "original": local_path,
+                              "duration": 秒数}}
         """
         import wave
         from audio_service.infrastructure.persistence.audio_repository import AudioRepository
@@ -101,6 +102,12 @@ class EngineAudioPrepareMixin:
                 inner = {}
                 # 原始文件作为兜底（JSON 反序列化后为字符串 key）
                 inner['original'] = local_path
+                # 音频时长（秒）随映射回传执行端，供 play_round 估算 RPC deadline
+                try:
+                    if getattr(audio_obj, 'duration', None) is not None:
+                        inner['duration'] = float(audio_obj.duration)
+                except (TypeError, ValueError):
+                    pass
                 if orig_sr:
                     for tr in target_rates:
                         if tr == orig_sr:
@@ -113,7 +120,8 @@ class EngineAudioPrepareMixin:
                 result[audio_id] = inner
                 log_and_emit('DEBUG', 'audio_engine',
                              f"[prepare_audios] prepared audio_id={audio_id}, orig_sr={orig_sr}, "
-                             f"rates={sorted(k for k in inner if k != 'original')}",
+                             f"rates={sorted(k for k in inner if isinstance(k, int))}, "
+                             f"duration={inner.get('duration')}",
                              category='audio')
             except Exception as e:
                 log_and_emit('ERROR', 'audio_engine',

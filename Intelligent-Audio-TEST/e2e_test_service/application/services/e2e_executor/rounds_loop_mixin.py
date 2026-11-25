@@ -164,11 +164,14 @@ class RoundsLoopMixin:
         # 播放前检查停止/暂停信号（play_round 是整轮最长同步阻塞点）
         self._check_control_or_cleanup(task_id, env_states)
 
-        play_result = PlaybackAclRepositoryImpl().play_round(
+        play_repo = PlaybackAclRepositoryImpl()
+        play_result = play_repo.play_round(
             round_config=round_config, task_id=task_id,
             case_config=case_config, test_case_id=test_case_id,
             round_number=round_number,
             audio_local_paths=self._audio_local_paths,
+            timeout=play_repo.estimate_play_round_timeout(
+                round_config, self._audio_local_paths),
         )
         if not play_result:
             self._log(level='WARNING', content=f"第 {round_number} 轮音频播放失败，跳过",

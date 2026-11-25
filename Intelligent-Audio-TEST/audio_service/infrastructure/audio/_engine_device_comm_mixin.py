@@ -215,14 +215,22 @@ class EngineDeviceCommMixin:
         matches = self._find_device_matches(clean_unique_id, normalized_unique_id, devices)
 
         if not matches:
-            # 兜底：返回第一个可用设备
-            if devices:
-                selected = devices[0]
-                log_and_emit('WARNING', 'audio_engine', f"No matches found for '{unique_id}', returning first available device: '{selected['name']}' (Index: {selected['index']})", category='audio')
-                return selected['index']
-            else:
-                log_and_emit('ERROR', 'audio_engine', f"No device matches found for unique_id='{unique_id}' and no devices available", category='audio')
-                return None
+            # PortAudio 在 Pa_Initialize 时固定设备快照，声卡热插拔（USB 重连、
+            # 驱动重启）后不重建会话就永远匹配不到。先重建一次再重试，避免长期
+            # 命中陈旧的设备列表。
+            if self.refresh_devices():
+                devices = self._get_cached_devices()
+                matches = self._find_device_matches(clean_unique_id, normalized_unique_id, devices)
+
+        if not matches:
+            # 不再回退到「第一个可用设备」：那是无关的映射器端点，播放时会以
+            # PortAudio 的 Invalid audio channels 等晦涩错误失败，掩盖真正原因。
+            available = ', '.join(dev['name'] for dev in devices[:10])
+            log_and_emit('ERROR', 'audio_engine',
+                         f"播放设备匹配失败: unique_id='{unique_id}'，"
+                         f"已枚举 {len(devices)} 个设备: {available}",
+                         category='audio')
+            return None
 
         # 按 API 优先级选择
         selected = self._select_by_api_priority(matches)
