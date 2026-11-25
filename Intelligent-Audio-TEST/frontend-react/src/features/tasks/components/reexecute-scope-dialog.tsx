@@ -10,6 +10,7 @@
  * 确认后先弹「该任务存在 {N} 条人工复核结果…是否继续？」主钮「覆盖并继续」（destructive）副钮「返回」。
  * 确认后经 infrastructure/api/tasks-control-api（client.ts）发起 retry / reevaluate。
  */
+import { useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, LoaderCircle, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -125,6 +126,7 @@ export function ReexecuteScopeDialog({
   taskName: string
   actionType: ActionType
 }) {
+  const queryClient = useQueryClient()
   const detailQuery = useTaskDetail(taskId, open && taskId > 0)
   const detail = detailQuery.data
 
@@ -374,6 +376,10 @@ export function ReexecuteScopeDialog({
         await retryTask(taskId, payload)
         toast.success('已发起重新执行')
       }
+      // 状态变更后失效 ['tasks'] 前缀（列表/详情/日志同源刷新）：
+      // 列表 query 缓存（['tasks', tab, filters]）无轮询、全局 refetchOnWindowFocus=false，
+      // 不主动失效只能等手动刷新页面才看到新状态。
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
       onOpenChange(false)
     } catch (error) {
       const msg = error instanceof ApiError ? (error.userMessage || error.message) : '操作失败，请稍后重试'
