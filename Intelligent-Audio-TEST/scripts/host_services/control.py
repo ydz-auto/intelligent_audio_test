@@ -270,7 +270,80 @@ def _supervisor_alive(service: str) -> bool:
     return 'run_forever.ps1' in cmdline and f'-Tag {service}' in cmdline
 
 
+# ------------------------------------------------------------ 代码/配置指纹
+# `up` 只在“当前进程就是当前代码+配置”时跳过；否则停旧进程再拉起，
+# 避免改完 remote.env / 代码后 up 只是把旧进程留着（历史上 device 因此一直
+# 用旧 STORAGE_BACKEND，上传 403）。
+_FP_KEYS = {
+    'DATABASE_URL', 'REDIS_URL',
+    'STORAGE_BACKEND', 'STORAGE_FALLBACK_ENABLED',
+    'LOCAL_STORAGE_ROOT', 'STORAGE_LOCAL_ROOT',
+    'PORT', 'GRPC_PORT', 'SERVICE_NAME', 'SERVICE_HOST', 'LAB_NAME',
+    'AUDIO_SERVICE_HOST', 'AUDIO_SERVICE_GRPC_PORT',
+    'DEVICE_SERVICE_HOST', 'DEVICE_SERVICE_GRPC_PORT',
+}
+# 各宿主服务真正加载的源码目录（改动后必须重启才生效）
+_SERVICE_SOURCE_DIRS = {
+    'e2e': ('e2e_test_service',),
+    'audio': ('audio_service',),
+    'device': ('device_service',),
+}
+
+
+def _config_keys() -> set:
+    """配置文件（.env / remote.env）里出现的键 + 关键运行端口键。"""
+    keys = set(_dotenv()) | set(_FP_KEYS)
+    remote_env = LOG_DIR / 'remote.env'
+    if remote_env.is_file():
+        for line in remote_env.read_text(encoding='utf-8').splitlines():
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                keys.add(line.split('=', 1)[0].strip())
+    return keys
+
+
+def _config_snapshot(env: dict) -> dict:
+    """只保留会影响运行结果的键，避免 PATH 等易变项造成误判重启。"""
+    return {k: env[k] for k in sorted(_config_keys()) if k in env}
+
+
+def _code_mtime(service: str) -> float:
+    """服务源码 + shared 的最新修改时间。"""
+    latest = 0.0
+    for name in ('shared', *_SERVICE_SOURCE_DIRS.get(service, ())):
+        for path in (REPO / name).rglob('*.py'):
+            if '__pycache__' in path.parts:
+                continue
+            try:
+                latest = max(latest, path.stat().st_mtime)
+            except OSError:
+                continue
+    return round(latest, 6)
+
+
+def _launch_record_file(service: str) -> Path:
+    return LOG_DIR / f'{service}.launch.json'
+
+
+def _launch_record(service: str, mode: str, env: dict) -> dict:
+    return {
+        'mode': mode,
+        'config': _config_snapshot(env),
+        'code_mtime': _code_mtime(service),
+    }
+
+
+def _needs_restart(service: str, mode: str) -> bool:
+    """在跑的进程是否已不是当前代码/配置（无记录文件的老进程一律视为需要重启）。"""
+    try:
+        saved = json.loads(_launch_record_file(service).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return True
+    return saved != _launch_record(service, mode, _service_env(service, mode))
+
+
 def _request_stop(service: str, on: bool = True) -> None:
+
     """落/清停止标记：守护进程看到标记后不再重启子进程。"""
     _, stop_flag = _supervisor_files(service)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -311,8 +384,8 @@ def _wmi_create(command_line: str, cwd: Path) -> int:
     return pid
 
 
-def _launch(service: str, mode: str) -> int:
-    """把完整环境落成 JSON（WMI 进程不继承调用方环境），再 WMI 拉起入口。"""
+def _service_env(service: str, mode: str) -> dict:
+    """服务进程最终环境（WMI 进程不继承调用方环境）：启动与漂移检测共用一份口径。"""
     env = host_env()
     py_dir = Path(PY).parent
     env['PATH'] = os.pathsep.join([
@@ -334,9 +407,18 @@ def _launch(service: str, mode: str) -> int:
         })
         env['PYTHONPATH'] = os.pathsep.join(
             [str(REPO), str(REPO / 'shared' / 'proto'), env.get('PYTHONPATH', '')])
+    return env
+
+
+def _launch(service: str, mode: str) -> int:
+    """把完整环境落成 JSON（WMI 进程不继承调用方环境），再 WMI 拉起入口。"""
+    env = _service_env(service, mode)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     env_file = LOG_DIR / f'{service}.env.json'
     env_file.write_text(json.dumps(env, ensure_ascii=False), encoding='utf-8')
+    _launch_record_file(service).write_text(
+        json.dumps(_launch_record(service, mode, env), ensure_ascii=False),
+        encoding='utf-8')
     pid_file, stop_flag = _supervisor_files(service)
     _request_stop(service, False)          # 清掉上次 stop 留下的标记
     pid_file.unlink(missing_ok=True)
@@ -350,25 +432,34 @@ def _launch(service: str, mode: str) -> int:
 
 
 def _start(name: str, service: str, mode: str, port: int,
-           timeout: float, log_name: str) -> tuple[bool, str]:
+           timeout: float, log_name: str, restart=None) -> tuple[bool, str]:
+    head = ''
     if port_listening(port):
-        return True, f'[skip] {name} 已在 :{port} 监听'
+        if not _needs_restart(service, mode):
+            return True, f'[skip] {name} 已在 :{port} 监听（代码/配置未变）'
+        if restart is None:
+            return False, (f'[fail] {name} 旧进程仍在 :{port} 监听，且代码/配置已变更，'
+                           f'请先 python stack.py restart {service}')
+        ok, stop_msg = restart()
+        if not ok or port_listening(port):
+            return False, f'[fail] {name} 旧进程停止失败: {stop_msg}'
+        head = f'[restart] {name} 代码/配置已变更，{stop_msg}；'
     if _supervisor_alive(service):
         # 子进程崩溃后正由守护进程重启中：不再重复拉一个守护
         if wait_port(port, True, timeout):
-            return True, f'[ok] {name} 由守护进程拉起 :{port}'
-        return False, (f'[fail] {name} 守护进程存活但 :{port} 在 {timeout:.0f}s 内未监听，'
+            return True, f'{head}[ok] {name} 由守护进程拉起 :{port}'
+        return False, (f'{head}[fail] {name} 守护进程存活但 :{port} 在 {timeout:.0f}s 内未监听，'
                        f'日志: {_supervisor_log(service)}\n'
                        f'{_log_tail(_supervisor_log(service).name)}')
     try:
         pid = _launch(service, mode)
     except RuntimeError as exc:
-        return False, f'[fail] {name} 拉起失败: {exc}'
+        return False, f'{head}[fail] {name} 拉起失败: {exc}'
     if wait_port(port, True, timeout):
-        return True, f'[ok] {name} 已启动 守护pid={pid} :{port}（WMI 脱离 run 树）'
+        return True, f'{head}[ok] {name} 已启动 守护pid={pid} :{port}（WMI 脱离 run 树）'
     tail = _log_tail(log_name)
     sup_tail = _log_tail(_supervisor_log(service).name)
-    return False, (f'[fail] {name} 在 {timeout:.0f}s 内未监听 :{port}，'
+    return False, (f'{head}[fail] {name} 在 {timeout:.0f}s 内未监听 :{port}，'
                    f'日志: {LOG_DIR / log_name}\n{tail}\n'
                    f'守护日志: {_supervisor_log(service)}\n{sup_tail}')
 
@@ -388,14 +479,12 @@ def _log_tail(log_name: str, lines: int = 20) -> str:
 
 def start_e2e(timeout: float = READY_TIMEOUT_DEFAULT) -> tuple[bool, str]:
     """启动宿主 e2e_test_service（HTTP :5002 + gRPC :50051 同进程）。"""
-    if port_listening(E2E_HTTP_PORT):
-        if port_listening(E2E_GRPC_PORT):
-            return True, (f'[skip] e2e_test_service 已在 :{E2E_HTTP_PORT}/'
-                          f':{E2E_GRPC_PORT} 监听')
+    if (port_listening(E2E_HTTP_PORT) and not port_listening(E2E_GRPC_PORT)
+            and not _needs_restart('e2e', 'real')):
         return False, (f'[fail] e2e_test_service :{E2E_HTTP_PORT} 已监听，'
                        f'但 gRPC :{E2E_GRPC_PORT} 未就绪')
     ok, msg = _start('e2e_test_service', 'e2e', 'real', E2E_HTTP_PORT,
-                     timeout, 'e2e_test_service.log')
+                     timeout, 'e2e_test_service.log', restart=stop_e2e)
     if not ok:
         return ok, msg
     if not wait_port(E2E_GRPC_PORT, True, timeout):
@@ -432,10 +521,10 @@ def stop_e2e(timeout: float = DEVICE_STOP_TIMEOUT) -> tuple[bool, str]:
 def start_audio(mode: str = 'real', timeout: float = READY_TIMEOUT_DEFAULT,
                 check_timeout: float = 60.0) -> tuple[bool, str]:
     """启动宿主 audio_service。mode=real 走真实 pyaudio；shim 走影子模块。"""
-    if port_listening(AUDIO_PORT):
-        return True, f'[skip] audio_service 已在 :{AUDIO_PORT} 监听'
     if mode not in ('real', 'shim'):
         return False, f'[fail] 未知 --audio-mode: {mode}（real|shim）'
+    if port_listening(AUDIO_PORT) and not _needs_restart('audio', mode):
+        return True, f'[skip] audio_service 已在 :{AUDIO_PORT} 监听（代码/配置未变）'
     if mode == 'real':
         check = subprocess.run(
             [PY, str(AUDIO_DIR / 'check_pyaudio_health.py'),
@@ -447,7 +536,8 @@ def start_audio(mode: str = 'real', timeout: float = READY_TIMEOUT_DEFAULT,
             output = (check.stdout or '') + (check.stderr or '')
             return False, f'[fail] real pyaudio 自检未通过（不重试）:\n{output.strip()}'
     log_name = 'audio_service.log' if mode == 'real' else 'audio_service_shim.log'
-    return _start('audio_service', 'audio', mode, AUDIO_PORT, timeout, log_name)
+    return _start('audio_service', 'audio', mode, AUDIO_PORT, timeout, log_name,
+                  restart=stop_audio)
 
 
 def stop_audio(cooldown: float = 8.0, timeout: float = 90.0) -> tuple[bool, str]:
@@ -476,7 +566,7 @@ def stop_audio(cooldown: float = 8.0, timeout: float = 90.0) -> tuple[bool, str]
 
 def start_device(timeout: float = READY_TIMEOUT_DEFAULT) -> tuple[bool, str]:
     return _start('device_service', 'device', 'real', DEVICE_PORT, timeout,
-                  'device_service.log')
+                  'device_service.log', restart=stop_device)
 
 
 def stop_device() -> tuple[bool, str]:
