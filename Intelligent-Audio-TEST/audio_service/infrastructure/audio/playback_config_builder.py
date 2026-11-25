@@ -17,6 +17,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class PlaybackDeviceOfflineError(RuntimeError):
+    """本轮需要的播放设备不在系统中（离线 / 拔出 / 驱动未加载）。"""
+
+
+def format_offline_devices_message(offline_devices):
+    """把离线设备清单格式化为可直接展示给用户的失败原因。"""
+    items = '；'.join(
+        f"{item.get('role', '播放')}音频(audio_id={item.get('audio_id')}) "
+        f"设备 '{item.get('unique_id')}'"
+        for item in offline_devices
+    )
+    return f"播放设备离线: {items}（系统中未枚举到该设备，请检查声卡连接/驱动）"
+
+
 def _get_playback_device_via_grpc(device_id):
     """通过 ACL 仓储从 device_service 获取 PlaybackDevice 数据（返回 dict 或 None）。
 
@@ -254,7 +268,8 @@ def build_noise_info(round_config, case_config, require_devices=True):
     return None, noise_devices
 
 
-def build_dry_configs(dry_audios_info, audio_service, task_id=None, audio_local_paths=None):
+def build_dry_configs(dry_audios_info, audio_service, task_id=None, audio_local_paths=None,
+                      offline_devices=None):
     """
     构建主讲人 audio_to_play 配置。
 
@@ -263,6 +278,7 @@ def build_dry_configs(dry_audios_info, audio_service, task_id=None, audio_local_
     Args:
         audio_local_paths: 准备阶段预下载的 {audio_id: {target_rate: local_path}} 嵌套映射，
             有映射时按设备 target_rate 取本地文件，不再走 OSS。
+        offline_devices: 可选 list，收集匹配不到的离线播放设备，供调用方明确报错。
 
     Returns:
         (configs, playback_devices_map)
@@ -303,9 +319,13 @@ def build_dry_configs(dry_audios_info, audio_service, task_id=None, audio_local_
         )
         device_index = audio_service.get_device_index(dev_unique_id) if dev_unique_id else None
         if device_index is None:
-            _log('WARNING',
-                 f'主讲人音频 (audio_id={audio_id}) '
-                 f'无法获取设备索引 (unique_id={dev_unique_id})，跳过',
+            if offline_devices is not None:
+                offline_devices.append({
+                    'role': '主讲人', 'audio_id': audio_id, 'unique_id': dev_unique_id,
+                })
+            _log('ERROR',
+                 f'播放设备离线: 主讲人音频 (audio_id={audio_id}) '
+                 f'设备 (unique_id={dev_unique_id}) 未在系统中枚举到，跳过',
                  task_id=task_id)
             continue
 
@@ -347,7 +367,7 @@ def build_dry_configs(dry_audios_info, audio_service, task_id=None, audio_local_
 
 
 def build_noise_play_configs(noise_audio_info, noise_devices, audio_service,
-                             audio_local_paths=None):
+                             audio_local_paths=None, task_id=None, offline_devices=None):
     """构建噪声 audio_to_play 配置列表。"""
     if not noise_audio_info or not noise_devices:
         return []
@@ -377,6 +397,14 @@ def build_noise_play_configs(noise_audio_info, noise_devices, audio_service,
         n_gain = resolve_spl_gain(spl_mapping_id, noise_spl)
         device_index = audio_service.get_device_index(dev_unique_id) if dev_unique_id else None
         if device_index is None:
+            if offline_devices is not None:
+                offline_devices.append({
+                    'role': '背景噪声', 'audio_id': noise_audio_id, 'unique_id': dev_unique_id,
+                })
+            _log('ERROR',
+                 f'播放设备离线: 噪声音频 (audio_id={noise_audio_id}) '
+                 f'设备 (unique_id={dev_unique_id}) 未在系统中枚举到，跳过',
+                 task_id=task_id)
             continue
 
         # 优先使用预下载的本地路径（嵌套映射，按设备 target_rate 查询）
@@ -401,7 +429,7 @@ def build_noise_play_configs(noise_audio_info, noise_devices, audio_service,
 
 
 def build_interferer_configs(task_id, interferer_config, audio_service,
-                             audio_local_paths=None):
+                             audio_local_paths=None, offline_devices=None):
     """
     构建干扰人 audio_to_play 配置。
 
@@ -478,8 +506,14 @@ def build_interferer_configs(task_id, interferer_config, audio_service,
             audio_service.get_device_index(device_unique_id) if device_unique_id else None
         )
         if device_index is None:
-            _log('WARNING',
-                 f'干扰人 {idx} 无法获取设备索引 (unique_id={device_unique_id})，跳过',
+            if offline_devices is not None:
+                offline_devices.append({
+                    'role': '干扰人', 'audio_id': audio_info.get('id') or audio_info.get('audio_id'),
+                    'unique_id': device_unique_id,
+                })
+            _log('ERROR',
+                 f'播放设备离线: 干扰人 {idx} 设备 (unique_id={device_unique_id}) '
+                 f'未在系统中枚举到，跳过',
                  task_id=task_id)
             continue
 

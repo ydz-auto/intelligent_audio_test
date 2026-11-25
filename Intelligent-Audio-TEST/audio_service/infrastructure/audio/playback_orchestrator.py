@@ -27,6 +27,8 @@ from audio_service.infrastructure.audio.playback_config_builder import (
     build_dry_configs,
     build_noise_play_configs,
     build_interferer_configs,
+    PlaybackDeviceOfflineError,
+    format_offline_devices_message,
     prepare_preview_playback_info,
     resolve_spl_gain,
     extract_overlap_rate,
@@ -202,11 +204,17 @@ class PlaybackOrchestrator:
 
             # 3. 构建主讲人 audio_to_play 配置
             #    playback_device_id 指向 PlaybackDevice 表，build_dry_configs 内部从 DB 加载
+            #    offline_devices 收集匹配不到的设备，避免静默播放到无关设备（映射器）
+            offline_devices = []
             dry_configs, playback_devices_map = build_dry_configs(
                 dry_audios_info, self.audio_service, task_id=task_id,
                 audio_local_paths=audio_local_paths,
+                offline_devices=offline_devices,
             )
             if not dry_configs:
+                if offline_devices:
+                    raise PlaybackDeviceOfflineError(
+                        format_offline_devices_message(offline_devices))
                 self._log('WARNING', f'[play_round {round_tag}] no dry configs built', task_id=task_id)
                 return None
 
@@ -214,6 +222,8 @@ class PlaybackOrchestrator:
             noise_configs = build_noise_play_configs(
                 noise_audio_info, noise_devices, self.audio_service,
                 audio_local_paths=audio_local_paths,
+                task_id=task_id,
+                offline_devices=offline_devices,
             )
 
             # 5. 构建干扰人 audio_to_play 配置（从 algorithmParams 读取）
@@ -228,7 +238,11 @@ class PlaybackOrchestrator:
             interferer_configs = build_interferer_configs(
                 task_id, interferers, self.audio_service,
                 audio_local_paths=audio_local_paths,
+                offline_devices=offline_devices,
             )
+            if offline_devices:
+                raise PlaybackDeviceOfflineError(
+                    format_offline_devices_message(offline_devices))
 
             # 5.1 跳过与全局背景噪声使用相同设备的干扰人音频
             # 同一设备无法同时打开两个 PortAudio 输出流，会导致 dev_lock 死锁
@@ -348,6 +362,10 @@ class PlaybackOrchestrator:
                 'playback_result': True,
             }
 
+        except PlaybackDeviceOfflineError:
+            # 设备离线必须原样上抛（servicer 转 success=False + message），
+            # 不能落进兜底 except 变成“返回 None”被上层当作静默跳过。
+            raise
         except Exception as e:
             self._log('ERROR', f'[play_round {round_tag}] failed: {e}', task_id=task_id)
             return None

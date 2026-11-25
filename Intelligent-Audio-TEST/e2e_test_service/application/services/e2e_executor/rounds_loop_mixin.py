@@ -8,6 +8,9 @@ from e2e_test_service.infrastructure.acl import (
     PlaybackAclRepositoryImpl,
     DeviceResultAclRepositoryImpl,
 )
+from e2e_test_service.infrastructure.acl.playback_acl_repository_impl import (
+    PlaybackFailedError,
+)
 from shared.utils.dto_utils import dto_to_dict
 from shared.utils.status_constants import ExecutionStatus
 from shared.models.common_enums import DeviceType
@@ -165,14 +168,26 @@ class RoundsLoopMixin:
         self._check_control_or_cleanup(task_id, env_states)
 
         play_repo = PlaybackAclRepositoryImpl()
-        play_result = play_repo.play_round(
-            round_config=round_config, task_id=task_id,
-            case_config=case_config, test_case_id=test_case_id,
-            round_number=round_number,
-            audio_local_paths=self._audio_local_paths,
-            timeout=play_repo.estimate_play_round_timeout(
-                round_config, self._audio_local_paths),
-        )
+        try:
+            play_result = play_repo.play_round(
+                round_config=round_config, task_id=task_id,
+                case_config=case_config, test_case_id=test_case_id,
+                round_number=round_number,
+                audio_local_paths=self._audio_local_paths,
+                timeout=play_repo.estimate_play_round_timeout(
+                    round_config, self._audio_local_paths),
+            )
+        except PlaybackFailedError as exc:
+            # 播放服务明确失败（如播放设备离线）：把原因原样报出来，不再只给笼统的“播放失败”
+            self._log(level='ERROR', content=f"第 {round_number} 轮音频播放失败：{exc}",
+                      task_id=task_id, test_case_id=test_case_id)
+            self._device_manager.teardown_env_devices_for_round(env_states, task_id)
+            return {
+                'success': False,
+                'tagged_results': [],
+                'rounds_data_by_device': self._failed_round_data(round_idx, result_ids),
+                'adjusted_ref_params': None,
+            }
         if not play_result:
             self._log(level='WARNING', content=f"第 {round_number} 轮音频播放失败，跳过",
                       task_id=task_id, test_case_id=test_case_id)

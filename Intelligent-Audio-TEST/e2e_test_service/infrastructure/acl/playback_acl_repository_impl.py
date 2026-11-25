@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 _KNOWN = set(PlaybackResultDTO.__dataclass_fields__.keys())
 
 
+class PlaybackFailedError(RuntimeError):
+    """播放服务明确返回失败（如播放设备离线），消息可直接展示给用户。"""
+
+
 class PlaybackAclRepositoryImpl(PlaybackAclRepository):
     """PlaybackService ACL 仓储实现"""
 
@@ -188,7 +192,11 @@ class PlaybackAclRepositoryImpl(PlaybackAclRepository):
                 resp = stub.StartPlayback(request, timeout=timeout)
             else:
                 resp = stub.StartPlayback(request)
-            if not resp.success or not resp.data:
+            if not resp.success:
+                # 播放设备离线等明确失败：带原因抛给应用层，不能当作“本轮无音频”静默跳过
+                raise PlaybackFailedError(resp.message or '音频播放服务返回失败')
+            if not resp.data:
+                logger.warning("play_round 返回空结果（本轮无音频可播）")
                 return None
             wrapper = json.loads(resp.data)
             raw = wrapper.get('result') if isinstance(wrapper, dict) else wrapper
@@ -196,6 +204,8 @@ class PlaybackAclRepositoryImpl(PlaybackAclRepository):
             if dto and isinstance(raw, dict):
                 dto.result_data = {k: v for k, v in raw.items() if k not in _KNOWN}
             return dto
+        except PlaybackFailedError:
+            raise
         except Exception as e:
             logger.error("play_round 失败: %s", e)
             return None

@@ -227,8 +227,8 @@ class EngineDeviceCommMixin:
             # PortAudio 的 Invalid audio channels 等晦涩错误失败，掩盖真正原因。
             available = ', '.join(dev['name'] for dev in devices[:10])
             log_and_emit('ERROR', 'audio_engine',
-                         f"播放设备匹配失败: unique_id='{unique_id}'，"
-                         f"已枚举 {len(devices)} 个设备: {available}",
+                         f"播放设备离线: unique_id='{unique_id}'（系统中未枚举到该设备，"
+                         f"请检查声卡连接/驱动），已枚举 {len(devices)} 个设备: {available}",
                          category='audio')
             return None
 
