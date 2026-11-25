@@ -39,6 +39,21 @@ $Reverses = @(
 
 $ProbePorts = @(5433, 6379, 53061)
 
+# Runs on the server before a fresh tunnel: kill sshd sessions that still own the
+# reverse binds but have no child process (dead client / half-open session).
+# Sessions with a child (interactive shells) are skipped.
+$RemoteCleanup = @'
+for port in 50051 50052 50053; do
+  for pid in $( { sudo -n ss -ltnp 2>/dev/null || ss -ltnp 2>/dev/null; } | grep -E "10\.0\.0\.9:${port}\b" | grep -o "pid=[0-9]*" | cut -d= -f2 | sort -u ); do
+    if [ -n "$(pgrep -P "$pid" 2>/dev/null)" ]; then
+      echo "skip pid=$pid (:${port}, has child)"
+      continue
+    fi
+    sudo -n kill "$pid" 2>/dev/null && echo "killed stale session pid=$pid (:${port})"
+  done
+done
+'@
+
 function Test-TunnelUp {
     foreach ($p in $ProbePorts) {
         $t = Test-NetConnection -ComputerName 127.0.0.1 -Port $p -WarningAction SilentlyContinue -InformationLevel Quiet
@@ -51,6 +66,19 @@ function Start-Tunnel {
     if (Test-TunnelUp) {
         Write-Host '[tunnel] already running'
         return
+    }
+    # A dropped network link can leave a half-open session on the server that still
+    # owns 10.0.0.9:50051-53. The next -R bind then fails and ExitOnForwardFailure
+    # kills ssh before -L opens, so the watchdog retries forever with no tunnel.
+    # With no local ssh process at all, every owner of those ports is stale.
+    $sshAlive = Get-CimInstance Win32_Process -Filter "Name='ssh.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match '106\.54\.49\.79' -and $_.CommandLine -match '\s-N\s' }
+    if ($sshAlive) {
+        Write-Host '[tunnel] ssh process alive but probe ports closed (server-side deps?), skip stale cleanup'
+    } else {
+        Write-Host '[tunnel] clearing stale server-side reverse binds 10.0.0.9:50051-53'
+        $RemoteCleanup | ssh -o BatchMode=yes -o ConnectTimeout=10 "${SshUser}@${SshHost}" 'bash -s' 2>&1 |
+            ForEach-Object { Write-Host "  [clean] $_" }
     }
     $sshArgs = @('-N', '-T',
         '-o', 'ServerAliveInterval=30',
