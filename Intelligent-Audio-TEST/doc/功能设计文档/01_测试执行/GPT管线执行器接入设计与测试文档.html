@@ -55,7 +55,7 @@
 <header class="doc">
   <h1>GPT 管线执行器接入设计与测试文档</h1>
   <div class="meta">
-    <span>版本：v0.1（评审稿）</span>
+    <span>版本：v0.2（评审稿）</span>
     <span>日期：2026-11-26</span>
     <span>状态：待评审</span>
     <span>适用：Intelligent-Audio-TEST 执行域</span>
@@ -63,7 +63,8 @@
 </header>
 
 <div class="tldr">
-  <b>一句话结论：</b>新增一个薄桥接执行器 <code>gpt_executor_bridge</code>，对平台装成标准执行器（gRPC），对外部 GPT 管线只说 HTTP（push 全量用例 + 回调收结果）。
+  <b>一句话结论：</b>新增一个薄桥接执行器 <code>gpt_executor_bridge</code>，对平台装成标准执行器（gRPC），对外部 GPT 管线只说 HTTP。
+  <b>下发粒度 = 用例（路由行 tc_rel_id），不是整任务</b>；管线执行完回调<b>两条 wav 音频地址</b>（user_wav / ai_wav，与现行口径一致，不传文件体），平台评估。
   GPT 管线只开放 <b>3 个 HTTP 接口</b>（启动 / 停止 / 状态）+ 调 1 个回调；平台执行链只加一条路由分支。
   <b>评估结果回写由 evaluation_service 现有链路自动完成，管线与桥接都不搬运评估分。</b>
 </div>
@@ -183,6 +184,7 @@ message StartGPTTaskRequest {
 <p>桥接地址走 <span class="path">shared/config/service_ports.py</span> 注册（e2e 同款固定地址模式，不引入实例注册表）。</p>
 
 <h3>5.2 桥接 → 管线：HTTP 下发（管线要开放的接口）<span class="badge b-new">管线侧实现</span></h3>
+<p><b>下发粒度：一条用例路由行（tc_rel_id）一次下发</b>，与 StartAPITest 逐用例精确分发（INT-71）同口径；任务级只有停止 / 状态查询，不存在「整任务打包下发」。</p>
 <table>
   <tr><th>接口</th><th>方法</th><th>说明</th></tr>
   <tr><td><code>/tasks</code></td><td>POST</td><td>下发执行，push 全量用例；立即返回受理（异步执行）</td></tr>
@@ -216,13 +218,22 @@ message StartGPTTaskRequest {
   "execution_status": "completed",        // completed / failed / stopped
   "response_time": 6600,                  // ms
   "algorithm_result": { "...见 5.5..." : "" },
-  "user_wav": "路径/URL", "ai_wav": "路径/URL",
+  "user_wav": "音频地址（用户语音 wav）", "ai_wav": "音频地址（AI 回复 wav）",
   "event_log": [],                        // 归一化事件时间线（打断/时序分析）
   "frame_results": [],                    // 逐 chunk 帧结果（可选）
   "first_frame_ms": 300,
   "error_message": null
 }</code></pre>
 <p>桥接收到后固定动作：<code>SubmitResult</code>（拿 result_id）→ <code>UpdateTaskCaseStatus</code>（带 tc_rel_id）→ <code>NotifyProgress / NotifyCaseCompleted</code> → <code>EvaluateCase</code>。回调须<b>幂等</b>（按 task_id + tc_rel_id 去重）。</p>
+<div class="fact"><b>音频口径（与现状一致，已验证）：传地址，不传文件体。</b>
+现行执行器把 wav 落存储（<span class="path">shared/infrastructure/storage</span>，OSS 优先、不可用降级本地磁盘），
+返回带 scheme 的存储路径字符串写入 <code>algorithm_result.ai_wav</code> 随结果落库
+（<span class="path">api_test_service/core/realtime_session_executor.py · api_session_executor.py</span>）；
+评估侧原生支持 <b>本地路径 / oss:// / http(s)://</b> 三种地址，自行解析为字节后 multipart 发给评估计算器
+（<span class="path">evaluation_service/infrastructure/evaluation_api/api_request_handler.py · payload_builder.py</span>）。
+<br><b>外部管线二选一</b>：① 回调直接带 http(s) 可下载 URL（最简，平台侧可达即可）；
+② 桥接下发时附平台 OSS 预签名上传 URL，管线直传 wav 后回调带 oss:// 路径（复用 audio_upload_presign 同款机制）。
+桥接把两条地址原样并入 <code>algorithm_result.user_wav / ai_wav</code> 与 <code>EvaluateCase.user_wav / ai_wav</code>，不做文件搬运。</div>
 
 <h3>5.4 桥接出站：内部 gRPC 字段表 <span class="badge b-exist">现有接口</span></h3>
 <table>
@@ -235,7 +246,7 @@ message StartGPTTaskRequest {
       <td>多路由下按路由行精确命中（INT-604），避免兄弟路由被打成同一终态</td></tr>
   <tr><td><code>ExecutionService.NotifyProgress / NotifyCaseCompleted</code></td><td>task_id（NotifyProgress 可带 force）</td><td>进度推送与收尾判定</td></tr>
   <tr><td><code>EvaluationService.EvaluateCase</code></td>
-      <td>task_id, result_id, test_case_id, algorithm_result(JSON), eval_params(JSON：algorithm_type / device_type / 评估维度与权重 / algorithm_params_col 逐轮参数), device_type, user_wav, ai_wav, rounds(JSON), first_frame_ms, event_log(JSON), frame_results(JSON)</td>
+      <td>task_id, result_id, test_case_id, algorithm_result(JSON), eval_params(JSON：algorithm_type / device_type / 评估维度与权重 / algorithm_params_col 逐轮参数), device_type, user_wav / ai_wav（音频地址字符串，口径见 5.3）, rounds(JSON), first_frame_ms, event_log(JSON), frame_results(JSON)</td>
       <td>异步入队；<b>device_type 映射为 http_api（API 口径）</b>，评估侧零改动；eval_params 组装对齐 <span class="path">api_test_service/core/evaluation_submitter.py</span></td></tr>
   <tr><td><code>EvaluationService.CancelEvaluation</code></td><td>task_id, test_case_ids(JSON), reason(case_deleted / task_stopped)</td><td>停止/删用例联动</td></tr>
 </table>
@@ -323,11 +334,12 @@ message StartGPTTaskRequest {
   <tr><td>T13</td><td><span class="badge b-p0">P0</span></td><td>回归</td><td>现有 API/E2E 集成用例集</td><td>跑现有 http_api / websocket_api / physical 任务</td><td>行为与改动前一致，无回归（重点：test_int2079_ws_non_streaming、test_int497_openai_realtime_e2e、API/E2E 集成用例）</td></tr>
   <tr><td>T14</td><td><span class="badge b-p1">P1</span></td><td>管线不可达</td><td>管线 endpoint 指向不存在地址</td><td>启动任务</td><td>分发失败收敛：TaskCase failed + error_message；任务统计/进度正确；不挂起主循环</td></tr>
   <tr><td>T15</td><td><span class="badge b-p2">P2</span></td><td>进度推送</td><td>前端任务详情页打开</td><td>执行多用例任务</td><td>NotifyProgress 触发 SSE，前端进度实时刷新；用例完成计数正确</td></tr>
+  <tr><td>T16</td><td><span class="badge b-p0">P0</span></td><td>音频地址口径</td><td>管线回调带 user_wav / ai_wav 两条地址（分别覆盖 http(s) URL 与 oss:// 路径）</td><td>执行并核对落库与评估入参</td><td>地址原样并入 algorithm_result 与 EvaluateCase；评估侧成功解析为字节完成音频类维度计算；报告可回放两条 wav；地址不可达时评估失败可见 error_message，不静默成功</td></tr>
 </table>
 
 <h2 id="s10"><span class="no">10</span>验收标准</h2>
 <ul>
-  <li>P0 用例（T01/02/03/05/06/10/12/13）全部通过；P1 全通过或有书面豁免。</li>
+  <li>P0 用例（T01/02/03/05/06/10/12/13/16）全部通过；P1 全通过或有书面豁免。</li>
   <li>真管线（GPTLive）至少 1 条多轮用例端到端跑通：平台建任务 → 管线执行 → 评估 → 报告可见，全链路无人工补数。</li>
   <li>现有执行链回归零失败；停止/失败/超时三条兜底路径均有实测记录。</li>
   <li>接口契约（§5）与管线侧实现逐字段核对一致，评审签字后冻结 v1.0。</li>
@@ -356,7 +368,8 @@ message StartGPTTaskRequest {
 </ul>
 
 <footer>
-  GPT 管线执行器接入设计与测试文档 · v0.1 评审稿 · 2026-11-26 ·
+  GPT 管线执行器接入设计与测试文档 · v0.2 评审稿 · 2026-11-26 ·
+  v0.2 修订：明确按用例下发；回调音频口径与现状一致（传地址不传文件体），新增 T16。
   契约冻结前以评审结论为准；端口/枚举/字段以代码事实源为准。
 </footer>
 
