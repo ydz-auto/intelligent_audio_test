@@ -112,9 +112,9 @@ export function TagCaseList({
   /** 标签卡子视图（§3.6 会话内存 per-tag，缺省 flat） */
   const tagSubView = useSessionMap((s) => s.tagSubView)
   const setTagSubView = useSessionMap((s) => s.setTagSubView)
-  /** §3.3.3：isFetching 时列表不消失、降透明度（placeholderData 保上一帧） */
+  /** 列表刷新中：只在无障碍层标记 aria-busy，不再整片降透明度（降透明度会让人误以为禁用/无法操作） */
   const fetching = useIsFetching({ queryKey: ['testcases'] })
-  const dimmed = fetching > 0 && !loading
+  const busy = fetching > 0 && !loading
   /** §3.6 移动端（≤640px）子视图切换收进「显示方式」下拉（组头右区空间收紧） */
   const isMobile = useMediaQuery('(max-width: 640px)')
 
@@ -212,7 +212,7 @@ export function TagCaseList({
   }
 
   return (
-    <div className={cn('space-y-3 transition-opacity', dimmed && 'opacity-60')}>
+    <div className='space-y-3' aria-busy={busy || undefined}>
       {/* 翻页 / 筛选失败但有上次数据：保留旧列表 + 行内提示（INT-1605） */}
       {isError && tagGroups.length > 0 && (
         <CaseListErrorBanner

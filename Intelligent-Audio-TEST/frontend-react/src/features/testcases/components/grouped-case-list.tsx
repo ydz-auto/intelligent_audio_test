@@ -508,9 +508,9 @@ export function GroupedCaseList({
   const [groupPage, setGroupPage] = useState(1)
   const [sortKey, setSortKey] = useState<GroupSortKey>('count')
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
-  /** §3.3.3：isFetching 时列表不消失、降透明度（placeholderData 保上一帧） */
+  /** 列表刷新中：只在无障碍层标记 aria-busy，不再整片降透明度（降透明度会让人误以为禁用/无法操作） */
   const fetching = useIsFetching({ queryKey: ['testcases'] })
-  const dimmed = fetching > 0 && !loading
+  const busy = fetching > 0 && !loading
 
   /**
    * 搜索态命中聚合（INT-2154）：分组卡计数与分组集合随搜索收窄——命中 0 的分组隐藏、
@@ -705,7 +705,7 @@ export function GroupedCaseList({
   }
 
   return (
-    <div className={cn('space-y-3 transition-opacity', dimmed && 'opacity-60')}>
+    <div className='space-y-3' aria-busy={busy || undefined}>
       {/* 分组数据源失败但保留了上一次分组：分组卡照常渲染 + 行内提示（INT-2331） */}
       {groupsError && sortedGroups.length > 0 && (
         <CaseListErrorBanner

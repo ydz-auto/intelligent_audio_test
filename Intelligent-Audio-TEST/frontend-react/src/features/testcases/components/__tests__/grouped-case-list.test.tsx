@@ -800,3 +800,41 @@ describe('GroupedCaseList 分组数据源失败（INT-2331）', () => {
     expect(onRetryGroups).toHaveBeenCalledTimes(1)
   })
 })
+
+/**
+ * 刷新态可操作性回归：曾用 opacity-60 整片降透明度，列表看起来被禁用、无法操作（用户反馈为 bug）。
+ * 现在只保留 aria-busy，内容与交互保持原样。
+ */
+describe('GroupedCaseList 刷新态', () => {
+  it('有 testcases 查询在途时只标 aria-busy，不再套 opacity-60', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    // 永不 resolve 的查询：让 useIsFetching(['testcases']) 持续 > 0
+    void client.fetchQuery({
+      queryKey: ['testcases', 'by-group', 'pending-dim'],
+      queryFn: () => new Promise<never>(() => undefined),
+    })
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <GroupedCaseList
+          groups={GROUPS}
+          cases={CASES}
+          loading={false}
+          trash={false}
+          hasQueryFilters={false}
+          filters={{}}
+          selected={new Set<string>()}
+          tagRegistry={MOCK_TAGS as TagItem[]}
+          callbacks={noopCallbacks}
+          onBatchAction={vi.fn()}
+        />
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => {
+      expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
+    })
+    expect(container.querySelector('.opacity-60')).toBeNull()
+  })
+})
