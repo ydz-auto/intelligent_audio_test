@@ -54,6 +54,7 @@ from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
     build_interaction_text,
 )
 from app.services.calculators.xiaoyi_metrics.shared.constants import (
+    AsrStatus,
     LLM_DEFAULT_MAX_TOKENS,
     LLM_DEFAULT_TEMPERATURE,
 )
@@ -820,6 +821,28 @@ def _text_judgment_fields(timing: str, behavior: str, reason: str) -> Dict[str, 
     return j
 
 
+_ASR_EMPTY_HINT = {
+    AsrStatus.FILE_MISSING: '音频缺失或不可读，未执行 ASR',
+    AsrStatus.FAILED: 'ASR 调用失败，结果不可信',
+    AsrStatus.EMPTY: 'ASR 成功但整段无词（疑似采集静音）',
+}
+
+
+def _asr_chunks_with_status(wav_path: str):
+    """ASR 取词并返回 (chunks, AsrStatus)（模块级封装，便于测试替换）。"""
+    from app.services.calculators.xiaoyi_metrics.turn_taking import (
+        _get_asr_chunks_with_status,
+    )
+    return _get_asr_chunks_with_status(wav_path)
+
+
+def _asr_empty_message(side: str, wav: str, status: AsrStatus, suffix: str = '') -> str:
+    """构造单侧 ASR 空结果 message：区分音频缺失 / ASR 调用失败 / 真静默。"""
+    hint = _ASR_EMPTY_HINT.get(status, 'ASR 无词级结果')
+    name = os.path.basename(wav) if wav else '(空路径)'
+    return f'{side} ASR 无词级结果{suffix}（{hint}: {name}）'
+
+
 def evaluate_rejection_judge_text(user_wav: str, ai_wav: str, model: str = '',
                                   max_tokens: Optional[int] = None,
                                   temperature: Optional[float] = None,
@@ -848,16 +871,26 @@ def evaluate_rejection_judge_text(user_wav: str, ai_wav: str, model: str = '',
     if temperature is None:
         temperature = llm_config.get('temperature', LLM_DEFAULT_TEMPERATURE)
 
-    user_chunks = get_asr_chunks(user_wav) if user_wav and exists(user_wav) else None
-    model_chunks = get_asr_chunks(ai_wav) if ai_wav and exists(ai_wav) else None
+    if user_wav and exists(user_wav):
+        user_chunks, user_status = _asr_chunks_with_status(user_wav)
+    else:
+        user_chunks, user_status = None, AsrStatus.FILE_MISSING
+    if ai_wav and exists(ai_wav):
+        model_chunks, model_status = _asr_chunks_with_status(ai_wav)
+    else:
+        model_chunks, model_status = None, AsrStatus.FILE_MISSING
     env_noise_present = any(
         isinstance(rd, dict) and rd.get('is_reject') is True and rd.get('type') == '环境噪声'
         for rd in (configured_rounds or [])
     )
     if not user_chunks and not env_noise_present:
-        return {'enabled': False, 'message': '用户侧 ASR 无词级结果，无法轮次切分', 'rounds': []}
+        return {'enabled': False,
+                'message': _asr_empty_message('用户侧', user_wav, user_status, '，无法轮次切分'),
+                'rounds': []}
     if not model_chunks and not env_noise_present:
-        return {'enabled': False, 'message': '模型侧 ASR 无词级结果', 'rounds': []}
+        return {'enabled': False,
+                'message': _asr_empty_message('模型侧', ai_wav, model_status),
+                'rounds': []}
     # 环境噪声允许任一侧 ASR 为空：空的模型侧词表本身就是“未回复”的判定输入。
     user_chunks = user_chunks or []
     model_chunks = model_chunks or []

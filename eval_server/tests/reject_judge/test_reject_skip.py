@@ -14,6 +14,7 @@ import pytest
 
 from app.services.calculators.xiaoyi_metrics.env_judge import rejection_judge as rj_mod
 from app.services.calculators.xiaoyi_metrics.env_judge.strategy import RejectionJudgeCalculator
+from app.services.calculators.xiaoyi_metrics.shared.constants import AsrStatus
 from app.services.task_service import TaskService
 
 
@@ -39,6 +40,10 @@ def fake_llm(monkeypatch):
                 {'text': '嗯', 'timestamp': [5.0, 5.5]}]
 
     monkeypatch.setattr(rj_mod, 'get_asr_chunks', _chunks)
+    monkeypatch.setattr(
+        rj_mod, '_asr_chunks_with_status',
+        lambda path: (_chunks(path), AsrStatus.OK),
+    )
     monkeypatch.setattr(rj_mod, 'build_interaction_text', lambda *a, **k: '')
     monkeypatch.setattr(rj_mod, 'get_asr_text', lambda *a, **k: '')
 

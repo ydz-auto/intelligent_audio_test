@@ -306,10 +306,10 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
                 'per_round': per_round,
             }
 
-        # 最终轮（累积）音频：只取最大的双路 wav
+        # 最终轮（累积）音频：优先取末轮，缺失时回落顶层（与 base._get_audio_from_round 口径一致）
         last = rounds[-1] if isinstance(rounds[-1], dict) else {}
-        user_wav = last.get('user_wav') or ''
-        ai_wav = last.get('ai_wav') or ''
+        user_wav = last.get('user_wav') or (task_params or {}).get('user_wav') or ''
+        ai_wav = last.get('ai_wav') or (task_params or {}).get('ai_wav') or ''
         llm_config = self._extract_llm_config(task_params, last)
         first = rounds[0] if rounds and isinstance(rounds[0], dict) else {}
         has_intent = not self._is_reject_round(task_params, first)
