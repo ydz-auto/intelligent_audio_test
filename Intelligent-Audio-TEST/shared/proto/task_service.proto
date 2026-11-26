@@ -1090,6 +1090,9 @@ message ListTestCaseGroupsRequest {
   // INT-1470：可选分页下推（0 或缺省 = 不分页，返回全部分组，旧调用方行为不变）
   int32 page = 3;             // 可选，页码（1 起）
   int32 per_page = 4;         // 可选，每页条数；page > 0 时生效
+  // 可选，分组总时长聚合（秒；分组卡组头「总时长」徽章）。展示侧显式开启，
+  // 首页统计/MCP 等只取计数/名称的调用方保持默认 false，不做无用聚合。
+  bool include_duration = 5;
 }
 message GetTestCaseGroupsByIdsRequest {
   repeated string group_ids = 1;  // TestCaseGroup ID 列表

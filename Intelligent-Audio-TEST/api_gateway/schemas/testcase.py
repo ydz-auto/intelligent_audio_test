@@ -157,6 +157,8 @@ class TestCaseListItem(APIModel):
     # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
     visibility: Optional[str] = Field(None)
     created_by_user_id: Optional[int] = Field(None)
+    # 用例卡「创建人 / 更新人」展示（姓名由前端按需解析）
+    updated_by_user_id: Optional[int] = Field(None)
     # INT-539：lab 归属透出（config JSONB 解析；空/缺失 = 通用用例 → lab_id=null）
     lab_id: Optional[int] = Field(None)
     lab_name: Optional[str] = Field(None)

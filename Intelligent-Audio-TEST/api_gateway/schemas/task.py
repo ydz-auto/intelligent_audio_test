@@ -93,6 +93,8 @@ class TaskListItem(APIModel):
     # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
     visibility: Optional[str] = Field(None)
     created_by_user_id: Optional[int] = Field(None)
+    # 任务卡「更新人」展示（姓名由前端按需解析）
+    updated_by_user_id: Optional[int] = Field(None)
     reports: Optional[TaskReportsData] = Field(None)
     devices: List[TaskDeviceBrief] = Field(default_factory=list)
     apis: List[TaskApiBrief] = Field(default_factory=list)

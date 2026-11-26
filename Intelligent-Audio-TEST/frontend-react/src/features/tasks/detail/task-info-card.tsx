@@ -39,7 +39,7 @@ export function TaskInfoCard({
 }: {
   detail: TaskDetailData
   /**
-   * 创建人显示名（application 层 useTaskCreatorName 经 GET /auth/users/{id} 解析）。
+   * 创建人显示名（application 层 useUserDisplayName 经 GET /auth/users/{id} 解析）。
    * 未传 / 未解析到（无 user:read 或用户已删）→ 回退「用户 #id」；id 也为空 → 「—」。
    */
   createdByName?: string | null

@@ -264,6 +264,8 @@ class PublishedTaskService:
             'version_count': version_count,
             'published_by': pt.published_by,
             'published_at': pt.published_at.isoformat() if pt.published_at else None,
+            # 已发布任务卡「创建人」展示（姓名由前端按需解析）
+            'created_by_user_id': getattr(pt, 'created_by_user_id', None),
             'archived_at': pt.archived_at.isoformat() if pt.archived_at else None,
             'created_at': pt.created_at.isoformat() if pt.created_at else None,
         }

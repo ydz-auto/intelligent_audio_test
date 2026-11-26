@@ -13,6 +13,8 @@ class GroupItem(APIModel):
     created_at: str = Field(...)
     updated_at: str = Field(...)
     test_case_count: int = Field(...)
+    # 分组全部用例时长之和（秒；?include_duration=true 时返回，无时长/未请求为 None）
+    total_duration: Optional[float] = Field(None)
     # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
     visibility: Optional[str] = Field(None)
     created_by_user_id: Optional[int] = Field(None)
@@ -73,6 +75,9 @@ class GroupListQuery(APIModel):
     # favorite=true 仅当前用户收藏；only_deleted=true 仅回收站软删除项
     favorite: Optional[bool] = Field(False)
     only_deleted: Optional[bool] = Field(False)
+    # 分组总时长聚合（分组卡组头「总时长」徽章；仅展示侧显式开启，默认不聚合）
+    include_duration: Optional[bool] = Field(
+        False, validation_alias=AliasChoices('include_duration', 'includeDuration'))
 
 
 class GroupDeleteQuery(APIModel):

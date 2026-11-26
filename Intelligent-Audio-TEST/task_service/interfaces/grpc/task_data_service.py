@@ -38,6 +38,17 @@ from task_service.infrastructure.persistence.task_merge_repository import task_m
 logger = logging.getLogger(__name__)
 
 
+def _invalidate_group_stats(group_id: str = None) -> None:
+    """分组结构变更后失效分组时长读模型（None = 全部分组）。"""
+    try:
+        from task_service.application.testcase.testcase_group_stats_service import (
+            invalidate_group_stats,
+        )
+        invalidate_group_stats([group_id] if group_id else None)
+    except Exception:
+        logger.warning('失效分组时长统计失败（等待 TTL 过期重算）', exc_info=True)
+
+
 class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
     """task_service 数据查询 servicer — 跨服务数据访问入口
 
@@ -300,6 +311,7 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
         过滤逻辑删除，支持 algorithm_type / 名称搜索过滤。
         INT-1470：page/per_page 缺省（0）= 不分页、返回全部（旧调用方行为不变，
         data.total == len(data.items)）；否则 SQL 侧只返回当前页，计数只算当前页。
+        include_duration：分组总时长聚合（组头「总时长」徽章；展示侧显式开启）。
         """
         try:
             result = testcase_repository.list_groups_page(
@@ -308,6 +320,15 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
                 page=request.page,
                 per_page=request.per_page,
             )
+            if request.include_duration and result.get('items'):
+                # 分组总时长走读模型（DB 物化 + Redis 缓存，缺失/过期惰性重算）
+                from task_service.application.testcase.testcase_group_stats_service import (
+                    get_group_durations,
+                )
+                durations = get_group_durations(
+                    [item.get('id') for item in result['items']])
+                for item in result['items']:
+                    item['total_duration'] = durations.get(str(item.get('id')), 0.0)
             return self._resp(True, '', result)
         except Exception as e:
             logger.exception('ListTestCaseGroups failed')
@@ -390,6 +411,7 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
         """
         try:
             item = testcase_repository.delete_group_and_commit(request.group_id, request.cascade)
+            _invalidate_group_stats(request.group_id)
             return self._resp(True, '分组已删除', item)
         except ValueError as e:
             return self._resp(False, str(e))

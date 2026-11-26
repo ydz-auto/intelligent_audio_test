@@ -58,6 +58,8 @@ class PublishedTaskItem(APIModel):
     published_at: Optional[str] = Field(None)
     archived_at: Optional[str] = Field(None)
     created_at: Optional[str] = Field(None)
+    # 已发布任务卡「创建人」展示（姓名由前端按需解析）
+    created_by_user_id: Optional[int] = Field(None)
 
 
 class PublishedTaskListData(PaginatedData[PublishedTaskItem]):

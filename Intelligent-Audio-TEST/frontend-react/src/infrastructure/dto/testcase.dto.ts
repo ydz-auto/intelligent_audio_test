@@ -20,6 +20,9 @@ export interface TestCaseListItemDto {
   deleted?: boolean | null
   deleted_at?: string | null
   deleted_by_user_id?: number | null
+  /** 创建人 / 更新人用户 id（testcase.py TestCaseListItem；姓名由前端按需解析） */
+  created_by_user_id?: number | null
+  updated_by_user_id?: number | null
   config: {
     rounds: Array<Record<string, unknown>> | null
     dimensions: Array<{ id: number; name: string; weight: number | null; device_type: string | null }>

@@ -471,6 +471,7 @@ class TaskReadModel(
                         # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
                         'visibility': task.visibility,
                         'created_by_user_id': task.created_by_user_id,
+                        'updated_by_user_id': task.updated_by_user_id,
                         'created_at': task.created_at.isoformat() if task.created_at else None,
                     })
                     continue
@@ -520,6 +521,8 @@ class TaskReadModel(
                     # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
                     'visibility': task.visibility,
                     'created_by_user_id': task.created_by_user_id,
+                    # 任务卡「创建人 / 更新人」展示（姓名由前端按需解析）
+                    'updated_by_user_id': task.updated_by_user_id,
                     # INT-577：合并方式（whole=整任务合并 / picked=结果挑选）+ 来源任务·结果计数
                     # （供列表次行「来源 {n} 任务 · 结果 {m} 条」与统计徽章）
                     'merge_type': (

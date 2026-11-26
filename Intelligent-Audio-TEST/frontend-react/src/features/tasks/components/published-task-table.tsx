@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { UserDisplayName } from '@/components/common/user-display-name'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -493,6 +494,7 @@ export function PublishedTaskTable({
                 <th className='px-3 py-2 text-left font-medium'>Benchmark</th>
                 <th className='px-3 py-2 text-left font-medium'>版本数</th>
                 <th className='px-3 py-2 text-left font-medium'>发布人/发布时间</th>
+                <th className='px-3 py-2 text-left font-medium'>创建人</th>
                 <th className='px-3 py-2 text-right font-medium'>操作</th>
               </tr>
             </thead>
@@ -713,6 +715,9 @@ function ExpandedRows({
             {/* INT-2664：published_at 是 +08 墙钟串，原样展示（执行记录仍是裸 UTC，走 formatDateTime） */}
             {formatLocalWallClock(task.publishedAt)}
           </span>
+        </td>
+        <td className='px-3 py-2 text-xs whitespace-nowrap'>
+          <UserDisplayName userId={task.createdByUserId} />
         </td>
         <td className='px-3 py-2'>
           <div className='flex items-center justify-end gap-1.5'>

@@ -14,4 +14,9 @@ export interface TestCaseGroup {
   updatedAt: string
   /** 分组下用例计数（后端 GroupItem.test_case_count 实测） */
   testCaseCount: number
+  /**
+   * 分组全部用例时长之和（秒；组头「总时长」徽章）。
+   * 仅分组列表显式请求聚合（include_duration）时返回，其余来源缺省 null。
+   */
+  totalDuration?: number | null
 }

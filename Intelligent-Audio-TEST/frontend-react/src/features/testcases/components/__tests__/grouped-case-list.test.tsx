@@ -23,6 +23,7 @@ import { GroupedCaseList } from '@/features/testcases/components/grouped-case-li
 import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import { fetchTestCasesByGroup } from '@/infrastructure/api/testcases-api'
 import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
+import { formatLocalWallClock } from '@/lib/date-time'
 
 /** vi.mock 工厂被提升到模块顶，夹具数据须经 vi.hoisted 定义（否则 TDZ 引用报错） */
 const { GROUPS, CASES } = vi.hoisted(() => {
@@ -35,6 +36,7 @@ const { GROUPS, CASES } = vi.hoisted(() => {
       createdAt: '2026-09-01 11:00',
       updatedAt: '2026-10-14 16:20',
       testCaseCount: 6,
+      totalDuration: 688,
     },
     {
       id: 'g2',
@@ -44,6 +46,7 @@ const { GROUPS, CASES } = vi.hoisted(() => {
       createdAt: '2026-09-02 09:30',
       updatedAt: '2026-10-12 15:10',
       testCaseCount: 1,
+      totalDuration: 96,
     },
     {
       id: 'g3',
@@ -268,6 +271,19 @@ describe('GroupedCaseList', () => {
     render(<Harness cases={[]} />)
     expect(screen.getByText('没有找到符合条件的测试用例')).toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('分组卡收起时组头即显示服务端聚合的「总时长」与真实更新时间', () => {
+    render(<Harness />)
+    // 分组全量总时长：/groups?include_duration 聚合值（未展开、组内 list 未加载）
+    expect(screen.getByText('总时长 11m 28s')).toBeInTheDocument()
+    expect(screen.getByText('总时长 1m 36s')).toBeInTheDocument()
+    // 真实 updated_at 由后端读模型透出（原先是空串，组头无时间）
+    expect(
+      screen.getByText(`更新于 ${formatLocalWallClock(GROUPS[0].updatedAt)}`)
+    ).toBeInTheDocument()
+    // 无时长的空分组不渲染徽章
+    expect(screen.queryByText('总时长 —')).not.toBeInTheDocument()
   })
 
   it('INT-1267：/groups 空组也渲染，组头计数用 testCaseCount', async () => {

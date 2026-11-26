@@ -106,6 +106,8 @@ export function testCaseListItemFromDto(
     deleted: dto.deleted ?? null,
     deletedAt: dto.deleted_at ?? null,
     deletedByUserId: dto.deleted_by_user_id ?? null,
+    createdByUserId: dto.created_by_user_id ?? null,
+    updatedByUserId: dto.updated_by_user_id ?? null,
     totalDuration: dto.total_duration,
     rounds,
     audioCount,

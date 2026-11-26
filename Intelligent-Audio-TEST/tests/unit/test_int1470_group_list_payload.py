@@ -38,7 +38,8 @@ def _groups(n):
              'name': f'分组_{i}',
              'description': f'第 {i} 个分组的描述文本，用于校验列表投影字段',
              'algorithm_type': '',
-             'test_case_count': 2} for i in range(n)]
+             'test_case_count': 2,
+             'total_duration': 2.5} for i in range(n)]
 
 
 def _run(monkeypatch, query, total_groups=127):
@@ -50,16 +51,21 @@ def _run(monkeypatch, query, total_groups=127):
 
     class _StubTds:
         def list_testcase_groups(self, algorithm_type=None, search=None,
-                                 page=0, per_page=0):
+                                 page=0, per_page=0, include_duration=False):
             captured['list_calls'].append(
                 {'algorithm_type': algorithm_type, 'page': page,
-                 'per_page': per_page})
-            # 模拟 task_service 分页下推：page/per_page 缺省返回全量
-            if page and per_page:
-                start = (page - 1) * per_page
-                return {'items': groups[start:start + per_page],
-                        'total': len(groups)}
-            return {'items': groups, 'total': len(groups)}
+                 'per_page': per_page, 'include_duration': include_duration})
+            # 模拟 task_service 分页下推：page/per_page 缺省返回全量；
+            # 总时长仅在显式请求聚合时返回（与仓储 include_duration 同口径）
+            rows = (groups[(page - 1) * per_page:page * per_page]
+                    if page and per_page else groups)
+            return {
+                'items': [
+                    dict(g, total_duration=g['total_duration'] if include_duration else None)
+                    for g in rows
+                ],
+                'total': len(groups),
+            }
 
         def get_testcase_stats(self, **kwargs):
             captured['stats_calls'] += 1
@@ -129,6 +135,23 @@ def test_unknown_fields_value_falls_back_to_full(monkeypatch):
     assert set(payload['data']['items'][0]) == FULL_KEYS
 
 
+# ---- 分组总时长（组头「总时长」徽章） ----
+
+
+def test_include_duration_forwarded_and_returned(monkeypatch):
+    """?include_duration=true：透传给 task_service 并在 GroupItem 透出总时长。"""
+    payload, _, captured = _run(monkeypatch, query={'include_duration': 'true'})
+    assert captured['list_calls'][0]['include_duration'] is True
+    assert payload['data']['items'][0]['total_duration'] == 2.5
+
+
+def test_include_duration_off_by_default(monkeypatch):
+    """默认不聚合总时长（响应不含 total_duration，首页统计等调用方零额外开销）。"""
+    payload, _, captured = _run(monkeypatch, query={})
+    assert captured['list_calls'][0]['include_duration'] is False
+    assert 'total_duration' not in payload['data']['items'][0]
+
+
 # ---- INT-1470 P1：默认口径单次 gRPC（计数随列表带回） ----
 
 
@@ -147,7 +170,8 @@ def test_default_path_pushes_pagination(monkeypatch):
     """默认口径把 page/per_page 下推给 ListTestCaseGroups，不再全量拉取。"""
     payload, _, captured = _run(monkeypatch, query={'page': '2', 'per_page': '10'})
     assert captured['list_calls'] == [
-        {'algorithm_type': None, 'page': 2, 'per_page': 10}]
+        {'algorithm_type': None, 'page': 2, 'per_page': 10,
+         'include_duration': False}]
     data = payload['data']
     assert data['total'] == 127
     assert data['pages'] == 13
@@ -160,7 +184,8 @@ def test_algorithm_type_filter_also_pushed_down(monkeypatch):
     """algorithm_type 筛选口径同样下推分页（分组集合由 SQL 直接确定）。"""
     payload, _, captured = _run(monkeypatch, query={'algorithm_type': 'asr'})
     assert captured['list_calls'] == [
-        {'algorithm_type': 'asr', 'page': 1, 'per_page': 40}]
+        {'algorithm_type': 'asr', 'page': 1, 'per_page': 40,
+         'include_duration': False}]
     assert captured['stats_calls'] == 0
     assert payload['data']['total'] == 127
 
@@ -169,7 +194,8 @@ def test_case_filter_path_does_not_push_pagination(monkeypatch):
     """用例级筛选需先聚合确定分组集合，不得下推分页（保持现状）。"""
     _, _, captured = _run(monkeypatch, query={'keyword': 'ui405'})
     assert captured['list_calls'] == [
-        {'algorithm_type': None, 'page': 0, 'per_page': 0}]
+        {'algorithm_type': None, 'page': 0, 'per_page': 0,
+         'include_duration': False}]
     assert captured['stats_calls'] == 1
 
 
@@ -177,7 +203,8 @@ def test_favorite_path_does_not_push_pagination(monkeypatch):
     """收藏口径仍需用例级过滤，保持原路径（全量列表 + 聚合 RPC）。"""
     _, _, captured = _run(monkeypatch, query={'favorite': 'true'})
     assert captured['list_calls'] == [
-        {'algorithm_type': None, 'page': 0, 'per_page': 0}]
+        {'algorithm_type': None, 'page': 0, 'per_page': 0,
+         'include_duration': False}]
     assert captured['stats_calls'] == 1
 
 
@@ -185,7 +212,8 @@ def test_invalid_pagination_params_fall_back_to_default(monkeypatch):
     """per_page/page <= 0 归一为默认页，避免下推被当作「不分页」返回全量。"""
     payload, _, captured = _run(monkeypatch, query={'page': '0', 'per_page': '0'})
     assert captured['list_calls'] == [
-        {'algorithm_type': None, 'page': 1, 'per_page': 40}]
+        {'algorithm_type': None, 'page': 1, 'per_page': 40,
+         'include_duration': False}]
     assert payload['data']['per_page'] == 40
     assert len(payload['data']['items']) == 40
 
@@ -222,14 +250,18 @@ def pagination_db():
     from shared.models.database import (
         init_db, get_db_session, get_engine, remove_db_session,
     )
-    from task_service.infrastructure.persistence.models import TestCase, TestCaseGroup
+    from task_service.infrastructure.persistence.models import (
+        TestCase, TestCaseGroup, TestCaseGroupStats,
+    )
 
     init_db(pool_size=3)
     remove_db_session()
     from shared.models.database import Base
     engine = get_engine()
     Base.metadata.create_all(
-        bind=engine, tables=[TestCaseGroup.__table__, TestCase.__table__])
+        bind=engine,
+        tables=[TestCaseGroup.__table__, TestCase.__table__,
+                TestCaseGroupStats.__table__])
 
     run = _uuid.uuid4().hex[:8]
     algo = f'int1470_{run}'
@@ -268,6 +300,9 @@ def pagination_db():
         TestCase.id.like(f'%_{run}%')).delete(synchronize_session=False)
     session.query(TestCaseGroup).filter(
         TestCaseGroup.id.like(f'int1470_{run}%')).delete(synchronize_session=False)
+    session.query(TestCaseGroupStats).filter(
+        TestCaseGroupStats.group_id.like(f'int1470_{run}%')).delete(
+        synchronize_session=False)
     session.commit()
     session.close()
     remove_db_session()
@@ -348,3 +383,66 @@ def test_unpaginated_behavior_unchanged(pagination_db):
     legacy = repo.list_groups(algorithm_type=pagination_db['algo'])
     assert isinstance(legacy, list)
     assert [g['id'] for g in legacy] == pagination_db['group_ids']
+
+
+# ---- 分组时长：读模型物化 + 回源聚合 ----
+
+
+def test_group_list_exposes_real_timestamps(pagination_db):
+    """列表透出真实 created_at/updated_at（网关不再硬编码空串），不现算时长。"""
+    from task_service.infrastructure.persistence._testcase_group_mixin import (
+        TestCaseGroupMixin,
+    )
+    repo = TestCaseGroupMixin()
+    result = repo.list_groups_page(algorithm_type=pagination_db['algo'],
+                                   page=1, per_page=2)
+    first = result['items'][0]
+    assert first['created_at'] and first['updated_at']
+    assert 'total_duration' not in first  # 时长由读模型/接口层补齐
+
+
+def test_compute_group_durations_sums_case_audios(pagination_db, monkeypatch):
+    """回源聚合：按分组求和音频时长；软删用例与其他算法用例不计。"""
+    from shared.models.database import get_db_session
+    from task_service.infrastructure.acl.audio_acl_repository import (
+        audio_acl_repository,
+    )
+    from task_service.infrastructure.persistence._testcase_group_mixin import (
+        TestCaseGroupMixin,
+    )
+    from task_service.infrastructure.persistence.models import TestCase
+
+    g0, g1 = pagination_db['group_ids'][0], pagination_db['group_ids'][1]
+    session = get_db_session()
+    # g0 的活跃用例引用音频 1（软删的第 4 条也写入，验证不计入）
+    session.query(TestCase).filter(TestCase.group_id == g0).update(
+        {'config': {'rounds': [{'audios': [{'audio_id': 1}]}]}})
+    session.commit()
+    session.close()
+
+    monkeypatch.setattr(
+        audio_acl_repository, 'get_audio_durations',
+        lambda audio_ids, session=None: {1: 1.5})
+
+    repo = TestCaseGroupMixin()
+    durations = repo.compute_group_durations([g0, g1])
+    assert durations == {g0: 4.5}  # g1 无用例音频 → 无时长
+
+
+def test_group_stats_read_model_upsert_and_delete(pagination_db):
+    """读模型：upsert 落库可读，delete 失效后不再命中（供惰性重算）。"""
+    from task_service.infrastructure.persistence._testcase_group_mixin import (
+        TestCaseGroupMixin,
+    )
+    g0, g1 = pagination_db['group_ids'][0], pagination_db['group_ids'][1]
+    repo = TestCaseGroupMixin()
+
+    repo.upsert_group_stats({g0: 12.5, g1: 0.0})
+    rows = repo.read_group_stats([g0, g1])
+    assert rows[g0]['total_duration'] == 12.5
+    assert rows[g1]['total_duration'] == 0.0
+    assert rows[g0]['stats_updated_at'] is not None
+
+    repo.delete_group_stats([g0])
+    remaining = repo.read_group_stats([g0, g1])
+    assert g0 not in remaining and g1 in remaining

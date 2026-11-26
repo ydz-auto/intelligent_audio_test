@@ -96,7 +96,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   )
 
   const listQuery = useTestCasesList(view, effectiveFilters)
-  const groupsQuery = useCaseGroups()
+  /** 分组列表带总时长聚合：分组卡组头「总时长」徽章未展开也要有值 */
+  const groupsQuery = useCaseGroups(true)
   const tagsQuery = useCaseTags()
   /** 标签分类（标签操作·编辑标签弹窗所属分类选项；INT-1294 接线） */
   const tagCategoriesQuery = useTagCategories()

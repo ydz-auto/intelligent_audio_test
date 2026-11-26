@@ -151,6 +151,7 @@ class TaskQueryService:
                         # INT-423/466：资源可见性与归属人（read model 透出，此处透传）
                         visibility=item.get('visibility'),
                         created_by_user_id=item.get('created_by_user_id'),
+                        updated_by_user_id=item.get('updated_by_user_id'),
                         reports=TaskReportsData(
                             count=report_info.get('count', 0),
                             reports=[

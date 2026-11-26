@@ -133,6 +133,7 @@ class TestCaseQueryService:
                     # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
                     'visibility': getattr(tc, 'visibility', 'shared'),
                     'created_by_user_id': getattr(tc, 'created_by_user_id', None),
+                    'updated_by_user_id': getattr(tc, 'updated_by_user_id', None),
                     # INT-539：lab 归属透出（config JSONB 解析；通用用例 lab_id=null）
                     'lab_id': lab_id,
                     'lab_name': lab_map.get(lab_id) if lab_id else None,
@@ -276,6 +277,8 @@ class TestCaseQueryService:
                     # INT-423/466：资源可见性与归属人（前端徽标，标签视图 camelCase 输出）
                     "visibility": getattr(tc, 'visibility', 'shared'),
                     "createdByUserId": getattr(tc, 'created_by_user_id', None),
+                    # 用例卡「创建人 / 更新人」：姓名由前端按需解析
+                    "updatedByUserId": getattr(tc, 'updated_by_user_id', None),
                     # INT-539：lab 归属透出（config JSONB 解析；通用用例 lab_id=null）
                     "labId": lab_id,
                     "labName": lab_map.get(lab_id) if lab_id else None,
@@ -495,6 +498,7 @@ class TestCaseQueryService:
             # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
             'visibility': getattr(tc, 'visibility', 'shared'),
             'created_by_user_id': getattr(tc, 'created_by_user_id', None),
+            'updated_by_user_id': getattr(tc, 'updated_by_user_id', None),
         }
 
     def get_testcase_stats(self) -> dict:

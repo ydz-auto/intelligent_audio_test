@@ -63,6 +63,23 @@ from task_service.infrastructure.persistence.task_repository import task_reposit
 logger = logging.getLogger(__name__)
 
 
+def _invalidate_group_stats_on_success(result: Any) -> None:
+    """用例写命令成功后失效分组时长读模型（DB 物化行 + Redis 读缓存）。
+
+    只失效不重算：由下一次分组列表读取按需重算（批量写路径避免逐条现算）；
+    失效失败不影响写命令结果（统计最迟在 TTL 过期后自愈）。
+    """
+    if not isinstance(result, dict) or not result.get('success'):
+        return
+    try:
+        from task_service.application.testcase.testcase_group_stats_service import (
+            invalidate_group_stats,
+        )
+        invalidate_group_stats()
+    except Exception:
+        logger.warning('失效分组时长统计失败（等待 TTL 过期重算）', exc_info=True)
+
+
 class TaskCommandHandler:
     """任务命令处理器。
 
@@ -443,23 +460,33 @@ class TaskCommandHandler:
 
     def handle_create_testcase(self, cmd: CreateTestCaseCommand) -> Dict:
         """处理创建测试用例命令。委托 testcase_crud_service.create。"""
-        return self.testcase_crud_service.create(cmd.data)
+        result = self.testcase_crud_service.create(cmd.data)
+        _invalidate_group_stats_on_success(result)
+        return result
 
     def handle_update_testcase(self, cmd: UpdateTestCaseCommand) -> Dict:
         """处理更新测试用例命令。委托 testcase_crud_service.update。"""
-        return self.testcase_crud_service.update(cmd.tc_id, cmd.data)
+        result = self.testcase_crud_service.update(cmd.tc_id, cmd.data)
+        _invalidate_group_stats_on_success(result)
+        return result
 
     def handle_delete_testcase(self, cmd: DeleteTestCaseCommand) -> Dict:
         """处理软删除测试用例命令。委托 testcase_crud_service.delete。"""
-        return self.testcase_crud_service.delete(cmd.tc_id)
+        result = self.testcase_crud_service.delete(cmd.tc_id)
+        _invalidate_group_stats_on_success(result)
+        return result
 
     def handle_copy_testcase(self, cmd: CopyTestCaseCommand) -> Dict:
         """处理复制测试用例命令。委托 testcase_crud_service.copy。"""
-        return self.testcase_crud_service.copy(cmd.tc_id)
+        result = self.testcase_crud_service.copy(cmd.tc_id)
+        _invalidate_group_stats_on_success(result)
+        return result
 
     def handle_batch_action_testcase(self, cmd: BatchActionTestCaseCommand) -> Dict:
         """处理测试用例批量操作命令。委托 testcase_crud_service.batch_action。"""
-        return self.testcase_crud_service.batch_action(cmd.data)
+        result = self.testcase_crud_service.batch_action(cmd.data)
+        _invalidate_group_stats_on_success(result)
+        return result
 
     def handle_update_testcase_ref_params(self, cmd: UpdateTestCaseRefParamsCommand) -> Dict:
         """处理更新用例参考参数命令。委托 testcase_crud_service.update_ref_params。"""
@@ -499,12 +526,16 @@ class TaskCommandHandler:
     def handle_restore_testcases(self, cmd) -> Dict:
         """处理恢复用例命令（单个+批量）。委托 favorite_trash_service.restore_testcases。"""
         from task_service.application.favorite_trash_service import favorite_trash_service
-        return favorite_trash_service.restore_testcases(cmd.case_ids)
+        result = favorite_trash_service.restore_testcases(cmd.case_ids)
+        _invalidate_group_stats_on_success(result)
+        return result
 
     def handle_purge_testcases(self, cmd) -> Dict:
         """处理彻底删除用例命令。委托 favorite_trash_service.purge_testcases。"""
         from task_service.application.favorite_trash_service import favorite_trash_service
-        return favorite_trash_service.purge_testcases(cmd.case_ids)
+        result = favorite_trash_service.purge_testcases(cmd.case_ids)
+        _invalidate_group_stats_on_success(result)
+        return result
 
     # ==================================================================
     # tag 域命令（gRPC servicer 入口）

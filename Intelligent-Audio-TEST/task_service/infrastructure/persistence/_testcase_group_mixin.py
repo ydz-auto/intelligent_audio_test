@@ -6,10 +6,12 @@ TestCaseGroup 查询 / 创建 / 更新 / 软删除（含级联）/ 多维筛选�
 from typing import Any, Dict, List, Optional
 
 from shared.infrastructure.user_context import get_current_user_id
-from shared.models.database import get_db_session
+from shared.models.database import create_db_session, get_db_session, utcnow
 from shared.infrastructure.visibility_filter import visible_condition
 from task_service.infrastructure.visibility_context import visibility_identity
-from task_service.infrastructure.persistence.models import TestCase, TestCaseGroup
+from task_service.infrastructure.persistence.models import (
+    TestCase, TestCaseGroup, TestCaseGroupStats,
+)
 from task_service.infrastructure.persistence._testcase_repo_common import (
     _now,
     build_dim_id_filter,
@@ -135,6 +137,9 @@ class TestCaseGroupMixin:
                 'description': getattr(r, 'description', ''),
                 'algorithm_type': getattr(r, 'algorithm_type', ''),
                 'test_case_count': case_counts.get(str(r.id), 0),
+                # 真实创建/更新时间（网关不再硬编码空串；前端展示「更新于 …」）
+                'created_at': r.created_at.isoformat() if r.created_at else '',
+                'updated_at': r.updated_at.isoformat() if r.updated_at else '',
             } for r in rows]}
         finally:
             session.close()
@@ -177,6 +182,143 @@ class TestCaseGroupMixin:
             func.count(TestCase.id)
         ).filter(*case_filters).group_by(TestCase.group_id).all()
         return {str(gid): count for gid, count in counts_query}
+
+    def _sum_group_durations(self, session, group_ids: List[str],
+                             algorithm_type: str = '') -> Dict[str, float]:
+        """按分组汇总用例总时长（秒），供分组卡组头「总时长」徽章。
+
+        口径与 /testcases 列表 total_duration 一致：config.rounds[].audios[].audio_id
+        逐音频取 duration 求和；只计未删除 + 可见用例，algorithm_type 与分组列表
+        筛选同口径（保证与 test_case_count 同一用例集合）。
+        音频时长走共享库窄字段只读投影（audios.deleted = FALSE），取不到按 0 计；
+        汇总为 0 的分组不出现在返回值里（前端据此不显示徽章）。
+        """
+        if not group_ids:
+            return {}
+        from shared.utils import testcase_helpers as common
+        from task_service.infrastructure.acl.audio_acl_repository import (
+            audio_acl_repository,
+        )
+
+        _vis_uid, _vis_admin = visibility_identity()
+        filters = [
+            TestCase.deleted == False,  # noqa: E712
+            TestCase.group_id.in_(group_ids),
+            visible_condition(
+                TestCase.created_by_user_id, TestCase.visibility,
+                _vis_uid, _vis_admin),
+        ]
+        if algorithm_type:
+            filters.append(TestCase.algorithm_type == algorithm_type)
+        rows = session.query(
+            TestCase.group_id, TestCase.config).filter(*filters).all()
+
+        group_audio_ids: List[tuple] = []
+        audio_ids = set()
+        for group_id, config in rows:
+            ids = [
+                item.get('audio_id')
+                for item in common.collect_audios(config or {})
+                if item.get('audio_id') is not None
+            ]
+            group_audio_ids.append((str(group_id), ids))
+            audio_ids.update(ids)
+        duration_map = audio_acl_repository.get_audio_durations(
+            audio_ids, session=session)
+
+        totals: Dict[str, float] = {}
+        for group_id, ids in group_audio_ids:
+            for audio_id in ids:
+                try:
+                    duration = duration_map.get(int(audio_id))
+                except (TypeError, ValueError):
+                    continue
+                if duration:
+                    totals[group_id] = totals.get(group_id, 0.0) + float(duration)
+        return {gid: round(total, 2)
+                for gid, total in totals.items() if total > 0}
+
+    # ---- 分组时长读模型（test_case_group_stats：DB 物化，列表直接读） ----
+
+    def read_group_stats(self, group_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        """读取分组时长读模型（缺失分组不返回，由调用方惰性重算并回写）。"""
+        ids = [str(g) for g in (group_ids or []) if g]
+        if not ids:
+            return {}
+        # 独立 session：列表读路径可能仍持有 scoped_session 的 ORM 行，
+        # 在此 close 会影响外层（INT-40），读模型读写一律自带连接。
+        session = create_db_session()
+        try:
+            rows = session.query(TestCaseGroupStats).filter(
+                TestCaseGroupStats.group_id.in_(ids)).all()
+            return {
+                str(r.group_id): {
+                    'total_duration': float(r.total_duration or 0.0),
+                    'stats_updated_at': r.stats_updated_at,
+                }
+                for r in rows
+            }
+        finally:
+            session.close()
+
+    def upsert_group_stats(self, stats: Dict[str, float]) -> None:
+        """回写分组时长读模型（stats: {group_id: total_duration 秒}）。"""
+        if not stats:
+            return
+        session = create_db_session()
+        try:
+            ids = [str(g) for g in stats.keys()]
+            existing = {
+                str(r.group_id): r
+                for r in session.query(TestCaseGroupStats).filter(
+                    TestCaseGroupStats.group_id.in_(ids)).all()
+            }
+            now = utcnow()
+            for group_id, duration in stats.items():
+                row = existing.get(str(group_id))
+                if row is None:
+                    session.add(TestCaseGroupStats(
+                        group_id=str(group_id),
+                        total_duration=float(duration),
+                        stats_updated_at=now,
+                    ))
+                else:
+                    row.total_duration = float(duration)
+                    row.stats_updated_at = now
+            session.commit()
+        finally:
+            session.close()
+
+    def delete_group_stats(self, group_ids: List[str] = None) -> int:
+        """失效分组时长读模型（None = 全部）；下次列表读取惰性重算。
+
+        独立事务 + 立即提交：写路径（用例增删改）调用时不得顺带提交或回滚
+        调用方尚未完成的业务事务。
+        """
+        session = create_db_session()
+        try:
+            q = session.query(TestCaseGroupStats)
+            if group_ids is not None:
+                ids = [str(g) for g in group_ids if g]
+                if not ids:
+                    return 0
+                q = q.filter(TestCaseGroupStats.group_id.in_(ids))
+            deleted = q.delete(synchronize_session=False)
+            session.commit()
+            return int(deleted or 0)
+        finally:
+            session.close()
+
+    def compute_group_durations(self, group_ids: List[str]) -> Dict[str, float]:
+        """实时计算分组总时长（不落库；读模型缺失/过期时回源）。"""
+        ids = [str(g) for g in (group_ids or []) if g]
+        if not ids:
+            return {}
+        session = create_db_session()
+        try:
+            return self._sum_group_durations(session, ids)
+        finally:
+            session.close()
 
     def get_groups_by_ids(self, group_ids: list) -> list:
         """按 ID 列表批量查询 TestCaseGroup（返回 dict 列表）。

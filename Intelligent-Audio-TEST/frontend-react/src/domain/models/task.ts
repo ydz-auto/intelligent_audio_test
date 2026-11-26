@@ -66,6 +66,9 @@ export interface TaskListItem {
   deleted: boolean | null
   deletedAt: string | null
   deletedByUserId: number | null
+  /** 创建人 / 更新人用户 id（接口只回 id，姓名由 application 层查用户详情解析） */
+  createdByUserId?: number | null
+  updatedByUserId?: number | null
   reports: { count: number; reports: TaskReportItem[] } | null
   devices: TaskDeviceBrief[]
   apis: TaskApiBrief[]
@@ -216,6 +219,8 @@ export interface PublishedTaskItem {
   publishedAt: string | null
   archivedAt: string | null
   createdAt: string | null
+  /** 创建人用户 id（接口只回 id，姓名由 application 层查用户详情解析） */
+  createdByUserId?: number | null
 }
 
 /** 已发布任务详情（published_task.py PublishedTaskDetailData 子集） */

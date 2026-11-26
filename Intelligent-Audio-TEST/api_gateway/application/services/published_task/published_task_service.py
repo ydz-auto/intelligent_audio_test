@@ -130,6 +130,7 @@ class PublishedTaskService:
                 published_at=item.get('published_at'),
                 archived_at=item.get('archived_at'),
                 created_at=item.get('created_at'),
+                created_by_user_id=item.get('created_by_user_id'),
             )
             for item in raw.get('items', [])
         ]

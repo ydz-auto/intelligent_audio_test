@@ -313,6 +313,9 @@ class TestLabFilterFullChain:
         assert by_id['R1']['lab_id'] is None
         assert by_id['R2']['lab_id'] == 3
         assert by_id['R2']['lab_name'] == '三号实验室'
+        # 用例卡「创建人 / 更新人」：列表透出 user_id（姓名由前端按需解析）
+        assert 'created_by_user_id' in by_id['R1']
+        assert 'updated_by_user_id' in by_id['R1']
 
     def test_tag_view_lab_filter(self):
         """标签聚合视图同口径过滤 + lab 字段透出（camelCase）。"""

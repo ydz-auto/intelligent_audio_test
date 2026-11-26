@@ -48,6 +48,7 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import { formatLocalWallClock } from '@/lib/date-time'
 import { cn } from '@/lib/utils'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { groupCasesByTag } from '@/domain/lib/sub-view-aggregation'
@@ -180,7 +181,13 @@ function GroupCard({
   }, [filtersKey, group.id])
 
   const subView = (groupSubView[group.id] ?? 'flat') as GroupSubView
-  const groupDuration = list.reduce((sum, c) => sum + (c.totalDuration ?? 0), 0)
+  /** 组内已加载用例时长之和（组内分页懒加载，仅覆盖已加载部分） */
+  const loadedDuration = list.reduce((sum, c) => sum + (c.totalDuration ?? 0), 0)
+  /**
+   * 组头总时长：优先取 /groups 服务端聚合（覆盖分组全量用例，未展开也完整）；
+   * 服务端未返回（如「未分组」虚拟组或旧接口）时回退已加载用例求和。
+   */
+  const groupDuration = group.totalDuration ?? loadedDuration
   const groupSelected = list.filter((c) => selected.has(c.id)).length
   /**
    * 组头勾选态（INT-1970 返工）：表头「全选用例」已生效（allFilteredSelected）→ 该组全量已选；
@@ -320,6 +327,13 @@ function GroupCard({
               <Clock3 aria-hidden='true' className='size-3' />
               总时长 {formatCaseDuration(groupDuration)}
             </Badge>
+          )}
+          {group.updatedAt && (
+            // test_case_groups.created_at/updated_at 由后端按东八区墙钟落库（utc8now），
+            // 原样展示即可；走 formatDateTime 会被当成 UTC 再多加 8 小时。
+            <span className='text-muted-foreground hidden font-mono text-[11px] tabular-nums sm:inline'>
+              更新于 {formatLocalWallClock(group.updatedAt)}
+            </span>
           )}
         </div>
         {/* 组头右区：子视图切换（计数/时长徽章之后、CaseGroupActions 之前，常显） */}

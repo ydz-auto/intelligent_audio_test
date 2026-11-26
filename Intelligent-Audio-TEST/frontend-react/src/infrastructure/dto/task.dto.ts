@@ -48,6 +48,9 @@ export interface TaskListItemDto {
   deleted: boolean | null
   deleted_at: string | null
   deleted_by_user_id: number | null
+  /** 创建人 / 更新人用户 id（task.py TaskListItem；姓名由前端按需解析） */
+  created_by_user_id?: number | null
+  updated_by_user_id?: number | null
   reports: TaskReportsDto | null
   devices: TaskDeviceBriefDto[]
   apis: TaskApiBriefDto[]
@@ -190,6 +193,8 @@ export interface PublishedTaskItemDto {
   published_at: string | null
   archived_at: string | null
   created_at: string | null
+  /** 已发布任务创建人用户 id（published_task.py PublishedTaskItem；姓名前端按需解析） */
+  created_by_user_id?: number | null
 }
 
 /** 已发布任务执行记录 DTO（published_task.py PublishedTaskExecutionItem 实测） */

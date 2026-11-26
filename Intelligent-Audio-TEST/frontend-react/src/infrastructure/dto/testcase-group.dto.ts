@@ -13,6 +13,8 @@ export interface GroupItemDto {
   created_at: string
   updated_at: string
   test_case_count: number
+  /** 分组全部用例时长之和（秒；?include_duration=true 时返回，无时长省略） */
+  total_duration?: number | null
 }
 
 /** GET /groups 列表响应（group.py GroupListData：PaginatedData 信封内 items） */
@@ -34,5 +36,6 @@ export function toTestCaseGroup(dto: GroupItemDto): TestCaseGroup {
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
     testCaseCount: dto.test_case_count,
+    totalDuration: dto.total_duration ?? null,
   }
 }

@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { UserDisplayName } from '@/components/common/user-display-name'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -49,6 +50,8 @@ const COLUMN_OPTIONS = [
   { key: 'resources', label: '设备/API' },
   { key: 'tags', label: '标签' },
   { key: 'createdAt', label: '创建时间' },
+  { key: 'creator', label: '创建人' },
+  { key: 'updatedBy', label: '更新人' },
 ] as const
 
 type ColumnKey = (typeof COLUMN_OPTIONS)[number]['key']
@@ -60,6 +63,8 @@ const DEFAULT_VISIBLE: ColumnKey[] = [
   'progress',
   'tags',
   'createdAt',
+  'creator',
+  'updatedBy',
 ]
 
 function TagCell({ tags }: { tags: string[] }) {
@@ -371,6 +376,12 @@ export function DailyTaskTable({
                   <SortableHeader label='创建时间' sort={sort} onSort={handleSort} />
                 </th>
               )}
+              {col('creator') && (
+                <th className='px-3 py-2 text-left font-medium'>创建人</th>
+              )}
+              {col('updatedBy') && (
+                <th className='px-3 py-2 text-left font-medium'>更新人</th>
+              )}
               <th className='w-28 px-3 py-2 text-right font-medium'>操作</th>
             </tr>
           </thead>
@@ -504,6 +515,16 @@ export function DailyTaskTable({
                   {col('createdAt') && (
                     <td className='px-3 py-2 font-mono text-xs whitespace-nowrap tabular-nums'>
                       {formatDateTime(task.createdAt)}
+                    </td>
+                  )}
+                  {col('creator') && (
+                    <td className='px-3 py-2 text-xs whitespace-nowrap'>
+                      <UserDisplayName userId={task.createdByUserId} />
+                    </td>
+                  )}
+                  {col('updatedBy') && (
+                    <td className='px-3 py-2 text-xs whitespace-nowrap'>
+                      <UserDisplayName userId={task.updatedByUserId} />
                     </td>
                   )}
                   <td className='px-3 py-2 text-right'>

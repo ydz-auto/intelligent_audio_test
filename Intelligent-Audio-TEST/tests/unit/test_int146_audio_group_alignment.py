@@ -249,7 +249,7 @@ class TestGroupServiceFilters:
 
         class _StubTds:
             def list_testcase_groups(self, algorithm_type=None, search=None,
-                                     page=0, per_page=0):
+                                     page=0, per_page=0, include_duration=False):
                 captured['list_kwargs'] = {'algorithm_type': algorithm_type,
                                            'page': page, 'per_page': per_page}
                 # INT-1470 P1：test_case_count 随列表 RPC 一并返回

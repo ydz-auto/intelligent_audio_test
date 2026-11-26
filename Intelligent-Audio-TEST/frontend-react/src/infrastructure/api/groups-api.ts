@@ -16,10 +16,17 @@ import {
  * 200 覆盖共享库全量分组（当前 128+；100 会漏掉最新创建的分组，组头/facet 缺失）。 */
 const GROUP_LIST_PAGE_SIZE = 200
 
-/** 分组列表（GET /groups；分组 facet 选项 + 分组头行渲染共用） */
-export async function fetchGroups(): Promise<TestCaseGroup[]> {
+/** 分组列表（GET /groups；分组 facet 选项 + 分组头行渲染共用）
+ *  includeDuration=true 时后端额外聚合分组总时长（组头「总时长」徽章，未展开可见）。 */
+export async function fetchGroups(
+  includeDuration = false
+): Promise<TestCaseGroup[]> {
   const dto = await apiClient.get<GroupListDataDto>('/groups', {
-    params: { page: 1, per_page: GROUP_LIST_PAGE_SIZE },
+    params: {
+      page: 1,
+      per_page: GROUP_LIST_PAGE_SIZE,
+      include_duration: includeDuration,
+    },
   })
   return (dto.items ?? []).map(toTestCaseGroup)
 }

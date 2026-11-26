@@ -43,6 +43,9 @@ export interface TestCaseListItem {
   deleted: boolean | null
   deletedAt: string | null
   deletedByUserId: number | null
+  /** 创建人 / 更新人用户 id（接口只回 id，姓名由 application 层查用户详情解析） */
+  createdByUserId?: number | null
+  updatedByUserId?: number | null
   /** 总时长（秒；展示「{x}m {y}s」，0 不显） */
   totalDuration: number | null
   /** 轮次数（由 config.rounds 长度派生；展示「{n} 轮」） */

@@ -72,6 +72,8 @@ class GroupService:
         # INT-528：收藏 / 回收站口径（与 TestCaseListQuery 一致，双视图贯通）
         favorite = query.favorite or False
         only_deleted = query.only_deleted or False
+        # 分组总时长（组头「总时长」徽章）：仅展示侧显式请求时聚合
+        include_duration = bool(query.include_duration)
         # 分组列表按"分组下匹配用例数"筛选（V9.7.10 对齐，INT-146）：
         # 用例级筛选（keyword/dimension）需先用例聚合确定分组集合，不能下推分页
         has_case_filters = bool(keyword or dimension_id)
@@ -87,7 +89,8 @@ class GroupService:
         if pushdown:
             try:
                 data = task_data_service.list_testcase_groups(
-                    algorithm_type=algorithm_type, page=page, per_page=per_page)
+                    algorithm_type=algorithm_type, page=page, per_page=per_page,
+                    include_duration=include_duration)
             except Exception:
                 data = {}
             page_groups = data.get('items') or []
@@ -100,7 +103,8 @@ class GroupService:
         else:
             try:
                 data = task_data_service.list_testcase_groups(
-                    algorithm_type=algorithm_type)
+                    algorithm_type=algorithm_type,
+                    include_duration=include_duration)
                 all_groups = data.get('items') or []
             except Exception:
                 all_groups = []
@@ -167,9 +171,11 @@ class GroupService:
                     name=group.get('name'),
                     description=group.get('description') or '',
                     algorithm_type=group.get('algorithm_type') or '',
-                    created_at='',
-                    updated_at='',
+                    # 真实创建/更新时间（task_service 读模型透出；分组卡展示「更新于 …」）
+                    created_at=group.get('created_at') or '',
+                    updated_at=group.get('updated_at') or '',
                     test_case_count=case_counts.get(str(group.get('id')), 0),
+                    total_duration=group.get('total_duration'),
                     # INT-423/466：资源可见性与归属人（read model 透出，此处透传）
                     visibility=group.get('visibility'),
                     created_by_user_id=group.get('created_by_user_id'),

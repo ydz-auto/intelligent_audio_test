@@ -7,10 +7,10 @@
 P5 改造：从 shared/models/models/testcase_models.py 真正下沉到本服务。
 shared/models/models/testcase_models.py 改为从这里 re-export。
 """
-from shared.models.database import Base, utc8now
+from shared.models.database import Base, utc8now, utcnow
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Boolean,
-    JSON, ForeignKey,
+    JSON, ForeignKey, Float,
 )
 from sqlalchemy.orm import relationship
 
@@ -75,6 +75,20 @@ class TestCaseGroup(Base):
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
     deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-141）')
     test_cases = relationship('TestCase', foreign_keys='TestCase.group_id', backref='group', lazy=True)
+
+
+class TestCaseGroupStats(Base):
+    """分组统计读模型（CQRS 读侧物化，避免分组列表每次全量遍历用例聚合）。
+
+    分组列表直接读本表（Redis 做读缓存），用例/分组写路径失效后按 TTL 惰性
+    重算并回写；口径 = 分组下未删除且可见用例的音频时长之和（秒）。
+    """
+    __tablename__ = 'test_case_group_stats'
+    group_id = Column(String(50), primary_key=True, comment='分组ID（test_case_groups.id）')
+    total_duration = Column(Float, nullable=False, default=0.0, server_default='0',
+                            comment='分组全部用例音频时长之和（秒）')
+    stats_updated_at = Column(DateTime, default=utcnow, server_default=func.now(),
+                              nullable=False, comment='统计刷新时间（超过 TTL 惰性重算）')
 
 
 class TestCase(Base):

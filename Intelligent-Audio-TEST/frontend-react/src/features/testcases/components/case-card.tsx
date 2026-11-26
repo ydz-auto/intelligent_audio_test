@@ -37,6 +37,7 @@ import {
   getAlgorithmLabel,
 } from '@/features/testcases/constants'
 import { TagBadge } from '@/features/testcases/components/tag-cell'
+import { UserDisplayName } from '@/components/common/user-display-name'
 
 /** 全站用例展示的领域子集（11_用例域.md §3.3 字段口径；各消费域模型结构兼容，接线不改） */
 export interface CaseCardItem {
@@ -52,6 +53,9 @@ export interface CaseCardItem {
   deleted?: boolean | null
   deletedAt?: string | null
   deletedByUserId?: number | null
+  /** 创建人 / 更新人用户 id（姓名由 UserDisplayName 按需解析，接口只回 id） */
+  createdByUserId?: number | null
+  updatedByUserId?: number | null
   audioCount?: number | null
 }
 
@@ -264,6 +268,11 @@ export function CaseCard<T extends CaseCardItem>({
                   <p className='text-muted-foreground/70 mt-0.5 text-xs'>
                     最后编辑时间{' '}
                     {formatDateTime(caseItem.updatedAt)}
+                  </p>
+                  <p className='text-muted-foreground/70 mt-0.5 text-xs'>
+                    创建人 <UserDisplayName userId={caseItem.createdByUserId} />
+                    {' · '}更新人{' '}
+                    <UserDisplayName userId={caseItem.updatedByUserId} />
                   </p>
                   {disabled && (
                     <p className='text-muted-foreground/70 mt-0.5 text-xs'>

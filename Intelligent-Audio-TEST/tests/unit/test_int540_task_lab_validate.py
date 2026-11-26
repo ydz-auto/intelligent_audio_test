@@ -238,6 +238,10 @@ class TestTaskLabsReadModel:
         assert any(item['id'] == task_id and item.get('labs') == [
             {'id': 5, 'code': 'LAB-E', 'name': '实验室E'}
         ] for item in items)
+        # 任务卡「创建人 / 更新人」：列表透出 user_id（姓名由前端按需解析）
+        row = next(item for item in items if item['id'] == task_id)
+        assert 'created_by_user_id' in row
+        assert 'updated_by_user_id' in row
 
     def test_detail_dto_inlines_labs(self, db):
         """任务详情 DTO 内联 labs。"""

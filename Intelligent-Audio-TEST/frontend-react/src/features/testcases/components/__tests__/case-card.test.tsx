@@ -101,8 +101,22 @@ describe('CaseCard', () => {
     expect(screen.getByText('语种')).toBeInTheDocument()
   })
 
+  it('次行展示创建人 / 更新人（接口只回 user_id，姓名未解析时回退「用户#id」）', () => {
+    renderCard(
+      <CaseCard
+        caseItem={makeCase({ createdByUserId: 7, updatedByUserId: 8 })}
+        selected={false}
+        tagRegistry={MOCK_TAGS}
+        callbacks={noopCallbacks}
+      />
+    )
+    expect(screen.getByText(/创建人/)).toBeInTheDocument()
+    expect(screen.getByText('用户#7')).toBeInTheDocument()
+    expect(screen.getByText('用户#8')).toBeInTheDocument()
+  })
+
   it('INT-1687：算法名未命中真实选项时不显示类型码（徽章整枚不渲染）', () => {
-    const { container } = render(
+    const { container } = renderCard(
       <CaseCard
         caseItem={makeCase({ algorithmType: 'voice_llm' })}
         selected={false}

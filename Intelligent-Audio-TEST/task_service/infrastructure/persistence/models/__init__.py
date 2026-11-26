@@ -21,7 +21,7 @@ from .task_models import (
 from .published_task_models import PublishedTask
 from .result_models import TestResult
 from .testcase_models import (
-    TagCategory, Tag, TestCaseGroup, TestCase, TestCaseTag,
+    TagCategory, Tag, TestCaseGroup, TestCase, TestCaseTag, TestCaseGroupStats,
 )
 from .evaluation_strategy_models import EvaluationStrategy
 from .favorite_models import Favorite
@@ -43,6 +43,8 @@ __all__ = [
     'TestResult',
     # 标签与用例
     'TagCategory', 'Tag', 'TestCaseGroup', 'TestCase', 'TestCaseTag',
+    # 分组统计读模型（列表页聚合物化 + Redis 读缓存）
+    'TestCaseGroupStats',
     # 评估策略（INT-590：整体评估维度+全局背景噪声 可复用包）
     'EvaluationStrategy',
     # 收藏（task|testcase，INT-141）

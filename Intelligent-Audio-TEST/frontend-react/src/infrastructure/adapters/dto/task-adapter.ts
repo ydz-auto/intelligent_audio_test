@@ -144,6 +144,8 @@ export function toTaskListItem(dto: TaskListItemDto): TaskListItem {
     deleted: dto.deleted,
     deletedAt: dto.deleted_at,
     deletedByUserId: dto.deleted_by_user_id,
+    createdByUserId: dto.created_by_user_id ?? null,
+    updatedByUserId: dto.updated_by_user_id ?? null,
     reports: dto.reports
       ? {
           count: dto.reports.count,
@@ -223,6 +225,7 @@ export function toPublishedTaskItem(dto: PublishedTaskItemDto): PublishedTaskIte
     publishedAt: dto.published_at,
     archivedAt: dto.archived_at,
     createdAt: dto.created_at,
+    createdByUserId: dto.created_by_user_id ?? null,
   }
 }
 
