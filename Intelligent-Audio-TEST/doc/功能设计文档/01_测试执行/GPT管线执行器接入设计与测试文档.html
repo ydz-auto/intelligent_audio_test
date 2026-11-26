@@ -55,7 +55,7 @@
 <header class="doc">
   <h1>GPT 管线执行器接入设计与测试文档</h1>
   <div class="meta">
-    <span>版本：v0.2（评审稿）</span>
+    <span>版本：v0.3（评审稿）</span>
     <span>日期：2026-11-26</span>
     <span>状态：待评审</span>
     <span>适用：Intelligent-Audio-TEST 执行域</span>
@@ -151,11 +151,11 @@
 gpt_executor_bridge（平台侧新服务，薄，无业务逻辑）
    │ ② 拉全量用例：GetTaskCaseByIds / GetTestCaseDetail /
    │    ExtractCaseAllParams / audio_service 音频字节
-   │ ③ HTTP POST {pipeline}/tasks   ← push 全量 payload + Bearer token
+   │ ③ HTTP POST {pipeline}/executions   ← push 单用例 payload + Bearer token
    ▼
 GPT 管线（外部，只暴露 3 个 HTTP 接口）
    │ ④ 执行完回调 POST {bridge}/callback/results
-   │    （回调不可达时：桥接轮询 GET {pipeline}/tasks/{id}/status 拉结果）
+   │    （回调不可达时：桥接轮询 GET {pipeline}/executions/{execution_id}/status 拉结果）
    ▼
 gpt_executor_bridge 转内部 gRPC（固定动作序列）：
    SubmitResult → UpdateTaskCaseStatus(tc_rel_id) →
@@ -184,14 +184,17 @@ message StartGPTTaskRequest {
 <p>桥接地址走 <span class="path">shared/config/service_ports.py</span> 注册（e2e 同款固定地址模式，不引入实例注册表）。</p>
 
 <h3>5.2 桥接 → 管线：HTTP 下发（管线要开放的接口）<span class="badge b-new">管线侧实现</span></h3>
-<p><b>下发粒度：一条用例路由行（tc_rel_id）一次下发</b>，与 StartAPITest 逐用例精确分发（INT-71）同口径；任务级只有停止 / 状态查询，不存在「整任务打包下发」。</p>
+<p><b>下发粒度：一条用例路由行（tc_rel_id）一次下发</b>，与 StartAPITest 逐用例精确分发（INT-71）同口径；不存在「整任务打包下发」。停止 / 状态查询按执行实例（execution_id）；任务级停止由桥接逐实例下发。</p>
 <table>
   <tr><th>接口</th><th>方法</th><th>说明</th></tr>
-  <tr><td><code>/tasks</code></td><td>POST</td><td>下发执行，push 全量用例；立即返回受理（异步执行）</td></tr>
-  <tr><td><code>/tasks/{task_id}/stop</code></td><td>POST</td><td>停止；幂等</td></tr>
-  <tr><td><code>/tasks/{task_id}/status</code></td><td>GET</td><td>状态 / 进度 / 结果（轮询兜底通道）</td></tr>
+  <tr><td><code>/executions</code></td><td>POST</td><td>下发一条用例的一次执行，push 单用例 payload；立即返回受理 <code>{success, execution_id}</code>（异步执行）；<b>tc_rel_id 为幂等键</b>，重复下发返回原实例</td></tr>
+  <tr><td><code>/executions/{execution_id}/stop</code></td><td>POST</td><td>停止该执行实例；幂等</td></tr>
+  <tr><td><code>/executions/{execution_id}/status</code></td><td>GET</td><td>状态 / 进度 / 结果（轮询兜底通道）</td></tr>
   <tr><td><code>/health</code></td><td>GET</td><td>健康检查（建议）</td></tr>
 </table>
+<div class="note"><b>命名口径（v0.3 拍板）</b>：资源叫 <code>/executions</code>（执行实例），不叫 <code>/tasks</code> 也不叫 <code>/testcases</code>。
+平台语义里 <b>task = 一批用例</b>，按用例下发叫 tasks 会混淆；<b>/testcases 是用例定义 CRUD</b>（静态配置），管线收到的是「一次执行」而非用例定义管理。
+execution 与网关 <code>/api/v1/execution</code>（执行编排）词汇一致。payload 内保留 task_id / tc_rel_id / test_case_id 做关联。</div>
 <p>鉴权：<code>Authorization: Bearer &lt;token&gt;</code>（复用 apis 表密钥链）。下发 payload：</p>
 <pre><code>{
   "task_id": 123, "tc_rel_id": 88, "test_case_id": "201",
@@ -291,10 +294,10 @@ message StartGPTTaskRequest {
 <table>
   <tr><th>异常场景</th><th>兜底策略</th><th>责任方</th></tr>
   <tr><td>管线不可达 / 下发失败</td><td>分发失败收敛：TaskCase 置 failed + error_message，刷新任务统计与进度（照抄 _execute_api_case 异常路径）</td><td>桥接 + 执行引擎</td></tr>
-  <tr><td>回调超时 / 管线回调不可达</td><td>桥接轮询 GET /tasks/{id}/status（间隔可配），拿到终态后走同一回写序列</td><td>桥接</td></tr>
+  <tr><td>回调超时 / 管线回调不可达</td><td>桥接轮询 GET /executions/{execution_id}/status（间隔可配），拿到终态后走同一回写序列</td><td>桥接</td></tr>
   <tr><td>重复回调</td><td>按 task_id + tc_rel_id 幂等去重，重复请求返回首次受理结果</td><td>桥接</td></tr>
   <tr><td>回调鉴权失败</td><td>401 拒绝；token 一次性、随下发派发</td><td>桥接</td></tr>
-  <tr><td>停止任务</td><td>StopGPTTask → 管线 /stop；联动 CancelEvaluation(reason=task_stopped)；未回结果的路由行置 stopped</td><td>桥接</td></tr>
+  <tr><td>停止任务</td><td>StopGPTTask → 桥接逐实例调管线 /executions/{id}/stop；联动 CancelEvaluation(reason=task_stopped)；未回结果的路由行置 stopped</td><td>桥接</td></tr>
   <tr><td>大结果（音频/帧日志）</td><td>轻量列 + result_data_path 外置文件（split_result_data 现有机制）；音频不入库</td><td>桥接</td></tr>
   <tr><td>多路由兄弟行</td><td>全链路透传 tc_rel_id，UpdateTaskCaseStatus 按路由行精确命中（INT-604）</td><td>桥接</td></tr>
   <tr><td>管线执行失败</td><td>回调 execution_status=failed + error_message；仍 SubmitResult 留痕，不提交评估</td><td>管线 + 桥接</td></tr>
@@ -319,7 +322,7 @@ message StartGPTTaskRequest {
 <h2 id="s9"><span class="no">9</span>测试用例（T01–T15）</h2>
 <table>
   <tr><th>编号</th><th>优先级</th><th>模块</th><th>前置条件</th><th>步骤</th><th>预期结果</th></tr>
-  <tr><td>T01</td><td><span class="badge b-p0">P0</span></td><td>下发 payload</td><td>mock 管线就绪；voice_llm 多轮用例（含音频轮）</td><td>建任务选 GPT 管线目标并启动；抓 mock 管线收到的 POST /tasks</td><td>payload 含 task_id/tc_rel_id/test_case_id/rounds/音频字节/参考参数/评估维度/callback_url/token，字段与 §5.2 一致</td></tr>
+  <tr><td>T01</td><td><span class="badge b-p0">P0</span></td><td>下发 payload</td><td>mock 管线就绪；voice_llm 多轮用例（含音频轮）</td><td>建任务选 GPT 管线目标并启动；抓 mock 管线收到的 POST /executions</td><td>payload 含 task_id/tc_rel_id/test_case_id/rounds/音频字节/参考参数/评估维度/callback_url/token，字段与 §5.2 一致；受理返回 execution_id；同 tc_rel_id 重复下发幂等</td></tr>
   <tr><td>T02</td><td><span class="badge b-p0">P0</span></td><td>端到端主链路</td><td>T01 通过</td><td>单轮文本用例执行 → 回调 → 观察平台</td><td>SubmitResult 落库（result_id）；TaskCase execution_status=completed；EvaluateCase 入队；评估完成后 round_evaluation/aggregated 回填、任务到终态；报告可见该用例</td></tr>
   <tr><td>T03</td><td><span class="badge b-p0">P0</span></td><td>多轮+音频</td><td>4 轮用例（3 文本+1 音频）</td><td>执行并核对 algorithm_result</td><td>rounds 逐轮 input/output/latency 完整；音频轮 audio_id 正确；total_latency/round_count 正确；WER 与 LLM Judge 逐轮+整体维度记录齐全</td></tr>
   <tr><td>T04</td><td><span class="badge b-p1">P1</span></td><td>打断/时延指标</td><td>打断轮用例（is_interruption=true）</td><td>管线回传 event_log/first_frame_ms；执行</td><td>评估侧消费 event_log 出打断/时序指标；first_frame_latency 入报告；时间线按全轮次时间轴明细规范展示</td></tr>
@@ -368,8 +371,9 @@ message StartGPTTaskRequest {
 </ul>
 
 <footer>
-  GPT 管线执行器接入设计与测试文档 · v0.2 评审稿 · 2026-11-26 ·
+  GPT 管线执行器接入设计与测试文档 · v0.3 评审稿 · 2026-11-26 ·
   v0.2 修订：明确按用例下发；回调音频口径与现状一致（传地址不传文件体），新增 T16。
+  v0.3 修订：管线侧接口改名 /executions（执行实例），避免与平台 task（用例批次）/testcase（用例定义）语义混淆；tc_rel_id 为下发幂等键。
   契约冻结前以评审结论为准；端口/枚举/字段以代码事实源为准。
 </footer>
 
