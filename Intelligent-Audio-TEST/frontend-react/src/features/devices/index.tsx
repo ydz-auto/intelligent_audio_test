@@ -638,7 +638,13 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         void setOccupied
           .mutateAsync({ kind: 'playback', id: device.id, occupied: true })
           .then(() => toast.success(`已开始播放测试：${device.name}`))
-          .catch(() => toast.error('播放测试启动失败，请稍后重试'))
+          // 后端拒绝原因要透出（如「当前有待执行的E2E测试任务，不允许使用后端扬声器播放」），
+          // 否则重试永远失败却只提示「请稍后重试」
+          .catch((error: unknown) =>
+            toast.error(
+              error instanceof ApiError ? error.userMessage : '播放测试启动失败，请稍后重试'
+            )
+          )
       },
       onStop: (device: PlaybackDevice) => {
         void setOccupied
