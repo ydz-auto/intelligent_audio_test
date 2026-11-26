@@ -121,7 +121,6 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     messages,
     contextStatus,
     initialPrompt,
-    isLoadingMessages,
     updateMessages,
     updateConfig,
     clearMessages,
@@ -130,6 +129,8 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
   // 平台 Agent 会话 / run（报告工作模式读待审批写操作数）
   const agentSessionId = useAiChatSession((state) => state.agentSessionId)
   const agentRunId = useAiChatSession((state) => state.agentRunId)
+  /** 历史消息回填中：切会话时显示骨架，避免先闪「开始对话」空态 */
+  const isLoadingMessages = useAgentRunStore((state) => state.messagesLoading)
 
   // 报告上下文选择器（真实 GET /reports + GET /tasks）
   const {
@@ -354,7 +355,9 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
 
   /** 历史会话切换：读服务端最近消息回填（生成中不允许切换，避免打断在办 run） */
   const handleSelectSession = (sessionId: string) => {
-    if (isGenerating || sessionId === agentSessionId) return
+    if (isGenerating) return
+    // 同一会话也重新打开：上次回填失败（网络 / 瞬时错误）时，再点一次即可重试，
+    // 不能因为 id 相同就静默忽略，否则会一直停在空白页且无从恢复。
     void useAgentRunStore.getState().openSession(sessionId)
   }
 
@@ -363,6 +366,11 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     if (isGenerating) return
     resetChat()
     clearMessages()
+    // 新对话不继承上一个会话的报告/任务上下文：否则顶部残留旧 chip，
+    // 下一次发送还会带上错误的上下文前缀。
+    updateConfig('reportContextId', undefined)
+    updateConfig('reportContextLabel', undefined)
+    updateConfig('reportContextType', undefined)
   }
 
   /** Auto 暂停后继续：失败文案走 toast（面板按钮就地恢复为可点） */

@@ -1105,6 +1105,41 @@ describe('useAgentRun 刷新恢复（getAgentSession）', () => {
       expect(useAiChatSession.getState().agentSessionId).toBeNull()
     })
   })
+
+  it('切会话撞上旧会话恢复在途：等旧请求收尾后回填新会话，不复用旧 promise', async () => {
+    let releaseOld: (value: Awaited<ReturnType<typeof getAgentSession>>) => void =
+      () => undefined
+    const oldPending = new Promise<Awaited<ReturnType<typeof getAgentSession>>>(
+      (resolve) => {
+        releaseOld = resolve
+      }
+    )
+    getSessionMock.mockImplementationOnce(() => oldPending)
+    useAiChatSession.setState({ messages: [], agentSessionId: 's-old' })
+
+    // 旧会话恢复在途：空会话期间应置 messagesLoading（页面显示骨架而不是「开始对话」空态）
+    const oldRestore = useAgentRunStore.getState().restore()
+    await waitFor(() => {
+      expect(useAgentRunStore.getState().messagesLoading).toBe(true)
+    })
+
+    getSessionMock.mockResolvedValueOnce({
+      session: { id: 's-new', title: '新会话' },
+      messages: [{ role: 'user', content: '新会话的问题' }],
+      runs: [],
+    })
+    const switching = useAgentRunStore.getState().openSession('s-new')
+    releaseOld({ session: { id: 's-old', title: '旧会话' }, messages: [], runs: [] })
+    await oldRestore
+    await switching
+
+    // 新会话必须真正重新请求并回填，而不是被旧恢复的 in-flight promise 吞掉
+    expect(getSessionMock).toHaveBeenCalledWith('s-new')
+    const [restored] = useAiChatSession.getState().messages
+    expect(restored).toMatchObject({ from: 'user' })
+    expect(restored.versions[0]?.content).toBe('新会话的问题')
+    expect(useAgentRunStore.getState().messagesLoading).toBe(false)
+  })
 })
 
 /**

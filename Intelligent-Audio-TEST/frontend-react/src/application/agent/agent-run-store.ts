@@ -322,6 +322,8 @@ type AgentRunStoreState = {
   /** 事件流连接状态（reconnecting 时页面提示重连中） */
   streamStatus: AgentStreamStatus | null
   error: string | null
+  /** 历史会话消息回填中（切会话 / 刷新恢复；空会话期间显示骨架而不是空状态） */
+  messagesLoading: boolean
   /** 本 run 的审批单（待审批 + 已决；重连 / 刷新后按服务端列表还原） */
   approvals: AgentApproval[]
   /** 审批列表同步中（重连后显示「正在同步审批状态…」） */
@@ -428,6 +430,8 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
   /** 已恢复校验过的会话 id（同会话只查一次 getAgentSession） */
   let restoredSessionId: string | null = null
   let restoreInFlight: Promise<void> | null = null
+  /** 在途恢复对应的会话 id（换会话时必须等旧恢复收尾后重新拉取） */
+  let restoreInFlightSession: string | null = null
   /**
    * 刷新恢复的 Auto 暂停气泡 key：点「继续」后只更新这一条（撤掉暂停占位文案 /
    * 等待审批徽标），终态时同样用它把气泡收口到 Auto 终态（P2）。
@@ -1708,6 +1712,7 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
       run: null,
       error: null,
       streamStatus: null,
+      messagesLoading: false,
       approvals: [],
       approvalsLoading: false,
       approvalsError: null,
@@ -1907,8 +1912,19 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
     const sessionId = session().agentSessionId
     if (!sessionId) return
     if (restoredSessionId === sessionId) return
-    if (restoreInFlight) return restoreInFlight
     const runToken = token
+    // 切会话可能撞上仍在途的旧会话恢复：必须先等它收尾，再为本会话重新拉取。
+    // 直接复用旧 promise 会命中内部的 sessionId 校验提前返回，消息永远不回填。
+    if (restoreInFlight) {
+      if (restoreInFlightSession === sessionId) return restoreInFlight
+      await restoreInFlight
+      if (runToken !== token) return
+      if (session().agentSessionId !== sessionId) return
+      if (restoredSessionId === sessionId) return
+    }
+    // 空会话期间显示加载骨架：否则回填途中会先闪「开始对话」空态，看起来像打开失败
+    const showLoading = session().messages.length === 0
+    if (showLoading) set({ messagesLoading: true })
     const promise = (async () => {
       try {
         const detail = await getAgentSession(sessionId)
@@ -1971,11 +1987,20 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
           session().setAgentSession(null)
           session().setAgentRunId(null)
         }
+      } finally {
+        // 无论成功 / 失败（含 404 清会话）都要收掉骨架，避免一直「加载中」
+        if (showLoading && runToken === token) {
+          set({ messagesLoading: false })
+        }
       }
     })()
     restoreInFlight = promise
+    restoreInFlightSession = sessionId
     void promise.finally(() => {
-      if (restoreInFlight === promise) restoreInFlight = null
+      if (restoreInFlight === promise) {
+        restoreInFlight = null
+        restoreInFlightSession = null
+      }
     })
     return promise
   }
@@ -1995,6 +2020,7 @@ export function createAgentRunStore(chatSession: AiChatSessionStore) {
     run: null,
     streamStatus: null,
     error: null,
+    messagesLoading: false,
     approvals: [],
     approvalsLoading: false,
     approvalsError: null,
