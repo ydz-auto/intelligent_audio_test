@@ -12,14 +12,18 @@
  * CaseConfirmDialog 确认后真实调用、分组复制走 POST /testcases/batch copy_by_group。readOnly
  * 观察态（§3.1.1）动作钮/勾选/收藏回收站切换全部隐藏，选中态静态展示。
  * INT-1026 组头「批量修改」九项弹窗（CaseBatchActionsHost）与行内/分组操作并存（集成合流保留）。
+ * 「只显示已选中」：选择态复核视图（SelectedCasesView）——按分组/按标签页签只呈现已勾选用例，
+ * 数据源 useSelectedCases 按当前筛选取全量用例行与已选 id 求交（分组懒加载/服务端圈定的 id
+ * 未必在当前列表页，不能只过滤已加载行）；被筛选排除的已选条数在汇总行显式提示。
  */
-import { ListChecks, X } from 'lucide-react'
+import { Eye, ListChecks, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { useAlgorithmChannel } from '@/application/test-execution/useAlgorithmChannel'
 import { useCaseSelection } from '@/application/test-execution/useCaseSelection'
+import { useSelectedCases } from '@/application/test-execution/use-selected-cases'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useAlgorithmLabels } from '@/application/hooks/use-algorithm-options'
 import { CaseRoundsProvider } from '@/application/testcases/case-rounds-registry'
@@ -66,6 +70,8 @@ import {
   type CaseConfirmState,
 } from '@/features/testcases/modals/case-confirms'
 import { SelectionSummary } from '@/features/test-execution/components/selection-summary'
+import { SelectedCasesView } from '@/features/test-execution/components/selected-cases-view'
+import { SELECTED_ONLY_COPY } from '@/features/test-execution/constants'
 
 interface StepCasesProps {
   readOnly: boolean
@@ -90,6 +96,8 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   )
   const [filters, setFilters] = useState<TestCaseListFilters>({})
   const [pendingSelectAll, setPendingSelectAll] = useState(false)
+  /** 「只显示已选中」视图开关（选择态复核：按分组/按标签只呈现已勾选用例） */
+  const [selectedOnly, setSelectedOnly] = useState(false)
 
   // 弹窗/确认状态（行内/分组操作装配，11_用例域.md §5）
   const [mutateCase, setMutateCase] = useState<TestCaseListItem | null>(null)
@@ -119,6 +127,15 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   )
 
   const listQuery = useTestCasesList(caseView, effectiveFilters)
+  /**
+   * 「只显示已选中」数据源：已选 id 来自服务端圈定（全选结果/反选），可能在当前列表页与
+   * 分组懒加载页之外，故按当前筛选取全量用例行后与已选 id 求交（见 useSelectedCases）。
+   */
+  const selectedCases = useSelectedCases(
+    selectedOnly,
+    effectiveFilters,
+    selection.manualCaseIds
+  )
   const groupsQuery = useCaseGroups()
   const tagsQuery = useCaseTags()
   /** 标签分类（标签操作·编辑标签弹窗所属分类选项；INT-1294 接线） */
@@ -556,6 +573,16 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
         {canManage && canSelect && (
           <div className='flex flex-wrap items-center gap-2'>
             <Button
+              variant={selectedOnly ? 'default' : 'outline'}
+              size='sm'
+              className='h-8 gap-1.5 text-xs'
+              aria-pressed={selectedOnly}
+              onClick={() => setSelectedOnly((prev) => !prev)}
+            >
+              <Eye aria-hidden='true' className='size-3.5' />
+              {SELECTED_ONLY_COPY.toggle}
+            </Button>
+            <Button
               variant='outline'
               size='sm'
               className='h-8 gap-1.5 text-xs'
@@ -579,7 +606,21 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
 
         {/* 内容区（分组/标签卡片流，与用例管理页同一组件）；readOnly 不传动作回调 → 动作钮隐藏 */}
         <div className='min-h-0 flex-1 overflow-auto'>
-          {caseView === 'by-group' ? (
+          {selectedOnly ? (
+            <SelectedCasesView
+              view={caseView}
+              cases={selectedCases.cases}
+              loading={selectedCases.isLoading}
+              isError={selectedCases.isError}
+              onRetry={selectedCases.refetch}
+              onExit={() => setSelectedOnly(false)}
+              selectedCount={selection.selectedCount}
+              tagRegistry={tags}
+              algorithmLabels={algorithmLabels}
+              callbacks={canManage ? rowCallbacks : undefined}
+              onToggleSelect={canManage ? handleToggleSelect : undefined}
+            />
+          ) : caseView === 'by-group' ? (
             <GroupedCaseList
               groups={groups}
               cases={items}

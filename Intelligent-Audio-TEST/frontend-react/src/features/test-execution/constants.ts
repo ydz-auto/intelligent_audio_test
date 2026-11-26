@@ -43,6 +43,29 @@ export const TEST_FLOW_CONFIG: TestFlowConfig = {
   voiceLlmConcurrency: 2,
 }
 
+/**
+ * 步骤一「只显示已选中」视图文案（选择态复核：按分组/按标签只呈现已勾选用例）。
+ * 分组视图与标签视图共用同一套文案，避免两处硬编码漂移。
+ */
+export const SELECTED_ONLY_COPY = {
+  /** 触发按钮 */
+  toggle: '只显示已选中',
+  /** 返回全部用例（视图汇总行与空态共用） */
+  exit: '查看全部用例',
+  /** 视图汇总标题 */
+  title: '已选中用例',
+  /** 视图汇总计数 */
+  summary: (count: number) => `共 ${count} 条用例`,
+  /** 已选用例被当前筛选条件排除的条数提示（不静默隐藏） */
+  hiddenByFilter: (count: number) => `另有 ${count} 条已选用例不在当前筛选内`,
+  /** 空态（尚未勾选任何用例） */
+  emptyTitle: '还没有已选中的用例',
+  emptyDescription: '在用例列表中勾选用例后，可在这里只查看已选中的用例',
+  /** 空态（筛选条件把已选用例全部排除） */
+  emptyFilteredTitle: '当前筛选条件下没有已选中的用例',
+  emptyFilteredDescription: '已选中的用例被当前筛选条件排除，请调整筛选或查看全部用例',
+} as const
+
 /** 网络环境选项（执行参数，对齐端到端测试功能设计文档 :338） */
 export const NETWORK_OPTIONS = ['默认', 'Wi-Fi', '移动网络', '飞行模式'] as const
 
