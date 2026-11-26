@@ -136,7 +136,11 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
     effectiveFilters,
     selection.manualCaseIds
   )
-  const groupsQuery = useCaseGroups()
+  /**
+   * 分组数据源：显式开启总时长聚合（与用例管理页同款）——关闭时组头「总时长」只剩
+   * 组内已加载用例求和，分组收起/未展开时恒为 0、徽章不渲染（/start-test 曾因此缺时间信息）。
+   */
+  const groupsQuery = useCaseGroups(true)
   const tagsQuery = useCaseTags()
   /** 标签分类（标签操作·编辑标签弹窗所属分类选项；INT-1294 接线） */
   const tagCategoriesQuery = useTagCategories()
