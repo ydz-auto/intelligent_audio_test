@@ -21,6 +21,7 @@ import { AnimatedOutlet } from '@/components/page-transition'
 import { SkipToMain } from '@/components/skip-to-main'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { useDeviceStatusStream } from '@/application/devices/use-device-status-stream'
+import { useTaskEventsStream } from '@/application/tasks/use-task-events-stream'
 import { useAuthSessionSync } from '@/application/auth/use-auth-session-sync'
 import { LayoutProvider } from '@/context/layout-provider'
 import { SearchProvider } from '@/context/search-provider'
@@ -40,6 +41,8 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const location = useLocation()
   // 设备状态实时流（SSE DEVICE_EVENTS）：拔插/健康检查判定离线后自动刷新设备列表
   useDeviceStatusStream()
+  // 任务状态实时流（SSE TASK_EVENTS）：执行/评估状态迁移后自动刷新任务列表，无需手动刷新
+  useTaskEventsStream()
   // 权限变更同步：切回标签页 / 定时静默刷新 /auth/me，调权后无需重新登录
   useAuthSessionSync()
   // INT-442/486 跨卡契约（00 总表 §3.5 矩阵）：/reports、/rankings 算法切换唯一入口=页内算法大卡，隐藏右上角全局切换器
