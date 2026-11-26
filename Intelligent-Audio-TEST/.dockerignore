@@ -35,7 +35,7 @@ env/
 
 # ===== Logs =====
 logs/
-**/logs/
+*/logs/
 *.log
 log.txt
 
