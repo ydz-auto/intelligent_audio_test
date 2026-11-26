@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GPT 管线执行器接入设计与测试文档（评审稿 v0.1）</title>
+<title>GPT 管线接入设计与测试文档（v1.2）</title>
 <style>
   :root{
     --ink:#1a2332; --sub:#5b6b7f; --line:#e3e8ef; --bg:#f6f8fa;
@@ -35,7 +35,6 @@
   .b-p0{background:var(--red-bg);color:var(--red)}
   .b-p1{background:var(--amber-bg);color:var(--amber)}
   .b-p2{background:var(--blue-bg);color:var(--blue)}
-  .b-ok{background:var(--green-bg);color:var(--green)}
   .b-new{background:var(--amber-bg);color:var(--amber)}
   .b-exist{background:var(--green-bg);color:var(--green)}
   .note{background:var(--amber-bg);border:1px solid #fde68a;border-left:5px solid var(--amber);border-radius:8px;padding:12px 16px;margin:14px 0;font-size:13.5px}
@@ -53,208 +52,90 @@
 <div class="wrap">
 
 <header class="doc">
-  <h1>GPT 管线执行器接入设计与测试文档</h1>
+  <h1>GPT 管线接入设计与测试文档</h1>
   <div class="meta">
-    <span>版本：v0.3（评审稿）</span>
+    <span>版本：v1.2</span>
     <span>日期：2026-11-26</span>
     <span>状态：待评审</span>
-    <span>适用：Intelligent-Audio-TEST 执行域</span>
+    <span>范围：管线只执行，平台负责评估与报告</span>
   </div>
 </header>
 
 <div class="tldr">
-  <b>一句话结论：</b>新增一个薄桥接执行器 <code>gpt_executor_bridge</code>，对平台装成标准执行器（gRPC），对外部 GPT 管线只说 HTTP。
-  <b>下发粒度 = 用例（路由行 tc_rel_id），不是整任务</b>；管线执行完回调<b>两条 wav 音频地址</b>（user_wav / ai_wav，与现行口径一致，不传文件体），平台评估。
-  GPT 管线只开放 <b>3 个 HTTP 接口</b>（启动 / 停止 / 状态）+ 调 1 个回调；平台执行链只加一条路由分支。
-  <b>评估结果回写由 evaluation_service 现有链路自动完成，管线与桥接都不搬运评估分。</b>
+  <b>一句话：</b>HTTP 接口支持<b>两种下发用例的方式</b>——<b>按轮下发</b>（平台逐轮驱动，默认）和<b>按用例下发</b>（整条用例一次下发）。建任务时像普通 API 一样勾选目标，<b>再选一下用哪种下发方式</b>，平台按该选择挑执行器。
+  <br><b>管线只做执行</b>：收用例 → 跑 → 回原始结果与两条 wav 地址；<b>不评估、不算分、不写平台库</b>。评估、落库、报告全部在平台侧，且复用现有链路。
 </div>
 
 <div class="toc">
-  <a href="#s1">1. 背景与目标</a><br>
-  <a href="#s2">2. 现状架构事实（已验证）</a><br>
-  <a href="#s3">3. 方案选型</a><br>
-  <a href="#s4">4. 总体架构与时序</a><br>
-  <a href="#s5">5. 接口契约与数据格式</a><br>
-  <a href="#s6">6. 平台侧改动清单</a><br>
-  <a href="#s7">7. 可靠性与兜底矩阵</a><br>
-  <a href="#s8">8. 测试计划</a><br>
-  <a href="#s9">9. 测试用例（T01–T15）</a><br>
-  <a href="#s10">10. 验收标准</a><br>
-  <a href="#s11">11. 落地里程碑</a><br>
-  <a href="#s12">12. 附录：事实源文件</a>
+  <a href="#s1">1. 管线要做什么（对外契约）</a><br>
+  <a href="#s2">2. 数据格式</a><br>
+  <a href="#s3">3. 平台怎么接</a><br>
+  <a href="#s4">4. 时序</a><br>
+  <a href="#s5">5. 平台侧改动清单</a><br>
+  <a href="#s6">6. 可靠性兜底</a><br>
+  <a href="#s7">7. 测试用例</a><br>
+  <a href="#s8">8. 验收与里程碑</a><br>
+  <a href="#s9">9. 附录：事实源</a>
 </div>
 
-<h2 id="s1"><span class="no">1</span>背景与目标</h2>
-<p>外部 GPT 执行管线（如 GPTLive，参考项目事件 WORK-20261123-003）要作为<b>执行器</b>接入平台：平台把用例信息下发给管线，管线执行完成后向评估系统发起评估，评估完成后结果回到平台。</p>
-<ul>
-  <li><b>角色澄清</b>：GPT 管线不是被测 API（DUT），而是与 <code>e2e_test_service</code> / <code>api_test_service</code> 平级的执行器。</li>
-  <li><b>关键口径</b>：按平台现有架构，「评估完成后传回平台」由 evaluation_service 评分后自动回写 task_service，<b>不需要管线搬运评估结果</b>。管线职责止于「接任务 → 执行 → 回写原始结果 → 提交评估」。</li>
-  <li><b>非目标</b>：不改现有执行器（e2e / api）行为；不改评估计算器；不做管线内部实现约束。</li>
-</ul>
-
-<h2 id="s2"><span class="no">2</span>现状架构事实（已验证）</h2>
-<h3>2.1 现有执行器入站接口</h3>
-<table>
-  <tr><th>服务</th><th>gRPC</th><th>RPC</th><th>入参</th><th>语义</th></tr>
-  <tr><td rowspan="3">e2e_test_service<br><span class="path">shared/proto/e2e_test_service.proto</span></td><td rowspan="3">50051</td>
-      <td><code>StartE2ETask</code></td><td>task_id, tc_rel_id, e2e_config(JSON 预留), device_id, device_ids[]</td><td>同步执行完整一条 E2E 用例；device_ids 非空走组执行</td></tr>
-  <tr><td><code>StopE2ETask</code></td><td>task_id</td><td>停止</td></tr>
-  <tr><td><code>GetE2ETaskStatus</code></td><td>task_id</td><td>状态查询</td></tr>
-  <tr><td rowspan="4">api_test_service<br><span class="path">shared/proto/api_test_service.proto</span></td><td rowspan="4">51071</td>
-      <td><code>CreateAPITest</code></td><td>task_id, test_config(JSON)</td><td>创建执行上下文</td></tr>
-  <tr><td><code>StartAPITest</code></td><td>task_id, device_type, device_id, case_ids[]</td><td>逐用例精确分发（INT-71）；case_ids 空则按 pending/queued 兜底</td></tr>
-  <tr><td><code>StopAPITest</code></td><td>task_id</td><td>停止</td></tr>
-  <tr><td><code>GetAPITestStatus</code></td><td>task_id</td><td>状态查询</td></tr>
-</table>
-<p>统一响应信封：<code>{success: bool, message: string, data: string(JSON 序列化)}</code>。端口以 <span class="path">shared/config/service_ports.py</span> 为唯一事实源。</p>
-
-<h3>2.2 路由规则（task_service 执行引擎）</h3>
-<table>
-  <tr><th>device_type（TaskCase 级）</th><th>执行器</th><th>分发方式</th></tr>
-  <tr><td><code>physical</code></td><td>e2e_test_service</td><td>按路由行 tc_rel_id + device_id 逐行 / 组派发（StartE2ETask）</td></tr>
-  <tr><td><code>http_api</code> / <code>websocket_api</code></td><td>api_test_service</td><td>StartAPITest；会话亲和经 route_or_bind 直连绑定实例，否则选最闲在册实例</td></tr>
-</table>
-<p class="path">task_service/core/execution_engine/mixins/case_execution.py · task_dispatch.py · grpc_helpers.py</p>
-
-<h3>2.3 执行器出站接口（两执行器共用，反向调平台）</h3>
-<table>
-  <tr><th>目标服务</th><th>RPC</th><th>用途</th></tr>
-  <tr><td rowspan="4">task_service.TaskDataService<br>（gRPC 51061）</td>
-      <td><code>SubmitResult(task_id, result_data JSON)</code></td><td>回写原始结果，返回 result_id</td></tr>
-  <tr><td><code>UpdateTaskCaseStatus</code></td><td>用例执行/评估状态、started_at/completed_at、error_message、<b>tc_rel_id 精确命中路由行</b></td></tr>
-  <tr><td><code>UpdateTestResultAlgorithmResult / UpdateTestResultData / UpdateTestResultOutcome / UpdateTestResultStatus</code></td><td>结果字段更新（大字段走 result_data_path）</td></tr>
-  <tr><td><code>GetTaskById / GetTaskCaseByIds / GetTestResultsByTaskAndCase / UpdateTaskStatus / BatchCreateLogs</code></td><td>拉任务/用例数据、任务态、日志</td></tr>
-  <tr><td>task_service.ExecutionService</td><td><code>NotifyProgress / NotifyCaseCompleted</code></td><td>触发平台进度推送与收尾判定</td></tr>
-  <tr><td>evaluation_service.EvaluationService<br>（gRPC 51091）</td><td><code>EvaluateCase / CancelEvaluation</code></td><td>提交评估队列（异步）；停任务/删用例联动取消</td></tr>
-  <tr><td>algorithm_service</td><td><code>ExtractCaseAllParams</code> 等</td><td>参数展开、字段映射</td></tr>
-  <tr><td>audio_service</td><td>音频查询</td><td>音频引用解析为字节</td></tr>
-</table>
-
-<div class="fact"><b>评估回写链路（现有，零改动）</b>：evaluation_service 评分完成后经其 task ACL 自动调用
-<code>SubmitResult / UpdateTestResultAlgorithmResult / UpdateTestResultData / UpdateTaskCaseStatus(evaluation_status) / UpdateTaskStatus / NotifyProgress / NotifyCaseCompleted</code> 回写平台。
-<span class="path">evaluation_service/infrastructure/acl/task_acl_repository.py</span></div>
-
-<h2 id="s3"><span class="no">3</span>方案选型</h2>
-<table>
-  <tr><th>维度</th><th>方案 A：管线直接实现执行器 gRPC 契约</th><th>方案 B：薄桥接执行器（推荐）</th></tr>
-  <tr><td>管线侧负担</td><td>重：实现入站 gRPC + 全部出站 ACL（SubmitResult / EvaluateCase / 参数展开 / 音频解析）</td><td>轻：3 个 HTTP 接口 + 1 个回调</td></tr>
-  <tr><td>网络要求</td><td>管线须可达内部 gRPC 网段（同机 / 反向隧道）</td><td>双向 HTTPS 即可；回调不可达时桥接轮询兜底</td></tr>
-  <tr><td>平台改动</td><td>几乎为零（注册为执行器实例）</td><td>新桥接服务 + 一条路由分支（5 处，见 §6）</td></tr>
-  <tr><td>适用场景</td><td>管线能像执行机一样部署进内网</td><td>外部 / 跨团队 / 跨网络管线（当前场景）</td></tr>
-</table>
-<p><b>拍板建议：方案 B。</b>理由：外部管线零 gRPC 负担；桥接复用现有 ACL 仓储代码，平台执行链改动最小且纯新增、不动旧路径。</p>
-
-<h2 id="s4"><span class="no">4</span>总体架构与时序</h2>
-<div class="flow">task_service 执行引擎
-   │ ① gRPC StartGPTTask(task_id, tc_rel_id, case_ids)      ← 新增路由分支
-   ▼
-gpt_executor_bridge（平台侧新服务，薄，无业务逻辑）
-   │ ② 拉全量用例：GetTaskCaseByIds / GetTestCaseDetail /
-   │    ExtractCaseAllParams / audio_service 音频字节
-   │ ③ HTTP POST {pipeline}/executions   ← push 单用例 payload + Bearer token
-   ▼
-GPT 管线（外部，只暴露 3 个 HTTP 接口）
-   │ ④ 执行完回调 POST {bridge}/callback/results
-   │    （回调不可达时：桥接轮询 GET {pipeline}/executions/{execution_id}/status 拉结果）
-   ▼
-gpt_executor_bridge 转内部 gRPC（固定动作序列）：
-   SubmitResult → UpdateTaskCaseStatus(tc_rel_id) →
-   NotifyProgress / NotifyCaseCompleted → EvaluateCase
-   ▼
-evaluation_service 评分后自动回写 task_service（现有链路，零改动）</div>
-<div class="note"><b>职责边界</b>：桥接只做「协议转换 + 数据组装 + 兜底」，不做执行编排、不做评估计算。
-评估分（round_evaluation / aggregated）由评估服务回填，管线与桥接<b>禁止填写</b>。</div>
-
-<h2 id="s5"><span class="no">5</span>接口契约与数据格式</h2>
-
-<h3>5.1 桥接入站 gRPC（平台执行引擎调用）<span class="badge b-new">新增</span></h3>
-<pre><code>// shared/proto/gpt_executor_bridge.proto（草案，消息形状对齐 e2e_test_service.proto）
-service GPTExecutorService {
-  rpc StartGPTTask(StartGPTTaskRequest) returns (StartGPTTaskResponse);
-  rpc StopGPTTask(StopGPTTaskRequest) returns (StopGPTTaskResponse);
-  rpc GetGPTTaskStatus(GetGPTTaskStatusRequest) returns (GetGPTTaskStatusResponse);
-}
-message StartGPTTaskRequest {
-  string task_id = 1;
-  string tc_rel_id = 2;          // 路由行 ID，必须全程透传
-  repeated int32 case_ids = 3;   // 逐用例精确分发（对齐 INT-71）
-  string pipeline_config = 4;    // JSON：管线 endpoint / token 引用（预留）
-}
-// 响应统一 {success, message, data(JSON)}；Stop/Status 入参仅 task_id</code></pre>
-<p>桥接地址走 <span class="path">shared/config/service_ports.py</span> 注册（e2e 同款固定地址模式，不引入实例注册表）。</p>
-
-<h3>5.2 桥接 → 管线：HTTP 下发（管线要开放的接口）<span class="badge b-new">管线侧实现</span></h3>
-<p><b>下发粒度：一条用例路由行（tc_rel_id）一次下发</b>，与 StartAPITest 逐用例精确分发（INT-71）同口径；不存在「整任务打包下发」。停止 / 状态查询按执行实例（execution_id）；任务级停止由桥接逐实例下发。</p>
+<h2 id="s1"><span class="no">1</span>管线要做什么（对外契约）</h2>
+<p>管线对外只暴露 4 个 HTTP 接口 + 1 个回调用例，其余什么都不用管：</p>
 <table>
   <tr><th>接口</th><th>方法</th><th>说明</th></tr>
-  <tr><td><code>/executions</code></td><td>POST</td><td>下发一条用例的一次执行，push 单用例 payload；立即返回受理 <code>{success, execution_id}</code>（异步执行）；<b>tc_rel_id 为幂等键</b>，重复下发返回原实例</td></tr>
-  <tr><td><code>/executions/{execution_id}/stop</code></td><td>POST</td><td>停止该执行实例；幂等</td></tr>
-  <tr><td><code>/executions/{execution_id}/status</code></td><td>GET</td><td>状态 / 进度 / 结果（轮询兜底通道）</td></tr>
-  <tr><td><code>/health</code></td><td>GET</td><td>健康检查（建议）</td></tr>
+  <tr><td><code>/executions</code></td><td>POST</td><td>下发一条用例的一次执行（整例，含全部轮次）；立即返回受理 <code>{success, execution_id}</code>，异步执行；同一 <code>tc_rel_id + 尝试序号</code> 重复下发返回原实例</td></tr>
+  <tr><td><code>/executions/{execution_id}/stop</code></td><td>POST</td><td>停止该执行实例，幂等</td></tr>
+  <tr><td><code>/executions/{execution_id}/status</code></td><td>GET</td><td>状态 / 进度 / 结果（平台回调失败时的轮询通道）</td></tr>
+  <tr><td><code>/health</code></td><td>GET</td><td>健康检查</td></tr>
+  <tr><td>回调 <code>callback_url</code></td><td>POST</td><td>执行完成后由管线调用平台回调地址，回原始结果（见 §2.2）</td></tr>
 </table>
-<div class="note"><b>命名口径（v0.3 拍板）</b>：资源叫 <code>/executions</code>（执行实例），不叫 <code>/tasks</code> 也不叫 <code>/testcases</code>。
-平台语义里 <b>task = 一批用例</b>，按用例下发叫 tasks 会混淆；<b>/testcases 是用例定义 CRUD</b>（静态配置），管线收到的是「一次执行」而非用例定义管理。
-execution 与网关 <code>/api/v1/execution</code>（执行编排）词汇一致。payload 内保留 task_id / tc_rel_id / test_case_id 做关联。</div>
-<p>鉴权：<code>Authorization: Bearer &lt;token&gt;</code>（复用 apis 表密钥链）。下发 payload：</p>
-<pre><code>{
+<ul>
+  <li><b>鉴权</b>：平台 → 管线用 <code>Authorization: Bearer &lt;token&gt;</code>；管线 → 平台用下发时给的一次性 <code>callback_token</code>。</li>
+  <li><b>不评估</b>：管线不调用任何评估接口、不计算分数、不回传 <code>round_evaluation</code> / <code>aggregated</code>；即使回了，平台也会丢弃。</li>
+  <li><b>不读平台库</b>：用例、轮次、算法与参考参数、混音音频全部由平台在下发 payload 里给全，管线不做参数展开、不查用例定义。</li>
+  <li><b>不落库</b>：管线不需要写平台任何表，只回结果。</li>
+</ul>
+
+<h2 id="s2"><span class="no">2</span>数据格式</h2>
+
+<h3>2.1 平台 → 管线：下发 payload</h3>
+<pre><code>POST /executions
+Authorization: Bearer &lt;token&gt;
+
+{
   "task_id": 123, "tc_rel_id": 88, "test_case_id": "201",
   "algorithm_type": "voice_llm",
-  "case_config": {
-    "rounds": [
-      {"round_number": 1, "query": "你好", "audio_id": 303,
-       "audio_bytes_b64": "&lt;可选，桥接解析音频字节&gt;",
-       "is_interruption": false, "interruption_delay_ms": 1000}
-    ],
-    "session_mode": "full", "session_timeout": 60
-  },
+  "rounds": [
+    {"round_number": 1, "query": "你好",
+     "audio_b64": "&lt;平台混音后的音频，可选&gt;", "audio_id": 303,
+     "is_interruption": false, "interruption_delay_ms": 1000}
+  ],
+  "session_mode": "full", "session_timeout": 60,
   "algorithm_params": {}, "reference_params": {},
-  "evaluation": {"dimensions": [{"id": 1, "code": "wer", "weight": 50}]},
-  "callback_url": "http://&lt;bridge&gt;/callback/results",
+  "callback_url": "http://&lt;api_test_service&gt;/internal/gpt-pipeline/callback",
   "callback_token": "&lt;一次性 token&gt;"
 }</code></pre>
-<p>字段来源全部为现有 ACL：<code>GetTaskCaseByIds / GetTestCaseDetail</code>（用例与 rounds）、<code>ExtractCaseAllParams</code>（算法/参考/评估参数）、audio_service（音频字节）。<b>无新数据源。</b></p>
+<p><b>不含任何评估维度 / 权重 / 评分字段</b>——评估参数留在平台侧。</p>
 
-<h3>5.3 管线 → 桥接：结果回调（桥接暴露）<span class="badge b-new">新增</span></h3>
-<p><code>POST /callback/results</code>，头带 <code>X-Callback-Token</code>（下发时的一次性 token）：</p>
-<pre><code>{
+<h3>2.2 管线 → 平台：回调体</h3>
+<pre><code>POST {callback_url}
+X-Callback-Token: &lt;下发时的一次性 token&gt;
+
+{
   "task_id": 123, "tc_rel_id": 88, "test_case_id": "201",
-  "execution_status": "completed",        // completed / failed / stopped
-  "response_time": 6600,                  // ms
-  "algorithm_result": { "...见 5.5..." : "" },
-  "user_wav": "音频地址（用户语音 wav）", "ai_wav": "音频地址（AI 回复 wav）",
-  "event_log": [],                        // 归一化事件时间线（打断/时序分析）
-  "frame_results": [],                    // 逐 chunk 帧结果（可选）
+  "execution_status": "completed",       // completed / failed / stopped
+  "response_time": 6600,                 // ms
+  "algorithm_result": { "...见 2.3..." },
+  "user_wav": "用户语音 wav 地址", "ai_wav": "AI 回复 wav 地址",
+  "event_log": [],                       // 归一化事件时间线（打断/时序）
+  "frame_results": [],                   // 逐 chunk 帧结果（可选）
   "first_frame_ms": 300,
   "error_message": null
 }</code></pre>
-<p>桥接收到后固定动作：<code>SubmitResult</code>（拿 result_id）→ <code>UpdateTaskCaseStatus</code>（带 tc_rel_id）→ <code>NotifyProgress / NotifyCaseCompleted</code> → <code>EvaluateCase</code>。回调须<b>幂等</b>（按 task_id + tc_rel_id 去重）。</p>
-<div class="fact"><b>音频口径（与现状一致，已验证）：传地址，不传文件体。</b>
-现行执行器把 wav 落存储（<span class="path">shared/infrastructure/storage</span>，OSS 优先、不可用降级本地磁盘），
-返回带 scheme 的存储路径字符串写入 <code>algorithm_result.ai_wav</code> 随结果落库
-（<span class="path">api_test_service/core/realtime_session_executor.py · api_session_executor.py</span>）；
-评估侧原生支持 <b>本地路径 / oss:// / http(s)://</b> 三种地址，自行解析为字节后 multipart 发给评估计算器
-（<span class="path">evaluation_service/infrastructure/evaluation_api/api_request_handler.py · payload_builder.py</span>）。
-<br><b>外部管线二选一</b>：① 回调直接带 http(s) 可下载 URL（最简，平台侧可达即可）；
-② 桥接下发时附平台 OSS 预签名上传 URL，管线直传 wav 后回调带 oss:// 路径（复用 audio_upload_presign 同款机制）。
-桥接把两条地址原样并入 <code>algorithm_result.user_wav / ai_wav</code> 与 <code>EvaluateCase.user_wav / ai_wav</code>，不做文件搬运。</div>
+<div class="fact"><b>音频传地址，不传文件体。</b>平台评估侧原生支持 <b>本地路径 / oss:// / http(s)://</b>，自行解析为字节后送评估计算器。
+管线二选一：① 回调带 http(s) 可下载 URL（最简）；② 平台下发时附 OSS 预签名上传 URL，管线直传后带 <code>oss://</code> 路径回调。
+两条地址平台原样并入 <code>algorithm_result.user_wav / ai_wav</code> 与 <code>EvaluateCase.user_wav / ai_wav</code>，不做文件搬运。</div>
 
-<h3>5.4 桥接出站：内部 gRPC 字段表 <span class="badge b-exist">现有接口</span></h3>
-<table>
-  <tr><th>RPC</th><th>字段</th><th>说明</th></tr>
-  <tr><td><code>TaskDataService.SubmitResult</code></td>
-      <td>task_id；result_data JSON：<code>test_case_id, device_type, api_id, execution_status, response_time(ms), algorithm_result{}, result_data(轻量 JSON 字符串), result_data_path(大字段文件路径，可空), error_message, tc_rel_id</code></td>
-      <td>返回 result_id；字段口径对齐 <span class="path">api_test_service/core/api_result_processor.py</span></td></tr>
-  <tr><td><code>TaskDataService.UpdateTaskCaseStatus</code></td>
-      <td>task_id, case_id(=test_case_id), status, execution_status, evaluation_status, error_message, started_at, completed_at(ISO8601), <b>tc_rel_id</b></td>
-      <td>多路由下按路由行精确命中（INT-604），避免兄弟路由被打成同一终态</td></tr>
-  <tr><td><code>ExecutionService.NotifyProgress / NotifyCaseCompleted</code></td><td>task_id（NotifyProgress 可带 force）</td><td>进度推送与收尾判定</td></tr>
-  <tr><td><code>EvaluationService.EvaluateCase</code></td>
-      <td>task_id, result_id, test_case_id, algorithm_result(JSON), eval_params(JSON：algorithm_type / device_type / 评估维度与权重 / algorithm_params_col 逐轮参数), device_type, user_wav / ai_wav（音频地址字符串，口径见 5.3）, rounds(JSON), first_frame_ms, event_log(JSON), frame_results(JSON)</td>
-      <td>异步入队；<b>device_type 映射为 http_api（API 口径）</b>，评估侧零改动；eval_params 组装对齐 <span class="path">api_test_service/core/evaluation_submitter.py</span></td></tr>
-  <tr><td><code>EvaluationService.CancelEvaluation</code></td><td>task_id, test_case_ids(JSON), reason(case_deleted / task_stopped)</td><td>停止/删用例联动</td></tr>
-</table>
-
-<h3>5.5 algorithm_result 多轮格式（评估侧按此消费）</h3>
+<h3>2.3 algorithm_result 格式（平台评估侧按此消费）</h3>
 <pre><code>{
   "session_id": "a1b2c3d4-...", "round_count": 4,
   "total_latency": 6.6, "context_mode": "full", "error": null,
@@ -267,115 +148,138 @@ execution 与网关 <code>/api/v1/execution</code>（执行编排）词汇一致
      "response_metrics": {"first_token_latency": 0.3, "tokens_per_second": 25}}
   ]
 }</code></pre>
-<div class="note"><code>round_evaluation</code> 与 <code>aggregated</code> 由评估服务算完回填，管线/桥接不要填。
+<div class="note"><code>round_evaluation</code> 与 <code>aggregated</code> 由平台评估服务算完回填，管线不要填。
 格式事实源：<span class="path">doc/voice_llm/98_API用例端到端示例.md</span>。</div>
 
-<h3>5.6 状态枚举映射（回写必须用接口值，小写）</h3>
+<h3>2.4 状态取值（小写，按此回传）</h3>
 <table>
-  <tr><th>域</th><th>合法值</th></tr>
-  <tr><td>execution_status（结果/用例执行）</td><td><code>pending / running / completed / stopped / failed</code></td></tr>
-  <tr><td>evaluation_status（用例评估）</td><td><code>queued / pending / running / calculating / completed / stopped / failed</code></td></tr>
-  <tr><td>TaskCase.status</td><td><code>pending / completed / failed / skipped</code></td></tr>
-  <tr><td>任务态（UpdateTaskStatus）</td><td><code>pending / queued / running / evaluating / reevaluate_queued / reevaluating / completed / failed / stopped / paused / skipped</code></td></tr>
-  <tr><td>device_type（执行路由）</td><td>现有 <code>physical / http_api / websocket_api</code>；<b>新增 <code>gpt_pipeline</code></b>（仅执行路由与 result_data 留痕；提交评估时映射 http_api）</td></tr>
+  <tr><th>字段</th><th>合法值</th></tr>
+  <tr><td><code>execution_status</code>（回调）</td><td><code>completed / failed / stopped</code></td></tr>
+  <tr><td><code>/executions/{id}/status</code> 返回</td><td><code>running / completed / failed / stopped</code></td></tr>
 </table>
 
-<h2 id="s6"><span class="no">6</span>平台侧改动清单（5 处，纯新增不动旧路径）</h2>
+<h2 id="s3"><span class="no">3</span>平台怎么接</h2>
+<p>HTTP 接口支持两种下发方式，<b>由用户在界面上选</b>（建任务时随 API 目标一起勾选）：</p>
+<table>
+  <tr><th>下发方式</th><th>谁编排多轮</th><th>执行器</th></tr>
+  <tr><td><b>按轮下发</b>（默认）</td><td>平台：逐轮调一次接口，轮次间上下文由平台维护</td><td>现有 <code>APISessionExecutor</code>，<b>不改</b></td></tr>
+  <tr><td><b>按用例下发</b></td><td>对方：整条用例一次下发，多轮上下文在其内部完成</td><td>新增 <code>PipelineSessionExecutor</code></td></tr>
+</table>
+<div class="fact">
+<b>用户视角：照常选 API 目标，多选一个「下发方式」。</b>
+<br>· API 目标仍是一条普通 API 记录（<code>protocol=http</code>、<code>streaming=false</code>），建任务时和普通 API 一样勾选；
+<br>· 该目标旁边提供「按轮 / 按用例」下拉，<b>默认按轮</b>（不选 = 现行为，零回归）；
+<br>· 选择随用例路由行落库（<code>case_devices[].dispatch_mode</code>），执行时由平台按该值选执行器。
+</div>
+<ul>
+  <li><b>不新增设备类型</b>：路由行 <code>device_type</code> 仍是 <code>http_api</code>，与普通 HTTP API 完全一致；参数作用域、统计、报告、评估口径都按 API 道处理。</li>
+  <li><b>执行入口不变</b>：仍走现有 <code>StartAPITest / StopAPITest / GetAPITestStatus</code>；不新增服务、不新增 proto、不新增端口。</li>
+  <li><b>下发方式只影响执行器选择</b>：按轮 → 现有链路原样；按用例 → 新增执行器。两者复用同一套落库 / 评估 / 进度代码。</li>
+  <li><b>落库与评估复用现有实现</b>：结果变换后交给 <code>api_result_processor</code>（SubmitResult / 状态回写 / 进度）与 <code>evaluation_submitter</code>（提交评估），失败收敛复用 <code>_fail_tc_rel</code>。</li>
+</ul>
+
+<h2 id="s4"><span class="no">4</span>时序</h2>
+<div class="flow">task_service
+   │ ① StartAPITest(task_id, device_type=http_api, device_id=apis.id, case_ids)   ← 现有契约
+   │    （路由行带用户选的下发方式 dispatch_mode = per_round / per_case）
+   ▼
+api_test_service（按下发方式选执行器）
+   │ ② per_round → APISessionExecutor（按轮，现行为不变）
+   │ ② per_case  → PipelineSessionExecutor（按用例）
+   │ ③ 组装 payload：用例 / rounds / 算法与参考参数 / 平台混音音频
+   │ ④ POST {pipeline}/executions        ← 整用例 + Bearer token
+   ▼
+GPT 管线（只执行）
+   │ ⑤ POST {callback_url}               ← 原始结果 + user_wav / ai_wav
+   │    （回调不可达：平台轮询 GET {pipeline}/executions/{id}/status）
+   ▼
+api_test_service 复用现有链路：
+   SubmitResult → UpdateTaskCaseStatus(tc_rel_id) →
+   NotifyProgress / NotifyCaseCompleted → EvaluateCase
+   ▼
+evaluation_service 评分后自动回写 task_service（现有链路，零改动）</div>
+
+<h2 id="s5"><span class="no">5</span>平台侧改动清单</h2>
 <table>
   <tr><th>#</th><th>改动</th><th>位置</th><th>说明</th></tr>
-  <tr><td>1</td><td>DeviceType 枚举加 <code>GPT_PIPELINE='gpt_pipeline'</code></td><td class="path">shared/models/common_enums.py</td><td>路由语义与 physical/http_api 并列</td></tr>
-  <tr><td>2</td><td>执行引擎路由分支 <code>_execute_gpt_case</code></td><td class="path">task_service/core/execution_engine/mixins/case_execution.py · task_dispatch.py</td><td>照抄 _execute_api_case 的 ACL 分发 + 失败收敛模式；经 ACL 仓储，core 不直触 stub</td></tr>
-  <tr><td>3</td><td>新桥接服务 gpt_executor_bridge</td><td class="path">新目录 + shared/config/service_ports.py 注册端口 + shared/proto/gpt_executor_bridge.proto</td><td>入站 gRPC 3 RPC + 出站 HTTP 客户端 + 回调 HTTP 端点；出站回写复用现有 ACL 仓储</td></tr>
-  <tr><td>4</td><td>评估口径映射</td><td class="path">桥接内（提交 EvaluateCase 时）</td><td>device_type → http_api；评估侧零改动；result_data 保留 gpt_pipeline 供报告区分</td></tr>
-  <tr><td>5</td><td>前端目标选择 + 管线连接配置</td><td class="path">frontend-react 用例目标选择；apis 表一行 vendor=gpt_pipeline</td><td>管线 endpoint/token 复用 apis 表，白拿密钥链 / 健康检查 / 参数配置页签</td></tr>
+  <tr><td>1</td><td>下发方式字段（用户可选）</td><td class="path">task_case_relations 新增可空列 <code>dispatch_mode</code>（per_round / per_case，默认 per_round）+ 网关 <code>TaskCaseDeviceAssignment</code> 增字段 + 前端 API 目标旁加下拉</td><td>默认 per_round = 现行为，零回归；选择随路由行落库并透传到执行侧</td></tr>
+  <tr><td>2</td><td>按用例执行器 <code>PipelineSessionExecutor</code></td><td class="path">api_test_service/core/pipeline_session_executor.py（新增）+ api_executor.py 道内策略按 <code>dispatch_mode</code> 命中</td><td>组装 payload + HTTP 下发 + 回调收敛 + 轮询兜底；结果交给现有 <code>api_result_processor</code>；不改按轮路径</td></tr>
+  <tr><td>3</td><td>回调端点 + 执行实例表</td><td class="path">api_test_service/interfaces/api/（<code>/internal/gpt-pipeline/callback</code>）+ 新表 <code>gpt_pipeline_executions</code></td><td>execution_id ↔ task_id / tc_rel_id / api_id / 尝试序号 / 状态；token 校验；重启后按表恢复轮询与停止映射</td></tr>
+  <tr><td>配置</td><td>按普通 API 建一条记录</td><td class="path">apis：protocol=http / streaming=false / api_endpoints 填管线地址</td><td>不新增页面 / 表单 / badge；endpoint / token / 并发 / 健康检查全部沿用现有 API 能力</td></tr>
 </table>
+<div class="note">不改：<code>DeviceType</code> 枚举、<code>task_service</code> 路由逻辑、现有按轮执行路径、评估服务；数据库仅新增 1 列（<code>dispatch_mode</code>）与 1 张表（执行实例）。</div>
 
-<h2 id="s7"><span class="no">7</span>可靠性与兜底矩阵</h2>
+<h2 id="s6"><span class="no">6</span>可靠性兜底</h2>
 <table>
-  <tr><th>异常场景</th><th>兜底策略</th><th>责任方</th></tr>
-  <tr><td>管线不可达 / 下发失败</td><td>分发失败收敛：TaskCase 置 failed + error_message，刷新任务统计与进度（照抄 _execute_api_case 异常路径）</td><td>桥接 + 执行引擎</td></tr>
-  <tr><td>回调超时 / 管线回调不可达</td><td>桥接轮询 GET /executions/{execution_id}/status（间隔可配），拿到终态后走同一回写序列</td><td>桥接</td></tr>
-  <tr><td>重复回调</td><td>按 task_id + tc_rel_id 幂等去重，重复请求返回首次受理结果</td><td>桥接</td></tr>
-  <tr><td>回调鉴权失败</td><td>401 拒绝；token 一次性、随下发派发</td><td>桥接</td></tr>
-  <tr><td>停止任务</td><td>StopGPTTask → 桥接逐实例调管线 /executions/{id}/stop；联动 CancelEvaluation(reason=task_stopped)；未回结果的路由行置 stopped</td><td>桥接</td></tr>
-  <tr><td>大结果（音频/帧日志）</td><td>轻量列 + result_data_path 外置文件（split_result_data 现有机制）；音频不入库</td><td>桥接</td></tr>
-  <tr><td>多路由兄弟行</td><td>全链路透传 tc_rel_id，UpdateTaskCaseStatus 按路由行精确命中（INT-604）</td><td>桥接</td></tr>
-  <tr><td>管线执行失败</td><td>回调 execution_status=failed + error_message；仍 SubmitResult 留痕，不提交评估</td><td>管线 + 桥接</td></tr>
-  <tr><td>评估服务不可达</td><td>结果已落库；评估入队失败重试/告警，用例 evaluation_status 停留 queued，可走任务重新评估补救</td><td>桥接</td></tr>
+  <tr><th>场景</th><th>兜底</th></tr>
+  <tr><td>管线不可达 / 下发失败</td><td>走现有失败收敛 <code>_fail_tc_rel</code>：用例置 failed + error_message，<b>评估状态同步收口</b>（否则主循环死等不收敛）</td></tr>
+  <tr><td>回调丢失</td><td>平台按配置间隔轮询 <code>/executions/{id}/status</code>，拿到终态后走同一回写序列</td></tr>
+  <tr><td>重复回调</td><td>按 <code>execution_id + 尝试序号</code> 幂等；重复请求返回首次受理结果，不重复落库、不重复入评估</td></tr>
+  <tr><td>平台重启</td><td>执行实例表落库，重启后恢复轮询与停止映射；未知 execution_id 拒绝</td></tr>
+  <tr><td>停止任务</td><td>StopAPITest → 逐实例调管线 <code>/stop</code> → 联动取消评估 → 未回结果的路由行置 stopped</td></tr>
+  <tr><td>管线报失败</td><td>回 <code>execution_status=failed</code> + error_message；平台仍落库留痕，不提交评估</td></tr>
+  <tr><td>大结果</td><td>轻量入 <code>result_data</code>，大字段走 <code>result_data_path</code> 外置（现有机制）；音频不入库</td></tr>
+  <tr><td>同一用例多路由行</td><td>透传 <code>tc_rel_id</code>，按路由行精确回写，兄弟行互不覆盖（INT-604）</td></tr>
 </table>
 
-<h2 id="s8"><span class="no">8</span>测试计划</h2>
-<h3>8.1 范围与策略</h3>
+<h2 id="s7"><span class="no">7</span>测试用例</h2>
+<table>
+  <tr><th>编号</th><th>优先级</th><th>内容</th><th>预期</th></tr>
+  <tr><td>T01</td><td><span class="badge b-p0">P0</span></td><td>下发 payload 核对（mock 管线抓包）</td><td>含 task_id / tc_rel_id / test_case_id / rounds / 音频 / 参考参数 / callback_url / token；<b>无任何评估字段</b>；返回 execution_id；重复下发幂等</td></tr>
+  <tr><td>T02</td><td><span class="badge b-p0">P0</span></td><td>端到端主链路</td><td>结果落库 → 用例 completed → 入评估 → 评估分回填 → 报告可见</td></tr>
+  <tr><td>T03</td><td><span class="badge b-p0">P0</span></td><td>多轮 + 音频轮</td><td>逐轮 input / output / latency 完整；音频轮正确；整体维度记录齐全</td></tr>
+  <tr><td>T04</td><td><span class="badge b-p1">P1</span></td><td>打断 / 时延指标</td><td>event_log 与 first_frame_ms 被评估侧消费，报告展示时间线</td></tr>
+  <tr><td>T05</td><td><span class="badge b-p0">P0</span></td><td>停止联动</td><td>逐实例 /stop；取消评估；无残留 running 行；任务态 stopped</td></tr>
+  <tr><td>T06</td><td><span class="badge b-p0">P0</span></td><td>管线报失败</td><td>落库留痕；用例 failed + error_message；不提交评估</td></tr>
+  <tr><td>T07</td><td><span class="badge b-p1">P1</span></td><td>回调丢失走轮询</td><td>轮询拿到终态后收敛，结果与回调路径一致</td></tr>
+  <tr><td>T08</td><td><span class="badge b-p1">P1</span></td><td>回调幂等 / 鉴权</td><td>重复回调只生效一次；错误 token 401 且不落数据</td></tr>
+  <tr><td>T09</td><td><span class="badge b-p0">P0</span></td><td>音频地址口径（http(s) 与 oss://）</td><td>地址原样进结果与评估入参；评估侧解析成功；不可达时失败可见</td></tr>
+  <tr><td>T10</td><td><span class="badge b-p0">P0</span></td><td>按轮路径回归（默认）</td><td>普通 http_api / websocket_api / physical 任务行为与改动前一致；未选下发方式时走按轮</td></tr>
+  <tr><td>T14</td><td><span class="badge b-p1">P1</span></td><td>下发方式落库与透传</td><td>建任务选「按用例」→ 路由行 <code>dispatch_mode=per_case</code> 落库 → 执行侧命中按用例执行器；改选「按轮」后立即回到现行为</td></tr>
+  <tr><td>T11</td><td><span class="badge b-p0">P0</span></td><td>同一用例两条路由行</td><td>按 tc_rel_id 各自命中，互不覆盖</td></tr>
+  <tr><td>T12</td><td><span class="badge b-p1">P1</span></td><td>管线在回调里伪造评分字段</td><td>平台丢弃全部评估字段，库内无管线写入的分</td></tr>
+  <tr><td>T13</td><td><span class="badge b-p1">P1</span></td><td>平台重启后恢复</td><td>按执行实例表恢复轮询收敛；重执行生成新实例</td></tr>
+</table>
+
+<h2 id="s8"><span class="no">8</span>验收与里程碑</h2>
+<h3>8.1 验收</h3>
 <ul>
-  <li><b>单元测试</b>：桥接 payload 组装、回调幂等、状态映射、tc_rel_id 透传（pytest，对齐 tests/ 现有模式）。</li>
-  <li><b>集成冒烟</b>：mock 管线（照 <span class="path">mock_services/mock_dut_api.py</span> 模式新增 <code>mock_gpt_pipeline.py</code>，支持注入延迟/失败/断连/重复回调）+ 本地 docker 栈（网关 15000）。</li>
-  <li><b>真管线联调</b>：单用例 → 多轮 → 打断 → 停止/失败/超时兜底。</li>
-  <li><b>回归</b>：现有 http_api / websocket_api / physical 任务全链路不回归（路由分支纯新增）。</li>
+  <li>P0 用例全部通过；P1 全通过或有书面豁免。</li>
+  <li><b>管线只执行</b>：下发 payload、回调体、管线日志均不出现评估调用或评分字段；评估分只由平台产出。</li>
+  <li>真管线至少 1 条多轮用例端到端跑通：建任务 → 管线执行 → 评估 → 报告可见。</li>
+  <li>按轮路径回归零失败；停止 / 失败 / 回调丢失三条兜底有实测记录。</li>
+  <li>§1、§2 契约与管线侧逐字段核对一致后冻结。</li>
 </ul>
-<h3>8.2 环境</h3>
+<h3>8.2 里程碑</h3>
 <table>
-  <tr><th>环境</th><th>入口</th><th>用途</th></tr>
-  <tr><td>本地 docker 预览栈</td><td>网关 :15000</td><td>冒烟 + 集成（mock 管线）</td></tr>
-  <tr><td>生产栈</td><td>http://106.54.49.79（/api/v1）</td><td>真管线联调与验收（发布走 iat-deploy 流程）</td></tr>
+  <tr><th>阶段</th><th>内容</th><th>出口</th></tr>
+  <tr><td>M1 契约确认</td><td>§1 / §2 与管线侧逐字段对齐</td><td>双方签字</td></tr>
+  <tr><td>M2 执行器 + mock</td><td>PipelineSessionExecutor + 回调端点 + 执行实例表 + mock 管线；T01/02/06/08/12 通过</td><td>本地冒烟绿</td></tr>
+  <tr><td>M3 合入</td><td>道内策略挂载 + apis 配置；T05/10/11/13 通过</td><td>回归零失败</td></tr>
+  <tr><td>M4 真管线联调</td><td>真管线联调；T03/04/07/09 通过</td><td>验收达成</td></tr>
 </table>
 
-<h2 id="s9"><span class="no">9</span>测试用例（T01–T15）</h2>
-<table>
-  <tr><th>编号</th><th>优先级</th><th>模块</th><th>前置条件</th><th>步骤</th><th>预期结果</th></tr>
-  <tr><td>T01</td><td><span class="badge b-p0">P0</span></td><td>下发 payload</td><td>mock 管线就绪；voice_llm 多轮用例（含音频轮）</td><td>建任务选 GPT 管线目标并启动；抓 mock 管线收到的 POST /executions</td><td>payload 含 task_id/tc_rel_id/test_case_id/rounds/音频字节/参考参数/评估维度/callback_url/token，字段与 §5.2 一致；受理返回 execution_id；同 tc_rel_id 重复下发幂等</td></tr>
-  <tr><td>T02</td><td><span class="badge b-p0">P0</span></td><td>端到端主链路</td><td>T01 通过</td><td>单轮文本用例执行 → 回调 → 观察平台</td><td>SubmitResult 落库（result_id）；TaskCase execution_status=completed；EvaluateCase 入队；评估完成后 round_evaluation/aggregated 回填、任务到终态；报告可见该用例</td></tr>
-  <tr><td>T03</td><td><span class="badge b-p0">P0</span></td><td>多轮+音频</td><td>4 轮用例（3 文本+1 音频）</td><td>执行并核对 algorithm_result</td><td>rounds 逐轮 input/output/latency 完整；音频轮 audio_id 正确；total_latency/round_count 正确；WER 与 LLM Judge 逐轮+整体维度记录齐全</td></tr>
-  <tr><td>T04</td><td><span class="badge b-p1">P1</span></td><td>打断/时延指标</td><td>打断轮用例（is_interruption=true）</td><td>管线回传 event_log/first_frame_ms；执行</td><td>评估侧消费 event_log 出打断/时序指标；first_frame_latency 入报告；时间线按全轮次时间轴明细规范展示</td></tr>
-  <tr><td>T05</td><td><span class="badge b-p0">P0</span></td><td>停止联动</td><td>任务运行中</td><td>平台停止任务</td><td>桥接调管线 /stop；CancelEvaluation(reason=task_stopped) 联动；未回结果路由行置 stopped；任务态 stopped；无残留 running 行</td></tr>
-  <tr><td>T06</td><td><span class="badge b-p0">P0</span></td><td>执行失败收敛</td><td>mock 管线注入失败回调</td><td>回调 execution_status=failed + error_message</td><td>结果留痕（SubmitResult）；TaskCase failed + error_message；不提交评估；任务统计/进度正确</td></tr>
-  <tr><td>T07</td><td><span class="badge b-p1">P1</span></td><td>回调超时兜底</td><td>mock 管线不回调、仅 status 可查</td><td>执行后等待桥接轮询</td><td>桥接按配置间隔轮询 status，拿到终态后走同一回写序列；结果与回调路径一致</td></tr>
-  <tr><td>T08</td><td><span class="badge b-p1">P1</span></td><td>回调幂等</td><td>同一结果回调两次</td><td>重复 POST /callback/results</td><td>仅首次生效；无重复 SubmitResult/评估入队；第二次返回首次受理结果</td></tr>
-  <tr><td>T09</td><td><span class="badge b-p1">P1</span></td><td>回调鉴权</td><td>错误/过期 token</td><td>POST /callback/results</td><td>401 拒绝，不落任何数据</td></tr>
-  <tr><td>T10</td><td><span class="badge b-p0">P0</span></td><td>多路由精确回写</td><td>同一用例同时指派 GPT 管线 + API 两条路由行</td><td>两路由分别执行完成</td><td>按 tc_rel_id 各自命中；兄弟路由行状态互不覆盖（INT-604 口径）</td></tr>
-  <tr><td>T11</td><td><span class="badge b-p2">P2</span></td><td>大结果外置</td><td>回调含大体积 frame_results/原始报文</td><td>执行并查库</td><td>轻量列入 result_data，大字段走 result_data_path 外置；报告可读取</td></tr>
-  <tr><td>T12</td><td><span class="badge b-p0">P0</span></td><td>评估口径</td><td>WER + LLM Judge 维度</td><td>核对 EvaluateCase 入参与评估产出</td><td>device_type=http_api 口径；eval_params 含 algorithm_type/维度权重/algorithm_params_col；拒识用例逐轮 is_reject 透传（如适用）</td></tr>
-  <tr><td>T13</td><td><span class="badge b-p0">P0</span></td><td>回归</td><td>现有 API/E2E 集成用例集</td><td>跑现有 http_api / websocket_api / physical 任务</td><td>行为与改动前一致，无回归（重点：test_int2079_ws_non_streaming、test_int497_openai_realtime_e2e、API/E2E 集成用例）</td></tr>
-  <tr><td>T14</td><td><span class="badge b-p1">P1</span></td><td>管线不可达</td><td>管线 endpoint 指向不存在地址</td><td>启动任务</td><td>分发失败收敛：TaskCase failed + error_message；任务统计/进度正确；不挂起主循环</td></tr>
-  <tr><td>T15</td><td><span class="badge b-p2">P2</span></td><td>进度推送</td><td>前端任务详情页打开</td><td>执行多用例任务</td><td>NotifyProgress 触发 SSE，前端进度实时刷新；用例完成计数正确</td></tr>
-  <tr><td>T16</td><td><span class="badge b-p0">P0</span></td><td>音频地址口径</td><td>管线回调带 user_wav / ai_wav 两条地址（分别覆盖 http(s) URL 与 oss:// 路径）</td><td>执行并核对落库与评估入参</td><td>地址原样并入 algorithm_result 与 EvaluateCase；评估侧成功解析为字节完成音频类维度计算；报告可回放两条 wav；地址不可达时评估失败可见 error_message，不静默成功</td></tr>
-</table>
-
-<h2 id="s10"><span class="no">10</span>验收标准</h2>
+<h2 id="s9"><span class="no">9</span>附录：事实源</h2>
 <ul>
-  <li>P0 用例（T01/02/03/05/06/10/12/13/16）全部通过；P1 全通过或有书面豁免。</li>
-  <li>真管线（GPTLive）至少 1 条多轮用例端到端跑通：平台建任务 → 管线执行 → 评估 → 报告可见，全链路无人工补数。</li>
-  <li>现有执行链回归零失败；停止/失败/超时三条兜底路径均有实测记录。</li>
-  <li>接口契约（§5）与管线侧实现逐字段核对一致，评审签字后冻结 v1.0。</li>
-</ul>
-
-<h2 id="s11"><span class="no">11</span>落地里程碑</h2>
-<table>
-  <tr><th>阶段</th><th>内容</th><th>出口条件</th></tr>
-  <tr><td>M1 契约评审</td><td>本文档 §5 与管线侧逐字段对齐；proto 草案定稿</td><td>双方签字，契约冻结</td></tr>
-  <tr><td>M2 桥接 + mock 冒烟</td><td>桥接服务 + mock_gpt_pipeline.py；T01/02/06/08/09 通过</td><td>本地栈冒烟绿</td></tr>
-  <tr><td>M3 路由合入</td><td>枚举 + 执行引擎分支 + 前端目标选择；T05/10/13/14 通过</td><td>回归零失败</td></tr>
-  <tr><td>M4 真管线联调</td><td>GPTLive 联调；T03/04/07/11/12/15 通过</td><td>验收标准（§10）达成</td></tr>
-  <tr><td>M5 发布</td><td>走 iat-deploy 构建→备份→发布→验证→回滚流程</td><td>生产验证通过</td></tr>
-</table>
-
-<h2 id="s12"><span class="no">12</span>附录：事实源文件</h2>
-<ul>
-  <li class="path">shared/proto/e2e_test_service.proto · api_test_service.proto · task_service.proto · evaluation_service.proto</li>
-  <li class="path">shared/models/common_enums.py（DeviceType / 状态枚举）· shared/config/service_ports.py（端口）</li>
-  <li class="path">task_service/core/execution_engine/mixins/case_execution.py · task_dispatch.py · grpc_helpers.py</li>
-  <li class="path">task_service/infrastructure/acl/report_acl_repository.py（api_test_acl_repository.start_api_test）</li>
-  <li class="path">api_test_service/core/api_result_processor.py（result_data 字段）· core/evaluation_submitter.py（eval_params 口径）</li>
-  <li class="path">evaluation_service/infrastructure/acl/task_acl_repository.py（评估回写链路）</li>
-  <li class="path">doc/voice_llm/98_API用例端到端示例.md（algorithm_result 格式）· doc/接入指南_RealtimeAPI测试.md</li>
-  <li class="path">mock_services/mock_dut_api.py（mock 模式参考）</li>
+  <li class="path">task_service/infrastructure/persistence/models/task_models.py（TaskCase：新增 dispatch_mode）· api_gateway/schemas/task.py（TaskCaseDeviceAssignment）</li>
+  <li class="path">frontend-react/src/application/test-execution/useTestLaunch.ts（case_devices 组装）· features/test-execution（API 目标下发方式下拉）</li>
+  <li class="path">api_test_service/core/api_executor.py（道内策略：_executor_registry / streaming_strategy / _execute_single_or_multi）</li>
+  <li class="path">api_test_service/core/api_session_executor.py（按轮：_run_rounds）· api_result_processor.py（落库与失败收敛 _fail_tc_rel）· evaluation_submitter.py（评估入参）</li>
+  <li class="path">api_test_service/infrastructure/persistence/models/api_models.py（apis：protocol / streaming / vendor，device_type 已废弃）</li>
+  <li class="path">task_service/infrastructure/persistence/test_result_repository.py（SubmitResult 字段白名单：无 device_type / tc_rel_id 列）</li>
+  <li class="path">shared/proto/api_test_service.proto · evaluation_service.proto · task_service.proto</li>
+  <li class="path">doc/voice_llm/98_API用例端到端示例.md（algorithm_result 格式）</li>
+  <li class="path">mock_services/mock_dut_api.py（mock 参考，新增 mock 管线同构实现）</li>
 </ul>
 
 <footer>
-  GPT 管线执行器接入设计与测试文档 · v0.3 评审稿 · 2026-11-26 ·
-  v0.2 修订：明确按用例下发；回调音频口径与现状一致（传地址不传文件体），新增 T16。
-  v0.3 修订：管线侧接口改名 /executions（执行实例），避免与平台 task（用例批次）/testcase（用例定义）语义混淆；tc_rel_id 为下发幂等键。
-  契约冻结前以评审结论为准；端口/枚举/字段以代码事实源为准。
+  GPT 管线接入设计与测试文档 · v1.2 · 2026-11-26 ·
+  要点：① 管线只执行、不评估；② 契约（§1/§2）在前，平台接入（§3 起）在后；③ HTTP 支持两种下发方式（按轮 / 按用例），<b>建任务时由用户在这两种里选</b>，默认按轮；④ 不新增设备类型、不新增服务 / proto / 端口，按轮路径零改动。
 </footer>
+
+
+
+
 
 </div>
 </body>
