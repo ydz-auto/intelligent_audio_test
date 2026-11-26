@@ -51,8 +51,12 @@ class SPLMappingService:
         digital_gain = mapping.get('digital_gain')
         calibration_data = mapping.get('calibration_data')
 
+        # 注意：digital_gain 是 1-100 音量档位，0 表示「未设置」。
+        # 校准流程只落 calibration_data.points，顶层 digital_gain 恒为 0；
+        # 若把 0 当成 0 dB 线性增益，会被 _apply_gain_limit 钳到 MIN_GAIN(-70dB) 变成静音，
+        # 因此 0 必须视为未设置，继续走校准点插值。
         if target_spl_val is not None and abs(target_spl_val - target_spl) < 0.1:
-            if digital_gain is not None:
+            if digital_gain:
                 gain_db = digital_gain / 100.0 if digital_gain > 1 else digital_gain
                 return SPLMappingService._apply_gain_limit(gain_db)
 
