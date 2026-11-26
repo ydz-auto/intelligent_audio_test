@@ -619,6 +619,11 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
               algorithmLabels={algorithmLabels}
               callbacks={canManage ? rowCallbacks : undefined}
               onToggleSelect={canManage ? handleToggleSelect : undefined}
+              allGroups={groups}
+              filters={effectiveFilters}
+              trash={filters.trash ?? false}
+              onBatchAction={batch.openBatch}
+              groupActions={canManage ? groupCallbacks : undefined}
             />
           ) : caseView === 'by-group' ? (
             <GroupedCaseList

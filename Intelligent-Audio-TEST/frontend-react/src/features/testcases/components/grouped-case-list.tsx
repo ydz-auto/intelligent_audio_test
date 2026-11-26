@@ -123,9 +123,14 @@ interface GroupCardProps {
    * 卡均视为已勾选——折叠分组不再因组内 list 未加载而显示未勾选。
    */
   allFilteredSelected?: boolean
+  /**
+   * 受控用例集（「只显示已选中」视图复用同一张分组卡）：传入时不再按分组懒加载，
+   * 直接渲染这批用例；计数/时长也以这批用例为准。
+   */
+  controlledCases?: TestCaseListItem[]
 }
 
-function GroupCard({
+export function CaseGroupCard({
   group,
   filters,
   hitCount = null,
@@ -141,6 +146,7 @@ function GroupCard({
   onToggleSelect,
   onToggleAll,
   allFilteredSelected,
+  controlledCases,
 }: GroupCardProps) {
   /** §3.5 移动端（≤640px）子视图切换收进 CaseGroupActions 下拉首项「显示方式」 */
   const isMobile = useMediaQuery('(max-width: 640px)')
@@ -149,15 +155,22 @@ function GroupCard({
   const setGroupSubView = useSessionMap((s) => s.setGroupSubView)
   /** 组内用例懒加载（展开才拉；Vue fetchCasesByGroup 对位，INT-1267） */
   const {
-    items: list,
-    total,
-    hasMore,
-    isLoading,
-    isFetching,
-    isError: groupError,
+    items: fetchedList,
+    total: fetchedTotal,
+    hasMore: fetchedHasMore,
+    isLoading: fetchedLoading,
+    isFetching: fetchedFetching,
+    isError: fetchedError,
     refetch: refetchGroup,
     loadMore,
-  } = useGroupCases(group.id, filters, expanded)
+  } = useGroupCases(group.id, filters, expanded && controlledCases == null)
+  /** 受控模式（只显示已选中）：直接渲染传入的已选用例，不触发分组懒加载分页 */
+  const list = controlledCases ?? fetchedList
+  const total = controlledCases?.length ?? fetchedTotal
+  const hasMore = controlledCases == null && fetchedHasMore
+  const isLoading = controlledCases == null && fetchedLoading
+  const isFetching = controlledCases == null && fetchedFetching
+  const groupError = controlledCases == null && fetchedError
 
   /**
    * 组内已加载用例的轮次登记（INT-1506 审返 P2）：组内用例来自按分组懒加载的分页，
@@ -806,7 +819,7 @@ export function GroupedCaseList({
       </div>
 
       {paginatedGroups.map((group) => (
-        <GroupCard
+        <CaseGroupCard
           key={group.id}
           group={group}
           hitCount={hitCounts?.get(group.id) ?? null}
@@ -829,7 +842,7 @@ export function GroupedCaseList({
       {/* 未分组虚拟组（INT-249；/groups 已有「未分组」真实条目时不重复渲染；
           同样支持子视图切换 §3.5；INT-1027 默认收起、组头可展开） */}
       {ungroupedGroup != null && (
-        <GroupCard
+        <CaseGroupCard
           group={ungroupedGroup}
           hitCount={ungroupedHits}
           filters={filters}

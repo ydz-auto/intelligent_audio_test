@@ -7,7 +7,8 @@
  * 已选用例可能被当前筛选排除（筛选与选择集独立），汇总行显式提示被排除条数，不静默隐藏。
  */
 import { ListChecks } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import type { ComponentProps } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,7 @@ import {
   type CaseSubGroup,
 } from '@/domain/lib/sub-view-aggregation'
 import type { TestCaseListItem } from '@/domain/models/testCase'
+import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
 import {
   CaseCard,
@@ -36,6 +38,10 @@ import {
   CaseListErrorState,
 } from '@/features/testcases/components/case-list-error'
 import { CaseSubGroupHeader } from '@/features/testcases/components/case-sub-group-header'
+import {
+  CaseGroupCard,
+  type GroupActionCallbacks,
+} from '@/features/testcases/components/grouped-case-list'
 import { SELECTED_ONLY_COPY } from '@/features/test-execution/constants'
 import {
   TEST_CASES_TABS,
@@ -45,6 +51,9 @@ import {
 
 /** 「未设置标签」桶 key（domain/lib/sub-view-aggregation 的固定桶名，组头弱化展示） */
 const UNTAGGED_BUCKET_KEY = '__untagged__'
+
+/** 复用用例管理页分组卡的入参（filters/trash/onBatchAction/actions） */
+type GroupCardProps = ComponentProps<typeof CaseGroupCard>
 
 export interface SelectedCasesViewProps {
   /** 当前视图页签：按分组 / 按标签 */
@@ -67,6 +76,14 @@ export interface SelectedCasesViewProps {
   callbacks?: CaseCardCallbacks
   /** 勾选切换；不传（readOnly 观察态）→ 卡片不渲染勾选框 */
   onToggleSelect?: (id: string, checked: boolean) => void
+  /** 真实分组（按分组视图复用原分组卡：名称/更新于/操作面板与用例管理页一致） */
+  allGroups: TestCaseGroup[]
+  /** 当前生效筛选（分组卡组内懒加载/组操作共用） */
+  filters: GroupCardProps['filters']
+  trash: boolean
+  onBatchAction: GroupCardProps['onBatchAction']
+  /** 分组级操作回调（页级，按分组装配）；不传 → 分组卡不渲染操作面板（只读观察态） */
+  groupActions?: GroupActionCallbacks
 }
 
 export function SelectedCasesView({
@@ -81,6 +98,11 @@ export function SelectedCasesView({
   algorithmLabels,
   callbacks,
   onToggleSelect,
+  allGroups,
+  filters,
+  trash,
+  onBatchAction,
+  groupActions,
 }: SelectedCasesViewProps) {
   const groups = useMemo<CaseSubGroup<TestCaseListItem>[]>(
     () =>
@@ -89,6 +111,21 @@ export function SelectedCasesView({
         : groupCasesByCaseGroup(cases),
     [view, cases, tagRegistry]
   )
+  /** 按分组视图展开态（默认折叠，与用例管理页分组卡一致） */
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const selected = useMemo(() => new Set(cases.map((c) => c.id)), [cases])
+  const groupById = useMemo(
+    () => new Map(allGroups.map((g) => [g.id, g])),
+    [allGroups]
+  )
+  const toggleExpanded = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   const viewLabel =
     TEST_CASES_TABS.find((tab) => tab.key === view)?.label ?? view
@@ -185,30 +222,69 @@ export function SelectedCasesView({
       </div>
 
       <div className='space-y-4'>
-        {groups.map((group) => (
-          <section key={group.key} className='space-y-2'>
-            <CaseSubGroupHeader
-              group={group}
-              muted={
-                group.key === UNTAGGED_BUCKET_KEY ||
-                group.key === UNGROUPED_GROUP_ID
-              }
-            />
-            <div className='space-y-2'>
-              {group.cases.map((caseItem) => (
-                <CaseCard
-                  key={caseItem.id}
-                  caseItem={caseItem}
-                  selected
-                  tagRegistry={tagRegistry}
-                  algorithmLabels={algorithmLabels}
-                  callbacks={callbacks}
-                  onToggleSelect={onToggleSelect}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
+        {groups.map((group) => {
+          const realGroup =
+            view === 'by-group' ? groupById.get(group.key) : undefined
+          // 按分组视图：直接复用用例管理页原分组卡（编辑/删除/新增用例/复制/批量修改/子视图切换）
+          if (realGroup) {
+            return (
+              <CaseGroupCard
+                key={group.key}
+                group={{
+                  ...realGroup,
+                  testCaseCount: group.cases.length,
+                  totalDuration: group.totalDuration,
+                }}
+                filters={filters}
+                expanded={expanded.has(group.key)}
+                onToggleExpanded={() => toggleExpanded(group.key)}
+                selected={selected}
+                tagRegistry={tagRegistry}
+                algorithmLabels={algorithmLabels}
+                trash={trash}
+                callbacks={callbacks}
+                actions={
+                  groupActions
+                    ? {
+                        onCreateInGroup: () => groupActions.onCreateInGroup(realGroup),
+                        onEditGroup: () => groupActions.onEditGroup(realGroup),
+                        onDeleteGroup: () => groupActions.onDeleteGroup(realGroup),
+                        onCopyGroup: () => groupActions.onCopyGroup(realGroup),
+                      }
+                    : undefined
+                }
+                onBatchAction={onBatchAction}
+                onToggleSelect={onToggleSelect}
+                controlledCases={group.cases}
+              />
+            )
+          }
+          // 按标签视图 / 未分组桶：保持只读子分组头 + 统一用例卡
+          return (
+            <section key={group.key} className='space-y-2'>
+              <CaseSubGroupHeader
+                group={group}
+                muted={
+                  group.key === UNTAGGED_BUCKET_KEY ||
+                  group.key === UNGROUPED_GROUP_ID
+                }
+              />
+              <div className='space-y-2'>
+                {group.cases.map((caseItem) => (
+                  <CaseCard
+                    key={caseItem.id}
+                    caseItem={caseItem}
+                    selected
+                    tagRegistry={tagRegistry}
+                    algorithmLabels={algorithmLabels}
+                    callbacks={callbacks}
+                    onToggleSelect={onToggleSelect}
+                  />
+                ))}
+              </div>
+            </section>
+          )
+        })}
       </div>
     </div>
   )

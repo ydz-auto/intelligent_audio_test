@@ -10,6 +10,7 @@ import type { ReactElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { TestCaseListItem } from '@/domain/models/testCase'
+import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
 import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import { SelectedCasesView } from '@/features/test-execution/components/selected-cases-view'
@@ -97,6 +98,19 @@ function renderView(ui: ReactElement) {
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
 }
 
+const GROUPS: TestCaseGroup[] = [
+  {
+    id: 'g1',
+    name: '智能音箱功能测试',
+    description: null,
+    algorithmType: null,
+    createdAt: '2026-09-01 10:00',
+    updatedAt: '2026-10-15 09:32',
+    testCaseCount: 8,
+    totalDuration: 600,
+  },
+]
+
 const baseProps = {
   cases: CASES,
   loading: false,
@@ -106,6 +120,10 @@ const baseProps = {
   selectedCount: CASES.length,
   tagRegistry: TAGS,
   callbacks: noopCallbacks,
+  allGroups: GROUPS,
+  filters: {},
+  trash: false,
+  onBatchAction: vi.fn(),
 }
 
 describe('SelectedCasesView 只显示已选中', () => {
@@ -127,11 +145,17 @@ describe('SelectedCasesView 只显示已选中', () => {
     ).toBeInTheDocument()
   })
 
-  it('按分组视图：分组名 / 未分组桶呈现已选用例', () => {
+  it('按分组视图：复用原分组卡，展开后才显示该组已选用例', async () => {
     renderView(<SelectedCasesView {...baseProps} view='by-group' />)
 
+    // 真实分组沿用用例管理页分组卡（含更新于/计数）；未分组桶仍用只读组头
     expect(screen.getByText('智能音箱功能测试')).toBeInTheDocument()
     expect(screen.getByText('未分组')).toBeInTheDocument()
+    expect(screen.getByText(/更新于/)).toBeInTheDocument()
+    // 折叠态不渲染该组用例卡（避免「一堆卡片」）
+    expect(screen.queryByText('智能音箱-播放音乐')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('智能音箱功能测试'))
     expect(screen.getByText('智能音箱-播放音乐')).toBeInTheDocument()
     expect(screen.getByText('车载-导航指令')).toBeInTheDocument()
   })
