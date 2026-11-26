@@ -78,6 +78,7 @@ export function AiReviewSessionDialog({
         className='sm:max-w-2xl'
         data-slot='ai-review-session-dialog'
         aria-describedby={undefined}
+        showCloseButton={false}
       >
         <div className='flex h-[min(70dvh,640px)] flex-col overflow-hidden'>
           <DialogHeader className='text-start'>
