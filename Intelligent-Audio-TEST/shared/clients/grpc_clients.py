@@ -100,6 +100,7 @@ from shared.clients._grpc_task_data import (
     get_task_apis,
     get_task_cases_by_ids,
     cancel_case_evaluations,
+    clear_case_evaluation_cancel,
     list_tasks_config,
     get_task_merge_relations,
     get_cherry_pick_relations,

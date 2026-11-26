@@ -152,6 +152,25 @@ def cancel_case_evaluations(task_id, test_case_ids, reason='case_deleted'):
     }
 
 
+def clear_case_evaluation_cancel(task_id, test_case_ids):
+    """解除 (task_id, test_case_ids) 的评估取消标记（任务重执行前置清理）
+
+    与 cancel_case_evaluations 互逆：retry 重置用例后调用，避免上一轮停止写入的
+    case 级取消标记把新一轮评估提交静默核销（评估永不完成 → 任务永远停在评估中）。
+
+    Returns:
+        dict: {'cleared': int}  # 内存标记清除条数（Redis 双通道同步清除，best effort）
+    """
+    cases = [str(c) for c in (test_case_ids or []) if c]
+    if not cases:
+        return {'cleared': 0}
+    task_id = int(task_id)
+    cleared = eval_task_registry.clear_case_cancelled(task_id, cases)
+    logger.info("评估取消标记已解除 task_id=%s, cases=%s, 内存清除=%s",
+                task_id, cases, cleared)
+    return {'cleared': cleared}
+
+
 def _notify_subservices_cancel(old_tasks, task_id):
     """方案B：并行 DELETE {endpoint}/api/cancel_task/{eval_task_id}（best effort）
 

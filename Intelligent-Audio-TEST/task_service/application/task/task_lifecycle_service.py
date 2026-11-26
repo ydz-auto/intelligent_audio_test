@@ -212,6 +212,21 @@ class TaskLifecycleService:
             if completed_cases:
                 self._trigger_reevaluate(task_id, completed_cases)
 
+            # 解除上一轮「停止/删除用例」写入的评估取消标记：不解除则新一轮评估
+            # 提交会在 evaluation_service 被静默核销，任务永远停在评估中。
+            # best effort，失败不阻断重执行（评估侧仍有核销兜底）。
+            try:
+                from shared.clients.grpc_clients import clear_case_evaluation_cancel
+                clear_result = clear_case_evaluation_cancel(
+                    task_id, [tc.test_case_id for tc in retry_cases])
+                if not clear_result.get('success'):
+                    logger.warning(
+                        f"解除评估取消标记失败(不阻断重执行): task_id={task_id}, "
+                        f"{clear_result.get('message')}")
+            except Exception as e:
+                logger.warning(
+                    f"解除评估取消标记 gRPC 调用失败(不阻断重执行): task_id={task_id}, {e}")
+
             # 启动任务
             from task_service.core.execution_engine import execution_engine
             # INT-573：启动操作人记录（retry 亦属启动，控制校验「owner 或启动人」）

@@ -223,6 +223,41 @@ class EvalTaskRegistry:
         with cls._lock:
             return eval_task_id in cls._cancelled
 
+    @classmethod
+    def clear_case_cancelled(cls, task_id, test_case_ids):
+        """解除 (task_id, test_case_ids) 的 case 级取消标记（任务重执行前置清理）
+
+        上一轮「停止任务 / 删除用例」写入的标记只用于核销**旧**在途评估任务；
+        任务重执行（retry）重置用例后必须解除，否则新一轮评估提交会在
+        task_dispatcher 提交前被静默核销（评估永不完成 → 任务永远停在评估中）。
+        内存与 Redis 双通道同步清除（Redis 不可用时仅清内存，best effort）。
+        """
+        task_id = cls._norm_task_id(task_id)
+        cases = [str(c) for c in (test_case_ids or []) if c]
+        if not cases:
+            return 0
+        cleared = 0
+        with cls._lock:
+            for case_id in cases:
+                if cls._cancelled_cases.pop(f'{task_id}:{case_id}', None) is not None:
+                    cleared += 1
+        for case_id in cases:
+            cls._clear_redis_case_cancelled(task_id, case_id)
+        return cleared
+
+    @classmethod
+    def _clear_redis_case_cancelled(cls, task_id, test_case_id):
+        """删除 Redis case 取消标记（best effort，失败降级内存已清）"""
+        try:
+            from shared.models.common_enums import RedisKeyPrefix
+            from shared.utils import distributed_coordinator as dc
+            key = (f'{RedisKeyPrefix.EVAL_CASE_CANCELLED.value}:'
+                   f'{task_id}:{test_case_id}')
+            dc.clear_flag(key)
+        except Exception as e:
+            logger.warning("清除 case 取消标记失败: task_id=%s, case_id=%s: %s",
+                           task_id, test_case_id, e)
+
 
 eval_task_registry = EvalTaskRegistry()
 

@@ -75,6 +75,35 @@ def cancel_case_evaluations(task_id, test_case_ids, reason='case_deleted'):
     }
 
 
+def clear_case_evaluation_cancel(task_id, test_case_ids):
+    """通过 gRPC 调用 evaluation_service 的 EvaluationService.ClearEvaluationCancel
+
+    任务重执行（retry）重置用例后调用：解除上一轮「停止/删除用例」写入的
+    case 级评估取消标记。不解除会导致新一轮评估提交在 evaluation_service
+    提交前被静默核销，任务永远停在「评估中」。
+
+    Args:
+        task_id: 任务ID
+        test_case_ids: TaskCase.test_case_id 列表（重执行范围内的用例）
+
+    Returns:
+        dict: {success, message, data}；data 为 {cleared: int}
+    """
+    import json as _json
+    from shared.proto import evaluation_service_pb2 as eval_pb
+    stub = get_evaluation_service_stub()
+    req = eval_pb.ClearEvaluationCancelRequest(
+        task_id=str(task_id),
+        test_case_ids=_json.dumps([str(c) for c in (test_case_ids or [])]),
+    )
+    resp = stub.ClearEvaluationCancel(req)
+    return {
+        'success': resp.success,
+        'message': resp.message,
+        'data': _json.loads(resp.data) if resp.data else {},
+    }
+
+
 def submit_reevaluate(task_id, reextract_device_output=True, reevaluate_type='all', options=None):
     """通过 gRPC 调用 evaluation_service 的 EvaluationService.Reevaluate
 

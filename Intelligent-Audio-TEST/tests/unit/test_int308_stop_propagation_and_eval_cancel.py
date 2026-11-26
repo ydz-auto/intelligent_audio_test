@@ -677,6 +677,51 @@ class TestSubmitSkipsCancelledCase:
         mock_worker.assert_not_called()
 
 
+class TestClearCaseCancelMarks:
+    """任务重执行前置清理：解除上一轮的 case 级评估取消标记
+
+    停止任务会把「待评估」用例也标记取消（ACTIVE_EVALUATION_STATUSES 含 pending），
+    标记同时落内存 + Redis（TTL 24h）；retry 不解除就会让新一轮评估被静默核销，
+    用例永远 pending、任务永远停在评估中。
+    """
+
+    def test_clear_removes_memory_and_redis_mark(self):
+        EvalTaskRegistry.cancel_by_case(5, 'case-1')
+
+        cleared = EvalTaskRegistry.clear_case_cancelled(5, ['case-1'])
+
+        assert cleared == 1
+        assert EvalTaskRegistry.is_case_cancelled(5, 'case-1') is False
+
+    def test_clear_only_scoped_cases(self):
+        """只解除指定用例，不误清同任务其它用例/其它任务"""
+        EvalTaskRegistry.cancel_by_case(5, 'case-1')
+        EvalTaskRegistry.cancel_by_case(5, 'case-2')
+        EvalTaskRegistry.cancel_by_case(6, 'case-1')
+
+        EvalTaskRegistry.clear_case_cancelled(5, ['case-1'])
+
+        assert EvalTaskRegistry.is_case_cancelled(5, 'case-1') is False
+        assert EvalTaskRegistry.is_case_cancelled(5, 'case-2') is True
+        assert EvalTaskRegistry.is_case_cancelled(6, 'case-1') is True
+
+    def test_clear_is_idempotent_and_empty_noop(self):
+        EvalTaskRegistry.cancel_by_case(5, 'case-1')
+        assert EvalTaskRegistry.clear_case_cancelled(5, ['case-1']) == 1
+        assert EvalTaskRegistry.clear_case_cancelled(5, ['case-1']) == 0
+        assert EvalTaskRegistry.clear_case_cancelled(5, []) == 0
+
+    def test_handler_clear_returns_count(self):
+        from evaluation_service.application.handlers.evaluation_cancel_handler import (
+            clear_case_evaluation_cancel,
+        )
+        EvalTaskRegistry.cancel_by_case(5, 'case-1')
+
+        assert clear_case_evaluation_cancel(5, ['case-1']) == {'cleared': 1}
+        assert clear_case_evaluation_cancel(5, []) == {'cleared': 0}
+        assert EvalTaskRegistry.is_case_cancelled(5, 'case-1') is False
+
+
 class TestControlTaskStopCancelsEvaluation:
     """task_service control_task('stop')：评估中用例联动取消（gRPC 失败不阻塞）"""
 

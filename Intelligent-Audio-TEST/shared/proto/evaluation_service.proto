@@ -17,6 +17,9 @@ service EvaluationService {
   rpc ReevaluateSingle(ReevaluateSingleRequest) returns (ReevaluateSingleResponse);
   // 取消评估（INT-308）：执行中删除用例/任务停止时联动取消评估侧产出（幂等）
   rpc CancelEvaluation(CancelEvaluationRequest) returns (CancelEvaluationResponse);
+  // 清除评估取消标记（任务重执行前置清理）：解除上一轮「停止」写入的 case 级取消标记，
+  // 否则新一轮评估提交会被静默核销，任务永远停在评估中
+  rpc ClearEvaluationCancel(ClearEvaluationCancelRequest) returns (ClearEvaluationCancelResponse);
 }
 
 // ==================== EvaluationService Messages ====================
@@ -99,6 +102,17 @@ message CancelEvaluationResponse {
   bool success = 1;
   string message = 2;
   string data = 3;  // JSON: {results: [{test_case_id, cancelled, completed, inflight_removed, subservice_notified}], cancelled_inflight, subservice_notified}
+}
+
+message ClearEvaluationCancelRequest {
+  string task_id = 1;
+  string test_case_ids = 2;  // JSON: list[str]，TaskCase.test_case_id 列表（重执行范围内的用例）
+}
+
+message ClearEvaluationCancelResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {cleared: int}
 }
 
 // ===== 评估维度配置 CRUD 服务 =====

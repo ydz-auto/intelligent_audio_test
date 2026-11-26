@@ -146,3 +146,21 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
             )
         except Exception as e:
             return eval_pb.CancelEvaluationResponse(success=False, message=str(e), data="")
+
+    def ClearEvaluationCancel(self, request, context=None):
+        """解除评估取消标记（任务重执行前置清理）
+
+        与 CancelEvaluation 互逆：retry 重置用例后调用，避免上一轮「停止」写入的
+        case 级取消标记让新一轮评估提交被静默核销（任务永远停在评估中）。
+        """
+        try:
+            task_id = to_int_id('task_id', request.task_id)
+            test_case_ids = _loads(request.test_case_ids, [])
+
+            from evaluation_service.application.handlers.evaluation_cancel_handler import clear_case_evaluation_cancel
+            result = clear_case_evaluation_cancel(task_id, test_case_ids)
+            return eval_pb.ClearEvaluationCancelResponse(
+                success=True, message="ok", data=_dumps(result),
+            )
+        except Exception as e:
+            return eval_pb.ClearEvaluationCancelResponse(success=False, message=str(e), data="")

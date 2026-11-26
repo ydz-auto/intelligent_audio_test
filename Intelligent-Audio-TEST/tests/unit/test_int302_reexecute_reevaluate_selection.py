@@ -177,6 +177,38 @@ class TestTaskLifecycleRetryScoped:
         assert result['data']['retry_mode'] == 'all'
         assert result['data']['retry_case_count'] == 2
 
+    def test_retry_clears_stale_eval_cancel_marks(self):
+        """重执行前按用例解除上一轮「停止」写入的评估取消标记
+
+        不解除则新一轮评估提交会被 evaluation_service 静默核销，
+        用例评估状态永远 pending、任务永远停在评估中。
+        """
+        from task_service.application.task.task_lifecycle_service import TaskLifecycleService
+        lc = TaskLifecycleService()
+
+        with patch.object(TaskLifecycleService, '_trigger_reevaluate'), \
+                patch('shared.clients.grpc_clients.clear_case_evaluation_cancel',
+                      return_value={'success': True, 'data': {'cleared': 2}}) as clear_mock:
+            result, _ = self._run_retry(
+                lc, None, [], [_tc('c1', ExecutionStatus.STOPPED, EvaluationStatus.STOPPED),
+                               _tc('c2', ExecutionStatus.STOPPED, EvaluationStatus.STOPPED)])
+
+        assert result['success'] is True
+        clear_mock.assert_called_once_with(5, ['c1', 'c2'])
+
+    def test_retry_clear_failure_does_not_block(self):
+        """解除标记失败（gRPC 异常）不阻断重执行"""
+        from task_service.application.task.task_lifecycle_service import TaskLifecycleService
+        lc = TaskLifecycleService()
+
+        with patch.object(TaskLifecycleService, '_trigger_reevaluate'), \
+                patch('shared.clients.grpc_clients.clear_case_evaluation_cancel',
+                      side_effect=RuntimeError('eval_service 不可达')):
+            result, calls = self._run_retry(lc, None, [], [_tc('c1')])
+
+        assert result['success'] is True
+        assert calls['started'] == 1
+
     def test_selected_empty_case_ids_rejected(self):
         """selected 且 case_ids 为空 → 400 拒绝（不触碰任务状态）"""
         from task_service.application.task.task_lifecycle_service import TaskLifecycleService

@@ -63,6 +63,11 @@ class EvaluationServiceStub:
                 request_serializer=evaluation__service__pb2.CancelEvaluationRequest.SerializeToString,
                 response_deserializer=evaluation__service__pb2.CancelEvaluationResponse.FromString,
                 _registered_method=True)
+        self.ClearEvaluationCancel = channel.unary_unary(
+                '/evaluation_service.EvaluationService/ClearEvaluationCancel',
+                request_serializer=evaluation__service__pb2.ClearEvaluationCancelRequest.SerializeToString,
+                response_deserializer=evaluation__service__pb2.ClearEvaluationCancelResponse.FromString,
+                _registered_method=True)
 
 
 class EvaluationServiceServicer:
@@ -107,6 +112,14 @@ class EvaluationServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ClearEvaluationCancel(self, request, context):
+        """清除评估取消标记（任务重执行前置清理）：解除上一轮「停止」写入的 case 级取消标记，
+        否则新一轮评估提交会被静默核销，任务永远停在评估中
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_EvaluationServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -134,6 +147,11 @@ def add_EvaluationServiceServicer_to_server(servicer, server):
                     servicer.CancelEvaluation,
                     request_deserializer=evaluation__service__pb2.CancelEvaluationRequest.FromString,
                     response_serializer=evaluation__service__pb2.CancelEvaluationResponse.SerializeToString,
+            ),
+            'ClearEvaluationCancel': grpc.unary_unary_rpc_method_handler(
+                    servicer.ClearEvaluationCancel,
+                    request_deserializer=evaluation__service__pb2.ClearEvaluationCancelRequest.FromString,
+                    response_serializer=evaluation__service__pb2.ClearEvaluationCancelResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -275,6 +293,33 @@ class EvaluationService:
             '/evaluation_service.EvaluationService/CancelEvaluation',
             evaluation__service__pb2.CancelEvaluationRequest.SerializeToString,
             evaluation__service__pb2.CancelEvaluationResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ClearEvaluationCancel(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/evaluation_service.EvaluationService/ClearEvaluationCancel',
+            evaluation__service__pb2.ClearEvaluationCancelRequest.SerializeToString,
+            evaluation__service__pb2.ClearEvaluationCancelResponse.FromString,
             options,
             channel_credentials,
             insecure,
