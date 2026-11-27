@@ -19,8 +19,9 @@ REPO = Path(__file__).resolve().parents[2]
 
 LOG_NAMES = {
     ('e2e', 'real'): 'e2e_test_service.log',
-    ('audio', 'real'): 'audio_service.log',
-    ('audio', 'shim'): 'audio_service_shim.log',
+    # 宿主进程只承担执行机硬件面，见 docs/audio服务拆分方案.md §6
+    ('audio', 'real'): 'audio_agent.log',
+    ('audio', 'shim'): 'audio_agent_shim.log',
     ('device', 'real'): 'device_service.log',
 }
 SHIM_DIR = REPO / 'tests' / 'fixtures' / 'pyaudio_shim'
@@ -100,6 +101,8 @@ def main() -> None:
         sys.path.insert(0, str(SHIM_DIR))
     os.environ.setdefault('SERVICE_NAME', 'audio_service')
     os.environ.setdefault('GRPC_PORT', '50052')
+    # 宿主进程只承担硬件面（播放/试听/SPL），见 docs/audio服务拆分方案.md §6
+    os.environ.setdefault('AUDIO_ROLE', 'agent')
     runpy.run_module('audio_service.interfaces.grpc.server',
                      run_name='__main__', alter_sys=True)
 

@@ -8,7 +8,7 @@
 import os
 
 from shared.utils.log_handler import log_and_emit
-from audio_service.domain.services.audio_format_adapter import AudioFormatAdapter
+from shared.audio_mix.format_adapter import AudioFormatAdapter
 
 
 class EngineAudioPrepareMixin:
@@ -32,13 +32,12 @@ class EngineAudioPrepareMixin:
                               "duration": 秒数}}
         """
         import wave
-        from audio_service.infrastructure.persistence.audio_repository import AudioRepository
+        from audio_service.infrastructure.acl.audio_metadata_acl import audio_metadata
         from shared.infrastructure.storage import storage
         from audio_service.infrastructure.audio.playback_config_builder import (
             _get_playback_device_via_grpc, _find_playback_device_by_unique_id,
         )
 
-        _repo = AudioRepository()
         # 清理历史遗留的重采样临时文件，防止跨任务长期累积占用磁盘/内存
         self._cleanup_stale_temp_files()
 
@@ -73,7 +72,7 @@ class EngineAudioPrepareMixin:
         result = {}
         for audio_id in audio_ids or []:
             try:
-                audio_obj = _repo.get_audio(audio_id)
+                audio_obj = audio_metadata.get_audio(audio_id)
                 if not audio_obj or not getattr(audio_obj, 'file_path', None):
                     log_and_emit('WARNING', 'audio_engine',
                                  f"[prepare_audios] audio_id={audio_id} 不存在或无 file_path，跳过",

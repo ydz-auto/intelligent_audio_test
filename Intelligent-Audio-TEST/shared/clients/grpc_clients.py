@@ -16,7 +16,8 @@ algorithm_service）只创建一个 channel，
 所有 stub 共享同一 channel。客户端拦截器自动附加到每个 channel。
 
 - e2e_test_service gRPC server（端口 50051）：ExecutionService
-- audio_service gRPC server（端口 50052）：AudioService / PlaybackService / AudioConfigService / RenderService（INT-67 混音双出口）
+- audio_service 数据面（服务器容器，AUDIO_ROLE=server）：AudioConfigService（音频库 CRUD/元数据/历史）
+- audio_agent 硬件面（执行机宿主，AUDIO_ROLE=agent）：AudioService / PlaybackService / PreviewAudio / StopPreviewAudio
 - device_service gRPC server（端口 50053）：DeviceService / DeviceResultService / EnvDeviceService / DeviceConfigService / PlaybackConfigService / SPLConfigService / LaboratoryConfigService / DeviceUiService（INT-2577）
 - task_service gRPC server（端口 51061）：ExecutionService / TaskConfigService / TestCaseConfigService / TagConfigService / AlgorithmConfigService
 - api_test_service gRPC server（端口 51071）：APITestService
@@ -29,6 +30,7 @@ algorithm_service）只创建一个 channel，
 from shared.clients._grpc_channels import (
     E2E_GRPC_ADDR,
     AUDIO_GRPC_ADDR,
+    AUDIO_AGENT_GRPC_ADDR,
     DEVICE_GRPC_ADDR,
     TASK_GRPC_ADDR,
     API_TEST_GRPC_ADDR,
@@ -38,6 +40,7 @@ from shared.clients._grpc_channels import (
     AUTH_GRPC_ADDR,
     _get_e2e_channel,
     _get_audio_channel,
+    _get_audio_agent_channel,
     _get_device_channel,
     _get_task_channel,
     _get_api_test_channel,
@@ -53,7 +56,8 @@ from shared.clients._grpc_stubs import (
     get_audio_service_stub,
     get_playback_service_stub,
     get_audio_config_service_stub,
-    get_render_service_stub,
+    get_audio_agent_config_stub,
+    resolve_audio_agent_addr,
     get_device_service_stub,
     get_device_result_service_stub,
     get_env_device_service_stub,

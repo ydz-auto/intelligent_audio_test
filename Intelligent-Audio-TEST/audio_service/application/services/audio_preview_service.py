@@ -7,22 +7,32 @@
 """
 import logging
 
-from audio_service.domain.repositories.audio_repository_abc import AudioRepositoryInterface
-from audio_service.infrastructure.persistence.audio_repository import audio_repository
+from audio_service.infrastructure.acl.audio_metadata_acl import audio_metadata
 
 logger = logging.getLogger(__name__)
 
 
 class AudioPreviewService:
-    """音频试听应用服务"""
+    """音频试听应用服务
 
-    def __init__(self, repo: AudioRepositoryInterface = None):
-        self.repo = repo or audio_repository
+    试听只跑在执行机 audio_agent（服务器容器不注册 PreviewAudio）。
+    元数据读取/历史回写统一走 audio_metadata ACL：agent 角色经服务器 gRPC，
+    不触碰本地 DB。
+    """
+
+    def __init__(self, repo=None):
+        # repo 保留仅供单测注入；生产一律走 audio_metadata
+        self._repo = repo
         # ACL 仓储（跨域只读查询）
         from audio_service.infrastructure.acl.task_acl_repository import (
             TaskACLRepositoryImpl,
         )
         self._task_acl = TaskACLRepositoryImpl()
+
+    def _get_audio_with_deleted(self, audio_id):
+        if self._repo is not None:
+            return self._repo.get_audio_with_deleted(audio_id)
+        return audio_metadata.get_audio_with_deleted(audio_id)
 
     def preview_audio(self, audio_id: int, data: dict) -> dict:
         """试听音频"""
@@ -32,7 +42,7 @@ class AudioPreviewService:
         testcase_id = None
         testcase_name = None
 
-        audio = self.repo.get_audio_with_deleted(audio_id)
+        audio = self._get_audio_with_deleted(audio_id)
         if not audio or audio.deleted:
             # audio_id 实为 testcase_id，从用例 config 解析真实 audio_id
             audios_config = self._task_acl.get_testcase_config_audios(audio_id)
@@ -40,7 +50,7 @@ class AudioPreviewService:
                 audio_item = audios_config[0]
                 actual_audio_id = audio_item.get('audio_id')
                 if actual_audio_id:
-                    audio = self.repo.get_audio_with_deleted(actual_audio_id)
+                    audio = self._get_audio_with_deleted(actual_audio_id)
                     testcase_id = audio_id
                     tc = self._task_acl.get_testcase_by_id(audio_id)
                     if tc:
@@ -164,10 +174,28 @@ class AudioPreviewService:
             return {'success': False, 'message': f'硬件播放失败: {str(e)}', 'data': None, 'code': 400}
 
     def _record_playback_history(self, audio, device, result, testcase_id=None, testcase_name=None):
-        """落一条播放历史（INT-782#2）；失败只记日志，不阻塞试听主流程。"""
+        """落一条播放历史（INT-782#2）；失败只记日志，不阻塞试听主流程。
+
+        agent 角色下由 ACL 经 RecordPlaybackHistory RPC 回写服务器，失败自动落盘重试。
+        """
         try:
+            from shared.infrastructure.user_context import get_current_user_id
+
             device_id = device.get('id') if device.get('id') not in (None, '') else device.get('device_unique_id', '')
-            self.repo.record_playback_history({
+            if self._repo is not None:
+                self._repo.record_playback_history({
+                    'audio_id': audio.id,
+                    'testcase_id': testcase_id,
+                    'testcase_name': testcase_name,
+                    'device_id': str(device_id) if device_id is not None else '',
+                    'device_name': device.get('name', '未知设备'),
+                    'result': result,
+                    'duration': audio.duration,
+                    'source': 'preview',
+                })
+                self._repo.commit()
+                return
+            audio_metadata.record_playback_history({
                 'audio_id': audio.id,
                 'testcase_id': testcase_id,
                 'testcase_name': testcase_name,
@@ -176,8 +204,8 @@ class AudioPreviewService:
                 'result': result,
                 'duration': audio.duration,
                 'source': 'preview',
+                'user_id': get_current_user_id(),
             })
-            self.repo.commit()
         except Exception as e:
             logger.error(f"记录播放历史失败: {e}", exc_info=True)
 
@@ -187,7 +215,7 @@ class AudioPreviewService:
             from audio_service.infrastructure.audio.audio_engine import audio_service
 
             actual_audio_id = audio_id
-            audio = self.repo.get_audio_with_deleted(audio_id)
+            audio = self._get_audio_with_deleted(audio_id)
             if not audio or audio.deleted:
                 # audio_id 实为 testcase_id，从用例 config 解析真实 audio_id
                 audios_config = self._task_acl.get_testcase_config_audios(audio_id)

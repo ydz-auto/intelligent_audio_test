@@ -239,6 +239,24 @@ class AudioQueryHandler:
 
         return _ok(data=results)
 
+    def handle_resolve_by_names(self, names: List[str]) -> Dict[str, Any]:
+        """按 name/original_filename 精确解析音频（宿主播放配置回填用）。
+
+        与 by_ids 同属宿主语境通道：不做 owner 可见性过滤 —— 执行机播放的用例
+        可能引用私有音频，宿主侧本就能直接取到文件。
+        """
+        results = []
+        seen = set()
+        for name in names or []:
+            if not name:
+                continue
+            audio = self.repo.find_audio_by_name(name)
+            if not audio or audio.id in seen:
+                continue
+            seen.add(audio.id)
+            results.append(_audio_to_dict(audio, [], []))
+        return _ok(data=results)
+
     def handle_get_by_md5(self, query: GetAudioByMD5Query) -> Dict[str, Any]:
         if not query.md5_list:
             return _ok(data={})
@@ -263,7 +281,7 @@ class AudioQueryHandler:
         （audio_timeline.speakers_from_annotation_data 纯函数复用）；
         无标注音频返回空集合，键统一字符串化（JSON 往返对齐）。
         """
-        from audio_service.infrastructure.audio.audio_timeline import (
+        from shared.audio_mix.timeline import (
             speakers_from_annotation_data,
         )
 

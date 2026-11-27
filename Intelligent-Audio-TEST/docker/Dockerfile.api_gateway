@@ -3,7 +3,7 @@
 #
 # 不装 ffmpeg：网关内唯一的 pydub 用法是
 # api_gateway/application/services/audio/audio_common.py#convert_to_wav，
-# 全仓检索确认无任何调用方（音频转码实际由宿主 audio_service 完成），
+# 全仓检索确认无任何调用方（音频转码实际由服务器 audio_service / 执行机 audio_agent 完成），
 # 因此无需把 400MB+ 的 ffmpeg 层带进网关镜像；若将来启用该函数需在本文件补 apt 层。
 ARG BASE_IMAGE=iat-base:latest
 FROM ${BASE_IMAGE}

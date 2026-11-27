@@ -125,10 +125,10 @@ def _run_start_server(monkeypatch, get_value):
     # INT-2086：start_grpc_server 会给 AudioServiceServicer 实例挂 _grpc_server
     # 属性，桩必须允许赋值（object() 无 __dict__ 会 AttributeError）。
     for name in ('AudioServiceServicer', 'PlaybackServiceServicer',
-                 'AudioConfigServiceServicer', 'RenderServiceServicer'):
+                 'DataPlaneAudioConfigServicer'):
         monkeypatch.setattr(srv, name, lambda: types.SimpleNamespace())
     for name in ('add_AudioServiceServicer_to_server', 'add_PlaybackServiceServicer_to_server',
-                 'add_AudioConfigServiceServicer_to_server', 'add_RenderServiceServicer_to_server'):
+                 'add_AudioConfigServiceServicer_to_server'):
         monkeypatch.setattr(srv.audio_grpc, name, lambda servicer, server: None)
 
     server = srv.start_grpc_server(port=0)

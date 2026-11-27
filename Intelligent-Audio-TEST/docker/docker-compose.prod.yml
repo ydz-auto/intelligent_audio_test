@@ -40,14 +40,18 @@ x-backend-env: &backend-env
   INTERNAL_EVAL_CONFIG_TOKEN: ${INTERNAL_EVAL_CONFIG_TOKEN}
   PLATFORM_INTERNAL_URL: http://api_gateway:5000
   LOCAL_STORAGE_ROOT: /app/storage/static
-  # 执行机（blue）地址：e2e / audio / device 均为执行机上的常驻服务，
+  # 执行机（blue）地址：e2e / audio_agent / device 均为执行机上的常驻服务，
   # 服务器只经内网 IP 调用，不在本地起容器，也不依赖宿主 SSH 反向隧道。
   # 换执行机只改 .env 的 EXECUTOR_HOST，不用动编排。
   EXECUTOR_HOST: ${EXECUTOR_HOST:-10.0.0.9}
   E2E_TEST_SERVICE_HOST: ${EXECUTOR_HOST:-10.0.0.9}
   E2E_TEST_SERVICE_GRPC_PORT: "${EXECUTOR_E2E_PORT:-50051}"
-  AUDIO_SERVICE_HOST: ${EXECUTOR_HOST:-10.0.0.9}
-  AUDIO_SERVICE_GRPC_PORT: "${EXECUTOR_AUDIO_PORT:-50052}"
+  # 数据面音频（服务器容器 audio_service）：库 CRUD/元数据；
+  # 硬件面（播放/试听/SPL）走执行机 audio_agent。
+  AUDIO_SERVICE_HOST: audio_service
+  AUDIO_SERVICE_GRPC_PORT: "50052"
+  AUDIO_AGENT_HOST: ${EXECUTOR_HOST:-10.0.0.9}
+  AUDIO_AGENT_GRPC_PORT: "${EXECUTOR_AUDIO_PORT:-50052}"
   DEVICE_SERVICE_HOST: ${EXECUTOR_HOST:-10.0.0.9}
   DEVICE_SERVICE_GRPC_PORT: "${EXECUTOR_DEVICE_PORT:-50053}"
 
@@ -87,6 +91,19 @@ services:
 
   # 生产不部署 e2e：e2e 常驻在执行机（EXECUTOR_HOST:50051），
   # 服务器侧不要带 --profile container-e2e 启动。
+
+  audio_service:
+    environment:
+      <<: *backend-env
+      AUDIO_ROLE: server
+    # 服务器本机没有宿主 audio_agent，50052 让给数据面，供执行机经
+    # SSH 正向隧道（本地 53052 → 服务器 127.0.0.1:50052）访问。
+    ports:
+      - "127.0.0.1:${AUDIO_SERVICE_PUBLISHED_PORT:-50052}:50052"
+    volumes:
+      - storage_local:/app/storage/local
+      # 分片上传/合并共享卷（§7.1）：多副本必须共享同一 chunks 目录
+      - audio_uploads:/app/storage/audios
 
   api_test_service:
     environment:

@@ -9,7 +9,7 @@ agent 运行时只做 `docker compose up/down` 与健康探测；禁止宿主机
 禁止启动期整树清场（遇宿主端口被占用，compose 报错退出，交执行者处置）。
 
 用法（仓库根目录）：
-    python docker/run_stack.py up        # 拉起全栈（infra + 引导 + 10 后端 + 前端；e2e 由宿主进程提供）
+    python docker/run_stack.py up        # 拉起全栈（infra + 引导 + 后端 + 前端；e2e/audio_agent 由宿主进程提供）
     python docker/run_stack.py down      # 停止全栈（保留数据卷）
     python docker/run_stack.py down -v   # 停止全栈并删除数据卷（危险：清库）
     python docker/run_stack.py ps        # 容器状态
@@ -52,7 +52,9 @@ def _project():
 GRPC_PROBES = [
     # (服务名, 容器内端口)。宿主映射端口经 *_GRPC_PORT 环境变量覆盖（cmd_health 读取）；
     # api_test_service 宿主不发布端口（UC-1001），探测走 compose exec 容器内 TCP。
-    ('audio_service', 50052, 'AUDIO_SERVICE_GRPC_PORT'),
+    # audio_service 是数据面容器（AUDIO_ROLE=server）；宿主 audio_agent 占 50052，
+    # 开发栈映射到 50054（AUDIO_SERVICE_PUBLISHED_PORT），见 docs/audio服务拆分方案.md §6。
+    ('audio_service', 50052, 'AUDIO_SERVICE_PUBLISHED_PORT'),
     ('device_service', 50053, 'DEVICE_SERVICE_GRPC_PORT'),
     ('task_service', 51061, 'TASK_SERVICE_GRPC_PORT'),
     ('algorithm_service', 51067, 'ALGORITHM_SERVICE_GRPC_PORT'),
@@ -223,7 +225,9 @@ def cmd_health(args):
             checks.append((f"{name} gRPC :{container_port}(容器内)",
                            lambda s=name, p=container_port: _compose_exec_tcp(s, p)))
         else:
-            host_p = host_port(host_env, container_port)
+            # 数据面 audio_service 在开发栈映射到 50054（50052 留给宿主 audio_agent）
+            default_p = 50054 if name == 'audio_service' else container_port
+            host_p = host_port(host_env, default_p)
             checks.append((f"{name} gRPC :{host_p}",
                            lambda p=host_p: _tcp_open('127.0.0.1', p)))
     checks.append((f"e2e_test_service gRPC :{HOST_E2E_GRPC_PORT}(宿主)",

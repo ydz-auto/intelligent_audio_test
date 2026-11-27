@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 """audio_service gRPC server 启动模块。
 
-注册 audio_service 相关 servicer（定义于 interfaces/grpc/servicers.py）：
-- AudioServiceServicer
-- PlaybackServiceServicer
-- AudioConfigServiceServicer
-- RenderServiceServicer（INT-67 混音下沉：双出口）
+注册 audio_service 相关 servicer（定义于 interfaces/grpc/servicers.py），
+角色由 `AUDIO_ROLE` 决定（默认 server，见 docs/audio服务拆分方案.md §6）：
+
+- server（服务器数据面）：AudioConfigServiceServicer；初始化 DB / 软删清理 /
+  标签预热，不初始化 PyAudio（容器无声卡）。
+- agent（执行机硬件面）：AudioServiceServicer + PlaybackServiceServicer；
+  初始化 PyAudio，不初始化 DB（数据面走 gRPC）。
 
 端口：50052
 """
@@ -28,11 +30,22 @@ from shared.config.service_ports import AUDIO_SERVICE_GRPC_PORT
 from audio_service.interfaces.grpc.servicers import (
     AudioServiceServicer,
     PlaybackServiceServicer,
-    AudioConfigServiceServicer,
-    RenderServiceServicer,
+    DataPlaneAudioConfigServicer,
+    PreviewAudioConfigServicer,
 )
 
 logger = logging.getLogger(__name__)
+
+# 角色开关（docs/audio服务拆分方案.md §6）：server=服务器数据面，agent=执行机硬件面
+AUDIO_ROLE_SERVER = 'server'
+AUDIO_ROLE_AGENT = 'agent'
+
+
+def _resolve_audio_role() -> str:
+    role = (os.environ.get('AUDIO_ROLE') or AUDIO_ROLE_SERVER).strip().lower()
+    if role not in (AUDIO_ROLE_SERVER, AUDIO_ROLE_AGENT):
+        raise ValueError(f"非法 AUDIO_ROLE: {role}（仅支持 server / agent）")
+    return role
 
 # INT-1973 音频域并发扩容（原值 5）：gRPC 线程池与 DB 连接池同口径 20。
 # 依据 INT-1471 压测，conc40 下直连 ListAudios 时延主要被 5 线程池串行化放大，
@@ -98,31 +111,35 @@ def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
     # 配置 pydub 的 ffmpeg/ffprobe 路径（必须在首次使用 AudioSegment 前完成）
     _configure_pydub_ffmpeg()
 
-    # 初始化数据库连接池（audio_service 无 FastAPI lifespan，在此处初始化）
-    from shared.models.database import init_db
-    init_db(pool_size=AUDIO_DB_POOL_SIZE)
-    logger.info("数据库连接池已初始化 (pool_size=%s)", AUDIO_DB_POOL_SIZE)
+    role = _resolve_audio_role()
+    logger.info("audio_service 启动角色: %s", role)
 
-    # 启动软删除硬清理守护线程（只清理本服务 owned 表 audios 及子表）
-    from audio_service.infrastructure.persistence.soft_delete_cleaner import get_cleaner as get_soft_delete_cleaner
-    _cleaner = get_soft_delete_cleaner()
-    _cleaner.start()
+    if role == AUDIO_ROLE_SERVER:
+        # 服务器数据面：初始化数据库连接池（audio_service 无 FastAPI lifespan，在此处初始化）
+        from shared.models.database import init_db
+        init_db(pool_size=AUDIO_DB_POOL_SIZE)
+        logger.info("数据库连接池已初始化 (pool_size=%s)", AUDIO_DB_POOL_SIZE)
 
-    # 在主线程中预初始化 PyAudio 驱动
-    # Pa_Initialize() 非线程安全，必须在服务启动前完成，避免子线程调用时卡死/崩溃
-    try:
-        from audio_service.infrastructure.audio.audio_engine import audio_service
-        audio_service.init_driver()
-    except Exception as e:
-        logger.warning(f"PyAudio 驱动预初始化失败（音频功能可能不可用）: {e}")
+        # 启动软删除硬清理守护线程（只清理本服务 owned 表 audios 及子表）
+        from audio_service.infrastructure.persistence.soft_delete_cleaner import get_cleaner as get_soft_delete_cleaner
+        _cleaner = get_soft_delete_cleaner()
+        _cleaner.start()
 
-    # INT-2047：起服预热标签 id→name 快照。请求线程不再承担刷新（TTL 过期
-    # 只排期后台刷新），没有预热时冷启动的头几个列表请求会降级成数字 id。
-    # 放后台 daemon：宿主机 → docker task_service 首连可到 10 s 以上，预热
-    # 自带 deadline（AUDIO_TAG_ACL_REFRESH_TIMEOUT_SECONDS，默认 2 s）与
-    # 重试退避，不拿服务启动时间去赌建连；失败只告警。
-    from audio_service.infrastructure.acl.tag_acl_repository import start_tag_acl_warmup
-    start_tag_acl_warmup()
+        # INT-2047：起服预热标签 id→name 快照。请求线程不再承担刷新（TTL 过期
+        # 只排期后台刷新），没有预热时冷启动的头几个列表请求会降级成数字 id。
+        # 放后台 daemon：宿主机 → docker task_service 首连可到 10 s 以上，预热
+        # 自带 deadline（AUDIO_TAG_ACL_REFRESH_TIMEOUT_SECONDS，默认 2 s）与
+        # 重试退避，不拿服务启动时间去赌建连；失败只告警。
+        from audio_service.infrastructure.acl.tag_acl_repository import start_tag_acl_warmup
+        start_tag_acl_warmup()
+    else:
+        # 执行机硬件面：在主线程中预初始化 PyAudio 驱动（无 DB 依赖）
+        # Pa_Initialize() 非线程安全，必须在服务启动前完成，避免子线程调用时卡死/崩溃
+        try:
+            from audio_service.infrastructure.audio.audio_engine import audio_service
+            audio_service.init_driver()
+        except Exception as e:
+            logger.warning(f"PyAudio 驱动预初始化失败（音频功能可能不可用）: {e}")
 
     # gRPC 线程池大小配置化：优先读取 concurrency_config.json 中的 grpc.audio_service_workers
     _max_workers = config_manager.get_value('grpc', 'audio_service_workers', AUDIO_GRPC_WORKERS_DEFAULT)
@@ -133,21 +150,51 @@ def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
         interceptors=[server_db_scope_interceptor, server_log_interceptor,
                       server_user_context_interceptor],
     )
-    # INT-2086 审计 P1：server 引用挂到 AudioServiceServicer 实例上。生产启动
-    # （runpy-as-__main__）下 servicer 惰性 import server.py 会拿到第二份拷贝、
-    # 模块全局 _server 读不到；实例引用被运行中的 server 共享，无模块身份问题。
-    audio_servicer = AudioServiceServicer()
-    audio_servicer._grpc_server = server
-    audio_grpc.add_AudioServiceServicer_to_server(audio_servicer, server)
-    audio_grpc.add_PlaybackServiceServicer_to_server(PlaybackServiceServicer(), server)
-    audio_grpc.add_AudioConfigServiceServicer_to_server(AudioConfigServiceServicer(), server)
-    audio_grpc.add_RenderServiceServicer_to_server(RenderServiceServicer(), server)
+    if role == AUDIO_ROLE_AGENT:
+        # 执行机只实现试听两 RPC；其余 AudioConfigService 方法自动 UNIMPLEMENTED
+        audio_grpc.add_AudioConfigServiceServicer_to_server(PreviewAudioConfigServicer(), server)
+    else:
+        # 服务器数据面无声卡：试听两 RPC 显式 UNIMPLEMENTED（§3.1/§5.1）
+        audio_grpc.add_AudioConfigServiceServicer_to_server(DataPlaneAudioConfigServicer(), server)
+    if role == AUDIO_ROLE_AGENT:
+        # INT-2086 审计 P1：server 引用挂到 AudioServiceServicer 实例上。生产启动
+        # （runpy-as-__main__）下 servicer 惰性 import server.py 会拿到第二份拷贝、
+        # 模块全局 _server 读不到；实例引用被运行中的 server 共享，无模块身份问题。
+        audio_servicer = AudioServiceServicer()
+        audio_servicer._grpc_server = server
+        audio_grpc.add_AudioServiceServicer_to_server(audio_servicer, server)
+        audio_grpc.add_PlaybackServiceServicer_to_server(PlaybackServiceServicer(), server)
     server.add_insecure_port(f'[::]:{port}')
     server.start()
     logger.info("audio_service gRPC server started on port %s", port)
     global _server
     _server = server
+    if role == AUDIO_ROLE_AGENT:
+        _register_audio_agent(port)
     return server
+
+
+def _register_audio_agent(port: int) -> None:
+    """把执行机 audio_agent 注册进 Redis，供网关/服务按 lab 路由试听与播放。
+
+    - 注册名固定 ``audio_agent``，lab 维度由 ``LAB_NAME`` 决定；
+    - 对外可达地址由 ``AUDIO_AGENT_ADVERTISE_HOST``（缺省 ``EXECUTOR_HOST``）
+      指定 —— 服务器容器需要通过该地址回连执行机（反向 SSH 隧道/内网 IP）；
+    - 注册失败不阻塞服务启动（此时调用方回退静态 AUDIO_AGENT_HOST）。
+    """
+    try:
+        from shared.utils.service_registry import RedisServiceRegistry
+        advertise_host = (os.environ.get('AUDIO_AGENT_ADVERTISE_HOST')
+                          or os.environ.get('EXECUTOR_HOST')
+                          or '127.0.0.1')
+        lab_name = os.environ.get('LAB_NAME') or None
+        RedisServiceRegistry().register(
+            'audio_agent', advertise_host, 0, grpc_port=port,
+            capabilities={'role': AUDIO_ROLE_AGENT}, lab_name=lab_name,
+        )
+        logger.info("audio_agent 已注册: %s:%s (lab=%s)", advertise_host, port, lab_name or '-')
+    except Exception as exc:
+        logger.warning("audio_agent 注册失败（调用方将回退静态地址）: %s", exc)
 
 
 def initiate_graceful_shutdown(server: Optional[grpc.Server] = None):

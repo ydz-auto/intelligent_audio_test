@@ -205,10 +205,10 @@
   <text x="60" y="924" class="note">遗留：容器内 8000 注册 5008</text>
 
   <rect x="346" y="838" width="290" height="90" rx="8" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.2"/>
-  <text x="362" y="858" font-size="11" font-weight="700" fill="#075985">audio_service（纯 gRPC :50052）</text>
-  <text x="362" y="876" class="body">音频播放 · 混音 · SPL 测量</text>
-  <text x="362" y="892" class="body">PlayAudio · MeasureSPL</text>
-  <text x="362" y="910" class="note">RenderAudioStream（100ms chunk）</text>
+  <text x="362" y="858" font-size="11" font-weight="700" fill="#075985">audio_service / audio_agent（gRPC :50052）</text>
+  <text x="362" y="876" class="body">数据面：音频库 CRUD · 上传 · 历史</text>
+  <text x="362" y="892" class="body">硬件面：PlayAudio · MeasureSPL（执行机）</text>
+  <text x="362" y="910" class="note">混音已迁入 api_test_service（shared/audio_mix）</text>
   <text x="362" y="924" class="note">Orchestrator/FormatAdapter/ApiRmsSpl</text>
 
   <rect x="648" y="838" width="290" height="90" rx="8" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.2"/>

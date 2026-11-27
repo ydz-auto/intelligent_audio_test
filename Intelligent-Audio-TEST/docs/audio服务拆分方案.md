@@ -168,8 +168,8 @@ Redis 分布式锁可继续由本地 agent 使用（现有 6379 隧道）；如�
 AUDIO_ROLE = os.environ.get('AUDIO_ROLE', 'server')  # server | agent
 ```
 
-- `server`：注册 `AudioConfigServiceServicer`；执行 `init_db` / 软删清理 / 标签预热 / DB 日志；
-- `agent`：注册 `AudioServiceServicer`、`PlaybackServiceServicer` 和只含试听的 `AudioConfigServiceServicer`；只执行 PyAudio 初始化。
+- `server`：注册数据面 `DataPlaneAudioConfigServicer`（`AudioConfigServiceServicer` 子类，把 `PreviewAudio` / `StopPreviewAudio` 显式置为 `UNIMPLEMENTED`，见 §3.1）；执行 `init_db` / 软删清理 / 标签预热 / DB 日志；
+- `agent`：注册 `AudioServiceServicer`、`PlaybackServiceServicer` 和只含试听的 `PreviewAudioConfigServicer`；只执行 PyAudio 初始化。
 
 > 不再需要 `render` / `server_core` 角色——混音已不在这个进程里。
 

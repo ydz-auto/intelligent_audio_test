@@ -64,13 +64,16 @@ SERVICES = [
     ('auth_service',       'auth_service',       5009, 51069),
     ('transfer_agent',     'transfer_agent',     5010, 51101),
     ('audio_service',      'audio_service',      None, 50052),
+    # 数据面（AUDIO_ROLE=server，库/元数据）：与宿主 agent 分进程，避免自环与 pyAudio 混跑
+    ('audio_service_data', 'audio_service',      None, 50054),
     ('device_service',     'device_service',     None, 50053),
 ]
 
 # 客户端侧 gRPC 端口环境名（shared/infrastructure/config.py BaseConfig）
 CLIENT_GRPC_ENVS = {
     'E2E_TEST_SERVICE_GRPC_PORT': 50051,
-    'AUDIO_SERVICE_GRPC_PORT': 50052,
+    'AUDIO_SERVICE_GRPC_PORT': 50054,
+    'AUDIO_AGENT_GRPC_PORT': 50052,
     'DEVICE_SERVICE_GRPC_PORT': 50053,
     'TASK_SERVICE_GRPC_PORT': 51061,
     'ALGORITHM_SERVICE_GRPC_PORT': 51067,
@@ -139,6 +142,8 @@ def _service_cmd(name: str, svc_dir: str, http_port, grpc_port, env: dict):
                f'from {svc_dir}.interfaces.grpc.server import start_grpc_server; '
                f's = start_grpc_server({grpc_port}); s.wait_for_termination()']
         if name == 'audio_service':
+            # 本机栈的 audio 进程承担硬件面（播放/试听），见 docs/audio服务拆分方案.md §6
+            env['AUDIO_ROLE'] = 'agent'
             shim = os.path.join(BASE_DIR, 'tests', 'fixtures', 'pyaudio_shim')
             env['PYTHONPATH'] = shim + os.pathsep + env['PYTHONPATH']
     env['SERVICE_NAME'] = f'real_{name}'

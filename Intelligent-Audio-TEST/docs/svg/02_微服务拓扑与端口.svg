@@ -63,9 +63,9 @@
 
   <rect x="832" y="224" width="384" height="94" rx="8" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.3"/>
   <text x="848" y="244" font-size="11.5" font-weight="700" fill="#075985">gRPC-only 服务（2）</text>
-  <text x="848" y="262" class="body">audio_service　— / 50052　播放·混音·SPL</text>
+  <text x="848" y="262" class="body">audio_service　— / 50052　数据面（音频库·历史）</text>
   <text x="848" y="278" class="body">device_service　— / 50053　设备驱动·结果提取</text>
-  <text x="848" y="294" class="body">无 HTTP 入口，不挂载 uvicorn</text>
+  <text x="848" y="294" class="body">硬件面：audio_agent（执行机宿主）</text>
   <text x="848" y="310" class="note">python -m audio_service.interfaces.grpc.server</text>
 
   <!-- ② 服务清单与端口 -->

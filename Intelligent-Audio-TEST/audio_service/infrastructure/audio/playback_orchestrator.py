@@ -14,7 +14,7 @@ import time
 import threading
 
 from audio_service.infrastructure.audio.audio_engine import audio_service as _default_audio_service
-from audio_service.infrastructure.audio.audio_timeline import (
+from shared.audio_mix.timeline import (
     build_audio_timelines,
     build_speakers_map_from_dry_audios,
     get_audio_configs_for_offset,
@@ -715,8 +715,10 @@ class PlaybackOrchestrator:
         未安排（设备不可用/文件缺失/被 offset 跳过）→ failed。
         失败只记日志，不阻塞试听主流程。
         """
-        from audio_service.infrastructure.persistence.audio_repository import audio_repository
+        from audio_service.infrastructure.acl.audio_metadata_acl import audio_metadata
+        from shared.infrastructure.user_context import get_current_user_id
         scheduled_audio_ids = scheduled_audio_ids or set()
+        user_id = get_current_user_id()
         try:
             for audio_config, audio_obj in dry_audios_info:
                 audio_id = audio_config.get('audio_id')
@@ -729,7 +731,7 @@ class PlaybackOrchestrator:
                         device_info = playback_devices_map.get(int(dev_id)) or {}
                     except (TypeError, ValueError):
                         pass
-                audio_repository.record_playback_history({
+                audio_metadata.record_playback_history({
                     'audio_id': audio_id,
                     'testcase_id': testcase_id,
                     'testcase_name': testcase_name,
@@ -738,8 +740,8 @@ class PlaybackOrchestrator:
                     'result': result,
                     'duration': getattr(audio_obj, 'duration', None),
                     'source': 'preview',
+                    'user_id': user_id,
                 })
-            audio_repository.commit()
         except Exception as e:
             self._log('ERROR', f"记录用例预览播放历史失败: {e}")
 
@@ -779,10 +781,9 @@ class PlaybackOrchestrator:
         if not vp_config or not vp_config.get('enabled'):
             return True
 
-        from audio_service.infrastructure.persistence.audio_repository import AudioRepository
+        from audio_service.infrastructure.acl.audio_metadata_acl import audio_metadata
         from audio_service.infrastructure.audio.playback_config_builder import _get_playback_device_via_grpc
 
-        _repo = AudioRepository()
         audio_id = vp_config.get('audio_id')
         playback_dev_id = vp_config.get('playback_device_id')
         spl = vp_config.get('spl', 70.0)
@@ -803,7 +804,7 @@ class PlaybackOrchestrator:
             return False
 
         try:
-            audio_obj = _repo.get_audio(audio_id)
+            audio_obj = audio_metadata.get_audio(audio_id)
         except Exception:
             audio_obj = None
 

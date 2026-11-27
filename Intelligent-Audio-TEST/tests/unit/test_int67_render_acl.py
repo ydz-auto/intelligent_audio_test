@@ -1,17 +1,15 @@
 # -*- coding: utf-8 -*-
-"""INT-67 api_test_service 消费端 ACL 单测 — AudioRenderACLRepositoryImpl
+"""INT-67 api_test_service 消费端混音单测 — AudioRenderACLRepositoryImpl（进程内）
 
-覆盖（验收标准：api_test_service 仅「组装请求 + 消费 chunk」，执行器不得直调 stub）：
-- build_render_config：audios 透传 + 两级噪声透传（合并归 audio_service）+ 目标格式/SPL 映射
+覆盖（验收标准：混音已并入 api_test_service 进程，执行器不经 gRPC）：
+- build_render_config：audios 透传 + 两级噪声透传 + 目标格式/SPL 映射
 - route_render_mode：08 设计文档 §3.1 路由表（file/stream/physical 拒绝）
-- render_audio_file：unary 调用 + DTO 还原（base64 → bytes / 元数据）
+- render_audio_file：进程内整段混音 + DTO 还原（base64 → bytes / 元数据）
 - render_audio_stream：逐 chunk 迭代 + 失败收敛（message + is_last 终止帧）
-- 失败收敛：unary success=False → None；gRPC 异常 → None / 终止帧
+- 失败收敛：混音异常 → None / 终止帧
 """
 import base64
-import json
 import os
-from unittest import mock
 
 import pytest
 
@@ -19,6 +17,7 @@ import pytest
 os.environ.setdefault('OSS_ACCESS_KEY', 'test-access')
 os.environ.setdefault('OSS_SECRET_KEY', 'test-secret')
 
+import api_test_service.infrastructure.acl.audio_render_acl_repository as acl_mod
 from api_test_service.domain.repositories.acl.audio_render_acl_repository import (
     RenderChunkDTO,
     RenderedAudioDTO,
@@ -29,16 +28,21 @@ from api_test_service.infrastructure.acl.audio_render_acl_repository import (
 )
 
 
-def _fake_stub(file_response=None, stream_chunks=()):
-    stub = mock.Mock()
-    stub.RenderAudioFile.return_value = file_response
-    stub.RenderAudioStream.return_value = iter(stream_chunks)
-    return stub
+def _patch_render(monkeypatch, file_result=None, stream_chunks=(), error=None):
+    """替身进程内混音：记录入参，按 mode 返回整段结果或逐 chunk 迭代。"""
+    calls = {}
 
+    def fake_render(render_config, mode):
+        calls['mode'] = mode
+        calls['config'] = render_config
+        if error is not None:
+            raise error
+        if mode == 'file':
+            return file_result
+        return iter(stream_chunks)
 
-def _patch_stub(monkeypatch, stub):
-    import shared.clients.grpc_clients as gc
-    monkeypatch.setattr(gc, 'get_render_service_stub', lambda: stub)
+    monkeypatch.setattr(acl_mod._orchestrator, 'render', fake_render)
+    return calls
 
 
 class TestBuildRenderConfig:
@@ -50,7 +54,7 @@ class TestBuildRenderConfig:
         case_config = {'background_noise': {'audio_id': 99, 'spl': 50}}
         config = AudioRenderACLRepositoryImpl.build_render_config(
             round_config, case_config)
-        # 执行器侧只透传，不合并：round_noise / case_noise 原样出站
+        # 执行器侧只透传，不合并：round_noise / case_noise 原样携带
         assert config['audios'] == round_config['audios']
         assert config['round_noise'] == round_config['background_noise']
         assert config['case_noise'] == case_config['background_noise']
@@ -96,61 +100,51 @@ class TestRouteRenderMode:
 
 
 class TestRenderAudioFile:
-    def test_unary_returns_dto(self, monkeypatch):
+    def test_in_process_returns_dto(self, monkeypatch):
         payload = {
             'container': 'wav',
             'audio_base64': base64.b64encode(b'RIFF....').decode('ascii'),
             'sample_rate': 16000, 'bit_depth': 's16', 'channels': 1,
             'duration_ms': 1000,
         }
-        resp = mock.Mock(success=True, message='ok',
-                         data=json.dumps(payload))
-        stub = _fake_stub(file_response=resp)
-        _patch_stub(monkeypatch, stub)
+        calls = _patch_render(monkeypatch, file_result=payload)
 
         repo = AudioRenderACLRepositoryImpl()
-        dto = repo.render_audio_file({'audios': []}, task_id='T1')
+        config = {'audios': []}
+        dto = repo.render_audio_file(config, task_id='T1')
         assert isinstance(dto, RenderedAudioDTO)
         assert dto.audio_bytes == b'RIFF....'
         assert (dto.container, dto.sample_rate, dto.bit_depth,
                 dto.channels, dto.duration_ms) == ('wav', 16000, 's16', 1, 1000)
-        # 请求参数：task_id + render_config JSON
-        req = stub.RenderAudioFile.call_args[0][0]
-        assert req.task_id == 'T1'
-        assert json.loads(req.render_config) == {'audios': []}
+        assert calls['mode'] == 'file'
+        assert calls['config'] is config
 
-    def test_unary_success_false_returns_none(self, monkeypatch):
-        resp = mock.Mock(success=False, message='mix failed', data='')
-        _patch_stub(monkeypatch, _fake_stub(file_response=resp))
+    def test_empty_audio_returns_none(self, monkeypatch):
+        _patch_render(monkeypatch, file_result={'audio_base64': ''})
         assert AudioRenderACLRepositoryImpl().render_audio_file({}, 'T1') is None
 
-    def test_grpc_error_returns_none(self, monkeypatch):
-        stub = _fake_stub()
-        stub.RenderAudioFile.side_effect = ConnectionError('服务不可达')
-        _patch_stub(monkeypatch, stub)
+    def test_mix_error_returns_none(self, monkeypatch):
+        _patch_render(monkeypatch, error=ConnectionError('混音失败'))
         assert AudioRenderACLRepositoryImpl().render_audio_file({}, 'T1') is None
 
 
 class TestRenderAudioStream:
     def test_stream_iterates_chunks(self, monkeypatch):
         chunks = [
-            mock.Mock(sequence=0, data='AAA=', is_last=False, message=''),
-            mock.Mock(sequence=1, data='BBB=', is_last=True, message=''),
+            {'sequence': 0, 'data': 'AAA=', 'is_last': False, 'message': ''},
+            {'sequence': 1, 'data': 'BBB=', 'is_last': True, 'message': ''},
         ]
-        stub = _fake_stub(stream_chunks=chunks)
-        _patch_stub(monkeypatch, stub)
+        calls = _patch_render(monkeypatch, stream_chunks=chunks)
         repo = AudioRenderACLRepositoryImpl()
-        out = list(repo.render_audio_stream({'audios': []}, task_id='T2'))
+        config = {'audios': []}
+        out = list(repo.render_audio_stream(config, task_id='T2'))
         assert [(c.sequence, c.data_b64, c.is_last) for c in out] == \
             [(0, 'AAA=', False), (1, 'BBB=', True)]
-        req = stub.RenderAudioStream.call_args[0][0]
-        assert req.task_id == 'T2'
-        assert json.loads(req.render_config) == {'audios': []}
+        assert calls['mode'] == 'stream'
+        assert calls['config'] is config
 
     def test_stream_error_converges_to_terminal_chunk(self, monkeypatch):
-        stub = _fake_stub()
-        stub.RenderAudioStream.side_effect = ConnectionError('断流')
-        _patch_stub(monkeypatch, stub)
+        _patch_render(monkeypatch, error=ConnectionError('断流'))
         out = list(AudioRenderACLRepositoryImpl().render_audio_stream({}, task_id='T2'))
         assert len(out) == 1
         assert out[0].is_last is True

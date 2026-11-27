@@ -12,7 +12,7 @@ import time
 import wave
 
 from shared.utils.log_handler import log_and_emit
-from audio_service.infrastructure.audio.audio_timeline import (
+from shared.audio_mix.timeline import (
     calculate_overlap_time,
     calculate_speaker_aware_audio_delays,
     calculate_audio_delays,

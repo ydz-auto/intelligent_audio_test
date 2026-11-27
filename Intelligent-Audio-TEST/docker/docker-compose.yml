@@ -143,6 +143,70 @@ services:
       - default
       - agent_internal
 
+  # ==================== audio_service（数据面）====================
+  # 拆分见 docs/audio服务拆分方案.md §6：本容器只做音频库 CRUD/元数据（AUDIO_ROLE=server），
+  # 真声卡播放/试听/SPL 由执行机宿主 audio_agent（AUDIO_ROLE=agent，:50052）承担。
+  # 宿主 audio_agent 已占用 50052，故本容器在开发栈映射到 50054，避免自环；
+  # 宿主 e2e/device 的 AUDIO_SERVICE_GRPC_PORT 由 scripts/host_services/control.py
+  # 从 compose 发布端口解析，不手抄。
+  audio_service:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.audio_service
+      args: *backend-build-args
+    ports:
+      - "127.0.0.1:${AUDIO_SERVICE_PUBLISHED_PORT:-50054}:50052"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-http://rustfs:9000}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-auto}
+      - OSS_ADDRESSING_STYLE=${OSS_ADDRESSING_STYLE:-}
+      - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME-intelligent-audio-test}
+      - OSS_KEY_PREFIX=${OSS_KEY_PREFIX:-intelligent_audio_test}
+      - SERVICE_NAME=audio_service
+      - GRPC_PORT=50052
+      # 标签 ACL 预热/标签名解析走 task_service 的 TagConfigService；
+      # 缺这组变量时回落 127.0.0.1:51061，容器内连接被拒（预热失败）
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=51061
+      # 数据面：初始化 DB / 软删清理 / 标签预热，不初始化 PyAudio
+      - AUDIO_ROLE=server
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
+    volumes:
+      - service_logs:/app/logs
+      # 分片上传/合并共享卷（§7.1）：UploadChunk 与 MergeChunks 可能落到不同副本，
+      # 必须共享同一份 chunks 目录；单副本下也保证容器重建后未合并分片不丢。
+      - audio_uploads:/app/storage/audios
+    deploy:
+      # >1 时宿主固定端口 50054 会冲突：需去掉 ports 映射（仅容器网络内访问，
+      # dns:///audio_service:50052 + round_robin），或改用端口范围发布。
+      replicas: ${AUDIO_SERVICE_REPLICAS:-1}
+    depends_on:
+      db_bootstrap:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',50052),2); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
   api_gateway:
     # INT-2373：Docker 引擎抖动/重启后长驻业务容器曾整批 Exited(255) 不自愈。
     # 长驻服务统一 unless-stopped（db_bootstrap 一次性 job 保持 "no"）。
@@ -187,8 +251,12 @@ services:
       - API_TEST_SERVICE_GRPC_PORT=51071
       - EVALUATION_SERVICE_HOST=evaluation_service
       - EVALUATION_SERVICE_GRPC_PORT=51091
-      - AUDIO_SERVICE_HOST=host.docker.internal
+      # 数据面（音频库 CRUD/元数据）走本栈 audio_service 容器；
+      # 硬件面（播放/试听/SPL）仍走执行机宿主 audio_agent。
+      - AUDIO_SERVICE_HOST=audio_service
       - AUDIO_SERVICE_GRPC_PORT=50052
+      - AUDIO_AGENT_HOST=${EXECUTOR_HOST:-host.docker.internal}
+      - AUDIO_AGENT_GRPC_PORT=50052
       - DEVICE_SERVICE_HOST=host.docker.internal
       - DEVICE_SERVICE_GRPC_PORT=50053
       - REPORT_SERVICE_HOST=report_service
@@ -287,8 +355,12 @@ services:
       - API_TEST_SERVICE_GRPC_PORT=51071
       - EVALUATION_SERVICE_HOST=evaluation_service
       - EVALUATION_SERVICE_GRPC_PORT=51091
-      - AUDIO_SERVICE_HOST=host.docker.internal
+      # 数据面（音频库 CRUD/元数据）走本栈 audio_service 容器；
+      # 硬件面（播放/试听/SPL）仍走执行机宿主 audio_agent。
+      - AUDIO_SERVICE_HOST=audio_service
       - AUDIO_SERVICE_GRPC_PORT=50052
+      - AUDIO_AGENT_HOST=${EXECUTOR_HOST:-host.docker.internal}
+      - AUDIO_AGENT_GRPC_PORT=50052
       - DEVICE_SERVICE_HOST=host.docker.internal
       - DEVICE_SERVICE_GRPC_PORT=50053
       # INT-1553：算法域 gRPC（algorithm_service:51067），缺省 localhost 在容器内解析为 ::1 → 调用全部失败
@@ -351,8 +423,12 @@ services:
       - GRPC_PORT=51091
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=51061
-      - AUDIO_SERVICE_HOST=host.docker.internal
+      # 数据面（音频库 CRUD/元数据）走本栈 audio_service 容器；
+      # 硬件面（播放/试听/SPL）仍走执行机宿主 audio_agent。
+      - AUDIO_SERVICE_HOST=audio_service
       - AUDIO_SERVICE_GRPC_PORT=50052
+      - AUDIO_AGENT_HOST=${EXECUTOR_HOST:-host.docker.internal}
+      - AUDIO_AGENT_GRPC_PORT=50052
       # INT-1548：结果采集走 device_service gRPC（宿主机 50053），缺省 localhost 在容器内解析为 ::1
       - DEVICE_SERVICE_HOST=host.docker.internal
       - DEVICE_SERVICE_GRPC_PORT=50053
@@ -413,8 +489,12 @@ services:
       - TASK_SERVICE_GRPC_PORT=51061
       - EVALUATION_SERVICE_HOST=evaluation_service
       - EVALUATION_SERVICE_GRPC_PORT=51091
-      - AUDIO_SERVICE_HOST=host.docker.internal
+      # 数据面（音频库 CRUD/元数据）走本栈 audio_service 容器；
+      # 硬件面（播放/试听/SPL）仍走执行机宿主 audio_agent。
+      - AUDIO_SERVICE_HOST=audio_service
       - AUDIO_SERVICE_GRPC_PORT=50052
+      - AUDIO_AGENT_HOST=${EXECUTOR_HOST:-host.docker.internal}
+      - AUDIO_AGENT_GRPC_PORT=50052
       - DEVICE_SERVICE_HOST=host.docker.internal
       - DEVICE_SERVICE_GRPC_PORT=50053
       # INT-1541：e2e 算法的参数/字段映射/参考参数 ACL 直连 algorithm_service
@@ -478,8 +558,12 @@ services:
       # INT-1548：device/audio 按环境铁律跑宿主机（gRPC 50053 / 50052），容器内经
       # host.docker.internal 访问；缺这两组变量时回落 localhost，容器内解析为 ::1 连接被拒
       # → 报告生成「任务没有关联任何设备或API」/ 对比 60s 超时 / case-averages 504
-      - AUDIO_SERVICE_HOST=host.docker.internal
+      # 数据面（音频库 CRUD/元数据）走本栈 audio_service 容器；
+      # 硬件面（播放/试听/SPL）仍走执行机宿主 audio_agent。
+      - AUDIO_SERVICE_HOST=audio_service
       - AUDIO_SERVICE_GRPC_PORT=50052
+      - AUDIO_AGENT_HOST=${EXECUTOR_HOST:-host.docker.internal}
+      - AUDIO_AGENT_GRPC_PORT=50052
       - DEVICE_SERVICE_HOST=host.docker.internal
       - DEVICE_SERVICE_GRPC_PORT=50053
       # INT-1548：API 资源 ACL 走 api_test_service 内网 gRPC（GRPC_PORT=51071，多副本 DNS 轮询）；
@@ -536,8 +620,12 @@ services:
       # INT-2038：audio 按环境铁律跑宿主机（gRPC 50052），容器内经 host.docker.internal 访问；
       # 缺这两组变量时回落 localhost（容器内为 127.0.0.1）连接被拒 → get_audios_by_ids 恒失败
       # → 用例参考参数（reference_params）逐参数生成为 0，前端「参考参数」恒为空
-      - AUDIO_SERVICE_HOST=host.docker.internal
+      # 数据面（音频库 CRUD/元数据）走本栈 audio_service 容器；
+      # 硬件面（播放/试听/SPL）仍走执行机宿主 audio_agent。
+      - AUDIO_SERVICE_HOST=audio_service
       - AUDIO_SERVICE_GRPC_PORT=50052
+      - AUDIO_AGENT_HOST=${EXECUTOR_HOST:-host.docker.internal}
+      - AUDIO_AGENT_GRPC_PORT=50052
     volumes:
       # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
       - service_logs:/app/logs
@@ -760,8 +848,12 @@ services:
       - GRPC_PORT=51071
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=51061
-      - AUDIO_SERVICE_HOST=host.docker.internal
+      # 数据面（音频库 CRUD/元数据）走本栈 audio_service 容器；
+      # 硬件面（播放/试听/SPL）仍走执行机宿主 audio_agent。
+      - AUDIO_SERVICE_HOST=audio_service
       - AUDIO_SERVICE_GRPC_PORT=50052
+      - AUDIO_AGENT_HOST=${EXECUTOR_HOST:-host.docker.internal}
+      - AUDIO_AGENT_GRPC_PORT=50052
       - EVALUATION_SERVICE_HOST=evaluation_service
       - EVALUATION_SERVICE_GRPC_PORT=51091
       # INT-1548：device_service 结果采集 gRPC 跑宿主机 50053，缺省 localhost 容器内为 ::1
@@ -806,6 +898,8 @@ services:
 volumes:
   # INT-81：服务运行日志/业务日志统一卷
   service_logs:
+  # audio_service 数据面分片上传/合并共享卷（§7.1 多副本必须共享同一 chunks 目录）
+  audio_uploads:
   # INT-2456：agent_service 长期记忆卷（§8.6 按 tenant/owner 隔离的文件树；
   # 不建表、不走 OSS，重启与镜像重建后保留）。
   agent_memory:

@@ -68,6 +68,7 @@ class AudioDTO:
     duration: Optional[float] = None
     audio_type: Optional[str] = None
     sample_rate: Optional[int] = None
+    channels: Optional[int] = None
     asr_text: Optional[str] = None
     deleted: Optional[bool] = None
     annotations: Any = None

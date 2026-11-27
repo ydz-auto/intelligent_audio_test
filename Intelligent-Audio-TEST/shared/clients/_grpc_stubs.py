@@ -3,11 +3,15 @@
 
 按服务分组的 stub 懒加载工厂，全部基于 _grpc_channels 中的共享 channel。
 """
+import logging
+import time
 from functools import lru_cache
 
 from shared.clients._grpc_channels import (
+    AUDIO_AGENT_GRPC_ADDR,
     _get_e2e_channel,
     _get_audio_channel,
+    _get_audio_agent_channel,
     _get_device_channel,
     _get_task_channel,
     _get_api_test_channel,
@@ -16,6 +20,8 @@ from shared.clients._grpc_channels import (
     _get_report_channel,
     _get_auth_channel,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ==================== e2e_test_service stubs ====================
@@ -28,33 +34,76 @@ def get_e2e_execution_service_stub():
 
 
 # ==================== audio_service stubs ====================
+#
+# 两个 channel 的职责边界（audio 拆分）：
+# - 数据面 AUDIO_SERVICE_*（服务器容器 AUDIO_ROLE=server）：音频库 CRUD/元数据/历史查询。
+# - 硬件面 AUDIO_AGENT_*（执行机宿主 AUDIO_ROLE=agent）：真声卡播放/停止/试听。
 
-@lru_cache(maxsize=1)
-def get_audio_service_stub():
-    """AudioService stub：播放/停止音频、获取播放状态、获取音频信息、SPL 测量、物理设备"""
+_AUDIO_AGENT_ADDR_TTL_SECONDS = 10.0
+_audio_agent_addr_cache = {}  # lab_name -> (expire_monotonic, addr)
+
+
+def resolve_audio_agent_addr(lab_name: str = None) -> str:
+    """解析执行机 audio_agent 地址（多 lab 路由）。
+
+    优先 Redis 注册表 `audio_agent` 实例（按 lab_name 过滤），未命中回退
+    AUDIO_AGENT_HOST:AUDIO_AGENT_GRPC_PORT。结果按 lab 短缓存 10s（§7.5），
+    实例下线靠心跳过期，避免每次播放都查注册中心。
+    """
+    key = lab_name or ''
+    now = time.monotonic()
+    cached = _audio_agent_addr_cache.get(key)
+    if cached and cached[0] > now:
+        return cached[1]
+
+    addr = AUDIO_AGENT_GRPC_ADDR
+    try:
+        from shared.utils.service_registry import RedisServiceRegistry
+        registry = RedisServiceRegistry()
+        inst = (registry.get_one('audio_agent', lab_name=lab_name) if lab_name else None) \
+            or registry.get_one('audio_agent')
+        if inst and inst.get('host') and inst.get('grpc_port'):
+            addr = f"{inst['host']}:{inst['grpc_port']}"
+    except Exception:
+        logger.debug("audio_agent 注册表解析失败，回退静态地址", exc_info=True)
+
+    _audio_agent_addr_cache[key] = (now + _AUDIO_AGENT_ADDR_TTL_SECONDS, addr)
+    return addr
+
+
+def get_audio_service_stub(lab_name: str = None):
+    """AudioService stub（硬件面）：播放/停止音频、播放状态、SPL 测量、物理设备
+
+    每次按 lab 解析地址（10s 缓存），channel 按地址复用；stub 本身很轻，不做缓存。
+    """
     from shared.proto import audio_service_pb2_grpc
-    return audio_service_pb2_grpc.AudioServiceStub(_get_audio_channel())
+    return audio_service_pb2_grpc.AudioServiceStub(
+        _get_audio_agent_channel(resolve_audio_agent_addr(lab_name)))
 
 
-@lru_cache(maxsize=1)
-def get_playback_service_stub():
-    """PlaybackService stub：开始/停止播放编排"""
+def get_playback_service_stub(lab_name: str = None):
+    """PlaybackService stub（硬件面）：开始/停止播放编排"""
     from shared.proto import audio_service_pb2_grpc
-    return audio_service_pb2_grpc.PlaybackServiceStub(_get_audio_channel())
+    return audio_service_pb2_grpc.PlaybackServiceStub(
+        _get_audio_agent_channel(resolve_audio_agent_addr(lab_name)))
 
 
 @lru_cache(maxsize=1)
 def get_audio_config_service_stub():
-    """AudioConfigService stub：音频 CRUD（元数据更新/标注/批量操作/删除/算法关联/标签/列表/详情/流播放/目录树/上传/合并/导入/转换/预览）"""
+    """AudioConfigService stub（数据面）：音频 CRUD/列表/详情/上传/导入/转换/历史查询
+
+    注意：PreviewAudio/StopPreviewAudio 自 audio 拆分后只在执行机 audio_agent 上实现，
+    请改用 get_audio_agent_config_stub()。
+    """
     from shared.proto import audio_service_pb2_grpc
     return audio_service_pb2_grpc.AudioConfigServiceStub(_get_audio_channel())
 
 
-@lru_cache(maxsize=1)
-def get_render_service_stub():
-    """RenderService stub（INT-67 混音下沉）：RenderAudioStream 逐 chunk 流式混音 / RenderAudioFile 整段混音整文件返回"""
+def get_audio_agent_config_stub(lab_name: str = None):
+    """AudioConfigService stub（硬件面，仅试听）：PreviewAudio / StopPreviewAudio"""
     from shared.proto import audio_service_pb2_grpc
-    return audio_service_pb2_grpc.RenderServiceStub(_get_audio_channel())
+    return audio_service_pb2_grpc.AudioConfigServiceStub(
+        _get_audio_agent_channel(resolve_audio_agent_addr(lab_name)))
 
 
 # ==================== device_service stubs ====================

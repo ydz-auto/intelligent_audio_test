@@ -133,8 +133,7 @@ def resolve_spl_gain(spl_mapping_id, target_spl, app=None):
 
 def resolve_dry_audios(audios, round_config=None):
     """从 audios 列表解析出 [(audio_config, audio_obj), ...]，仅保留干声。"""
-    from audio_service.infrastructure.persistence.audio_repository import AudioRepository
-    _repo = AudioRepository()
+    from audio_service.infrastructure.acl.audio_metadata_acl import audio_metadata
 
     result = []
     for audio_config in audios or []:
@@ -142,7 +141,7 @@ def resolve_dry_audios(audios, round_config=None):
         if not audio_id:
             continue
         try:
-            audio_obj = _repo.get_audio(audio_id)
+            audio_obj = audio_metadata.get_audio(audio_id)
         except Exception:
             audio_obj = None
         if not audio_obj or getattr(audio_obj, 'audio_type', None) == 'noise':
@@ -166,11 +165,10 @@ def _find_playback_device_by_name(dev_name):
 
 
 def _find_audio_by_name(audio_name):
-    """通过 AudioRepository 按 name/original_filename 查找音频对象。"""
+    """按 name/original_filename 查找音频对象（agent 角色经服务器 RPC 解析）。"""
     try:
-        from audio_service.infrastructure.persistence.audio_repository import AudioRepository
-        _repo = AudioRepository()
-        return _repo.find_audio_by_name(audio_name)
+        from audio_service.infrastructure.acl.audio_metadata_acl import audio_metadata
+        return audio_metadata.find_audio_by_name(audio_name)
     except Exception:
         return None
 
@@ -185,8 +183,7 @@ def build_noise_info(round_config, case_config, require_devices=True):
     播放设备才生效。require_devices=False（INT-67 API 混音路径）：噪声混入
     轮次混音缓冲，不经过物理设备，仅解析出音频即生效。
     """
-    from audio_service.infrastructure.persistence.audio_repository import AudioRepository
-    _repo = AudioRepository()
+    from audio_service.infrastructure.acl.audio_metadata_acl import audio_metadata
 
     def _resolve_bg_noise(bg_noise):
         """解析单个 background_noise 配置块，返回 (noise_audio, noise_spl, noise_devices)。"""
@@ -198,7 +195,7 @@ def build_noise_info(round_config, case_config, require_devices=True):
         audio_id = bg_noise.get('audio_id')
         if audio_id:
             try:
-                noise_audio = _repo.get_audio(audio_id)
+                noise_audio = audio_metadata.get_audio(audio_id)
             except Exception:
                 noise_audio = None
         # 兼容统一标注文件：audio 字段为文件名（字符串），按 name/original_filename 查库
@@ -206,7 +203,7 @@ def build_noise_info(round_config, case_config, require_devices=True):
             _audio_name = bg_noise.get('audio') or bg_noise.get('audio_name') or ''
             if _audio_name:
                 try:
-                    noise_audio = _repo.find_audio_by_name(_audio_name)
+                    noise_audio = audio_metadata.find_audio_by_name(_audio_name)
                 except Exception:
                     noise_audio = None
 
@@ -283,8 +280,7 @@ def build_dry_configs(dry_audios_info, audio_service, task_id=None, audio_local_
     Returns:
         (configs, playback_devices_map)
     """
-    from audio_service.infrastructure.persistence.audio_repository import AudioRepository
-    _repo = AudioRepository()
+    from audio_service.infrastructure.acl.audio_metadata_acl import audio_metadata
 
     playback_devices_map = {}
     configs = []
@@ -442,8 +438,7 @@ def build_interferer_configs(task_id, interferer_config, audio_service,
     if not interferer_config:
         return []
 
-    from audio_service.infrastructure.persistence.audio_repository import AudioRepository
-    _repo = AudioRepository()
+    from audio_service.infrastructure.acl.audio_metadata_acl import audio_metadata
 
     audio_to_play = []
 
@@ -528,7 +523,7 @@ def build_interferer_configs(task_id, interferer_config, audio_service,
             file_path = _resolve_audio_file_path(audio_info)
             if not file_path and audio_info.get('id'):
                 try:
-                    audio_obj = _repo.get_audio(audio_info['id'])
+                    audio_obj = audio_metadata.get_audio(audio_info['id'])
                     if audio_obj:
                         file_path = audio_obj.file_path
                 except Exception:
@@ -571,8 +566,7 @@ def build_interferer_configs(task_id, interferer_config, audio_service,
 
 def prepare_preview_playback_info(audio_configs, case_config):
     """为 preview 场景分类干声/噪声音频及设备。"""
-    from audio_service.infrastructure.persistence.audio_repository import AudioRepository
-    _repo = AudioRepository()
+    from audio_service.infrastructure.acl.audio_metadata_acl import audio_metadata
 
     dry_audios_info = []
     noise_case_audio_info = None
@@ -582,7 +576,7 @@ def prepare_preview_playback_info(audio_configs, case_config):
         if not audio_id:
             continue
         try:
-            audio = _repo.get_audio(audio_id)
+            audio = audio_metadata.get_audio(audio_id)
         except Exception:
             audio = None
         if not audio:
@@ -618,7 +612,7 @@ def prepare_preview_playback_info(audio_configs, case_config):
         audio_id = bg.get('audio_id')
         if audio_id:
             try:
-                noise_audio = _repo.get_audio(audio_id)
+                noise_audio = audio_metadata.get_audio(audio_id)
             except Exception:
                 noise_audio = None
         # 兼容文件名
@@ -626,7 +620,7 @@ def prepare_preview_playback_info(audio_configs, case_config):
             _audio_name = bg.get('audio') or bg.get('audio_name') or ''
             if _audio_name:
                 try:
-                    noise_audio = _repo.find_audio_by_name(_audio_name)
+                    noise_audio = audio_metadata.find_audio_by_name(_audio_name)
                 except Exception:
                     noise_audio = None
         noise_spl = bg.get('spl', 0)

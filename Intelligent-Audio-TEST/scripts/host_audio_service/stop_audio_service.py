@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""audio_service（:50052）优雅停止器 —— INT-2086 防楔死。
+"""audio_agent（:50052）优雅停止器 —— INT-2086 防楔死。
 
-强停带流的 audio_service 会把 WASAPI 会话锁在声卡驱动里，下一个进程
+强停带流的 audio_agent 会把 WASAPI 会话锁在声卡驱动里，下一个进程
 Pa_Initialize 撞锁挂死（INT-2073 实测）。停止必须按顺序：
 
     1. 定位 50052 监听 PID；
@@ -43,7 +43,7 @@ GRPC_MAX_MESSAGE_MB = 64
 # taskkill /F 是最后手段：强停会楔死 Windows 音频栈（见模块 docstring）。
 LAST_RESORT_WARNING = (
     "[WARN] 优雅停止失败，回退 taskkill /F（最后手段）。\n"
-    "       强停带流的 audio_service 有楔死 Windows 音频栈的风险：旧进程 WASAPI 会话"
+    "       强停带流的 audio_agent 有楔死 Windows 音频栈的风险：旧进程 WASAPI 会话"
     "可能锁在驱动里，重启后新进程 Pa_Initialize 会撞锁挂死。\n"
     "       若本机音频栈已被楔死，需管理员重启 Audiosrv（net stop Audiosrv && "
     "net start Audiosrv）或重启机器后再 `python stack.py up --audio-mode real`。"
@@ -202,7 +202,7 @@ def main(argv=None):
         log("[ERROR] --port / --cooldown 必须 > 0")
         return 2
 
-    log(f"[stop] audio_service 停止开始 port={args.port}")
+    log(f"[stop] audio_agent 停止开始 port={args.port}")
     pid = find_listener_pid(args.port)
     if pid is None:
         log(f"[stop] 端口 {args.port} 无监听进程——本来就没在跑。"

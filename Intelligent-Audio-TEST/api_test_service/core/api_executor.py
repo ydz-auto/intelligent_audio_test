@@ -420,6 +420,7 @@ class APIExecutor(BaseExecutor):
                     api_config, api_specific_config, audio,
                     total_audio_duration, case_config, case_algorithm_params,
                     device_type=data.get('device_type'),
+                    algorithm_params_col=data.get('algorithm_params_col'),
                 )
             except Exception as e:
                 import traceback
@@ -459,7 +460,7 @@ class APIExecutor(BaseExecutor):
     def _run_single_api(self, task_id, tc_rel_id, test_case_id, case_name, algorithm_type,
                         api_config, api_specific_config, audio,
                         total_audio_duration, case_config, case_algorithm_params,
-                        device_type=None):
+                        device_type=None, algorithm_params_col=None):
         """执行单个 API 的完整流程：健康检查 -> 创建任务 -> 等待 -> 结果 -> 评估"""
         api_paths, select_base_url, release_base_url = self._task_runner.setup_endpoints(
             task_id, tc_rel_id, case_name, api_config
@@ -555,7 +556,7 @@ class APIExecutor(BaseExecutor):
                 algorithm_type=algorithm_type,
                 device_type=device_type or DeviceType.HTTP_API.value,
                 case_algorithm_params=case_algorithm_params,
-                algorithm_params_col=data.get('algorithm_params_col'),
+                algorithm_params_col=algorithm_params_col,
             )
             self._log(level='INFO', category='evaluation',
                       content=f"API {api_config.id} 用例 {case_name} 采集完成，已提交评估队列",

@@ -51,6 +51,11 @@ from shared.utils.log_handler import log_not_emit
 _SCHEME_OSS = 'oss://'
 _SCHEME_LOCAL = 'local://'
 
+
+def _oss_fallback_forbidden() -> bool:
+    """执行机（AUDIO_ROLE=agent）禁止直连 OSS：文件必须经服务器网关取流。"""
+    return (os.environ.get('AUDIO_ROLE') or '').strip().lower() == 'agent'
+
 _MODULE_NAME = 'storage'
 
 # OSS 失败告警限频窗（INT-84）：同操作原因 5 分钟内最多 1 条 WARNING，
@@ -400,6 +405,10 @@ class Storage:
                     shutil.copy2(src, local_path)
                     return local_path
             raise FileNotFoundError(f'文件不存在（本地存储根）: {path}')
+        if _oss_fallback_forbidden():
+            # 执行机 audio_agent 不持有 COS 凭据：只允许经服务器网关取流
+            raise StorageUnavailableError(
+                f'执行机禁止直连 OSS 回落（须配置 STORAGE_SERVER_FETCH_URL 经服务器取流）: {path}')
         try:
             return self._oss.download_file(category, key, local_path)
         except Exception as e:
@@ -457,6 +466,9 @@ class Storage:
                     with open(src, 'rb') as f:
                         return f.read()
             raise FileNotFoundError(f'文件不存在（本地存储根）: {path}')
+        if _oss_fallback_forbidden():
+            raise StorageUnavailableError(
+                f'执行机禁止直连 OSS 回落（须配置 STORAGE_SERVER_FETCH_URL 经服务器取流）: {path}')
         try:
             return self._oss.download_bytes(category, key)
         except Exception as e:

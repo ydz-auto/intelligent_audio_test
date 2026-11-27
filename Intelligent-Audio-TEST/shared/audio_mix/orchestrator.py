@@ -9,11 +9,13 @@
 - mode='stream' → RenderAudioStream（100ms 窗口流式混音，HTTP 流式 / Realtime）
 - physical      → device_driver（E2E 物理播放，不经此处，显式拒绝）
 
-混音 6 步全部发生在 audio_service 进程内；消费端仅组装请求 + 消费产物。
-噪声合并复用 build_noise_info（executor 侧仅透传两级配置）。
+混音 6 步发生在 `api_test_service` 进程内；消费端仅组装请求 + 消费产物。
+源文件元数据（file_path / sample_rate / channels / duration）由消费端
+经 audio ACL 补齐后随 render_config 传入，本模块只做 storage 读取。
 """
 from __future__ import annotations
 
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -24,17 +26,16 @@ import numpy as np
 from shared.models.common_enums import DeviceType
 from shared.utils.log_handler import log_and_emit
 from shared.utils.config_manager import config_manager
-from audio_service.domain.services.audio_format_adapter import (
+from shared.audio_mix.format_adapter import (
     AudioFormat,
     AudioFormatAdapter,
     parse_target_format,
     unwrap_source_pcm,
 )
-from audio_service.domain.services.api_rms_spl_service import ApiRmsSplService
-from audio_service.infrastructure.audio.audio_timeline import (
+from shared.audio_mix.spl_gain import ApiRmsSplService
+from shared.audio_mix.timeline import (
     calculate_speaker_aware_audio_delays,
 )
-from audio_service.infrastructure.audio.playback_config_builder import build_noise_info
 
 
 def render_cfg(key: str, default):
@@ -78,7 +79,7 @@ class AudioStreamOrchestrator:
     """混音编排路由：公共前置（噪声合并/加载/适配/增益/时间轴）+ 路径分发"""
 
     def __init__(self):
-        self._pcm_cache: Dict[int, Tuple[bytes, float]] = {}
+        self._pcm_cache: Dict[int, Tuple[bytes, dict, float]] = {}
         self._cache_lock = threading.Lock()
 
     # ── 路由 ──
@@ -109,7 +110,18 @@ class AudioStreamOrchestrator:
 
     @staticmethod
     def _pcm_cache_ttl_seconds() -> float:
+        # AUDIO_PCM_CACHE_TTL（秒，0=关闭缓存）优先；否则取 audio_render 配置（默认 300s）
+        raw = os.environ.get('AUDIO_PCM_CACHE_TTL')
+        if raw is not None and raw.strip():
+            try:
+                return max(0.0, float(raw))
+            except ValueError:
+                pass
         return max(0.0, float(render_cfg('pcm_cache_ttl_seconds', 300)))
+
+    @staticmethod
+    def _pcm_cache_max_items() -> int:
+        return max(1, int(render_cfg('pcm_cache_max_items', 64)))
 
     # ── 渲染入口 ──
 
@@ -121,10 +133,10 @@ class AudioStreamOrchestrator:
         """
         context = self.prepare(render_config)
         if mode == 'file':
-            from audio_service.application.services.render_audio_file import RenderAudioFile
+            from shared.audio_mix.render_file import RenderAudioFile
             return RenderAudioFile.render(context)
         if mode == 'stream':
-            from audio_service.application.services.render_audio_stream import RenderAudioStream
+            from shared.audio_mix.render_stream import RenderAudioStream
             return RenderAudioStream.render(context)
         raise ValueError(f"未知混音路径: {mode}（可选 file/stream）")
 
@@ -138,17 +150,11 @@ class AudioStreamOrchestrator:
         spl_mapping = render_config.get('spl_mapping') or None
         audios = render_config.get('audios') or []
 
-        # Step 0：噪声合并（复用 build_noise_info，两级配置透传）→ 并入混音源
+        # Step 0：噪声合并（case 级 > round 级）→ 并入混音源
         noise_cfg = self._resolve_noise(render_config)
         entries = [cfg for cfg in audios if isinstance(cfg, dict) and cfg.get('audio_id')]
-        if noise_cfg and noise_cfg.get('audio_id'):
-            entries.append({
-                'audio_id': noise_cfg['audio_id'],
-                'type': AudioKind.NOISE,
-                'spl': noise_cfg.get('spl'),
-                'loop': noise_cfg.get('loop', False),
-                'delay': noise_cfg.get('delay', 0),
-            })
+        if noise_cfg:
+            entries.append({**noise_cfg, 'type': AudioKind.NOISE})
         if not entries:
             raise ValueError("render_config 缺少 audios 与噪声配置，无可混音内容")
 
@@ -159,7 +165,7 @@ class AudioStreamOrchestrator:
             kind = str(cfg.get('type') or AudioKind.SPEAKER)
             if kind not in (AudioKind.SPEAKER, AudioKind.INTERFERER, AudioKind.NOISE):
                 raise ValueError(f"未知音频类型: {kind}（可选 speaker/interferer/noise）")
-            pcm, meta = self._load_source_pcm(cfg['audio_id'])
+            pcm, meta = self._load_source_pcm(cfg)
             payload, src_fmt = unwrap_source_pcm(pcm, meta)
             adapted = AudioFormatAdapter.adapt(payload, src_fmt, target_format)
             samples = AudioFormatAdapter.parse_to_float32(adapted, target_format.bit_depth)
@@ -185,47 +191,31 @@ class AudioStreamOrchestrator:
         self._build_timeline(context, render_config)
         return context
 
-    # ── 噪声合并（复用 build_noise_info，两级配置透传） ──
+    # ── 噪声合并（case 级 > round 级；执行器已解析为 audio_id 并补齐资源字段） ──
 
     @staticmethod
     def _resolve_noise(render_config: dict) -> Optional[dict]:
-        """合并噪声配置：复用 build_noise_info（case 级 > round 级，与 E2E 共用同一语义）。
-
-        executor 侧仅透传两级配置（round_noise / case_noise），合并发生在 audio_service；
-        API 混音路径噪声不经物理设备，require_devices=False 仅解析音频。
-        """
-        round_bg = render_config.get('round_noise')
-        case_bg = render_config.get('case_noise')
-        if not round_bg and not case_bg:
-            return None
-        round_cfg = {'background_noise': round_bg} if round_bg else {}
-        case_cfg = {'background_noise': case_bg} if case_bg else {}
-        noise_info, _devices = build_noise_info(round_cfg, case_cfg, require_devices=False)
-        if not noise_info:
-            return None
-        n_config, _n_audio = noise_info
-        src_block = AudioStreamOrchestrator._match_noise_block(
-            n_config.get('audio_id'), round_bg, case_bg)
-        return {
-            'audio_id': n_config.get('audio_id'),
-            'spl': n_config.get('spl'),
-            'loop': bool(src_block.get('loop', False)) if src_block else False,
-            'delay': float(src_block.get('delay', 0) or 0) if src_block else 0.0,
-        }
-
-    @staticmethod
-    def _match_noise_block(resolved_audio_id, round_bg, case_bg):
-        """定位解析命中的噪声配置块（回填 loop/delay 透传字段）"""
-        for block in (case_bg, round_bg):
-            if isinstance(block, dict) and block.get('audio_id') == resolved_audio_id:
-                return block
+        """选取噪声配置（case 级 > round 级），返回带资源字段的混音条目。"""
+        for block in (render_config.get('case_noise'), render_config.get('round_noise')):
+            if not isinstance(block, dict) or not block.get('audio_id'):
+                continue
+            return {
+                'audio_id': block.get('audio_id'),
+                'spl': block.get('spl'),
+                'loop': bool(block.get('loop', False)),
+                'delay': float(block.get('delay', 0) or 0),
+                'file_path': block.get('file_path'),
+                'sample_rate': block.get('sample_rate'),
+                'channels': block.get('channels'),
+                'duration': block.get('duration'),
+            }
         return None
 
-    # ── Step 1：源加载（库内直连，含 TTL 缓存） ──
+    # ── Step 1：源加载（渲染配置已带 file_path，含 TTL/条数上限缓存） ──
 
-    def _load_source_pcm(self, audio_id) -> Tuple[bytes, dict]:
-        """按 audio_id 加载音频字节 + 元数据（audios 表归 audio_service 所有，进程内直连）"""
-        audio_id = int(audio_id)
+    def _load_source_pcm(self, cfg: dict) -> Tuple[bytes, dict]:
+        """按混音条目加载音频字节 + 元数据（元数据由消费端经 audio ACL 补齐）"""
+        audio_id = int(cfg['audio_id'])
         ttl = self._pcm_cache_ttl_seconds()
         now = time.monotonic()
         if ttl > 0:
@@ -233,26 +223,29 @@ class AudioStreamOrchestrator:
                 cached = self._pcm_cache.get(audio_id)
                 if cached and now - cached[2] < ttl:
                     return cached[0], cached[1]
-        pcm, meta = self._load_from_storage(audio_id)
+        pcm, meta = self._load_from_storage(cfg)
         if ttl > 0:
             with self._cache_lock:
+                if audio_id not in self._pcm_cache and \
+                        len(self._pcm_cache) >= self._pcm_cache_max_items():
+                    # 逐出最早插入条目，避免大文件长期驻留顶爆进程内存
+                    self._pcm_cache.pop(next(iter(self._pcm_cache)), None)
                 self._pcm_cache[audio_id] = (pcm, meta, now)
         return pcm, meta
 
-    def _load_from_storage(self, audio_id: int) -> Tuple[bytes, dict]:
-        from audio_service.infrastructure.persistence.audio_repository import AudioRepository
+    def _load_from_storage(self, cfg: dict) -> Tuple[bytes, dict]:
         from shared.infrastructure.storage import storage
-        audio = AudioRepository().get_audio(audio_id)
-        if audio is None or not getattr(audio, 'file_path', ''):
-            raise FileNotFoundError(f"音频 {audio_id} 不存在或缺少 file_path")
-        file_path = audio.file_path
+        audio_id = cfg.get('audio_id')
+        file_path = cfg.get('file_path')
+        if not isinstance(file_path, str) or not file_path:
+            raise FileNotFoundError(f"音频 {audio_id} 的 render_config 缺少 file_path")
         path = file_path if file_path.startswith(('oss://', 'local://')) \
             else storage.build_path('audios', file_path)
         pcm = storage.load_bytes(path)
         meta = {
-            'sample_rate': getattr(audio, 'sample_rate', 0) or 0,
-            'channels': getattr(audio, 'channels', 0) or 0,
-            'duration': getattr(audio, 'duration', 0.0) or 0.0,
+            'sample_rate': cfg.get('sample_rate') or 0,
+            'channels': cfg.get('channels') or 0,
+            'duration': cfg.get('duration') or 0.0,
         }
         return pcm, meta
 

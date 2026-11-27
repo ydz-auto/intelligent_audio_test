@@ -3,7 +3,7 @@
 本目录的 Dockerfile / compose / 脚本怎么构建、构建红了怎么判、引擎被构建打崩了怎么恢复。
 
 > **全栈启停唯一入口：仓库根 `python stack.py up/down/status/health`**（compose 栈 + 宿主机
-> audio/device 服务）。本目录的 `run_stack.py` 只做 docker-only 操作、`build_stack.py` 只构建镜像，
+> e2e/audio_agent/device 服务）。本目录的 `run_stack.py` 只做 docker-only 操作、`build_stack.py` 只构建镜像，
 > 均被 `stack.py` 委托调用。
 
 **构建入口：`python docker/build_stack.py`**（下文所有命令都在仓库根执行）。
@@ -27,7 +27,7 @@ WSL2 稳定性），只能靠「构建前体检 + 串行单服务 + 崩溃后按
 # 只体检引擎，不构建（20s 内必回，不跑无限等）
 python docker/build_stack.py --check
 
-# 构建全部 10 个容器化后端服务（audio/device 跑宿主机，无镜像）
+# 构建全部容器化后端服务（audio_agent/device 跑宿主机，无镜像；audio_service 数据面有镜像）
 python docker/build_stack.py
 
 # 常规发版：只构建这一批变动的服务（推荐）

@@ -14,6 +14,8 @@
 说明：proto 已拆分为 audio_service_pb2。
 """
 
+import grpc
+
 from shared.proto import audio_service_pb2 as e2e_pb
 from shared.proto import audio_service_pb2_grpc as e2e_grpc
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
@@ -128,7 +130,7 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
         """获取音频文件信息"""
         try:
             file_path = request.audio_file_path
-            from audio_service.infrastructure.audio.audio_timeline import get_audio_duration
+            from shared.audio_mix.timeline import get_audio_duration
             duration = get_audio_duration(file_path)
             import os
             file_size = os.path.getsize(file_path) if file_path and os.path.exists(file_path) else 0
@@ -582,6 +584,30 @@ class AudioConfigServiceServicer(e2e_grpc.AudioConfigServiceServicer):
         except Exception as e:
             return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
 
+    def RecordPlaybackHistory(self, request, context=None):
+        """回写播放/试听历史（执行机 agent → 服务器数据面，幂等键去重）"""
+        try:
+            data = _loads(request.data, {})
+            data['idempotency_key'] = request.idempotency_key
+            from shared.infrastructure.user_context import set_current_user_id, user_id_from_context
+            user_id = data.get('user_id') or user_id_from_context(context)
+            if user_id not in (None, ''):
+                data['user_id'] = user_id
+                set_current_user_id(user_id)
+            result = self.cmd_handler.handle_record_playback_history(data)
+            return self._wrap(result)
+        except Exception as e:
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
+
+    def ResolveAudioByName(self, request, context=None):
+        """按 name/original_filename 精确解析音频（宿主播放配置回填）"""
+        try:
+            data = _loads(request.data, {})
+            result = self.query_handler.handle_resolve_by_names(data.get('names') or [])
+            return self._wrap(result)
+        except Exception as e:
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
+
     # ---------- 上传操作 ----------
 
     def PresignUpload(self, request, context=None):
@@ -693,6 +719,9 @@ class AudioConfigServiceServicer(e2e_grpc.AudioConfigServiceServicer):
 
     def PreviewAudio(self, request, context=None):
         try:
+            # 试听历史需要归属到发起人：宿主 agent 从网关透传的 metadata 取 user_id
+            from shared.infrastructure.user_context import set_current_user_id, user_id_from_context
+            set_current_user_id(user_id_from_context(context))
             data = _loads(request.data, {})
             from audio_service.application.commands import PreviewAudioCommand
             result = self.cmd_handler.handle_preview_audio(
@@ -747,62 +776,86 @@ class AudioConfigServiceServicer(e2e_grpc.AudioConfigServiceServicer):
             return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
 
 
-# ==================== RenderServiceServicer（INT-67 混音下沉） ====================
+# ==================== 服务器数据面 AudioConfigService ====================
 
-class RenderServiceServicer(e2e_grpc.RenderServiceServicer):
-    """渲染服务 gRPC servicer，委托给 AudioStreamOrchestrator（application 层）。
+class DataPlaneAudioConfigServicer(AudioConfigServiceServicer):
+    """服务器（AUDIO_ROLE=server）注册的 AudioConfigService。
 
-    混音 6 步全部在 audio_service 进程内完成：
-    - RenderAudioStream（server-streaming）：100ms base64 PCM chunk 逐帧产出
-    - RenderAudioFile（unary）：整段混音 → 整文件聚合返回
-    失败经 chunk.message / response.message 返回，不抛裸异常断流。
+    数据面容器没有声卡（见 docs/audio服务拆分方案.md §3.1/§5.1），试听两 RPC
+    只在执行机 audio_agent 提供：在此显式返回 UNIMPLEMENTED，避免调用方把
+    试听误路由到数据面（旧的 AudioConfigServiceServicer 会让它“看起来实现”）。
+    """
+
+    _PREVIEW_ONLY_MSG = '{} 仅在执行机 audio_agent 提供（AUDIO_ROLE=agent）'
+
+    def _abort_preview(self, context, name):
+        message = self._PREVIEW_ONLY_MSG.format(name)
+        if context is None:
+            # 直接实例化调用的单测/脚本没有 gRPC context，用异常表达同一语义
+            raise NotImplementedError(message)
+        context.abort(grpc.StatusCode.UNIMPLEMENTED, message)
+
+    def PreviewAudio(self, request, context=None):
+        self._abort_preview(context, 'PreviewAudio')
+
+    def StopPreviewAudio(self, request, context=None):
+        self._abort_preview(context, 'StopPreviewAudio')
+
+
+# ==================== 执行机试听专用 AudioConfigService ====================
+
+class PreviewAudioConfigServicer(e2e_grpc.AudioConfigServiceServicer):
+    """执行机（AUDIO_ROLE=agent）注册的 AudioConfigService 裁剪版。
+
+    agent 只持有声卡、不持有 DB：仅实现试听两 RPC，其余方法未定义，
+    gRPC 生成注册器会自动把未实现方法挂成 UNIMPLEMENTED。
     """
 
     def __init__(self):
-        self._orchestrator = None
+        self._cmd_handler = None
 
     @property
-    def orchestrator(self):
-        if self._orchestrator is None:
-            from audio_service.application.services.audio_stream_orchestrator import (
-                audio_stream_orchestrator,
+    def cmd_handler(self):
+        if self._cmd_handler is None:
+            from audio_service.application.handlers import audio_command_handler
+            self._cmd_handler = audio_command_handler
+        return self._cmd_handler
+
+    def _wrap(self, result):
+        return e2e_pb.AudioConfigResponse(
+            success=result.get('success', False),
+            message=result.get('message', ''),
+            data=_dumps(result.get('data')),
+        )
+
+    def PreviewAudio(self, request, context=None):
+        try:
+            from shared.infrastructure.user_context import set_current_user_id, user_id_from_context
+            set_current_user_id(user_id_from_context(context))
+            data = _loads(request.data, {})
+            from audio_service.application.commands import PreviewAudioCommand
+            result = self.cmd_handler.handle_preview_audio(
+                PreviewAudioCommand(audio_id=request.audio_id, data=data)
             )
-            self._orchestrator = audio_stream_orchestrator
-        return self._orchestrator
-
-    def RenderAudioStream(self, request, context=None):
-        """流式混音：逐 chunk yield（100ms 粒度，is_last 终帧）"""
-        task_id = request.task_id
-        try:
-            render_config = _loads(request.render_config, {})
-            render_config['task_id'] = render_config.get('task_id', task_id)
-            for chunk in self.orchestrator.render(render_config, mode='stream'):
-                yield e2e_pb.RenderAudioChunk(
-                    task_id=task_id,
-                    sequence=int(chunk.get('sequence', 0)),
-                    data=chunk.get('data', ''),
-                    is_last=bool(chunk.get('is_last', False)),
-                    message='',
-                )
+            return self._wrap(result)
         except Exception as e:
-            yield e2e_pb.RenderAudioChunk(
-                task_id=task_id, sequence=-1, data='', is_last=True, message=str(e))
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
 
-    def RenderAudioFile(self, request, context=None):
-        """整段混音：整文件聚合返回（wav/pcm 按 target_format.container 包装）"""
+    def StopPreviewAudio(self, request, context=None):
         try:
-            render_config = _loads(request.render_config, {})
-            render_config['task_id'] = render_config.get('task_id', request.task_id)
-            result = self.orchestrator.render(render_config, mode='file')
-            return e2e_pb.RenderAudioFileResponse(
-                success=True, message="ok", data=_dumps(result))
+            from audio_service.application.commands import StopPreviewAudioCommand
+            result = self.cmd_handler.handle_stop_preview_audio(
+                StopPreviewAudioCommand(audio_id=request.audio_id)
+            )
+            return self._wrap(result)
         except Exception as e:
-            return e2e_pb.RenderAudioFileResponse(success=False, message=str(e), data="")
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
 
 
 __all__ = [
     "AudioServiceServicer",
     "PlaybackServiceServicer",
     "AudioConfigServiceServicer",
-    "RenderServiceServicer",
+    "DataPlaneAudioConfigServicer",
+    "PreviewAudioConfigServicer",
 ]

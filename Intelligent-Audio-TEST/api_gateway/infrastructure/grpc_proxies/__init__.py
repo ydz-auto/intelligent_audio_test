@@ -4,8 +4,9 @@
 - ExecutionEngine → gRPC ExecutionService（task_service）
 - ReevaluationExecutor → gRPC EvaluationService（evaluation_service）
 - device_driver_factory → gRPC DeviceService
-- audio_service / AudioService / spl_service → gRPC AudioService（audio_service:50052）
-- playback_orchestrator → gRPC PlaybackService（audio_service:50052）
+- audio_service / AudioService / spl_service → gRPC AudioService（执行机 audio_agent）
+- playback_orchestrator → gRPC PlaybackService（执行机 audio_agent）
+- audio_config_service 数据面 → gRPC AudioConfigService（服务器 audio_service），试听走 audio_agent
 - get_device_result_reextractor → gRPC DeviceResultService（device_service:50053）
 - EvaluationConfig → gRPC EvaluationConfigService（evaluation_service）
 - report_config_service → gRPC ReportConfigService（report_service）

@@ -50,6 +50,8 @@ if __name__ == '__main__':
     os.environ.setdefault('PYTHONUTF8', '1')
     os.environ.setdefault('SERVICE_NAME', 'audio_service')
     os.environ.setdefault('GRPC_PORT', '50052')
+    # 宿主机进程只承担硬件面（播放/试听/SPL），见 docs/audio服务拆分方案.md §6
+    os.environ.setdefault('AUDIO_ROLE', 'agent')
 
     runpy.run_module('audio_service.interfaces.grpc.server',
                      run_name='__main__', alter_sys=True)

@@ -36,8 +36,9 @@ class RedisServiceRegistry:
                         logger.warning(f"Redis 不可用，服务注册降级为本地模式: {e}")
         return cls._instance
 
-    def register(self, service_name, host, port, grpc_port=None, capabilities=None):
-        """注册服务实例"""
+    def register(self, service_name, host, port, grpc_port=None, capabilities=None,
+                 lab_name=None):
+        """注册服务实例（lab_name 用于多实验室按 lab 路由，如 audio_agent）"""
         instance_id = f"{service_name}:{host}:{port}:{uuid.uuid4().hex[:6]}"
         info = {
             'name': service_name,
@@ -45,6 +46,7 @@ class RedisServiceRegistry:
             'port': port,
             'grpc_port': grpc_port,
             'capabilities': capabilities or {},
+            'lab_name': lab_name,
             'running_tasks': 0,
             'cpu_load': 0.0,
             'registered_at': time.time(),
@@ -72,11 +74,12 @@ class RedisServiceRegistry:
             if service_name:
                 self.redis_client.srem(f'service:set:{service_name}', self._instance_id)
 
-    def discover(self, service_name):
+    def discover(self, service_name, lab_name=None):
         """发现服务实例（按负载排序）
 
         返回的每个 info 额外携带 instance_id 键（Redis Hash 的 field 名），
         供任务创建方选择归属实例（选 running_tasks 最少者）。
+        lab_name 非空时只返回该实验室注册的实例。
         """
         if not self._available:
             return []
@@ -87,13 +90,15 @@ class RedisServiceRegistry:
             if data:
                 info = json.loads(data)
                 if info.get('running_tasks') is not None:
+                    if lab_name and info.get('lab_name') != lab_name:
+                        continue
                     info['instance_id'] = iid.decode() if isinstance(iid, bytes) else iid
                     result.append(info)
         return sorted(result, key=lambda x: x.get('running_tasks', 0))
-    
-    def get_one(self, service_name):
+
+    def get_one(self, service_name, lab_name=None):
         """获取一个最空闲的实例"""
-        instances = self.discover(service_name)
+        instances = self.discover(service_name, lab_name=lab_name)
         return instances[0] if instances else None
 
     def get_instance_id(self):

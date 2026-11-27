@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
-"""audio_service.RenderService ACL 仓储 — gRPC 实现（INT-67 混音下沉消费端）。
+"""混音渲染 ACL 仓储 — 进程内实现（原 audio_service.RenderService 已合入 api_test_service）。
 
-执行器不得直调 stub：混音请求经本实现出站（get_render_service_stub），
-产物以 DTO 返回（整文件 bytes / 逐 chunk 迭代器）。
+混音 6 步在 `api_test_service` 进程内完成（本模块直接调用 shared.audio_mix），
+不再经 gRPC 出站；并发由 AUDIO_MIX_MAX_CONCURRENCY 信号量限制，避免多轮
+混音同时占满 CPU / 内存。
 """
 from __future__ import annotations
 
 import base64
 import logging
+import os
+import threading
 from typing import Iterator, Optional
 
 from api_test_service.domain.repositories.acl.audio_render_acl_repository import (
@@ -16,12 +19,19 @@ from api_test_service.domain.repositories.acl.audio_render_acl_repository import
     RenderedAudioDTO,
     route_render_mode,
 )
+from shared.audio_mix.orchestrator import audio_stream_orchestrator
 
 logger = logging.getLogger(__name__)
 
+# 进程内混音并发上限（PCM 缓存 + 混音线程都在本进程，必须设限）
+_MIX_MAX_CONCURRENCY = max(1, int(os.environ.get('AUDIO_MIX_MAX_CONCURRENCY', '2')))
+_MIX_SLOTS = threading.BoundedSemaphore(_MIX_MAX_CONCURRENCY)
+
+_orchestrator = audio_stream_orchestrator
+
 
 class AudioRenderACLRepositoryImpl(AudioRenderAclRepository):
-    """audio_service.RenderService 跨域混音 gRPC 实现。"""
+    """进程内混音实现（替代原 RenderService gRPC 客户端）。"""
 
     @staticmethod
     def build_render_config(round_config: dict, case_config: dict,
@@ -32,11 +42,10 @@ class AudioRenderACLRepositoryImpl(AudioRenderAclRepository):
                             overlap_time: float = 0.0) -> dict:
         """组装渲染配置：audios + 两级噪声透传 + 目标格式 + SPL 映射数据。
 
-        - 两级噪声仅透传（round_noise / case_noise），合并在 audio_service 侧复用
-          build_noise_info 裁决；
-        - target_format 缺省时不传（audio_service 回退默认 24kHz/s16/mono）；
+        - 两级噪声仅透传（round_noise / case_noise），case 级优先于 round 级；
+        - target_format 缺省时由混音模块回退默认 24kHz/s16/mono；
         - spl_mapping 为被测 API 的 ApiRmsSplMapping 数据 dict（消费端预载），
-          audio_service 不反向查库。
+          混音模块不反向查库。
         """
         if not isinstance(round_config, dict):
             round_config = {}
@@ -60,31 +69,16 @@ class AudioRenderACLRepositoryImpl(AudioRenderAclRepository):
         return config
 
     def render_audio_file(self, render_config: dict, task_id: str = '') -> Optional[RenderedAudioDTO]:
-        """整段混音（非实时）：unary 返回完整 wav/pcm。
-
-        显式放宽 deadline（INT-54 模式）：整段混音耗时随时长增长，
-        默认 60s 会误杀合法慢调用，超时上限进 audio_render 配置。
-        """
-        import json
-
-        from shared.clients.grpc_clients import get_render_service_stub
-        from shared.proto import audio_service_pb2 as e2e_pb
-        from shared.utils.config_manager import config_manager
-        from shared.utils.grpc_json import loads as _loads
+        """整段混音（非实时）：进程内一次渲染出完整 wav/pcm。"""
         try:
-            stub = get_render_service_stub()
-            timeout = float(config_manager.get_value(
-                'audio_render', 'render_file_timeout_seconds', 600))
-            resp = stub.RenderAudioFile(e2e_pb.RenderAudioFileRequest(
-                task_id=str(task_id),
-                render_config=json.dumps(render_config or {}, ensure_ascii=False, default=str),
-            ), timeout=timeout)
-            if not resp.success:
-                logger.warning("render_audio_file failed: %s", resp.message)
+            with _MIX_SLOTS:
+                data = _orchestrator.render(render_config or {}, mode='file') or {}
+            audio_bytes = base64.b64decode(data.get('audio_base64', ''))
+            if not audio_bytes:
+                logger.warning("render_audio_file 产物为空: task=%s", task_id)
                 return None
-            data = _loads(resp.data, {}) or {}
             return RenderedAudioDTO(
-                audio_bytes=base64.b64decode(data.get('audio_base64', '')),
+                audio_bytes=audio_bytes,
                 container=data.get('container', 'pcm'),
                 sample_rate=int(data.get('sample_rate', 24000)),
                 bit_depth=data.get('bit_depth', 's16'),
@@ -92,30 +86,22 @@ class AudioRenderACLRepositoryImpl(AudioRenderAclRepository):
                 duration_ms=int(data.get('duration_ms', 0)),
             )
         except Exception as e:
-            logger.warning("render_audio_file gRPC failed: %s", e)
+            logger.warning("render_audio_file 进程内混音失败: %s", e)
             return None
 
     def render_audio_stream(self, render_config: dict, task_id: str = '') -> Iterator[RenderChunkDTO]:
-        """流式混音（流式/Realtime）：逐 chunk 迭代（失败以 message+is_last 终止帧收口）。"""
-        import json
-
-        from shared.clients.grpc_clients import get_render_service_stub
-        from shared.proto import audio_service_pb2 as e2e_pb
+        """流式混音（流式/Realtime）：进程内逐 chunk 迭代（失败以终止帧收口）。"""
         try:
-            stub = get_render_service_stub()
-            chunks = stub.RenderAudioStream(e2e_pb.RenderAudioStreamRequest(
-                task_id=str(task_id),
-                render_config=json.dumps(render_config or {}, ensure_ascii=False, default=str),
-            ))
-            for chunk in chunks:
-                yield RenderChunkDTO(
-                    sequence=int(chunk.sequence),
-                    data_b64=chunk.data,
-                    is_last=bool(chunk.is_last),
-                    message=chunk.message,
-                )
+            with _MIX_SLOTS:
+                for chunk in _orchestrator.render(render_config or {}, mode='stream'):
+                    yield RenderChunkDTO(
+                        sequence=int(chunk.get('sequence', 0)),
+                        data_b64=chunk.get('data', ''),
+                        is_last=bool(chunk.get('is_last', False)),
+                        message=chunk.get('message', ''),
+                    )
         except Exception as e:
-            logger.warning("render_audio_stream gRPC failed: %s", e)
+            logger.warning("render_audio_stream 进程内混音失败: %s", e)
             yield RenderChunkDTO(sequence=-1, data_b64='', is_last=True, message=str(e))
 
 

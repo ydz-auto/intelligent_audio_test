@@ -170,7 +170,7 @@ class TestTimelineSemanticParity:
     """验收 1：API 侧多源轮次按标注构建时间轴（同 E2E 语义）"""
 
     def _prepare(self, monkeypatch, render_config):
-        from audio_service.application.services.audio_stream_orchestrator import (
+        from shared.audio_mix.orchestrator import (
             AudioStreamOrchestrator,
         )
         pcm = _tone_pcm(1.0, 440, 0.5)
@@ -287,7 +287,7 @@ class TestHandleGetAudioSpeakers:
 
     def test_extraction_aligned_with_e2e_pure_function(self):
         """提取口径与 E2E extract_speakers_from_annotations 同源（纯函数复用）"""
-        from audio_service.infrastructure.audio.audio_timeline import (
+        from shared.audio_mix.timeline import (
             speakers_from_annotation_data,
         )
         shapes = [

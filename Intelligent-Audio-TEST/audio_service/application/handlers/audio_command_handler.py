@@ -906,6 +906,35 @@ class AudioCommandHandler:
         from audio_service.application.services.audio_preview_service import audio_preview_service
         return audio_preview_service.stop_preview_audio(cmd.audio_id)
 
+    def handle_record_playback_history(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """回写播放/试听历史（执行机 agent → 服务器数据面，幂等键去重）。"""
+        from shared.infrastructure.user_context import set_current_user_id
+
+        data = dict(data or {})
+        idempotency_key = data.pop('idempotency_key', None)
+        if idempotency_key:
+            try:
+                from shared.utils.redis_pubsub import RedisPubSub
+                client = RedisPubSub().redis_client
+                # 7 天内同一幂等键只落一条（重试队列回放时命中即跳过）
+                if client is not None and not client.set(
+                        f'audio:playback_history:{idempotency_key}', '1',
+                        nx=True, ex=7 * 24 * 3600):
+                    return _ok(message='duplicate')
+            except Exception:
+                logger.debug("播放历史幂等键检查失败（Redis 不可用），按正常写入", exc_info=True)
+
+        user_id = data.pop('user_id', None)
+        try:
+            if user_id not in (None, ''):
+                set_current_user_id(user_id)
+            self.repo.record_playback_history(data)
+            self.repo.commit()
+            return _ok()
+        except Exception as exc:
+            logger.error("回写播放历史失败: %s", exc, exc_info=True)
+            return _fail(f'回写播放历史失败: {exc}')
+
     def handle_process_audio(self, cmd: ProcessAudioCommand) -> Dict[str, Any]:
         from audio_service.application.services.audio_analysis_service import audio_analysis_service
         return audio_analysis_service.process(cmd.audio_id, cmd.data)

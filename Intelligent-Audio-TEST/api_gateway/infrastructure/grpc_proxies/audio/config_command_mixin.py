@@ -6,7 +6,10 @@
 """
 import json
 
-from shared.clients.grpc_clients import get_audio_config_service_stub
+from shared.clients.grpc_clients import (
+    get_audio_agent_config_stub,
+    get_audio_config_service_stub,
+)
 
 from .._common import _grpc_call
 
@@ -310,7 +313,8 @@ class _AudioConfigCommandMixin:
         from shared.proto import audio_service_pb2 as audio_pb
 
         def _call():
-            stub = get_audio_config_service_stub()
+            # 试听落在执行机声卡：走 audio_agent（按 lab 路由，缺省回退 AUDIO_AGENT_HOST）
+            stub = get_audio_agent_config_stub((data or {}).get('lab_name'))
             resp = stub.PreviewAudio(audio_pb.PreviewAudioRequest(
                 audio_id=int(audio_id),
                 data=json.dumps(data or {}, ensure_ascii=False, default=str),
@@ -327,7 +331,8 @@ class _AudioConfigCommandMixin:
         from shared.proto import audio_service_pb2 as audio_pb
 
         def _call():
-            stub = get_audio_config_service_stub()
+            # 停止试听同样落在执行机 audio_agent
+            stub = get_audio_agent_config_stub()
             resp = stub.StopPreviewAudio(audio_pb.StopPreviewAudioRequest(
                 audio_id=int(audio_id),
             ))

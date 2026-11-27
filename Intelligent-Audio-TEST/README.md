@@ -113,7 +113,7 @@ cp .env.example .env
 # 3. 初始化数据库表（详见下方「数据库初始化与迁移」）
 python scripts/create_all_tables.py
 
-# 4. 唯一启动入口：Docker 栈 + 宿主机 e2e/audio/device 服务
+# 4. 唯一启动入口：Docker 栈（含音频数据面）+ 宿主机 e2e/audio_agent/device
 python stack.py up
 ```
 
@@ -122,15 +122,15 @@ python stack.py up
 
 | 命令 | 说明 |
 |---|---|
-| `python stack.py up` | compose 起栈（分离模式）+ 宿主机 e2e/device/audio |
+| `python stack.py up` | compose 起栈（分离模式，含音频数据面 audio_service）+ 宿主机 e2e/device/audio_agent |
 | `python stack.py up --build` | 先重建镜像再起 |
 | `python stack.py up --audio-mode shim` | Windows 音频栈楔死时用影子 pyaudio（硬件放音不可用） |
 | `python stack.py status` | 容器 + 宿主服务状态 |
 | `python stack.py health` | HTTP `/health` + gRPC / 基础设施 TCP 探测 |
 | `python stack.py down` | 优雅停宿主服务 → compose down（保留数据卷） |
-| `python stack.py restart host` | 只重启宿主 e2e/audio/device |
+| `python stack.py restart host` | 只重启宿主 e2e/audio_agent/device |
 | `python stack.py restart e2e` | 只重启宿主 e2e（:5002/:50051） |
-| `python stack.py logs api_gateway -f` | 容器日志；`logs audio` 看宿主音频日志 |
+| `python stack.py logs api_gateway -f` | 容器日志；`logs audio` 看宿主 audio_agent 日志 |
 | `python stack.py build api_gateway` | 只构建指定镜像（委托 `docker/build_stack.py`） |
 
 说明：

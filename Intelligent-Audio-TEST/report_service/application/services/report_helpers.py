@@ -267,7 +267,7 @@ class ReportHelpers:
     def _collect_audio_speakers(audio):
         """从音频 gRPC 详情的 annotations 提取 speaker 集合。
 
-        与播放侧 audio_service.infrastructure.audio.audio_timeline
+        与播放侧 shared.audio_mix.timeline
         .speakers_from_annotation_data 同口径：只看 segments[].speaker。
         """
         speakers = set()

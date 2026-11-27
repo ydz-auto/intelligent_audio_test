@@ -584,11 +584,11 @@ class TestConcurrentIsolation:
         import base64
         import threading
         import numpy as np
-        from audio_service.application.services.audio_stream_orchestrator import (
+        from shared.audio_mix.orchestrator import (
             AudioStreamOrchestrator,
         )
-        from audio_service.application.services.render_audio_file import RenderAudioFile
-        from audio_service.application.services.render_audio_stream import RenderAudioStream
+        from shared.audio_mix.render_file import RenderAudioFile
+        from shared.audio_mix.render_stream import RenderAudioStream
 
         rate = 16000
 
@@ -600,8 +600,9 @@ class TestConcurrentIsolation:
         # 1) render 流式混音上下文（真实 orchestration 管线）
         pcm_by_id = {1: (_tone_pcm(1.0), rate, 1)}
 
-        def fake_loader(self, audio_id):
-            pcm, sr, ch = pcm_by_id[int(audio_id)]
+        def fake_loader(self, cfg):
+            aid = int(cfg.get('audio_id')) if isinstance(cfg, dict) else int(cfg)
+            pcm, sr, ch = pcm_by_id[aid]
             return pcm, {'sample_rate': sr, 'channels': ch, 'duration': 0.0}
 
         monkeypatch.setattr(AudioStreamOrchestrator, '_load_source_pcm', fake_loader)
@@ -662,10 +663,9 @@ class TestRenderStreamSliceMultiply:
     def test_stream_matches_file_with_gain(self, monkeypatch):
         import base64
         import numpy as np
-        import audio_service.application.services.audio_stream_orchestrator as orch_mod
-        from audio_service.application.services.audio_stream_orchestrator import AudioStreamOrchestrator
-        from audio_service.application.services.render_audio_file import RenderAudioFile
-        from audio_service.application.services.render_audio_stream import RenderAudioStream
+        from shared.audio_mix.orchestrator import AudioStreamOrchestrator
+        from shared.audio_mix.render_file import RenderAudioFile
+        from shared.audio_mix.render_stream import RenderAudioStream
 
         rate = 16000
 
@@ -681,8 +681,8 @@ class TestRenderStreamSliceMultiply:
             2: (_tone_pcm(0.5, freq=880, amp=0.25), rate, 1),
         }
 
-        def fake_loader(self, audio_id):
-            aid = int(audio_id)
+        def fake_loader(self, cfg):
+            aid = int(cfg.get('audio_id')) if isinstance(cfg, dict) else int(cfg)
             pcm, sr, ch = pcm_by_id[aid]
             return pcm, {'sample_rate': sr, 'channels': ch, 'duration': 0.0}
 

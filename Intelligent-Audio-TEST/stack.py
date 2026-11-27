@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""唯一启动入口：Docker 栈 + 宿主 e2e/audio/device 服务。
+"""唯一启动入口：Docker 栈（含音频数据面 audio_service）+ 宿主 e2e/audio_agent/device 服务。
 
 历史上有两套并存的启动链（stack_ctl.ps1 → run_all.py 宿主全栈；docker 时代又一套
 run_stack.py + 三个 audio 启动 .cmd），端口/库地址多处手抄导致漂移（宿主
 audio_service 曾连到测试库）。本入口统一为一条命令：
 
-    python stack.py up                    # compose 起栈 + 宿主 e2e/device/audio
+    python stack.py up                    # compose 起栈 + 宿主 e2e/device/audio_agent
     python stack.py up --audio-mode shim  # Windows 音频栈楔死时用影子 pyaudio
     python stack.py up --no-docker --tunnel   # 日常形态：隧道 + 宿主三件套（数据面在服务器）
     python stack.py status                # 容器 + 宿主服务 + SSH 隧道状态
@@ -15,7 +15,7 @@ audio_service 曾连到测试库）。本入口统一为一条命令：
     python stack.py down --no-docker --tunnel # 日常形态的逆操作：停三件套 → 停隧道
     python stack.py restart host|audio|device|e2e|all|tunnel
     python stack.py tunnel start|stop|status|restart  # 委托 ssh_tunnels.ps1（端口口径只在那边维护）
-    python stack.py logs [服务名] [-f]    # 容器日志；audio/device/e2e 看宿主日志
+    python stack.py logs [服务名] [-f]    # 容器日志；audio_agent/device/e2e 看宿主日志
     python stack.py build [服务名...]     # 构建镜像（委托 docker/build_stack.py）
 
 端口口径不在本文件硬编码：compose 发布端口由 docker compose config 解析，
@@ -49,12 +49,13 @@ HTTP_PROBES = {
     5009: 'auth_service', 5010: 'transfer_agent',
 }
 TCP_PROBES = {
-    50051: 'e2e_test_service', 51061: 'task_service', 51067: 'algorithm_service',
+    50051: 'e2e_test_service', 50052: 'audio_service(数据面)',
+    51061: 'task_service', 51067: 'algorithm_service',
     51068: 'report_service', 51069: 'auth_service', 51091: 'evaluation_service',
     5432: 'postgres', 6379: 'redis', 9000: 'rustfs',
 }
 HOST_LOGS = {'e2e': 'e2e_test_service.log',
-             'audio': 'audio_service.log', 'audio_shim': 'audio_service_shim.log',
+             'audio': 'audio_agent.log', 'audio_shim': 'audio_agent_shim.log',
              'device': 'device_service.log'}
 
 
@@ -311,7 +312,7 @@ def cmd_build(args) -> int:
 # ---------------------------------------------------------------- CLI
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description='唯一启动入口：Docker 栈 + 宿主 e2e/audio/device')
+    parser = argparse.ArgumentParser(description='唯一启动入口：Docker 栈（含音频数据面）+ 宿主 e2e/audio_agent/device')
     sub = parser.add_subparsers(dest='command', required=True)
 
     p_up = sub.add_parser('up', help='起 Docker 栈 + 宿主服务')
@@ -353,7 +354,7 @@ def main(argv=None) -> int:
     p_health = sub.add_parser('health', help='HTTP /health + gRPC/基础设施 TCP 探测')
     p_health.set_defaults(func=cmd_health)
 
-    p_logs = sub.add_parser('logs', help='容器日志；e2e/audio/device/audio_shim 看宿主日志')
+    p_logs = sub.add_parser('logs', help='容器日志；e2e/audio_agent/device/audio_shim 看宿主日志')
     p_logs.add_argument('services', nargs='*', help='服务名（缺省全部容器）')
     p_logs.add_argument('-f', '--follow', action='store_true')
     p_logs.add_argument('-w', '--window', action='store_true',

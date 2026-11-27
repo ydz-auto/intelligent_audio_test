@@ -22,7 +22,7 @@ import pytest
 os.environ.setdefault('OSS_ACCESS_KEY', 'test-access')
 os.environ.setdefault('OSS_SECRET_KEY', 'test-secret')
 
-from audio_service.infrastructure.audio.audio_timeline import (
+from shared.audio_mix.timeline import (
     build_audio_timelines,
     build_speakers_map_from_dry_audios,
     calculate_speaker_aware_audio_delays,

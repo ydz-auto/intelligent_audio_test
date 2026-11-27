@@ -4,10 +4,12 @@
 #   5433 -> 127.0.0.1:5432    PostgreSQL
 #   6379 -> 127.0.0.1:6379    Redis
 #   53061/53067/53068/53069/53091 -> server gRPC
+#   53052 -> 127.0.0.1:50052  audio_service data plane (container, AUDIO_ROLE=server)
+#   53000 -> 127.0.0.1:15000  gateway (audio download proxy for executor)
 #
 # Reverse -R (server 10.0.0.9 -> local):
 #   10.0.0.9:50051 -> 127.0.0.1:50051  e2e gRPC
-#   10.0.0.9:50052 -> 127.0.0.1:50052  audio
+#   10.0.0.9:50052 -> 127.0.0.1:50052  audio_agent (executor hardware: playback/preview/SPL)
 #   10.0.0.9:50053 -> 127.0.0.1:50053  device
 #
 # NOTE: keep this file ASCII-only (Windows PowerShell 5.1 reads .ps1 as ANSI).
@@ -29,7 +31,9 @@ $Forwards = @(
     '-L', '53067:127.0.0.1:53067',
     '-L', '53068:127.0.0.1:53068',
     '-L', '53069:127.0.0.1:53069',
-    '-L', '53091:127.0.0.1:53091'
+    '-L', '53091:127.0.0.1:53091',
+    '-L', '53052:127.0.0.1:50052',
+    '-L', '53000:127.0.0.1:15000'
 )
 $Reverses = @(
     '-R', "${ReverseBind}:50051:127.0.0.1:50051",
@@ -37,7 +41,7 @@ $Reverses = @(
     '-R', "${ReverseBind}:50053:127.0.0.1:50053"
 )
 
-$ProbePorts = @(5433, 6379, 53061)
+$ProbePorts = @(5433, 6379, 53061, 53052, 53000)
 
 # Runs on the server before a fresh tunnel: kill sshd sessions that still own the
 # reverse binds but have no child process (dead client / half-open session).

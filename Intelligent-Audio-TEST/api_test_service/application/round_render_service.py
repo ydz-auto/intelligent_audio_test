@@ -91,7 +91,7 @@ class RoundRenderService:
         case_cfg = case_config if isinstance(case_config, dict) else {}
         audios = self._normalize_round_audios(round_cfg)
         api_id = getattr(api_config, 'id', None)
-        return self._render_acl.build_render_config(
+        config = self._render_acl.build_render_config(
             {'audios': audios, 'background_noise': round_cfg.get('background_noise')},
             case_cfg,
             target_format=self._resolve_target_format(api_config, stream=stream),
@@ -102,6 +102,45 @@ class RoundRenderService:
                                              clamp_max=1.0),
             overlap_time=self._extract_param(round_cfg, case_cfg, 'overlap_time'),
         )
+        self._attach_audio_assets(config)
+        return config
+
+    # ── 资源元数据补齐（混音进程内后不直连 audios 表） ──
+
+    def _attach_audio_assets(self, render_config: dict) -> None:
+        """用 audio ACL 为混音条目补齐 file_path / sample_rate / channels / duration。
+
+        混音模块搬到 api_test_service 进程内后不再直连 audios 表，源文件元数据
+        必须随 render_config 传入；两条噪声配置一并在内。
+        """
+        audio_acl = self._audio_acl
+        get_audio = getattr(audio_acl, 'get_audio', None) if audio_acl is not None else None
+        if not callable(get_audio):
+            return
+        targets = [cfg for cfg in (render_config.get('audios') or [])
+                   if isinstance(cfg, dict) and cfg.get('audio_id')]
+        for key in ('round_noise', 'case_noise'):
+            block = render_config.get(key)
+            if isinstance(block, dict) and block.get('audio_id'):
+                targets.append(block)
+        for cfg in targets:
+            if isinstance(cfg.get('file_path'), str) and cfg['file_path']:
+                continue
+            try:
+                audio = get_audio(cfg['audio_id'])
+            except Exception as e:  # 拉取失败按无文件处理，由混音侧报错定轮次失败
+                logger.warning("加载音频 %s 元数据失败: %s", cfg.get('audio_id'), e)
+                continue
+            file_path = getattr(audio, 'file_path', None) if audio is not None else None
+            if not isinstance(file_path, str) or not file_path:
+                continue
+            cfg['file_path'] = file_path
+            if cfg.get('sample_rate') is None:
+                cfg['sample_rate'] = getattr(audio, 'sample_rate', None)
+            if cfg.get('channels') is None:
+                cfg['channels'] = getattr(audio, 'channels', None)
+            if cfg.get('duration') is None:
+                cfg['duration'] = getattr(audio, 'duration', None)
 
     # ── audios 归一化 ──
 

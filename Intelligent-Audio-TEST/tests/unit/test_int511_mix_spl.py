@@ -22,7 +22,7 @@ import pytest
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
-from audio_service.infrastructure.audio.audio_timeline import (
+from shared.audio_mix.timeline import (
     build_audio_timelines,
     calculate_audio_delays,
     calculate_overlap_time,
@@ -33,7 +33,7 @@ from audio_service.infrastructure.audio.audio_timeline import (
 from audio_service.infrastructure.audio._engine_playback_mixin import (
     EnginePlaybackMixin,
 )
-from audio_service.domain.services.api_rms_spl_service import ApiRmsSplService as AudioApiRmsSplService
+from shared.audio_mix.spl_gain import ApiRmsSplService as AudioApiRmsSplService
 from audio_service.infrastructure.audio import spl_service as spl_service_module
 
 
@@ -380,7 +380,7 @@ class TestMixOrderContract:
 
     def test_adapt_order_bitdepth_float32_resample_channels(self, monkeypatch):
         """混音顺序契约：位深→float32 解析 → 重采样（源声道布局）→ 通道转换"""
-        from audio_service.domain.services.audio_format_adapter import (
+        from shared.audio_mix.format_adapter import (
             AudioFormat,
             AudioFormatAdapter,
         )

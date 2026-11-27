@@ -14,12 +14,12 @@ from typing import Dict
 
 import numpy as np
 
-from audio_service.application.services.audio_stream_orchestrator import (
+from shared.audio_mix.orchestrator import (
     AudioKind,
     AudioStreamOrchestrator,
     RenderContext,
 )
-from audio_service.domain.services.audio_format_adapter import AudioFormatAdapter
+from shared.audio_mix.format_adapter import AudioFormatAdapter
 
 
 class RenderAudioFile:

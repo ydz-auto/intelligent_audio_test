@@ -288,6 +288,8 @@ def test_shutdown_rpc_stops_runpy_started_server(monkeypatch):
 
     port = _pick_free_port()
     monkeypatch.setattr(service_ports, 'AUDIO_SERVICE_GRPC_PORT', port)
+    # 拆分后 Shutdown 属于执行机硬件面（AudioService 只在 AUDIO_ROLE=agent 注册）
+    monkeypatch.setenv('AUDIO_ROLE', 'agent')
     # 测试不开上游预热 / 真 pyaudio / 真清理线程；起服只验证优雅停止通道
     monkeypatch.setattr(BaseConfig, 'AUDIO_TAG_ACL_WARMUP_ENABLED', False)
     monkeypatch.setattr(audio_service, 'init_driver', lambda: None)

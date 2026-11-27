@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""宿主服务（e2e_test_service / audio_service / device_service）启停与环境口径。
+"""宿主服务（e2e_test_service / audio_agent / device_service）启停与环境口径。
 
 单一来源原则：
 - **端口/基础设施**：以 ``docker compose config`` 的解析结果为准（compose 与脚本用同一份
@@ -7,7 +7,7 @@
   漂移，导致宿主 audio_service 连到测试库、音频列表“消失”。
 - **DB/Redis/OSS 地址**：由上面解析出的宿主端口拼装，宿主服务永远连 Docker 栈暴露的
   入口（主库 intelligent_audio_test），不读仓库根 .env 里给 pytest 用的测试库地址。
-- **宿主服务自身端口**：e2e 5002/50051、audio 50052 / device 50053
+- **宿主服务自身端口**：e2e 5002/50051、audio_agent 50052 / device 50053
   （shared/config/service_ports.py 注册值）。
 
 只被 ``stack.py`` 调用，不单独作为命令行入口。
@@ -122,6 +122,15 @@ _GRPC_HOST_VARS = (
 # 默认基础设施宿主端口（compose 未发布会回落到这些值）
 _DEFAULT_INFRA_PORTS = {5432: 5432, 6379: 6379, 9000: 9000}
 
+# 执行机 audio_agent 不需要的数据面凭据（拆分方案 §6：agent 无 DB / 无 COS）
+_AUDIO_AGENT_ENV_DROP = (
+    'DATABASE_URL',
+    'POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_DB',
+    'POSTGRES_HOST', 'POSTGRES_PORT',
+    'OSS_ENDPOINT', 'OSS_PUBLIC_ENDPOINT', 'OSS_ACCESS_KEY', 'OSS_SECRET_KEY',
+    'OSS_BUCKET_NAME', 'OSS_KEY_PREFIX', 'OSS_REGION', 'OSS_ADDRESSING_STYLE',
+)
+
 DEFAULT_DB_USER = 'intelligent_audio_test'
 DEFAULT_DB_PASSWORD = 'intelligent_audio_test666'
 DEFAULT_DB_NAME = 'intelligent_audio_test'
@@ -180,8 +189,13 @@ def host_env() -> dict:
     for env_name in _GRPC_HOST_VARS:
         env[env_name] = '127.0.0.1'
 
+    # 数据面 audio_service（服务器容器）与硬件面 audio_agent（本机宿主）已拆分：
+    # - 宿主 e2e/device 的音频元数据走容器发布端口（compose 映射，dev 默认 50054）；
+    # - 播放/试听/SPL 仍走本机 agent :50052。
     env['AUDIO_SERVICE_HOST'] = '127.0.0.1'
-    env['AUDIO_SERVICE_GRPC_PORT'] = str(AUDIO_PORT)
+    env['AUDIO_SERVICE_GRPC_PORT'] = str(ports.get(50052, AUDIO_PORT))
+    env['AUDIO_AGENT_HOST'] = '127.0.0.1'
+    env['AUDIO_AGENT_GRPC_PORT'] = str(AUDIO_PORT)
     env['DEVICE_SERVICE_HOST'] = '127.0.0.1'
     env['DEVICE_SERVICE_GRPC_PORT'] = str(DEVICE_PORT)
     # 容器经 host.docker.internal 访问宿主服务，必须绑全部网卡
@@ -288,6 +302,8 @@ _FP_KEYS = {
     'LOCAL_STORAGE_ROOT', 'STORAGE_LOCAL_ROOT',
     'PORT', 'GRPC_PORT', 'SERVICE_NAME', 'SERVICE_HOST', 'LAB_NAME',
     'AUDIO_SERVICE_HOST', 'AUDIO_SERVICE_GRPC_PORT',
+    'AUDIO_AGENT_HOST', 'AUDIO_AGENT_GRPC_PORT', 'AUDIO_ROLE',
+    'STORAGE_SERVER_FETCH_URL',
     'DEVICE_SERVICE_HOST', 'DEVICE_SERVICE_GRPC_PORT',
 }
 # 各宿主服务真正加载的源码目录（改动后必须重启才生效）
@@ -447,6 +463,18 @@ def _service_env(service: str, mode: str) -> dict:
         str(py_dir), str(py_dir / 'Library' / 'bin'), str(py_dir / 'Scripts'),
         env.get('PATH', ''),
     ])
+    if service == 'audio':
+        # 执行机 audio_agent 只承担硬件面：不连 DB、不直连 OSS（见拆分方案 §6）。
+        for key in _AUDIO_AGENT_ENV_DROP:
+            env.pop(key, None)
+        env['AUDIO_ROLE'] = 'agent'
+        env['AUDIO_AGENT_HOST'] = '127.0.0.1'
+        env['AUDIO_AGENT_GRPC_PORT'] = str(AUDIO_PORT)
+        env.setdefault('LAB_NAME', 'lab-a')
+        if not env.get('STORAGE_SERVER_FETCH_URL'):
+            # 音频字节只经服务器网关取流（agent 禁直连 OSS）
+            gateway_port = published_ports().get(5000, 5000)
+            env['STORAGE_SERVER_FETCH_URL'] = f'http://127.0.0.1:{gateway_port}'
     if service == 'audio' and mode == 'shim':
         env['PYTHONPATH'] = os.pathsep.join(
             [str(SHIM_DIR), str(REPO), str(REPO / 'shared' / 'proto')])
@@ -578,11 +606,11 @@ def stop_e2e(timeout: float = DEVICE_STOP_TIMEOUT) -> tuple[bool, str]:
 
 def start_audio(mode: str = 'real', timeout: float = READY_TIMEOUT_DEFAULT,
                 check_timeout: float = 60.0) -> tuple[bool, str]:
-    """启动宿主 audio_service。mode=real 走真实 pyaudio；shim 走影子模块。"""
+    """启动宿主 audio_agent（AUDIO_ROLE=agent）。mode=real 走真实 pyaudio；shim 走影子模块。"""
     if mode not in ('real', 'shim'):
         return False, f'[fail] 未知 --audio-mode: {mode}（real|shim）'
     if port_listening(AUDIO_PORT) and not _needs_restart('audio', mode):
-        return True, f'[skip] audio_service 已在 :{AUDIO_PORT} 监听（代码/配置未变）'
+        return True, f'[skip] audio_agent 已在 :{AUDIO_PORT} 监听（代码/配置未变）'
     if mode == 'real':
         check = subprocess.run(
             [PY, str(AUDIO_DIR / 'check_pyaudio_health.py'),
@@ -593,13 +621,13 @@ def start_audio(mode: str = 'real', timeout: float = READY_TIMEOUT_DEFAULT,
         if check.returncode != 0:
             output = (check.stdout or '') + (check.stderr or '')
             return False, f'[fail] real pyaudio 自检未通过（不重试）:\n{output.strip()}'
-    log_name = 'audio_service.log' if mode == 'real' else 'audio_service_shim.log'
-    return _start('audio_service', 'audio', mode, AUDIO_PORT, timeout, log_name,
+    log_name = 'audio_agent.log' if mode == 'real' else 'audio_agent_shim.log'
+    return _start('audio_agent', 'audio', mode, AUDIO_PORT, timeout, log_name,
                   restart=stop_audio)
 
 
 def stop_audio(cooldown: float = 8.0, timeout: float = 90.0) -> tuple[bool, str]:
-    """优雅停止 audio_service（gRPC Shutdown → 端口释放 → 冷却），并收掉守护进程。"""
+    """优雅停止 audio_agent（gRPC Shutdown → 端口释放 → 冷却），并收掉守护进程。"""
     _request_stop('audio')
     try:
         env = host_env()
@@ -653,7 +681,7 @@ def status() -> list[tuple[str, int, int | None]]:
     """返回 [(服务名, 端口, PID 或 None)]。"""
     rows = []
     for name, port in (('e2e_test_service', E2E_HTTP_PORT),
-                       ('audio_service', AUDIO_PORT),
+                       ('audio_agent', AUDIO_PORT),
                        ('device_service', DEVICE_PORT)):
         rows.append((name, port, listener_pid(port) if port_listening(port) else None))
     return rows

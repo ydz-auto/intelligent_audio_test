@@ -58,7 +58,7 @@ openpyxl==3.1.5
 
 # ===== Audio（pydub 仅保留 Python API；容器内无 ffmpeg 二进制调用）=====
 # 依据：全仓 pydub 用法只有 api_gateway/application/services/audio/audio_common.py 的
-# convert_to_wav，且该方法无任何调用方；音频转码在宿主 audio_service 里完成。
+# convert_to_wav，且该方法无任何调用方；音频转码由服务器 audio_service 完成。
 pydub==0.25.1
 
 # ===== Cryptography =====

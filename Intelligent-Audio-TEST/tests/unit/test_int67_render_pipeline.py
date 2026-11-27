@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
-"""INT-67 混音下沉管线单测 — AudioStreamOrchestrator + RenderAudioFile/Stream + Servicer
+"""INT-67 混音下沉管线单测 — AudioStreamOrchestrator + RenderAudioFile/Stream
 
 覆盖（08 设计文档 §3.1/§3.2/§3.3/§四/§五）：
 - 编排路由表：http_api(±stream) / websocket_api / physical（显式拒绝）/ 未知
-- 噪声合并复用 build_noise_info：executor 侧仅透传两级配置（require_devices=False）
+- 噪声合并：case 级优先于 round 级（资源字段随 render_config 透传，不再查库）
 - Step 2 格式适配（源 48k/stereo → 目标 16k/mono）、Step 3 增益（有 SPL 补偿+映射、无 SPL 原样）
 - Step 4 speaker 感知时间轴复用（顺序/交叠/干扰人 delay/噪声独立混入）
 - RenderAudioFile 整段混音（5A/6A）：长度、容器包装、逐样本无削波
 - RenderAudioStream 逐窗混音（5B/6B）：100ms 窗口、is_last、补零、与整段输出逐字节一致
-- Servicer：stream 逐 chunk 透传 / file 成功与失败收敛
 """
 import base64
 import json
@@ -19,13 +18,12 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-import audio_service.application.services.audio_stream_orchestrator as orch_mod
-from audio_service.application.services.audio_stream_orchestrator import (
+from shared.audio_mix.orchestrator import (
     AudioKind,
     AudioStreamOrchestrator,
 )
-from audio_service.application.services.render_audio_file import RenderAudioFile
-from audio_service.application.services.render_audio_stream import RenderAudioStream
+from shared.audio_mix.render_file import RenderAudioFile
+from shared.audio_mix.render_stream import RenderAudioStream
 
 RATE = 16000
 
@@ -42,10 +40,10 @@ def _tone_pcm(seconds, rate, freq, amp, channels=1, sampwidth_bits=16):
 
 
 def _fake_loader(pcm_by_id):
-    """替身源加载器：audio_id → (pcm bytes, 元数据)"""
+    """替身源加载器：混音条目（含 audio_id）→ (pcm bytes, 元数据)"""
 
-    def load(self, audio_id):
-        aid = int(audio_id)
+    def load(self, cfg):
+        aid = int(cfg.get('audio_id')) if isinstance(cfg, dict) else int(cfg)
         if aid not in pcm_by_id:
             raise FileNotFoundError(aid)
         pcm, rate, channels = pcm_by_id[aid]
@@ -83,38 +81,27 @@ class TestRoute:
 
 
 class TestNoiseMerge:
-    """噪声合并复用 build_noise_info：两级配置透传，合并归 audio_service"""
+    """噪声合并：case 级优先于 round 级，资源字段随配置透传（不再查库）"""
 
-    def test_resolve_noise_reuses_build_noise_info(self, monkeypatch):
-        recorded = {}
-
-        def fake_build_noise_info(round_config, case_config, require_devices=True):
-            recorded['round'] = round_config
-            recorded['case'] = case_config
-            recorded['require_devices'] = require_devices
-            return (({'spl': 45.0, 'audio_id': 3}, object()), [])
-
-        monkeypatch.setattr(orch_mod, 'build_noise_info', fake_build_noise_info)
+    def test_resolve_noise_case_level_wins(self):
         config = {
             'round_noise': {'audio_id': 9, 'spl': 40, 'loop': True, 'delay': 500},
             'case_noise': {'audio_id': 3, 'spl': 45},
         }
         resolved = AudioStreamOrchestrator._resolve_noise(config)
-        # 两级原样透传给 build_noise_info，且 API 路径不要求设备
-        assert recorded['round'] == {'background_noise': config['round_noise']}
-        assert recorded['case'] == {'background_noise': config['case_noise']}
-        assert recorded['require_devices'] is False
-        # 命中块（case 级优先，audio_id=3 命中）回填 loop/delay 透传字段
-        assert resolved == {'audio_id': 3, 'spl': 45.0, 'loop': False, 'delay': 0.0}
+        assert resolved == {
+            'audio_id': 3, 'spl': 45, 'loop': False, 'delay': 0.0,
+            'file_path': None, 'sample_rate': None, 'channels': None, 'duration': None,
+        }
 
-    def test_resolve_noise_round_block_fields_when_round_wins(self, monkeypatch):
-        monkeypatch.setattr(
-            orch_mod, 'build_noise_info',
-            lambda r, c, require_devices=True: (({'spl': 40.0, 'audio_id': 9}, object()), []))
+    def test_resolve_noise_round_block_fields_when_round_wins(self):
         resolved = AudioStreamOrchestrator._resolve_noise({
             'round_noise': {'audio_id': 9, 'spl': 40, 'loop': True, 'delay': 250},
         })
-        assert resolved == {'audio_id': 9, 'spl': 40.0, 'loop': True, 'delay': 250.0}
+        assert resolved == {
+            'audio_id': 9, 'spl': 40.0, 'loop': True, 'delay': 250.0,
+            'file_path': None, 'sample_rate': None, 'channels': None, 'duration': None,
+        }
 
     def test_resolve_noise_empty(self):
         assert AudioStreamOrchestrator._resolve_noise({}) is None
@@ -154,9 +141,6 @@ class TestPrepare:
             1: (_tone_pcm(0.5, RATE, 440, 0.5), RATE, 1),
             3: (_tone_pcm(0.2, RATE, 100, 0.3), RATE, 1),
         })
-        monkeypatch.setattr(
-            orch_mod, 'build_noise_info',
-            lambda r, c, require_devices=True: (({'spl': 45.0, 'audio_id': 3}, object()), []))
         config = {
             'audios': [{'audio_id': 1, 'type': 'speaker', 'spl': None}],
             'round_noise': {'audio_id': 3, 'spl': 45, 'loop': True, 'delay': 100},
@@ -230,9 +214,6 @@ class TestTimeline:
             ],
             'round_noise': {'audio_id': 3, 'spl': 40, 'loop': False},
         }
-        monkeypatch.setattr(
-            orch_mod, 'build_noise_info',
-            lambda r, c, require_devices=True: (({'spl': 40.0, 'audio_id': 3}, object()), []))
         context = orchestrator.prepare(config)
         placement_by_id = {
             context.sources[idx].audio_id: start for idx, start in context.placements
@@ -358,9 +339,6 @@ class TestStreamExit:
             2: (_tone_pcm(0.3, 48000, 880, 0.2, channels=2), 48000, 2),
             3: (_tone_pcm(0.25, RATE, 100, 0.1), RATE, 1),
         })
-        monkeypatch.setattr(
-            orch_mod, 'build_noise_info',
-            lambda r, c, require_devices=True: (({'spl': 45.0, 'audio_id': 3}, object()), []))
         config = {
             'target_format': {'sample_rate': RATE, 'bit_depth': 's16', 'channels': 1},
             'audios': [
@@ -396,9 +374,6 @@ class TestStreamExit:
         """loop 噪声跨窗口环绕平铺：窗口拼接与整段平铺一致"""
         noise = _tone_pcm(0.3, RATE, 100, 0.4)   # 0.3s 循环体，跨多窗
         _patch_loader(monkeypatch, {3: (noise, RATE, 1)})
-        monkeypatch.setattr(
-            orch_mod, 'build_noise_info',
-            lambda r, c, require_devices=True: (({'spl': 50.0, 'audio_id': 3}, object()), []))
         context = orchestrator.prepare({
             'audios': [],
             'round_noise': {'audio_id': 3, 'spl': 50, 'loop': True, 'delay': 200},
@@ -451,55 +426,3 @@ class TestOrchestratorRenderDispatch:
         with pytest.raises(ValueError):
             orchestrator.render({}, mode='bogus')
 
-
-class TestRenderServicer:
-    def _servicer_with_stub_orchestrator(self, monkeypatch, render_result):
-        from audio_service.interfaces.grpc.servicers import RenderServiceServicer
-        servicer = RenderServiceServicer()
-        render_fn = render_result if callable(render_result) \
-            else (lambda cfg, mode: render_result)
-        fake_orch = SimpleNamespace(render=render_fn)
-        monkeypatch.setattr(type(servicer), 'orchestrator',
-                            property(lambda self: fake_orch))
-        return servicer
-
-    def test_stream_yields_chunks(self, monkeypatch):
-        chunks = [
-            {'sequence': 0, 'data': 'AAA=', 'is_last': False},
-            {'sequence': 1, 'data': 'BBB=', 'is_last': True},
-        ]
-        servicer = self._servicer_with_stub_orchestrator(monkeypatch, chunks)
-        from shared.proto import audio_service_pb2 as e2e_pb
-        req = e2e_pb.RenderAudioStreamRequest(
-            task_id='T9', render_config=json.dumps({'audios': []}))
-        out = list(servicer.RenderAudioStream(req))
-        assert len(out) == 2
-        assert out[0].sequence == 0 and out[0].data == 'AAA=' and out[0].is_last is False
-        assert out[1].sequence == 1 and out[1].is_last is True and out[1].message == ''
-
-    def test_stream_failure_converges_to_error_chunk(self, monkeypatch):
-        def boom(cfg, mode):
-            raise RuntimeError('混音失败')
-        servicer = self._servicer_with_stub_orchestrator(monkeypatch, boom)
-        from shared.proto import audio_service_pb2 as e2e_pb
-        req = e2e_pb.RenderAudioStreamRequest(task_id='T9', render_config='{}')
-        out = list(servicer.RenderAudioStream(req))
-        assert len(out) == 1
-        assert out[0].is_last is True
-        assert '混音失败' in out[0].message
-
-    def test_file_success_and_failure(self, monkeypatch):
-        from shared.proto import audio_service_pb2 as e2e_pb
-        ok = self._servicer_with_stub_orchestrator(
-            monkeypatch, lambda cfg, mode: {'container': 'wav', 'audio_base64': 'AAA='})
-        resp = ok.RenderAudioFile(e2e_pb.RenderAudioFileRequest(
-            task_id='T9', render_config='{}'))
-        assert resp.success is True
-        assert json.loads(resp.data)['container'] == 'wav'
-
-        bad = self._servicer_with_stub_orchestrator(
-            monkeypatch, lambda cfg, mode: (_ for _ in ()).throw(ValueError('bad config')))
-        resp = bad.RenderAudioFile(e2e_pb.RenderAudioFileRequest(
-            task_id='T9', render_config='{}'))
-        assert resp.success is False
-        assert 'bad config' in resp.message

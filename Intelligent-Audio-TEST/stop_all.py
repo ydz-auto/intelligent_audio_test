@@ -60,7 +60,7 @@ SERVICES_TO_STOP = [
     {'name': 'report_service',     'port': REPORT_SERVICE_HTTP_PORT,      'grpc_port': REPORT_SERVICE_GRPC_PORT},
     {'name': 'auth_service',       'port': AUTH_SERVICE_HTTP_PORT,         'grpc_port': AUTH_SERVICE_GRPC_PORT},
     {'name': 'transfer_agent',     'port': TRANSFER_AGENT_HTTP_PORT,        'grpc_port': TRANSFER_AGENT_GRPC_PORT},
-    {'name': 'audio_service',      'port': None,                           'grpc_port': AUDIO_SERVICE_GRPC_PORT},
+    {'name': 'audio_agent',        'port': None,                           'grpc_port': AUDIO_SERVICE_GRPC_PORT},
     {'name': 'device_service',     'port': None,                           'grpc_port': DEVICE_SERVICE_GRPC_PORT},
     {'name': 'frontend',           'port': FRONTEND_DEV_PORT,              'grpc_port': None},
 ]

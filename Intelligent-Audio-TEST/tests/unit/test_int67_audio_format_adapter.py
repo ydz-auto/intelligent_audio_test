@@ -17,7 +17,7 @@ import wave
 import numpy as np
 import pytest
 
-from audio_service.domain.services.audio_format_adapter import (
+from shared.audio_mix.format_adapter import (
     AudioFormat,
     AudioFormatAdapter,
     BitDepth,

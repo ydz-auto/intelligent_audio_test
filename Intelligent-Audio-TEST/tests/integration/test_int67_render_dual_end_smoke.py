@@ -1,18 +1,16 @@
 # -*- coding: utf-8 -*-
-"""INT-67 双端冒烟（验收补充）：消费端 ACL → 真实 gRPC 传输 → RenderServiceServicer → 双出口。
+"""INT-67 混音冒烟（进程内）：消费端 ACL → shared.audio_mix → 双出口。
 
-补开发卡自测缺口（未起真实双端联调）：进程内起真实 gRPC server（注册真实
-RenderServiceServicer，与 audio_service/interfaces/grpc/server.py 注册方式一致），
-消费端经真实 AudioRenderACLRepositoryImpl 出站，全链路走真实 proto 序列化与
-网络回环；仅「音频库存储读取」以替身承载（存储/DB 基础设施非本卡改动范围）。
+混音已并入 api_test_service 进程，本测试直接走真实 AudioRenderACLRepositoryImpl
+（不经 gRPC）；仅「音频库存储读取」以替身承载（存储/DB 基础设施非本卡改动范围）。
 
 覆盖：
 - RenderAudioFile：24bit/44.1k/stereo 源 → 16k/s16/mono/wav（24bit 防误解析过线验证，
   与 16bit 同幅度源输出幅度一致）
 - RenderAudioStream：chunk 契约（整窗恒定 = rate×ch×bytes×0.1s、序号连续、is_last 终帧）
-- 强不变量：流式逐窗拼接 == 整段混音输出（真实传输下逐字节一致）
+- 强不变量：流式逐窗拼接 == 整段混音输出（逐字节一致）
 - ApiRmsSplService 校准点插值经线生效（映射倍增 → 输出 RMS 精确翻倍；clamp 边界）
-- 失败收敛：file success=False → ACL 返回 None；stream 终止帧 message 不抛裸异常
+- 失败收敛：混音异常 → ACL 返回 None / 终止帧 message 不抛裸异常
 - 消费端路由镜像 route_render_mode
 
 打回项复现锁定（验收不通过，2026-10-10；开发修复后标记已移除，2026-10-10）：
@@ -24,9 +22,7 @@ import base64
 import io
 import os
 import wave
-from concurrent import futures
 
-import grpc
 import numpy as np
 import pytest
 
@@ -34,18 +30,16 @@ import pytest
 os.environ.setdefault('OSS_ACCESS_KEY', 'test-access')
 os.environ.setdefault('OSS_SECRET_KEY', 'test-secret')
 
-import shared.clients.grpc_clients as grpc_clients
 from api_test_service.domain.repositories.acl.audio_render_acl_repository import (
     route_render_mode,
 )
 from api_test_service.infrastructure.acl.audio_render_acl_repository import (
     AudioRenderACLRepositoryImpl,
 )
-from audio_service.application.services.audio_stream_orchestrator import (
+from shared.audio_mix.orchestrator import (
     AudioStreamOrchestrator,
     audio_stream_orchestrator,
 )
-from shared.proto import audio_service_pb2_grpc as audio_grpc
 
 RATE = 16000
 CHUNK_MS = 100
@@ -75,8 +69,8 @@ def _wav_bytes(samples_f32, rate, channels, sampwidth):
 
 
 def _patch_storage(monkeypatch, pcm_by_id):
-    def load(self, audio_id):
-        aid = int(audio_id)
+    def load(self, cfg):
+        aid = int(cfg.get('audio_id')) if isinstance(cfg, dict) else int(cfg)
         if aid not in pcm_by_id:
             raise FileNotFoundError(f"音频 {aid} 不存在或缺少 file_path")
         return pcm_by_id[aid]
@@ -92,25 +86,9 @@ def _isolated_cache():
 
 
 @pytest.fixture()
-def render_server():
-    from audio_service.interfaces.grpc.servicers import RenderServiceServicer
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
-    audio_grpc.add_RenderServiceServicer_to_server(RenderServiceServicer(), server)
-    port = server.add_insecure_port('127.0.0.1:0')
-    server.start()
-    yield port
-    server.stop(0)
-
-
-@pytest.fixture()
-def acl(render_server, monkeypatch):
-    """消费端 ACL 出站经真实 gRPC 回环到本进程 server（替换 stub 工厂端口解析）"""
-    channel = grpc.insecure_channel(f'127.0.0.1:{render_server}')
-    monkeypatch.setattr(
-        grpc_clients, 'get_render_service_stub',
-        lambda: audio_grpc.RenderServiceStub(channel))
-    yield AudioRenderACLRepositoryImpl()
-    channel.close()
+def acl():
+    """进程内混音实现（不再起 gRPC server）"""
+    return AudioRenderACLRepositoryImpl()
 
 
 def _build_config(monkeypatch, pcm_by_id, **overrides):
@@ -126,7 +104,7 @@ def _build_config(monkeypatch, pcm_by_id, **overrides):
     return repo.build_render_config(**defaults)
 
 
-class TestFileExitOverRealGrpc:
+class TestFileExitInProcess:
     def test_24bit_stereo_44k_source_to_16k_mono_wav(self, acl, monkeypatch):
         src = _wav_bytes(_sine(1.0, 44100, 440, 0.5, channels=2), 44100, 2, 3)
         config = _build_config(
@@ -163,7 +141,7 @@ class TestFileExitOverRealGrpc:
         assert rms24 == pytest.approx(rms16, rel=5e-3)
 
 
-class TestStreamExitOverRealGrpc:
+class TestStreamExitInProcess:
     def test_chunk_contract_and_strong_invariant(self, acl, monkeypatch):
         """整窗恒定 0.1s；序号连续；is_last 仅终帧；流式拼接 == 整段输出（逐字节）"""
         pcm_by_id = {
@@ -206,7 +184,7 @@ class TestStreamExitOverRealGrpc:
         assert chunks[-1].is_last is True
 
 
-class TestSplInterpolationOverRealGrpc:
+class TestSplInterpolationInProcess:
     def _source(self, monkeypatch):
         src = _wav_bytes(_sine(0.5, RATE, 440, 0.5), RATE, 1, 2)
         _patch_storage(monkeypatch, {10: (src, {'sample_rate': RATE, 'channels': 1})})
@@ -238,7 +216,7 @@ class TestSplInterpolationOverRealGrpc:
         assert rms_below == pytest.approx(rms_at_min, rel=1e-6)
 
 
-class TestFailureConvergenceOverRealGrpc:
+class TestFailureConvergenceInProcess:
     def test_file_missing_audio_returns_none(self, acl, monkeypatch):
         _patch_storage(monkeypatch, {})
         config = _build_config(monkeypatch, {})

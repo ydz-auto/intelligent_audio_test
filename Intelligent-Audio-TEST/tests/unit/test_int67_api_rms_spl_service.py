@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 
 from shared.utils.config_manager import config_manager
-from audio_service.domain.services.api_rms_spl_service import ApiRmsSplService
+from shared.audio_mix.spl_gain import ApiRmsSplService
 
 
 def _sine_dbfs(dbfs: float, seconds: float = 0.1, rate: int = 16000) -> np.ndarray:

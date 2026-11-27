@@ -55,6 +55,15 @@ def _get_float(key: str, default: float = 0.0) -> float:
         return default
 
 
+def is_audio_agent_role() -> bool:
+    """当前进程是否为执行机 audio_agent（AUDIO_ROLE=agent）。
+
+    拆分后 agent 只承担硬件面（播放/试听/SPL），不连 DB、不直连 OSS，
+    因此 DATABASE_URL / OSS_* 对它是可选项，见 docs/audio服务拆分方案.md §6。
+    """
+    return (os.environ.get('AUDIO_ROLE') or '').strip().lower() == 'agent'
+
+
 # --- 存储后端枚举（STORAGE_BACKEND）---
 # auto   —— 兼容旧行为：配了 OSS_ENDPOINT 就走 S3 兼容对象存储，不可用时按
 #           STORAGE_FALLBACK_ENABLED 降级本地磁盘
@@ -191,7 +200,8 @@ class BaseConfig:
     AUDIO_TAG_ACL_WARMUP_ENABLED: bool = _get_bool(
         'AUDIO_TAG_ACL_WARMUP_ENABLED', True)
 
-    DATABASE_URL: str = _get_env('DATABASE_URL', required=True)
+    # 执行机 audio_agent 不连 DB（元数据经 gRPC 走服务器数据面）
+    DATABASE_URL: str = _get_env('DATABASE_URL', required=not is_audio_agent_role())
 
     # --- Redis ---
     REDIS_URL: str = _get_env('REDIS_URL', 'redis://localhost:6379')
@@ -214,10 +224,11 @@ class BaseConfig:
     # 空串 = 回落 OSS_ENDPOINT（宿主/单机部署零行为变化）；跨机访问要改成局域网 IP
     # 或公开域名，不要写死 127.0.0.1。
     OSS_PUBLIC_ENDPOINT: str = _get_env('OSS_PUBLIC_ENDPOINT', '')
+    # 执行机 audio_agent 禁止直连 OSS（音频只经服务器取流），凭据可缺省
     OSS_ACCESS_KEY: str = _get_env(
-        'OSS_ACCESS_KEY', required=STORAGE_BACKEND != 'local')
+        'OSS_ACCESS_KEY', required=STORAGE_BACKEND != 'local' and not is_audio_agent_role())
     OSS_SECRET_KEY: str = _get_env(
-        'OSS_SECRET_KEY', required=STORAGE_BACKEND != 'local')
+        'OSS_SECRET_KEY', required=STORAGE_BACKEND != 'local' and not is_audio_agent_role())
     OSS_REGION: str = _get_env('OSS_REGION', 'us-east-1')
 
     # --- OSS 客户端管理类操作短超时（INT-1348）---
@@ -381,8 +392,13 @@ class BaseConfig:
     E2E_TEST_SERVICE_HOST: str = _get_env('E2E_TEST_SERVICE_HOST', 'localhost')
     E2E_TEST_SERVICE_GRPC_PORT: int = _get_int('E2E_TEST_SERVICE_GRPC_PORT', _E2E_TEST_GRPC_PORT)
     # --- audio_service gRPC（P2.5 从 e2e_test_service 拆出）---
+    # AUDIO_SERVICE_*：数据面（服务器容器，AUDIO_ROLE=server，音频库 CRUD/元数据）。
     AUDIO_SERVICE_HOST: str = _get_env('AUDIO_SERVICE_HOST', 'localhost')
     AUDIO_SERVICE_GRPC_PORT: int = _get_int('AUDIO_SERVICE_GRPC_PORT', _AUDIO_SERVICE_GRPC_PORT)
+    # AUDIO_AGENT_*：硬件面（执行机宿主 audio_agent，AUDIO_ROLE=agent，真声卡播放/试听）。
+    # 默认 127.0.0.1 + 数据面端口：本地开发/同机部署时宿主 agent 即在本机。
+    AUDIO_AGENT_HOST: str = _get_env('AUDIO_AGENT_HOST', '127.0.0.1')
+    AUDIO_AGENT_GRPC_PORT: int = _get_int('AUDIO_AGENT_GRPC_PORT', _AUDIO_SERVICE_GRPC_PORT)
     # --- device_service gRPC（P2.5 从 e2e_test_service 拆出）---
     DEVICE_SERVICE_HOST: str = _get_env('DEVICE_SERVICE_HOST', 'localhost')
     DEVICE_SERVICE_GRPC_PORT: int = _get_int('DEVICE_SERVICE_GRPC_PORT', _DEVICE_SERVICE_GRPC_PORT)

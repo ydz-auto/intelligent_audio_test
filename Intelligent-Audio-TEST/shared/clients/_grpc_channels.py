@@ -4,6 +4,8 @@
 每个服务只创建一个共享 channel，所有 stub 复用同一 channel，
 客户端拦截器自动附加到每个 channel。
 """
+import threading
+
 import grpc
 from functools import lru_cache
 
@@ -19,6 +21,7 @@ from shared.infrastructure.grpc_interceptors import (
 
 E2E_GRPC_ADDR = f"{BaseConfig.E2E_TEST_SERVICE_HOST}:{BaseConfig.E2E_TEST_SERVICE_GRPC_PORT}"
 AUDIO_GRPC_ADDR = f"{BaseConfig.AUDIO_SERVICE_HOST}:{BaseConfig.AUDIO_SERVICE_GRPC_PORT}"
+AUDIO_AGENT_GRPC_ADDR = f"{BaseConfig.AUDIO_AGENT_HOST}:{BaseConfig.AUDIO_AGENT_GRPC_PORT}"
 DEVICE_GRPC_ADDR = f"{BaseConfig.DEVICE_SERVICE_HOST}:{BaseConfig.DEVICE_SERVICE_GRPC_PORT}"
 TASK_GRPC_ADDR = f"{BaseConfig.TASK_SERVICE_HOST}:{BaseConfig.TASK_SERVICE_GRPC_PORT}"
 API_TEST_GRPC_ADDR = f"{BaseConfig.API_TEST_SERVICE_HOST}:{BaseConfig.API_TEST_SERVICE_GRPC_PORT}"
@@ -63,11 +66,33 @@ def _get_e2e_channel():
     return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)
 
 
-@lru_cache(maxsize=1)
-def _get_audio_channel():
-    """audio_service 共享 channel"""
-    chan = grpc.insecure_channel(AUDIO_GRPC_ADDR, options=_channel_options())
+@lru_cache(maxsize=8)
+def _get_audio_channel(addr: str = AUDIO_GRPC_ADDR):
+    """audio 数据面共享 channel（服务器容器 AUDIO_ROLE=server）。
+
+    addr 可显式传入（按 lab 路由时解析出的实例地址）；默认读 AUDIO_SERVICE_HOST/PORT。
+    """
+    chan = grpc.insecure_channel(addr, options=_channel_options())
     return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)
+
+
+_audio_agent_channels = {}  # addr -> intercepted channel（多 lab 按地址复用）
+_audio_agent_channels_lock = threading.Lock()
+
+
+def _get_audio_agent_channel(addr: str = AUDIO_AGENT_GRPC_ADDR):
+    """audio 硬件面 channel（执行机宿主 audio_agent AUDIO_ROLE=agent）。
+
+    addr 可显式传入（按 lab 路由时解析出的实例地址）；默认读 AUDIO_AGENT_HOST/PORT。
+    channel 按 addr 复用，避免每次 stub 工厂都新建连接。
+    """
+    with _audio_agent_channels_lock:
+        chan = _audio_agent_channels.get(addr)
+        if chan is None:
+            raw = grpc.insecure_channel(addr, options=_channel_options())
+            chan = grpc.intercept_channel(raw, *_CLIENT_INTERCEPTORS)
+            _audio_agent_channels[addr] = chan
+        return chan
 
 
 @lru_cache(maxsize=1)

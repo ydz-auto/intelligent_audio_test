@@ -20,7 +20,7 @@ from pydub import AudioSegment
 from shared.utils.log_handler import log_and_emit
 from shared.utils.config_manager import config_manager
 from shared.infrastructure.storage import storage
-from audio_service.domain.services.audio_format_adapter import AudioFormatAdapter
+from shared.audio_mix.format_adapter import AudioFormatAdapter
 
 logger = logging.getLogger(__name__)
 
