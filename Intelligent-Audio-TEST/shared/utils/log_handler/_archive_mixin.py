@@ -105,36 +105,37 @@ class _ArchiveMixin:
             print(f"[{_stamp()}] - log_worker - INFO - Still {remaining} logs, will continue archiving next cycle.")
 
     def _clean_expired_archives(self):
-        """清理 OSS 上过期的归档对象（LastModified 超过 LOG_ARCHIVE_RETENTION_DAYS 天）"""
+        """清理 OSS 上过期的归档对象（LastModified 超过 LOG_ARCHIVE_RETENTION_DAYS 天）。
+
+        必须走 category 作用域（`archives` 前缀）：单桶模式下多个 category 共用
+        同一 bucket，按 bucket 全量枚举会把 case_result / audios 等对象一并删掉。
+        """
         from shared.clients.oss_client import oss
 
         # OSS 不可用时跳过清理（本地存储无 TTL 语义）
         if not oss.is_available():
             return
 
-        bucket = oss._bucket('archives')
         cutoff_time = time.time() - LOG_ARCHIVE_RETENTION_DAYS * 86400
         deleted_count = 0
 
-        # 分页列出全部对象（list_objects_v2 单次最多 1000 条）
-        # 注意：_client 可能未初始化，使用 _ensure_init() 确保可用
-        oss._ensure_init()
-        paginator = oss._client.get_paginator('list_objects_v2')
         try:
-            for page in paginator.paginate(Bucket=bucket):
-                for obj in page.get('Contents', []):
-                    last_modified = obj['LastModified'].timestamp()
-                    if last_modified < cutoff_time:
-                        try:
-                            # INT-1348：删除走管理类短超时客户端，OSS 不可达/响应
-                            # 慢时快速失败，不让归档清理悬挂
-                            oss._admin_client.delete_object(Bucket=bucket, Key=obj['Key'])
-                            deleted_count += 1
-                        except Exception:
-                            pass
+            items = oss.list_objects_with_meta('archives')
         except Exception as e:
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WARN - Clean expired archives failed: {str(e)}")
             return
+
+        for item in items:
+            last_modified = item.get('lastModified')
+            if not last_modified:
+                continue
+            try:
+                if last_modified.timestamp() < cutoff_time:
+                    # INT-1348：删除走管理类短超时客户端，OSS 不可达/响应慢时快速失败
+                    oss.delete_object('archives', item.get('key'))
+                    deleted_count += 1
+            except Exception:
+                continue
 
         if deleted_count > 0:
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Cleaned {deleted_count} expired archive objects on OSS, older than {LOG_ARCHIVE_RETENTION_DAYS} days.")

@@ -1,0 +1,49 @@
+syntax = "proto3";
+package artifact_service;
+option py_generic_services = true;
+
+// 执行器本地冷存只读服务（2026-11-28）：
+// 对象存储只保留最近 30 天，过期后服务端经本服务回源执行机本地冷副本。
+service ArtifactService {
+  // 按 category + key 前缀列举本地冷存条目
+  rpc ListArtifacts(ListArtifactsRequest) returns (ListArtifactsResponse);
+  // 单条元数据（供 exists/get_size 判定）
+  rpc StatArtifact(StatArtifactRequest) returns (StatArtifactResponse);
+  // 流式读取文件字节（音频/录屏体积大，分块返回）
+  rpc ReadArtifact(ReadArtifactRequest) returns (stream ArtifactChunk);
+}
+
+message ListArtifactsRequest {
+  string category = 1;
+  string prefix = 2;
+}
+
+message ArtifactItem {
+  string key = 1;
+  int64 size_bytes = 2;
+  int64 last_modified_ms = 3;
+}
+
+message ListArtifactsResponse {
+  repeated ArtifactItem items = 1;
+}
+
+message StatArtifactRequest {
+  string category = 1;
+  string key = 2;
+}
+
+message StatArtifactResponse {
+  bool found = 1;
+  int64 size_bytes = 2;
+  int64 last_modified_ms = 3;
+}
+
+message ReadArtifactRequest {
+  string category = 1;
+  string key = 2;
+}
+
+message ArtifactChunk {
+  bytes data = 1;
+}

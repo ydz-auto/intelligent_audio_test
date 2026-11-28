@@ -4,7 +4,11 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from shared.utils.dto_utils import dto_to_dict
-from shared.utils.result_data_store import write_result_data_file, split_result_data
+from shared.utils.result_data_store import (
+    write_result_data_file,
+    write_reference_params_file,
+    split_result_data,
+)
 from shared.utils.status_constants import (
     RESULT_TYPE_API,
     ExecutionStatus,
@@ -38,7 +42,7 @@ class APIResultProcessor:
 
     def create_test_result(self, task_id, test_case_id, api_config_id, success, error_msg,
                            algo_result_dict, latency, final_result_result, algorithm_type='translation',
-                           tc_rel_id=None):
+                           tc_rel_id=None, reference_params=None):
         """创建测试结果记录
 
         INT-604：tc_rel_id 可选——多路由下按路由行精确回写 TaskCase。
@@ -64,6 +68,9 @@ class APIResultProcessor:
         algorithm_result = algo_result_dict if algo_result_dict else {}
 
         result_data_path = write_result_data_file(task_id, test_case_id, 'api', response_data)
+        self._write_reference_snapshot(
+            task_id, test_case_id, api_config_id, algorithm_type,
+            reference_params, result_data_path, result_type=RESULT_TYPE_API)
         lightweight_data, _ = split_result_data(response_data)
 
         algo_result = algorithm_result
@@ -211,9 +218,35 @@ class APIResultProcessor:
                   task_id=task_id, test_case_id=test_case_id)
         return True
 
+    @staticmethod
+    def _write_reference_snapshot(task_id, test_case_id, api_id, algorithm_type,
+                                  reference_params, result_data_path, result_type):
+        """API 路径把参考参数快照写入本地/OSS 结果目录（失败不阻断）。"""
+        try:
+            write_reference_params_file(
+                task_id, test_case_id, 'api',
+                {
+                    'schema_version': 1,
+                    'task_id': str(task_id),
+                    'case_id': str(test_case_id),
+                    'device_sn': 'api',
+                    'api_id': api_id,
+                    'algorithm_type': algorithm_type,
+                    'result_type': result_type,
+                    'source': 'api_executor',
+                    'original_reference_params': reference_params,
+                    'adjusted_reference_params': None,
+                    'effective_rounds': None,
+                    'captured_at': datetime.now(timezone.utc).isoformat(),
+                },
+                result_data_path=result_data_path,
+            )
+        except Exception:
+            pass
+
     def create_multi_round_test_result(self, task_id, test_case_id, api_config_id,
                                        algorithm_type, aggregated, success,
-                                       tc_rel_id=None):
+                                       tc_rel_id=None, reference_params=None):
         """为多轮会话创建单条测试结果记录，并回写 TaskCase 终态、通知执行引擎
 
         状态回写由 result_processor 统一负责（RealtimeSessionExecutor._refresh_progress
@@ -239,6 +272,9 @@ class APIResultProcessor:
             response_time = None
 
         result_data_path = write_result_data_file(task_id, test_case_id, 'api', response_data)
+        self._write_reference_snapshot(
+            task_id, test_case_id, api_config_id, algorithm_type,
+            reference_params, result_data_path, result_type=RESULT_TYPE_API)
         lightweight_data, _ = split_result_data(response_data)
 
         algo_result = aggregated.get('algorithm_result', {})

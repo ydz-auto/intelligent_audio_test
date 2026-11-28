@@ -452,6 +452,29 @@ class DeviceResultReextractor:
         import json
 
         result_data_path = write_result_data_file(task_id, test_case_id, device_id, result_data)
+        # 参考参数快照（2026-11-28）：设备重提取路径不经过评估服务，单独落一份
+        try:
+            from datetime import datetime, timezone
+            from shared.utils.result_data_store import write_reference_params_file
+            write_reference_params_file(
+                task_id, test_case_id, device_id,
+                {
+                    'schema_version': 1,
+                    'task_id': str(task_id),
+                    'case_id': str(test_case_id),
+                    'device_sn': str(device_id),
+                    'result_type': result_type or RESULT_TYPE_E2E,
+                    'algorithm_type': algorithm_type,
+                    'source': 'device_reextract',
+                    'original_reference_params': result_data.get('reference_params'),
+                    'adjusted_reference_params': result_data.get('adjusted_reference_params'),
+                    'effective_rounds': None,
+                    'captured_at': datetime.now(timezone.utc).isoformat(),
+                },
+                result_data_path=result_data_path,
+            )
+        except Exception:
+            pass
         lightweight_data, _ = split_result_data(result_data)
 
         result_data_payload = {

@@ -139,6 +139,12 @@ class _WorkerMixin:
             sweep_log_root()
         except Exception as e:
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - SWEEP ERROR - {str(e)}")
+        # 执行产物冷/热保留（2026-11-28）：本地冷存 365 天、对象存储热存 30 天
+        try:
+            from shared.infrastructure.result_retention import run_result_maintenance
+            run_result_maintenance()
+        except Exception as e:
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - RESULT SWEEP ERROR - {str(e)}")
 
     def _process_batch(self, batch):
         """通过 gRPC 批量写入日志（P0-3: 替代直连 DB session）"""

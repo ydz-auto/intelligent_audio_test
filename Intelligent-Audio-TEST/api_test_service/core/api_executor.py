@@ -540,6 +540,7 @@ class APIExecutor(BaseExecutor):
                 task_id, test_case_id, api_config.id, success, error_msg,
                 algo_result_dict, latency, final_result_result, algorithm_type,
                 tc_rel_id=tc_rel_id,
+                reference_params=(case_config or {}).get('reference_params', {}),
             )
         finally:
             if api_task_id:

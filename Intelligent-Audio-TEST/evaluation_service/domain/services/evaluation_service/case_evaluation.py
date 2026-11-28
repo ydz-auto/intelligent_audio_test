@@ -50,6 +50,13 @@ class CaseEvaluationMixin:
                 algorithm_params_col=algorithm_params_col,
                 api_id=api_id,
             )
+            self._capture_reference_snapshot(
+                task_id, test_case_id, result_id, kwargs,
+                algorithm_type=kwargs.get('algorithm_type', 'translation'),
+                device_type=device_type,
+                reference_params_col=reference_params_col,
+                rounds=rounds_list,
+            )
             if round_number is not None:
                 # 指定轮次：只取对应轮
                 rounds_list = [rounds_list[round_number]] if round_number < len(rounds_list) else []
@@ -97,6 +104,14 @@ class CaseEvaluationMixin:
         )
 
         # 准备评估数据(加载用例/参考文本/维度配置/维度数据)
+        if not (isinstance(algorithm_result, dict) and algorithm_result.get('rounds')):
+            self._capture_reference_snapshot(
+                task_id, test_case_id, result_id, kwargs,
+                algorithm_type=kwargs.get('algorithm_type', 'translation'),
+                device_type=device_type,
+                reference_params_col=reference_params_col,
+                rounds=None,
+            )
         prepared = self._prepare_evaluation_data(
             task_id, result_id, test_case_id, algorithm_result,
             field_mapper, kwargs, device_type, round_number
@@ -109,6 +124,26 @@ class CaseEvaluationMixin:
             prepared, field_mapper, device_type, round_number, kwargs,
             api_id=api_id
         )
+
+    def _capture_reference_snapshot(self, task_id, test_case_id, result_id, kwargs,
+                                    algorithm_type=None, device_type=None,
+                                    reference_params_col=None, rounds=None):
+        """落一份评估参考参数快照到结果目录（失败不影响评估）。"""
+        try:
+            from evaluation_service.application.services.reference_snapshot import (
+                capture_reference_snapshot,
+            )
+            capture_reference_snapshot(
+                task_id, test_case_id, result_id,
+                algorithm_type=algorithm_type,
+                device_type=device_type,
+                reference_params_col=reference_params_col,
+                rounds=rounds,
+                raw_reference_params=kwargs.get('reference_params'),
+                source=kwargs.get('snapshot_source') or 'evaluation',
+            )
+        except Exception:
+            pass
 
     def _resolve_evaluation_api_id(self, task_id, test_case_id, result_id, kwargs):
         """解析本次评估的 API 实例作用域（INT-1757 / C6b）。

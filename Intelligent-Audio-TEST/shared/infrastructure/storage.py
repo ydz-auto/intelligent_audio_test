@@ -157,6 +157,105 @@ class Storage:
         """构建本地降级存储的完整路径：{STORAGE_LOCAL_ROOT}/{category}/{key}"""
         return os.path.join(BaseConfig.STORAGE_LOCAL_ROOT, category, key)
 
+    # ---- 执行产物：本地冷存（2026-11-28 裁定） ----
+
+    @staticmethod
+    def _dual_write_categories() -> set:
+        """双写 category 集合（配置化，逗号分隔，大小写不敏感）。"""
+        raw = getattr(BaseConfig, 'RESULT_DUAL_WRITE_CATEGORIES', '') or ''
+        return {part.strip().lower() for part in raw.split(',') if part.strip()}
+
+    def _is_dual_write(self, category: str) -> bool:
+        """该 category 是否走「本地冷存 + 对象存储热存」双写。"""
+        return (
+            bool(getattr(BaseConfig, 'RESULT_DUAL_WRITE_ENABLED', False))
+            and (category or '').strip().lower() in self._dual_write_categories()
+        )
+
+    def _cold_root(self) -> str:
+        """执行机本地冷存根（各节点各自独立，不假设共享路径）。"""
+        explicit = (os.environ.get('RESULT_LOCAL_ROOT') or '').strip()
+        if explicit:
+            return explicit
+        # 未显式配置时跟随当前 STORAGE_LOCAL_ROOT（测试可动态替换且不污染仓库）
+        return BaseConfig.STORAGE_LOCAL_ROOT
+
+    def _cold_path(self, category: str, key: str) -> str:
+        return os.path.join(self._cold_root(), category, key)
+
+    @staticmethod
+    def _atomic_replace(tmp_path: str, dst: str) -> None:
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        os.replace(tmp_path, dst)
+
+    def _write_cold_file(self, local_path: str, category: str, key: str) -> bool:
+        """本地冷存副本（原子写）；失败只告警，不阻断主流程。"""
+        dst = self._cold_path(category, key)
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            tmp = f'{dst}.tmp-{os.getpid()}'
+            shutil.copy2(local_path, tmp)
+            self._atomic_replace(tmp, dst)
+            return True
+        except Exception as e:
+            _warn_oss_throttled(
+                f'cold copy failed (local file): {e}', category=category)
+            return False
+
+    def _write_cold_bytes(self, data: bytes, category: str, key: str) -> bool:
+        dst = self._cold_path(category, key)
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            tmp = f'{dst}.tmp-{os.getpid()}'
+            with open(tmp, 'wb') as f:
+                f.write(data)
+            self._atomic_replace(tmp, dst)
+            return True
+        except Exception as e:
+            _warn_oss_throttled(
+                f'cold copy failed (bytes): {e}', category=category)
+            return False
+
+    def _read_cold_bytes(self, category: str, key: str) -> Optional[bytes]:
+        """读本地冷存副本；本机没有时经执行器接口回源。"""
+        path = self._cold_path(category, key)
+        if os.path.isfile(path):
+            with open(path, 'rb') as f:
+                return f.read()
+        if not self._is_dual_write(category):
+            return None
+        try:
+            from shared.clients.artifact_client import read_artifact_bytes
+            return read_artifact_bytes(category, key)
+        except Exception as e:
+            log_not_emit('DEBUG', _MODULE_NAME,
+                         f'cold read via artifact service failed: {e}',
+                         category=category)
+            return None
+
+    def _stat_cold(self, category: str, key: str) -> Optional[dict]:
+        """冷存条目元数据 {sizeBytes,lastModified}；本机没有时问执行器。"""
+        path = self._cold_path(category, key)
+        if os.path.isfile(path):
+            try:
+                st = os.stat(path)
+                return {
+                    'sizeBytes': st.st_size,
+                    'lastModified': datetime.fromtimestamp(st.st_mtime, tz=timezone.utc),
+                }
+            except OSError:
+                return None
+        if not self._is_dual_write(category):
+            return None
+        try:
+            from shared.clients.artifact_client import stat_artifact
+            return stat_artifact(category, key)
+        except Exception as e:
+            log_not_emit('DEBUG', _MODULE_NAME,
+                         f'cold stat via artifact service failed: {e}',
+                         category=category)
+            return None
+
     # ---- 本地持久缓存路径 ----
 
     def _cache_root(self) -> str:
@@ -217,6 +316,11 @@ class Storage:
         allow_fallback=False → OSS 不可用 / 上传失败抛 StorageUnavailableError，
         不写本地降级目录
         """
+        # allow_fallback=False 的调用方明确要求「只进 OSS」（如原始报文外置），
+        # 不写本地冷副本（INT-1805 语义优先）
+        dual = allow_fallback and self._is_dual_write(category)
+        if dual:
+            self._write_cold_file(local_path, category, key)
         try:
             if self._use_oss():
                 self._oss.upload_file(local_path, category, key)
@@ -250,6 +354,9 @@ class Storage:
         allow_fallback=False → OSS 不可用 / 上传失败抛 StorageUnavailableError，
         不写本地降级目录、不返回 local://
         """
+        dual = allow_fallback and self._is_dual_write(category)
+        if dual:
+            self._write_cold_bytes(data, category, key)
         try:
             if self._use_oss():
                 self._oss.upload_bytes(data, category, key,
@@ -285,32 +392,55 @@ class Storage:
         allow_fallback=False → OSS 不可用 / 上传失败抛 StorageUnavailableError，
         不写本地降级目录
         """
+        dual = allow_fallback and self._is_dual_write(category)
+        tmp_path = None
         try:
-            if self._use_oss():
-                self._oss.upload_stream(stream, category, key,
-                                        content_type=content_type)
-                return f'{_SCHEME_OSS}{category}/{key}'
-            if not allow_fallback and not self._local_backend():
-                raise StorageUnavailableError(
-                    f'OSS 不可用，且调用方禁止本地降级: save_stream {category}/{key}')
-        except StorageUnavailableError:
-            raise
-        except Exception as e:
-            _warn_oss_throttled(
-                f'save_stream OSS failed, fallback to local: {e}',
-                category=category)
-            if not allow_fallback:
-                raise StorageUnavailableError(
-                    f'OSS 上传失败，且调用方禁止本地降级: '
-                    f'save_stream {category}/{key}: {e}') from e
-            if not BaseConfig.STORAGE_FALLBACK_ENABLED:
+            if dual:
+                # 双写需要两份副本：先落临时文件，再分别写冷存与 OSS
+                fd, tmp_path = tempfile.mkstemp(
+                    suffix=os.path.splitext(key)[-1] or '.tmp')
+                os.close(fd)
+                with open(tmp_path, 'wb') as f:
+                    shutil.copyfileobj(stream, f)
+                self._write_cold_file(tmp_path, category, key)
+            try:
+                if self._use_oss():
+                    if tmp_path:
+                        self._oss.upload_file(tmp_path, category, key)
+                    else:
+                        self._oss.upload_stream(stream, category, key,
+                                                content_type=content_type)
+                    return f'{_SCHEME_OSS}{category}/{key}'
+                if not allow_fallback and not self._local_backend():
+                    raise StorageUnavailableError(
+                        f'OSS 不可用，且调用方禁止本地降级: save_stream {category}/{key}')
+            except StorageUnavailableError:
                 raise
-        # 降级到本地
-        dst = self._local_path(category, key)
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        with open(dst, 'wb') as f:
-            shutil.copyfileobj(stream, f)
-        return f'{_SCHEME_LOCAL}{category}/{key}'
+            except Exception as e:
+                _warn_oss_throttled(
+                    f'save_stream OSS failed, fallback to local: {e}',
+                    category=category)
+                if not allow_fallback:
+                    raise StorageUnavailableError(
+                        f'OSS 上传失败，且调用方禁止本地降级: '
+                        f'save_stream {category}/{key}: {e}') from e
+                if not BaseConfig.STORAGE_FALLBACK_ENABLED:
+                    raise
+            # 降级到本地
+            dst = self._local_path(category, key)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            if tmp_path:
+                shutil.copy2(tmp_path, dst)
+            else:
+                with open(dst, 'wb') as f:
+                    shutil.copyfileobj(stream, f)
+            return f'{_SCHEME_LOCAL}{category}/{key}'
+        finally:
+            if tmp_path:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
 
     # ---- 公开 API：读取 ----
 
@@ -369,8 +499,20 @@ class Storage:
                 raise StorageUnavailableError(
                     f'禁止从本地降级副本读取（allow_fallback=False）: {path}')
             src = self._local_path(category, key)
+            if not os.path.isfile(src):
+                cold = self._cold_path(category, key)
+                if os.path.isfile(cold):
+                    src = cold
+            if os.path.isfile(src):
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
+                shutil.copy2(src, local_path)
+                return local_path
+            data = self._read_cold_bytes(category, key)
+            if data is None:
+                raise FileNotFoundError(f'文件不存在（本地与冷存均无）: {path}')
             os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            shutil.copy2(src, local_path)
+            with open(local_path, 'wb') as f:
+                f.write(data)
             return local_path
 
         # scheme == 'oss' 或无前缀（默认 OSS）
@@ -425,6 +567,13 @@ class Storage:
                     os.makedirs(os.path.dirname(local_path), exist_ok=True)
                     shutil.copy2(src, local_path)
                     return local_path
+            # 执行产物：本地冷存副本 / 执行器冷读接口
+            cold_data = self._read_cold_bytes(category, key)
+            if cold_data is not None:
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
+                with open(local_path, 'wb') as f:
+                    f.write(cold_data)
+                return local_path
             raise FileNotFoundError(f'文件不存在（OSS 和本地均无）: {path}')
 
     def load_bytes(self, path: str, allow_fallback: bool = True) -> bytes:
@@ -440,8 +589,17 @@ class Storage:
                 raise StorageUnavailableError(
                     f'禁止从本地降级副本读取（allow_fallback=False）: {path}')
             src = self._local_path(category, key)
-            with open(src, 'rb') as f:
-                return f.read()
+            if not os.path.isfile(src):
+                cold = self._cold_path(category, key)
+                if os.path.isfile(cold):
+                    src = cold
+            if os.path.isfile(src):
+                with open(src, 'rb') as f:
+                    return f.read()
+            cold_data = self._read_cold_bytes(category, key)
+            if cold_data is not None:
+                return cold_data
+            raise FileNotFoundError(f'文件不存在（本地与冷存均无）: {path}')
 
         # scheme == 'oss' 或无前缀
         if self._local_cache_enabled():
@@ -483,6 +641,10 @@ class Storage:
                 if os.path.exists(src):
                     with open(src, 'rb') as f:
                         return f.read()
+            # 执行产物：本地冷存副本 / 执行器冷读接口
+            cold_data = self._read_cold_bytes(category, key)
+            if cold_data is not None:
+                return cold_data
             raise FileNotFoundError(f'文件不存在（OSS 和本地均无）: {path}')
 
     def load_stream(self, path: str) -> BinaryIO:
@@ -517,7 +679,9 @@ class Storage:
         scheme, category, key = self._parse_path(path)
 
         if scheme == 'local':
-            return os.path.exists(self._local_path(category, key))
+            return (os.path.exists(self._local_path(category, key))
+                    or os.path.exists(self._cold_path(category, key))
+                    or self._stat_cold(category, key) is not None)
 
         if self._local_cache_enabled() and os.path.isfile(
                 self._cache_path(category, key)):
@@ -525,7 +689,8 @@ class Storage:
 
         if self._local_backend():
             return (os.path.isfile(self._cache_path(category, key))
-                    or os.path.isfile(self._local_path(category, key)))
+                    or os.path.isfile(self._local_path(category, key))
+                    or os.path.isfile(self._cold_path(category, key)))
 
         # OSS
         try:
@@ -535,18 +700,25 @@ class Storage:
             log_not_emit('DEBUG', _MODULE_NAME,
                          f'exists OSS check failed: {e}', category=category)
         # 也检查本地持久缓存/本地降级副本
-        return (os.path.exists(self._cache_path(category, key))
-                or os.path.exists(self._local_path(category, key)))
+        if (os.path.exists(self._cache_path(category, key))
+                or os.path.exists(self._local_path(category, key))
+                or os.path.exists(self._cold_path(category, key))):
+            return True
+        # 执行产物：执行器本地冷存
+        return self._stat_cold(category, key) is not None
 
     def get_size(self, path: str) -> int | None:
         """查询对象字节大小；不存在/异常返回 None（供流式响应回填 Content-Length）。"""
         scheme, category, key = self._parse_path(path)
         if scheme == 'local':
-            src = self._local_path(category, key)
-            try:
-                return os.path.getsize(src)
-            except OSError:
-                return None
+            for src in (self._local_path(category, key),
+                        self._cold_path(category, key)):
+                try:
+                    return os.path.getsize(src)
+                except OSError:
+                    continue
+            cold = self._stat_cold(category, key)
+            return int(cold['sizeBytes']) if cold else None
         cache = self._cache_path(category, key)
         if self._local_cache_enabled() and os.path.isfile(cache):
             try:
@@ -555,7 +727,8 @@ class Storage:
                 return None
         if self._local_backend():
             for src in (self._cache_path(category, key),
-                        self._local_path(category, key)):
+                        self._local_path(category, key),
+                        self._cold_path(category, key)):
                 try:
                     return os.path.getsize(src)
                 except OSError:
@@ -565,9 +738,13 @@ class Storage:
             # 服务器代理回源没有本地 size；尝试直接 HEAD OSS
             pass
         try:
-            return self._oss.get_size(category, key)
+            size = self._oss.get_size(category, key)
+            if size is not None:
+                return size
         except Exception:
-            return None
+            pass
+        cold = self._stat_cold(category, key)
+        return int(cold['sizeBytes']) if cold else None
 
     def delete(self, path: str) -> None:
         """删除文件（OSS 和本地降级副本都会清理）。"""
@@ -582,13 +759,37 @@ class Storage:
                              f'delete OSS object failed (may not exist): {e}',
                              category=category)
         # 再删本地降级副本
-        local = self._local_path(category, key)
-        if os.path.exists(local):
-            try:
-                os.remove(local)
-            except Exception as e:
-                log_not_emit('DEBUG', _MODULE_NAME,
-                             f'delete local fallback failed: {e}', category=category)
+        for local in (self._local_path(category, key),
+                      self._cold_path(category, key)):
+            if os.path.exists(local):
+                try:
+                    os.remove(local)
+                except Exception as e:
+                    log_not_emit('DEBUG', _MODULE_NAME,
+                                 f'delete local copy failed: {e}', category=category)
+
+    def _list_local_tree(self, base_dir: str, category: str,
+                         prefix: str = '') -> list:
+        """列举本地目录树下的条目（key 相对 category 根）。"""
+        local_base = os.path.join(base_dir, category)
+        local_root = os.path.join(local_base, prefix) if prefix else local_base
+        results = []
+        if not os.path.isdir(local_root):
+            return results
+        for root, _dirs, files in os.walk(local_root):
+            for fname in files:
+                full = os.path.join(root, fname)
+                rel = os.path.relpath(full, local_base).replace(os.sep, '/')
+                try:
+                    st = os.stat(full)
+                except OSError:
+                    continue
+                results.append({
+                    'key': rel,
+                    'sizeBytes': st.st_size,
+                    'lastModified': datetime.fromtimestamp(st.st_mtime, tz=timezone.utc),
+                })
+        return results
 
     def list_objects(self, category: str, prefix: str = '') -> list:
         """列出指定类别+前缀下的对象 key 列表。
@@ -597,6 +798,8 @@ class Storage:
         :param prefix: key 前缀
         :return: 逻辑 key 列表（不含 category/ 前缀）
         """
+        if self._is_dual_write(category):
+            return [it['key'] for it in self.list_objects_with_meta(category, prefix)]
         if not self._local_backend():
             try:
                 return self._oss.list_objects(category, prefix)
@@ -605,54 +808,57 @@ class Storage:
                     f'list_objects OSS failed: {e}',
                     category=category)
         # 回退：列举本地降级副本（local 后端只走这里）
-        local_base = self._local_path(category, '')
-        local_root = os.path.join(local_base, prefix) if prefix else local_base
-        results = []
-        if os.path.isdir(local_root):
-            for root, _dirs, files in os.walk(local_root):
-                for fname in files:
-                    full = os.path.join(root, fname)
-                    rel = os.path.relpath(full, local_base)
-                    rel = rel.replace(os.sep, '/')
-                    results.append(rel)
-        return results
+        return [it['key'] for it in self._list_local_tree(
+            BaseConfig.STORAGE_LOCAL_ROOT, category, prefix)]
 
     def list_objects_with_meta(self, category: str, prefix: str = '') -> list:
         """列出指定类别+前缀下的对象 key 及元数据（sizeBytes/lastModified）。
 
         INT-786：归档全局文件清单需要对象元数据（S3 Size/LastModified，本地降级
         对应取 st_size / st_mtime）。archivedAt 口径以对象 LastModified 为准。
+        执行产物 category：对象存储（热）+ 本地冷存 + 执行器冷存合并去重。
         :param category: 存储类别（如 'archives'）
         :param prefix: key 前缀
         :return: [{key, sizeBytes, lastModified}]（key 为逻辑 key，不含 category/ 前缀）
         """
+        if not self._is_dual_write(category):
+            if not self._local_backend():
+                try:
+                    return self._oss.list_objects_with_meta(category, prefix)
+                except Exception as e:
+                    _warn_oss_throttled(
+                        f'list_objects_with_meta OSS failed: {e}',
+                        category=category)
+            return self._list_local_tree(
+                BaseConfig.STORAGE_LOCAL_ROOT, category, prefix)
+
+        merged = {}
+
+        def _merge(items):
+            for item in items or []:
+                key = item.get('key')
+                if key:
+                    merged.setdefault(key, item)
+
         if not self._local_backend():
             try:
-                return self._oss.list_objects_with_meta(category, prefix)
+                _merge(self._oss.list_objects_with_meta(category, prefix))
             except Exception as e:
                 _warn_oss_throttled(
                     f'list_objects_with_meta OSS failed: {e}',
                     category=category)
-        # 回退：列举本地降级副本（local 后端只走这里）
-        local_base = self._local_path(category, '')
-        local_root = os.path.join(local_base, prefix) if prefix else local_base
-        results = []
-        if os.path.isdir(local_root):
-            for root, _dirs, files in os.walk(local_root):
-                for fname in files:
-                    full = os.path.join(root, fname)
-                    rel = os.path.relpath(full, local_base)
-                    rel = rel.replace(os.sep, '/')
-                    try:
-                        st = os.stat(full)
-                    except OSError:
-                        continue
-                    results.append({
-                        'key': rel,
-                        'sizeBytes': st.st_size,
-                        'lastModified': datetime.fromtimestamp(st.st_mtime, tz=timezone.utc),
-                    })
-        return results
+        _merge(self._list_local_tree(
+            BaseConfig.STORAGE_LOCAL_ROOT, category, prefix))
+        _merge(self._list_local_tree(self._cold_root(), category, prefix))
+        if getattr(BaseConfig, 'ARTIFACT_COLD_READ_ENABLED', False):
+            try:
+                from shared.clients.artifact_client import list_artifacts
+                _merge(list_artifacts(category, prefix))
+            except Exception as e:
+                log_not_emit('DEBUG', _MODULE_NAME,
+                             f'cold list via artifact service failed: {e}',
+                             category=category)
+        return sorted(merged.values(), key=lambda item: item['key'])
 
     def get_url(self, path: str, expires: int = 3600) -> Optional[str]:
         """获取文件访问 URL。
@@ -664,6 +870,17 @@ class Storage:
 
         if scheme == 'local' or self._local_backend():
             return None
+
+        if self._is_dual_write(category):
+            # 热存对象已被 30 天清扫：不能返回指向不存在对象的预签名 URL，
+            # 交由调用方走网关/load_bytes（可回源执行器本地冷存）
+            try:
+                if not self._oss.exists(category, key):
+                    return None
+            except Exception as e:
+                _warn_oss_throttled(
+                    f'get_url OSS exists check failed: {e}', category=category)
+                return None
 
         try:
             return self._oss.get_presigned_url(category, key, expires=expires)

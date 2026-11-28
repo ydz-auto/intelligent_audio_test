@@ -34,6 +34,8 @@ except ImportError:
 import grpc
 
 from shared.proto import device_service_pb2_grpc as device_grpc
+from shared.proto import artifact_service_pb2_grpc as artifact_grpc
+from device_service.interfaces.grpc.artifact_servicer import ArtifactServiceServicer
 from shared.infrastructure.grpc_interceptors import (
     server_log_interceptor, server_db_scope_interceptor, server_user_context_interceptor,
 )
@@ -115,6 +117,8 @@ def start_grpc_server(port=DEVICE_SERVICE_GRPC_PORT):
     device_grpc.add_LaboratoryConfigServiceServicer_to_server(LaboratoryConfigServiceServicer(), server)
     # 设备 UI 探索三 RPC（INT-2577，同 SN 串行 + 截图上传 OSS）
     device_grpc.add_DeviceUiServiceServicer_to_server(DeviceUiServiceServicer(), server)
+    # 本地冷存只读服务（2026-11-28）：对象存储 30 天过期后服务端回源
+    artifact_grpc.add_ArtifactServiceServicer_to_server(ArtifactServiceServicer(), server)
     server.add_insecure_port(f'[::]:{port}')
     server.start()
     logger.info("device_service gRPC server started on port %s", port)

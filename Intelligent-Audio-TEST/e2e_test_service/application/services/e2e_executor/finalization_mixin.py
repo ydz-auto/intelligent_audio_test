@@ -82,6 +82,29 @@ class FinalizationMixin:
                          else (device_info or {}).get('device_sn', ''))
             result_data_path = write_result_data_file(
                 task_id, test_case_id, device_sn, result_data_to_save)
+            # 参考参数快照（2026-11-28）：评估入口会再落一次同源快照；
+            # 这里保证「评估关闭/未触发」的执行结果也有参考基线可追溯。
+            try:
+                from datetime import datetime, timezone
+                from shared.utils.result_data_store import write_reference_params_file
+                write_reference_params_file(
+                    task_id, test_case_id, device_sn,
+                    {
+                        'schema_version': 1,
+                        'task_id': str(task_id),
+                        'case_id': str(test_case_id),
+                        'device_sn': str(device_sn),
+                        'algorithm_type': algorithm_type,
+                        'source': 'e2e_executor',
+                        'original_reference_params': case_reference_params,
+                        'adjusted_reference_params': last_adjusted_ref_params,
+                        'effective_rounds': None,
+                        'captured_at': datetime.now(timezone.utc).isoformat(),
+                    },
+                    result_data_path=result_data_path,
+                )
+            except Exception:
+                pass
 
             avg_response_time = E2ECalculationService.calculate_avg_latency(device_results)
 

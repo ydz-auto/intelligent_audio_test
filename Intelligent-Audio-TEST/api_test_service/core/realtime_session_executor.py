@@ -283,7 +283,8 @@ class RealtimeSessionExecutor:
             result_id = self._executor._result_processor.create_multi_round_test_result(
                 task_id=task_id, test_case_id=test_case_id, api_config_id=api_id,
                 algorithm_type=algorithm_type, aggregated=aggregated,
-                success=all_success, tc_rel_id=tc_rel_id)
+                success=all_success, tc_rel_id=tc_rel_id,
+                reference_params=(case_config or {}).get('reference_params', {}))
             aggregated['result_id'] = result_id
 
             # summary 通道推送（会话汇总落库后）

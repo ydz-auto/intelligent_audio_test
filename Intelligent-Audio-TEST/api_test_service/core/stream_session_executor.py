@@ -274,7 +274,8 @@ class StreamSessionExecutor:
             task_id=task_id, test_case_id=test_case_id,
             api_config_id=getattr(api_config, 'id', None),
             algorithm_type=algorithm_type, aggregated=aggregated,
-            success=all_success, tc_rel_id=tc_rel_id)
+            success=all_success, tc_rel_id=tc_rel_id,
+            reference_params=(case_config or {}).get('reference_params', {}))
         aggregated['result_id'] = result_id
         if result_id and all_success:
             submit_case_evaluation(

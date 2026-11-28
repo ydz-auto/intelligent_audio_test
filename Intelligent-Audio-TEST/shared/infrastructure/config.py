@@ -265,6 +265,32 @@ class BaseConfig:
     STORAGE_FALLBACK_ENABLED: bool = _get_bool('STORAGE_FALLBACK_ENABLED', True)  # OSS 不可用时降级到本地磁盘
     STORAGE_LOCAL_ROOT: str = _get_env('STORAGE_LOCAL_ROOT', './storage_local')   # 本地降级存储根目录
 
+        # --- 执行产物：本地冷存 + 对象存储热存（2026-11-28 裁定）---
+    # case_result / ref_params 双写：本地冷存保留 365 天，对象存储只保留最近 30 天。
+    RESULT_DUAL_WRITE_ENABLED: bool = _get_bool('RESULT_DUAL_WRITE_ENABLED', True)
+    # 逗号分隔的 storage category（大小写不敏感）
+    RESULT_DUAL_WRITE_CATEGORIES: str = _get_env(
+        'RESULT_DUAL_WRITE_CATEGORIES', 'case_result,ref_params')
+    # 执行机本地冷存根：各节点各自独立（不假设共享路径），缺省沿用 STORAGE_LOCAL_ROOT
+    RESULT_LOCAL_ROOT: str = _get_env('RESULT_LOCAL_ROOT', STORAGE_LOCAL_ROOT)
+    RESULT_LOCAL_RETENTION_DAYS: int = _get_int('RESULT_LOCAL_RETENTION_DAYS', 365)
+    RESULT_OSS_HOT_RETENTION_DAYS: int = _get_int('RESULT_OSS_HOT_RETENTION_DAYS', 30)
+    # 只对这些 category 做「OSS 热存 30 天到期删除」；ref_params 是参考参数
+    # 源文件，必须长期保留在 OSS，不参与过期删除（2026-11-28 补正）
+    RESULT_OSS_HOT_RETENTION_CATEGORIES: str = _get_env(
+        'RESULT_OSS_HOT_RETENTION_CATEGORIES', 'case_result')
+    RESULT_RETENTION_ENABLED: bool = _get_bool('RESULT_RETENTION_ENABLED', True)
+    # 单轮 OSS 删除上限（分页删，避免一次清扫占用过久）
+    RESULT_RETENTION_MAX_DELETES_PER_RUN: int = _get_int(
+        'RESULT_RETENTION_MAX_DELETES_PER_RUN', 5000)
+    # OSS 热存过期后，经执行器 ArtifactService 读取本地冷副本
+    ARTIFACT_COLD_READ_ENABLED: bool = _get_bool('ARTIFACT_COLD_READ_ENABLED', True)
+    ARTIFACT_COLD_READ_TIMEOUT_SECONDS: float = _get_float(
+        'ARTIFACT_COLD_READ_TIMEOUT_SECONDS', 30.0)
+    # 列举/元数据探测走短超时：执行器不可达时不拖慢报告列表
+    ARTIFACT_COLD_LIST_TIMEOUT_SECONDS: float = _get_float(
+        'ARTIFACT_COLD_LIST_TIMEOUT_SECONDS', 3.0)
+
     # --- 任务数据导入导出（INT-25）---
     # 网关与 task_service 共享磁盘读写导出/导入 ZIP：docker 部署时两容器需挂载同一卷
     DATA_TRANSFER_TMP_DIR: str = _get_env(
@@ -310,7 +336,7 @@ class BaseConfig:
     # 环境标识（dev/prod）：prod 下 DEBUG 级日志不落业务文件
     LOG_ENVIRONMENT: str = _get_env('LOG_ENVIRONMENT', 'dev').lower()
     # 文件日志统一保留期（INT-1793 契约 / 负责人 2026-10-24 裁定：全部日志文件 30 天）。
-    # 审计/业务/服务三棵树都继承本值；细分类别只允许「显式覆盖」，不得内置不同默认。
+    # 审计/服务两棵树继承本值；业务日志树按负责人 2026-11-28 裁定显式覆盖为 365 天。
     LOG_FILE_RETENTION_DAYS: int = _get_int('LOG_FILE_RETENTION_DAYS', 30)
     # 服务运行日志：logs/{service_name}/ 单文件上限与保留天数（按天+按大小双条件轮转）
     LOG_SERVICE_MAX_MB: int = _get_int('LOG_SERVICE_MAX_MB', 50)
@@ -321,8 +347,10 @@ class BaseConfig:
     # 回滚开关：True 时业务日志同时保留入库（历史行为），默认仅落文件
     LOG_BUSINESS_DB_ENABLED: bool = _get_bool('LOG_BUSINESS_DB_ENABLED', False)
     LOG_BUSINESS_MAX_MB: int = _get_int('LOG_BUSINESS_MAX_MB', 50)
+    # 执行/评估/设备业务日志保留 365 天（负责人 2026-11-28 裁定），
+    # 显式覆盖统一默认 `LOG_FILE_RETENTION_DAYS`；仍可用环境变量单独调整。
     LOG_BUSINESS_RETENTION_DAYS: int = _get_int(
-        'LOG_BUSINESS_RETENTION_DAYS', LOG_FILE_RETENTION_DAYS)
+        'LOG_BUSINESS_RETENTION_DAYS', 365)
     # --- 审计日志落文件（INT-1793 契约 §3.4，logs 表零写入）---
     # 审计落文件总开关（关 = emit 路径退回仅服务文件、不落 DB；task_service 内
     # S4 直写路径无服务文件兜底，关闭即不落审计——旁路记录不阻塞主流程）

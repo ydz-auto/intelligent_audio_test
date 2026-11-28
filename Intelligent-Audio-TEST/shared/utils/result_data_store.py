@@ -25,6 +25,9 @@ from shared.utils.status_constants import RESULT_TYPE_PENDING  # noqa: F401
 
 HEAVY_KEYS = ['adjusted_reference_params', 'raw_results', 'alignment_info']
 
+# 评估参考参数快照文件名（与 result_data.json 同目录，2026-11-28 裁定）
+REFERENCE_PARAMS_FILENAME = 'reference_params.json'
+
 _MODULE_NAME = 'result_data_store'
 
 # 存储类别（对应 OSSClient._buckets 中的 key）
@@ -77,6 +80,47 @@ def write_result_data_file(task_id, test_case_id, device_sn, result_data):
             category='system', task_id=task_id, test_case_id=test_case_id
         )
         return ''
+
+
+def write_reference_params_file(task_id, test_case_id, device_sn, reference_payload,
+                                result_data_path=None):
+    """把「评估实际使用的参考参数」快照写入结果目录（reference_params.json）。
+
+    优先与 result_data.json 同目录（从 result_data_path 推导），保证多设备 /
+    重新评估覆写结果时仍落在同一份结果目录；无可用路径时按标准 key 构建。
+
+    Returns:
+        写入成功返回带 scheme 的存储路径，失败返回空字符串（不阻断评估）。
+    """
+    try:
+        key = _reference_key_from_result_path(result_data_path)
+        if not key:
+            key = _build_result_key(
+                task_id, test_case_id, device_sn, REFERENCE_PARAMS_FILENAME)
+        data = json.dumps(reference_payload, ensure_ascii=False, indent=2).encode('utf-8')
+        return storage.save_bytes(
+            data, _RESULT_BUCKET, key, content_type='application/json')
+    except Exception as e:
+        log_not_emit(
+            'WARNING', _MODULE_NAME,
+            f'write_reference_params_file failed: {e}',
+            category='system', task_id=task_id, test_case_id=test_case_id)
+        return ''
+
+
+def _reference_key_from_result_path(result_data_path):
+    """从 result_data_path 推导同目录的 reference_params.json key。"""
+    if not result_data_path or '://' not in result_data_path:
+        return ''
+    scheme, rest = result_data_path.split('://', 1)
+    if scheme not in ('oss', 'local'):
+        return ''
+    parts = rest.split('/', 1)
+    if len(parts) != 2 or parts[0] != _RESULT_BUCKET:
+        return ''
+    key = parts[1]
+    parent = key.rsplit('/', 1)[0] if '/' in key else ''
+    return f'{parent}/{REFERENCE_PARAMS_FILENAME}' if parent else REFERENCE_PARAMS_FILENAME
 
 
 def read_result_data_file(path):
