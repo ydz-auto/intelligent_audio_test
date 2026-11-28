@@ -7,10 +7,10 @@ import { useQuery } from '@tanstack/react-query'
 
 import { fetchGroups } from '@/infrastructure/api/groups-api'
 
-export function useCaseGroups(includeDuration = false) {
+export function useCaseGroups(includeDuration = false, algorithmType?: string) {
   return useQuery({
-    queryKey: ['testcase-groups', includeDuration],
-    queryFn: () => fetchGroups(includeDuration),
+    queryKey: ['testcase-groups', includeDuration, algorithmType ?? ''],
+    queryFn: () => fetchGroups(includeDuration, algorithmType),
     staleTime: 30_000,
   })
 }

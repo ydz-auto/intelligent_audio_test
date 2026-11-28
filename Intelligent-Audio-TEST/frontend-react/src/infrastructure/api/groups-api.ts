@@ -17,15 +17,18 @@ import {
 const GROUP_LIST_PAGE_SIZE = 200
 
 /** 分组列表（GET /groups；分组 facet 选项 + 分组头行渲染共用）
- *  includeDuration=true 时后端额外聚合分组总时长（组头「总时长」徽章，未展开可见）。 */
+ *  includeDuration=true 时后端额外聚合分组总时长（组头「总时长」徽章，未展开可见）。
+ *  algorithmType 非空时只返回该算法类型的分组（与用例列表同口径过滤，V10.11.x）。 */
 export async function fetchGroups(
-  includeDuration = false
+  includeDuration = false,
+  algorithmType?: string
 ): Promise<TestCaseGroup[]> {
   const dto = await apiClient.get<GroupListDataDto>('/groups', {
     params: {
       page: 1,
       per_page: GROUP_LIST_PAGE_SIZE,
       include_duration: includeDuration,
+      ...(algorithmType ? { algorithm_type: algorithmType } : {}),
     },
   })
   return (dto.items ?? []).map(toTestCaseGroup)

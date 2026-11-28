@@ -52,11 +52,14 @@ export const useAuthStore = create<AuthState>()(
         const { accessToken, user } = await authApi.login(credentials)
         authTokenStore.set(accessToken)
         set({ user })
+        // 恢复该用户上次选中的全局算法（无历史则回「全部算法」）
+        useAlgorithmStore.getState().setActiveUser(user.id)
       },
       loginWithToken: async (token) => {
         authTokenStore.set(token)
         const user = await authApi.getMe()
         set({ user })
+        useAlgorithmStore.getState().setActiveUser(user.id)
       },
       logout: async () => {
         try {
@@ -80,6 +83,7 @@ export const useAuthStore = create<AuthState>()(
             const cachedRoleName = useAuthStore.getState().user?.roleName ?? ''
             const user = await authApi.getMe({}, cachedRoleName)
             set({ user })
+            useAlgorithmStore.getState().setActiveUser(user.id)
           } catch {
             // 401 已由 client 侧触发会话过期清理；其余错误保留现有状态
           }
@@ -93,6 +97,7 @@ export const useAuthStore = create<AuthState>()(
           if (mode === AUTH_MODE.OFF) {
             const user = await authApi.getMe({ skipAuthRedirect: true })
             set({ user })
+            useAlgorithmStore.getState().setActiveUser(user.id)
           } else {
             set({ user: null })
           }
