@@ -72,13 +72,19 @@ def sweep_local_results() -> dict:
 
 
 def sweep_oss_results() -> dict:
-    """删除对象存储中超过 RESULT_OSS_HOT_RETENTION_DAYS 的执行产物。"""
-    stats = {'deleted': 0, 'failed': 0}
+    """删除对象存储中超过 RESULT_OSS_HOT_RETENTION_DAYS 的执行产物。
+
+    安全闸门：只有执行器能确认「本地冷副本存在」的对象才允许删除 OSS；
+    执行器不可达 / 冷写失败 / 旧版本无 ArtifactService 时一律跳过，
+    保证「绝不先删后传」。
+    """
+    stats = {'deleted': 0, 'failed': 0, 'skipped': 0}
     if getattr(BaseConfig, 'STORAGE_BACKEND', 'auto') == 'local':
         return stats
     cutoff = time.time() - max(1, BaseConfig.RESULT_OSS_HOT_RETENTION_DAYS) * 86400
     cap = max(1, BaseConfig.RESULT_RETENTION_MAX_DELETES_PER_RUN)
     from shared.clients.oss_client import oss
+    from shared.clients.artifact_client import stat_artifact
     for category in _oss_expiring_categories():
         try:
             items = oss.list_objects_with_meta(category)
@@ -96,8 +102,15 @@ def sweep_oss_results() -> dict:
                 continue
             if ts >= cutoff:
                 continue
+            key = item.get('key')
+            if not key:
+                continue
+            # 冷副本确认：拿不到确认就保留 OSS，宁可多占空间
+            if stat_artifact(category, key) is None:
+                stats['skipped'] += 1
+                continue
             try:
-                oss.delete_object(category, item.get('key'))
+                oss.delete_object(category, key)
                 stats['deleted'] += 1
             except Exception:
                 stats['failed'] += 1
