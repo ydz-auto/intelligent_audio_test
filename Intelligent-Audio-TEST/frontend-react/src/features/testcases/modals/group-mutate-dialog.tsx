@@ -29,6 +29,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
+import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import {
   createGroup,
   updateGroup,
@@ -47,9 +48,13 @@ export function GroupMutateDialog({
   onCreated?: (group: { id: string; name: string }) => void
 }) {
   const isEdit = group != null
+  /** 导航栏全局算法：新建分组默认继承（与用例新建同口径），编辑态保持分组自身值 */
+  const globalAlgorithmId = useAlgorithmStore((s) => s.algorithmId)
   const [name, setName] = useState(group?.name ?? '')
   const [description, setDescription] = useState(group?.description ?? '')
-  const [algorithmType, setAlgorithmType] = useState(group?.algorithmType ?? '')
+  const [algorithmType, setAlgorithmType] = useState(
+    group ? (group.algorithmType ?? '') : globalAlgorithmId
+  )
   const [submitting, setSubmitting] = useState(false)
   const { options: algorithmOptions, isLoading: loadingAlgorithms } =
     useAlgorithmOptions()
@@ -61,8 +66,8 @@ export function GroupMutateDialog({
     if (!open) return
     setName(group?.name ?? '')
     setDescription(group?.description ?? '')
-    setAlgorithmType(group?.algorithmType ?? '')
-  }, [group, open])
+    setAlgorithmType(group ? (group.algorithmType ?? '') : globalAlgorithmId)
+  }, [group, open, globalAlgorithmId])
 
   const handleSubmit = async () => {
     if (!name.trim()) return

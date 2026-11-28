@@ -96,8 +96,9 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   )
 
   const listQuery = useTestCasesList(view, effectiveFilters)
-  /** 分组列表带总时长聚合：分组卡组头「总时长」徽章未展开也要有值 */
-  const groupsQuery = useCaseGroups(true)
+  /** 分组列表带总时长聚合：分组卡组头「总时长」徽章未展开也要有值；
+   *  与用例列表同口径按全局算法过滤（否则出现「用例已过滤、分组仍是全量」的不一致） */
+  const groupsQuery = useCaseGroups(true, algorithmId)
   const tagsQuery = useCaseTags()
   /** 标签分类（标签操作·编辑标签弹窗所属分类选项；INT-1294 接线） */
   const tagCategoriesQuery = useTagCategories()
